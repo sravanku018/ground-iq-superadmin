@@ -11,6 +11,8 @@ const buildStamp = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
 // https://vite.dev/config/
 export default defineConfig({
+  // GitHub Pages needs /<repo>/ base; local dev / APK builds default to '/'
+  base: process.env.VITE_BASE || '/',
   plugins: [react()],
   appType: 'spa',
   define: {

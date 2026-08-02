@@ -1958,22 +1958,6 @@ Deno.serve(async (req) => {
         return r.map((x: Record<string, unknown>) => ({ ...x, target_quota: 0 }));
       });
       const surveyors = [];
-      const assignedRows = await sql`
-        SELECT sa.user_id, f.id AS survey_id, f.title, f.form_key
-        FROM survey_assignments sa JOIN survey_form f ON f.id = sa.survey_id
-        ORDER BY f.title
-      `.catch(() => []);
-      const assignedMap = new Map<number, { id: number; title: string; form_key: string }[]>();
-      for (const a of assignedRows as {
-        user_id: number;
-        survey_id: number;
-        title: string;
-        form_key: string;
-      }[]) {
-        const arr = assignedMap.get(Number(a.user_id)) || [];
-        arr.push({ id: Number(a.survey_id), title: a.title, form_key: a.form_key });
-        assignedMap.set(Number(a.user_id), arr);
-      }
       for (const r of rows as {
         id: number;
         username: string;
@@ -1999,7 +1983,6 @@ Deno.serve(async (req) => {
             target > 0
               ? `${done}/${target}`
               : `${done}/—`,
-          surveys: assignedMap.get(Number(r.id)) || [],
           created_at: r.created_at,
         });
       }
@@ -2038,6 +2021,22 @@ Deno.serve(async (req) => {
     if (path === "/api/users" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
       if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      const assignedRows = await sql`
+        SELECT sa.user_id, f.id AS survey_id, f.title, f.form_key
+        FROM survey_assignments sa JOIN survey_form f ON f.id = sa.survey_id
+        ORDER BY f.title
+      `.catch(() => []);
+      const assignedMap = new Map<number, { id: number; title: string; form_key: string }[]>();
+      for (const a of assignedRows as {
+        user_id: number;
+        survey_id: number;
+        title: string;
+        form_key: string;
+      }[]) {
+        const arr = assignedMap.get(Number(a.user_id)) || [];
+        arr.push({ id: Number(a.survey_id), title: a.title, form_key: a.form_key });
+        assignedMap.set(Number(a.user_id), arr);
+      }
       const rows = await sql`
         SELECT id, username, display_name, role, active, created_at,
                COALESCE(target_quota, 0) AS target_quota
@@ -2070,6 +2069,7 @@ Deno.serve(async (req) => {
           created_at: r.created_at,
           target_quota: target,
           done,
+          surveys: assignedMap.get(Number(r.id)) || [],
           status: isCollector ? progressStatus(done, target) : "admin",
           progress_label: isCollector
             ? target > 0
@@ -3437,6 +3437,28 @@ Deno.serve(async (req) => {
           ? Number(body.app_version_code)
           : null,
       };
+      // Idempotent: a field-app sync retry of the same package must not insert a duplicate
+      const pkgId = String(
+        (answers as Record<string, unknown>)?.client_package_id ||
+          body.client_package_id ||
+          "",
+      ).trim();
+      if (pkgId) {
+        const existing = await sql`
+          SELECT id FROM submissions
+          WHERE payload->'answers'->>'client_package_id' = ${pkgId}
+             OR payload->>'client_package_id' = ${pkgId}
+          ORDER BY id LIMIT 1
+        `.catch(() => []);
+        if (existing.length) {
+          return json({
+            ok: true,
+            duplicate: true,
+            id: (existing[0] as { id: number }).id,
+            note: "Already received — returning existing record",
+          });
+        }
+      }
       const rows = await sql`
         INSERT INTO submissions (payload)
         VALUES (${JSON.stringify(payload)}::jsonb)

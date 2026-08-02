@@ -22,19 +22,19 @@ const LAYERS = [
   {
     id: 'district',
     label: 'Districts',
-    url: '/geojson/telangana-districts.json',
+    url: `${import.meta.env.BASE_URL}geojson/telangana-districts.json`,
     nameProp: 'D_NAME',
   },
   {
     id: 'assembly',
     label: 'Assembly',
-    url: '/geojson/telangana-assembly.geojson',
+    url: `${import.meta.env.BASE_URL}geojson/telangana-assembly.geojson`,
     nameProp: 'AC_NAME',
   },
   {
     id: 'parliament',
     label: 'Parliament',
-    url: '/geojson/telangana-parliament.geojson',
+    url: `${import.meta.env.BASE_URL}geojson/telangana-parliament.geojson`,
     nameProp: 'pc_name',
   },
 ]

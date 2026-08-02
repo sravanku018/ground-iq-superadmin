@@ -11,7 +11,8 @@ import { storeAppVersion, versionLabel } from './version'
 function isAdminPath() {
   if (typeof window === 'undefined') return false
   const p = window.location.pathname || ''
-  return p === '/admin' || p.startsWith('/admin/')
+  // Works at /admin and under any base path (e.g. /ground-iq-web/admin on Pages)
+  return p === '/admin' || p.startsWith('/admin/') || /\/admin(\/|$)/.test(p)
 }
 
 export default function App() {

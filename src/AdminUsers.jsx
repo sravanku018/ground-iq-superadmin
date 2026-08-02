@@ -78,12 +78,13 @@ export default function AdminUsersScreen({ onToast }) {
       name: u.name || u.display_name || '',
       password: '',
       target_quota: u.target ?? u.target_quota ?? 0,
+      surveys: (u.surveys || []).map((s) => String(s.id)),
     })
   }
 
   function closeEdit() {
     setEditingId(null)
-    setEdit({ username: '', name: '', password: '', target_quota: 0 })
+    setEdit({ username: '', name: '', password: '', target_quota: 0, surveys: [] })
   }
 
   async function handleCreate(e) {
@@ -267,6 +268,23 @@ export default function AdminUsersScreen({ onToast }) {
         body.password = edit.password.trim()
       }
       const res = await updateUser(user.id, body)
+      if (user.role === 'surveyor' || user.role === 'field') {
+        const cur = (user.surveys || []).map((s) => Number(s.id))
+        const next = Array.isArray(edit.surveys)
+          ? edit.surveys.map(Number)
+          : []
+        const same =
+          cur.length === next.length &&
+          [...cur].sort().join() === [...next].sort().join()
+        if (!same) {
+          try {
+            await setSurveySurveyors(user.id, next)
+            onToast?.(`Assigned surveys updated for @${user.username}`, 'ok')
+          } catch (e) {
+            onToast?.(`Surveys assign failed: ${e.message}`, 'error')
+          }
+        }
+      }
       const parts = ['Saved']
       if (res.username_changed) parts.push('username updated')
       if (res.password_changed) parts.push('password updated · sessions revoked')
@@ -963,6 +981,57 @@ export default function AdminUsersScreen({ onToast }) {
                           placeholder="Leave blank to keep"
                         />
                       </label>
+                      {(user.role === 'surveyor' || user.role === 'field') && (
+                        <div className="field compact">
+                          <span>Assign surveys (optional)</span>
+                          <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
+                            None = uses the default Field Survey form on the app.
+                          </p>
+                          {allSurveys.length === 0 ? (
+                            <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
+                              No surveys yet — create them in the Surveys tab first.
+                            </p>
+                          ) : (
+                            <div
+                              style={{
+                                maxHeight: 150,
+                                overflowY: 'auto',
+                                border: '1px solid rgba(128,128,128,0.2)',
+                                borderRadius: 8,
+                                padding: 8,
+                              }}
+                            >
+                              {allSurveys.map((s) => (
+                                <label
+                                  key={s.id}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                    padding: '3px 0',
+                                    fontSize: 13,
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={edit.surveys.includes(String(s.id))}
+                                    onChange={(e) => {
+                                      const id = String(s.id)
+                                      setEdit((ed) => ({
+                                        ...ed,
+                                        surveys: e.target.checked
+                                          ? [...ed.surveys, id]
+                                          : ed.surveys.filter((x) => x !== id),
+                                      }))
+                                    }}
+                                  />
+                                  {s.title}
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="user-actions">
                         <button
                           type="button"

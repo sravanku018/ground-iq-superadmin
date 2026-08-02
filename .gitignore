@@ -1,0 +1,8 @@
+node_modules
+dist
+dist-ssr
+*.local
+*.log
+.DS_Store
+
+# .env.production is committed on purpose — it only holds the public API URL

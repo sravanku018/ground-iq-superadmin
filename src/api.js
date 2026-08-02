@@ -73,7 +73,10 @@ async function request(path, options = {}) {
     throw err
   }
   if (!res.ok) {
-    throw new Error(data.error || data.detail || data.message || `HTTP ${res.status}`)
+    const err = new Error(data.error || data.detail || data.message || `HTTP ${res.status}`)
+    err.status = res.status
+    err.data = data
+    throw err
   }
   return data
 }
@@ -313,6 +316,98 @@ export function createSubmission({ form_id, source, submitted_by, answers }) {
 /** Load questions from admin dashboard (auto for field app) */
 export function getQuestions() {
   return request('/api/questions')
+}
+
+/** Surveyor's assigned surveys with their questions (field app) */
+export function getMySurveys() {
+  return request('/api/my-surveys')
+}
+
+/**
+ * Form for the field app: assigned survey if any, else the default form.
+ * Returns { form_key, title, questions, surveys: [...] }.
+ */
+export async function getSurveyForm() {
+  try {
+    const mine = await getMySurveys()
+    if (mine.items && mine.items.length) {
+      return { ...mine.items[0], surveys: mine.items }
+    }
+  } catch {
+    /* fall back to default */
+  }
+  const d = await getQuestions()
+  return { ...d, surveys: [] }
+}
+
+/** Admin: list surveys (q = name search filter) */
+export function listSurveys(q = '') {
+  const params = new URLSearchParams()
+  if (q) params.set('q', q)
+  const qs = params.toString()
+  return request(`/api/surveys${qs ? `?${qs}` : ''}`)
+}
+
+/** Admin: create survey (name + questions). 409 + existing_id if name exists */
+export function createSurvey({ title, questions }) {
+  return request('/api/surveys', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, questions }),
+  })
+}
+
+/** Admin: full survey detail (questions + team + respondents) */
+export function getSurvey(id) {
+  return request(`/api/surveys/${id}`)
+}
+
+/** Admin: update title/questions */
+export function updateSurvey(id, { title, questions }) {
+  return request(`/api/surveys/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, questions }),
+  })
+}
+
+/** Admin: delete survey (removes team + respondent list) */
+export function deleteSurvey(id) {
+  return request(`/api/surveys/${id}`, { method: 'DELETE' })
+}
+
+/** Admin: replace surveyor team for a survey */
+export function setSurveySurveyors(id, userIds) {
+  return request(`/api/surveys/${id}/surveyors`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_ids: userIds }),
+  })
+}
+
+/** Admin: add respondent to a survey */
+export function addRespondent(id, { name, phone }) {
+  return request(`/api/surveys/${id}/respondents`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, phone }),
+  })
+}
+
+/** Admin: mark respondent done/pending */
+export function setRespondentStatus(surveyId, respondentId, status) {
+  return request(`/api/surveys/${surveyId}/respondents/${respondentId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  })
+}
+
+/** Admin: remove respondent */
+export function deleteRespondent(surveyId, respondentId) {
+  return request(`/api/surveys/${surveyId}/respondents/${respondentId}`, {
+    method: 'DELETE',
+  })
 }
 
 /** Admin save question bank */

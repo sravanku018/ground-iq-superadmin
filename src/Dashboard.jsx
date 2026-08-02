@@ -325,6 +325,7 @@ export default function DashboardScreen({ onToast }) {
     caste: '',
     constituency: '',
     user: '',
+    survey: '',
     period: 'total', // total | today | day | month
     day: new Date().toISOString().slice(0, 10),
     month: new Date().toISOString().slice(0, 7),
@@ -332,6 +333,15 @@ export default function DashboardScreen({ onToast }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [surveys, setSurveys] = useState([])
+
+  useEffect(() => {
+    import('./api').then(({ listSurveys }) =>
+      listSurveys()
+        .then((d) => setSurveys(d.items || []))
+        .catch(() => {}),
+    )
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -344,6 +354,7 @@ export default function DashboardScreen({ onToast }) {
         caste: filters.caste,
         constituency: filters.constituency,
         user: filters.user,
+        survey: filters.survey,
         period: filters.period || 'total',
       }
       if (filters.period === 'day') params.day = filters.day
@@ -385,6 +396,7 @@ export default function DashboardScreen({ onToast }) {
       caste: '',
       constituency: '',
       user: '',
+      survey: '',
       period: 'total',
       day: new Date().toISOString().slice(0, 10),
       month: new Date().toISOString().slice(0, 7),
@@ -511,6 +523,20 @@ export default function DashboardScreen({ onToast }) {
               />
             </label>
           )}
+          <label className="field compact">
+            <span>By survey</span>
+            <select
+              value={filters.survey}
+              onChange={(e) => setFilters((f) => ({ ...f, survey: e.target.value }))}
+            >
+              <option value="">All surveys</option>
+              {surveys.map((s) => (
+                <option key={s.id} value={s.form_key}>
+                  {s.title}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="field compact">
             <span>By user</span>
             <select

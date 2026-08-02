@@ -133,7 +133,7 @@ export default function LoginScreen({ onSuccess, onToast }) {
             password.
           </p>
           <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-            Client Admin portal → <a href={`${import.meta.env.BASE_URL}admin`}>/admin</a> (not this screen)
+            Client Admin portal → <a href="/admin">/admin</a> (not this screen)
           </p>
         </div>
 

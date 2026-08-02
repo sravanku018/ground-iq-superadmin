@@ -9,6 +9,7 @@ import {
 } from './api'
 import AdminLogin from './AdminLogin'
 import AdminUsersScreen from './AdminUsers'
+import AdminSurveysScreen from './AdminSurveys'
 import AdminQuestionsScreen from './AdminQuestions'
 import AdminAnalyzeScreen from './AdminAnalyze'
 import ReviewQAScreen from './ReviewQA'
@@ -20,6 +21,7 @@ import './portal.css'
 
 const NAV = [
   { id: 'home', label: 'Overview', icon: '⌂' },
+  { id: 'surveys', label: 'Surveys', icon: '▤' },
   { id: 'users', label: 'Users', icon: '👤' },
   { id: 'questions', label: 'Questions', icon: '?' },
   { id: 'analyze', label: 'Analyze', icon: '▣' },
@@ -348,6 +350,7 @@ export default function AdminPortal() {
       <main className="portal-main">
         {page === 'home' && <Overview user={user} stats={stats} onNav={setPage} />}
         {page === 'users' && <AdminUsersScreen onToast={notify} />}
+        {page === 'surveys' && <AdminSurveysScreen onToast={notify} />}
         {page === 'questions' && <AdminQuestionsScreen onToast={notify} />}
         {page === 'analyze' && <AdminAnalyzeScreen onToast={notify} />}
         {page === 'review' && <ReviewQAScreen onToast={notify} />}

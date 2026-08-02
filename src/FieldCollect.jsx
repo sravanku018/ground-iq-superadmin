@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getMyProgress, getQuestions } from './api'
+import { getMyProgress, getSurveyForm } from './api'
 import { savePackageLocal } from './localStore'
 import { forceSyncNow, getQueueSnapshot } from './syncEngine'
 /**
@@ -123,7 +123,7 @@ export default function FieldCollectScreen({ user, onToast, onDone }) {
       const silent = !!opts.silent
       try {
         setLoadErr('')
-        const data = await getQuestions()
+        const data = await getSurveyForm()
         setFormMeta(data)
         setQuestions(data.questions || [])
         if (opts.resetAnswers !== false) {
@@ -668,6 +668,36 @@ export default function FieldCollectScreen({ user, onToast, onDone }) {
           <p>
             {user?.name || user?.username} · step {step + 1}/4 · {questions.length} Qs
           </p>
+          {(formMeta?.surveys || []).length > 1 && (
+            <label
+              className="field compact"
+              style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+            >
+              <span style={{ fontSize: 12 }}>Survey:</span>
+              <select
+                value={formMeta?.form_key || ''}
+                onChange={(e) => {
+                  const pick = (formMeta.surveys || []).find(
+                    (s) => s.form_key === e.target.value,
+                  )
+                  if (!pick) return
+                  setFormMeta({ ...pick, surveys: formMeta.surveys })
+                  setQuestions(pick.questions || [])
+                  const init = {}
+                  for (const q of pick.questions || []) init[q.id] = ''
+                  setAnswers(init)
+                  setActiveQ(0)
+                  onToast?.(`Switched to "${pick.title}"`, 'ok')
+                }}
+              >
+                {(formMeta.surveys || []).map((s) => (
+                  <option key={s.id} value={s.form_key}>
+                    {s.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </header>
 
         {/* Lock status — mandatory */}

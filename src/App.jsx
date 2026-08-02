@@ -11,7 +11,7 @@ import { storeAppVersion, versionLabel } from './version'
 function isAdminPath() {
   if (typeof window === 'undefined') return false
   const p = window.location.pathname || ''
-  return p === '/admin' || p.startsWith('/admin/') || /\/admin(\/|$)/.test(p)
+  return p === '/admin' || p.startsWith('/admin/')
 }
 
 export default function App() {

@@ -20,7 +20,7 @@ import {
 import LoginScreen from './Login'
 import FieldCollectScreen from './FieldCollect'
 import PullToRefresh from './PullToRefresh'
-import { clearSession, getQuestions } from './api'
+import { clearSession, getSurveyForm } from './api'
 import { APP_VERSION, versionLabel } from './version'
 import './App.css'
 
@@ -287,7 +287,7 @@ export default function SurveyorApp() {
   const pullRefreshAll = useCallback(async () => {
     try {
       const [data, prog, queue] = await Promise.all([
-        getQuestions(),
+        getSurveyForm(),
         getMyProgress().catch(() => null),
         getQueueSnapshot().catch(() => null),
       ])
@@ -363,7 +363,7 @@ export default function SurveyorApp() {
       /* ignore */
     }
     try {
-      const data = await getQuestions()
+      const data = await getSurveyForm()
       setQuestionsMeta({
         title: data.title,
         count: (data.questions || []).length,

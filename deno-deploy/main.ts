@@ -541,6 +541,7 @@ type Row = {
   submitted_by: string;
   respondent: string;
   formKey: string;
+  answers: Record<string, unknown>;
 };
 
 /** Report status: pending → confirmed (analytics) | rejected */
@@ -1209,6 +1210,7 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
       ),
       respondent: respondent || String(a.respondent_name || ""),
       formKey: String(payload.form_key || payload.formKey || "default"),
+      answers: a,
     };
   });
 
@@ -1247,6 +1249,58 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
     universe = universe.filter((r) =>
       String(r.formKey || "") === formFilter
     );
+  }
+
+  // Dynamic filters: q_<questionId>=value (driven by survey questions)
+  const dynFilters = new Map<string, string>();
+  for (const [k, v] of url.searchParams) {
+    if (k.startsWith("q_") && v) dynFilters.set(k.slice(2), v);
+  }
+  if (dynFilters.size) {
+    universe = universe.filter((r) => {
+      for (const [qid, want] of dynFilters) {
+        const av = r.answers?.[qid];
+        const hit = Array.isArray(av)
+          ? av.map(String).includes(want)
+          : String(av ?? "") === want;
+        if (!hit) return false;
+      }
+      return true;
+    });
+  }
+
+  // Survey questions → dynamic filter bar (options from defined choices + submitted answers)
+  const surveyQuestions: { id: string; label: string; type: string; options: string[] }[] = [];
+  if (formFilter) {
+    const frows = await sqlFn`
+      SELECT questions FROM survey_form WHERE form_key = ${formFilter} LIMIT 1
+    `.catch(() => []);
+    if (frows.length) {
+      let qs = (frows[0] as { questions: unknown }).questions;
+      if (typeof qs === "string") {
+        try { qs = JSON.parse(qs); } catch { qs = []; }
+      }
+      if (Array.isArray(qs)) {
+        for (const q of qs as Record<string, unknown>[]) {
+          const type = String(q.type || "text");
+          const defined = Array.isArray(q.options) ? q.options.map(String) : [];
+          const seen = new Set<string>(defined);
+          if (type === "text" || !defined.length) {
+            for (const r of universe) {
+              const av = r.answers?.[String(q.id || "")];
+              const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
+              for (const v of vals) if (v && v !== "Unknown") seen.add(v);
+            }
+          }
+          surveyQuestions.push({
+            id: String(q.id || ""),
+            label: String(q.label || q.id || ""),
+            type,
+            options: [...seen].slice(0, 100),
+          });
+        }
+      }
+    }
   }
   if (completenessFilter === "complete") {
     universe = universe.filter((r) => r.completeness === "complete");
@@ -1434,6 +1488,7 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
       date_from: dateFrom || null,
       date_to: dateTo || null,
       user: userFilter || null,
+      survey: formFilter || null,
       completeness: completenessFilter,
       period,
       day: dayParam || null,
@@ -1496,6 +1551,28 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
           return b.value - a.value || a.surveyor.localeCompare(b.surveyor);
         });
       })(),
+      // Dynamic per-question filter dropdowns (from the selected survey)
+      questions: surveyQuestions.map((q) => ({
+        id: q.id,
+        label: q.label,
+        type: q.type,
+        options: q.options,
+        counts: (() => {
+          const map = new Map<string, number>();
+          for (const r of universe) {
+            const av = r.answers?.[q.id];
+            const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
+            for (const v of vals) {
+              if (!v || v === "Unknown") continue;
+              map.set(v, (map.get(v) || 0) + 1);
+            }
+          }
+          return [...map.entries()]
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 100);
+        })(),
+      })),
       // Surveyor × month (each surveyor's monthly totals)
       by_surveyor_month: (() => {
         const map = new Map<string, { surveyor: string; month: string; value: number }>();
@@ -3043,13 +3120,16 @@ Deno.serve(async (req) => {
         `.catch(() => []);
         if (dup.length) return json({ error: `Survey "${title}" already exists` }, 409);
       }
+      if (title) {
+        await sql`
+          UPDATE survey_form SET title = ${title}, updated_at = NOW() WHERE id = ${id}
+        `;
+      }
       if (Array.isArray(body.questions)) {
         await sql`
           UPDATE survey_form SET questions = ${JSON.stringify(body.questions)}::jsonb, updated_at = NOW()
           WHERE id = ${id}
         `;
-      } else if (title) {
-        await sql`UPDATE survey_form SET title = ${title}, updated_at = NOW() WHERE id = ${id}`;
       }
       return json({ ok: true });
     }

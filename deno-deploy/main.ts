@@ -1958,6 +1958,22 @@ Deno.serve(async (req) => {
         return r.map((x: Record<string, unknown>) => ({ ...x, target_quota: 0 }));
       });
       const surveyors = [];
+      const assignedRows = await sql`
+        SELECT sa.user_id, f.id AS survey_id, f.title, f.form_key
+        FROM survey_assignments sa JOIN survey_form f ON f.id = sa.survey_id
+        ORDER BY f.title
+      `.catch(() => []);
+      const assignedMap = new Map<number, { id: number; title: string; form_key: string }[]>();
+      for (const a of assignedRows as {
+        user_id: number;
+        survey_id: number;
+        title: string;
+        form_key: string;
+      }[]) {
+        const arr = assignedMap.get(Number(a.user_id)) || [];
+        arr.push({ id: Number(a.survey_id), title: a.title, form_key: a.form_key });
+        assignedMap.set(Number(a.user_id), arr);
+      }
       for (const r of rows as {
         id: number;
         username: string;
@@ -1983,6 +1999,7 @@ Deno.serve(async (req) => {
             target > 0
               ? `${done}/${target}`
               : `${done}/—`,
+          surveys: assignedMap.get(Number(r.id)) || [],
           created_at: r.created_at,
         });
       }

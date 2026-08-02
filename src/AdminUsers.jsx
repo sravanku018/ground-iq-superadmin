@@ -638,6 +638,11 @@ export default function AdminUsersScreen({ onToast }) {
                         {u.active === false ? ' · DISABLED' : ' · app login OK'}
                         {justCreated ? ' · NEW' : ''}
                       </span>
+                      {(u.surveys || []).length > 0 && (
+                        <span className="meta" style={{ display: 'block', marginTop: 2 }}>
+                          Surveys: {(u.surveys || []).map((s) => s.title).join(' · ')}
+                        </span>
+                      )}
                     </div>
                     <span className={`pill ${statusColor(status)}`}>
                       <span className="dot" />

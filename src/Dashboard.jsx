@@ -357,6 +357,10 @@ export default function DashboardScreen({ onToast }) {
         survey: filters.survey,
         period: filters.period || 'total',
       }
+      // Dynamic per-question filters (q_<questionId>)
+      Object.entries(filters)
+        .filter(([k, v]) => k.startsWith('q_') && v)
+        .forEach(([k, v]) => (params[k] = v))
       if (filters.period === 'day') params.day = filters.day
       if (filters.period === 'month') params.month = filters.month
       const clean = Object.fromEntries(Object.entries(params).filter(([, v]) => v))
@@ -527,7 +531,14 @@ export default function DashboardScreen({ onToast }) {
             <span>By survey</span>
             <select
               value={filters.survey}
-              onChange={(e) => setFilters((f) => ({ ...f, survey: e.target.value }))}
+              onChange={(e) => {
+                const survey = e.target.value
+                // Changing survey clears old per-question filters
+                const drop = Object.fromEntries(
+                  Object.entries(filters).filter(([k]) => !k.startsWith('q_')),
+                )
+                setFilters((f) => ({ ...drop, ...f, survey }))
+              }}
             >
               <option value="">All surveys</option>
               {surveys.map((s) => (
@@ -537,6 +548,24 @@ export default function DashboardScreen({ onToast }) {
               ))}
             </select>
           </label>
+          {data?.dataFilters?.questions?.map((q) => (
+            <label className="field compact" key={q.id}>
+              <span>{q.label}</span>
+              <select
+                value={filters[`q_${q.id}`] || ''}
+                onChange={(e) =>
+                  setFilters((f) => ({ ...f, [`q_${q.id}`]: e.target.value }))
+                }
+              >
+                <option value="">All {q.label}</option>
+                {(q.counts || []).map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name} ({c.value})
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
           <label className="field compact">
             <span>By user</span>
             <select

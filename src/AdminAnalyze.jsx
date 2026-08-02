@@ -24,6 +24,9 @@ export default function AdminAnalyzeScreen({ onToast }) {
   const [day, setDay] = useState(todayStr())
   const [month, setMonth] = useState(thisMonthStr())
   const [user, setUser] = useState('')
+  const [survey, setSurvey] = useState('')
+  const [qFilters, setQFilters] = useState({}) // q_<questionId> → value
+  const [surveys, setSurveys] = useState([])
   const [completeness, setCompleteness] = useState('all')
   const [users, setUsers] = useState([])
   const [board, setBoard] = useState(null)
@@ -40,6 +43,10 @@ export default function AdminAnalyzeScreen({ onToast }) {
       .then((d) =>
         setUsers((d.users || []).filter((u) => u.role === 'surveyor' || u.role === 'field')),
       )
+      .catch(() => {})
+    import('./api')
+      .then(({ listSurveys }) => listSurveys())
+      .then((d) => setSurveys(d.items || []))
       .catch(() => {})
   }, [])
 
@@ -92,7 +99,11 @@ export default function AdminAnalyzeScreen({ onToast }) {
           day: scopeParams.day,
           month: scopeParams.month,
           user,
+          survey,
           completeness: completeness === 'all' ? 'all' : completeness,
+          ...Object.fromEntries(
+            Object.entries(qFilters).filter(([, v]) => v),
+          ),
         }).catch(() => null),
       ])
       setBoard(analyze)
@@ -108,7 +119,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
     } finally {
       setLoading(false)
     }
-  }, [scopeParams, completeness, user, period, day, month, onToast])
+  }, [scopeParams, completeness, user, survey, qFilters, period, day, month, onToast])
 
   useEffect(() => {
     load()
@@ -194,6 +205,46 @@ export default function AdminAnalyzeScreen({ onToast }) {
             ))}
           </select>
         </label>
+        <label className="field">
+          <span>By survey (auto question filters below)</span>
+          <select
+            value={survey}
+            onChange={(e) => {
+              setSurvey(e.target.value)
+              setQFilters({})
+            }}
+          >
+            <option value="">All surveys</option>
+            {surveys.map((s) => (
+              <option key={s.id} value={s.form_key}>
+                {s.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        {analytics?.dataFilters?.questions?.map((q) => (
+          <label className="field" key={q.id}>
+            <span>{q.label}</span>
+            <select
+              value={qFilters[`q_${q.id}`] || ''}
+              onChange={(e) =>
+                setQFilters((f) => ({ ...f, [`q_${q.id}`]: e.target.value }))
+              }
+            >
+              <option value="">All {q.label}</option>
+              {(q.counts || []).map((c) => (
+                <option key={c.name} value={c.name}>
+                  {c.name} ({c.value})
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+        {survey && (analytics?.dataFilters?.questions || []).length === 0 && (
+          <p className="muted" style={{ fontSize: 12 }}>
+            This survey has no questions yet — add them in the Surveys tab.
+          </p>
+        )}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
           {[
             { id: 'all', label: 'All status' },

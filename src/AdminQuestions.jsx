@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getQuestions, saveQuestions } from './api'
+import { getQuestions, getSurvey, listSurveys, saveQuestions, updateSurvey } from './api'
 
 const EMPTY_Q = {
   id: '',
@@ -15,19 +15,33 @@ export default function AdminQuestionsScreen({ onToast }) {
   const [questions, setQuestions] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [surveys, setSurveys] = useState([])
+  const [surveyId, setSurveyId] = useState('') // '' = default form, else survey id
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await getQuestions()
-      setTitle(data.title || 'Field Survey')
-      setQuestions(Array.isArray(data.questions) ? data.questions : [])
+      if (surveyId) {
+        const d = await getSurvey(surveyId)
+        setTitle(d.survey?.title || 'Field Survey')
+        setQuestions(Array.isArray(d.survey?.questions) ? d.survey.questions : [])
+      } else {
+        const data = await getQuestions()
+        setTitle(data.title || 'Field Survey')
+        setQuestions(Array.isArray(data.questions) ? data.questions : [])
+      }
     } catch (e) {
       onToast?.(e.message, 'error')
     } finally {
       setLoading(false)
     }
-  }, [onToast])
+  }, [surveyId, onToast])
+
+  useEffect(() => {
+    listSurveys()
+      .then((d) => setSurveys(d.items || []))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     load()
@@ -70,7 +84,9 @@ export default function AdminQuestionsScreen({ onToast }) {
         required: !!q.required,
         speak: String(q.speak || q.label || '').trim(),
       }))
-      await saveQuestions({ title, questions: cleaned })
+      await (surveyId
+        ? updateSurvey(surveyId, { title, questions: cleaned })
+        : saveQuestions({ title, questions: cleaned }))
       onToast?.('Questions saved — field app loads them automatically', 'ok')
       await load()
     } catch (e) {
@@ -92,10 +108,22 @@ export default function AdminQuestionsScreen({ onToast }) {
     <div className="screen">
       <header className="screen-head">
         <h2>Client Admin · Questions</h2>
-        <p>Edit here · surveyor app loads automatically after unlock</p>
+        <p>Pick a survey · edit here · surveyor app loads automatically after unlock</p>
       </header>
 
       <div className="card" style={{ marginBottom: 12 }}>
+        <label className="field">
+          <span>Survey</span>
+          <select value={surveyId} onChange={(e) => setSurveyId(e.target.value)}>
+            <option value="">Field Survey (default)</option>
+            {surveys.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.title}
+                {s.question_count ? ` (${s.question_count} Q)` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="field">
           <span>Form title</span>
           <input value={title} onChange={(e) => setTitle(e.target.value)} />

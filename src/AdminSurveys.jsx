@@ -455,27 +455,25 @@ export default function AdminSurveysScreen({ onToast }) {
                     }}
                   >
                     {allSurveyors.map((u) => (
-                      <label
+                      <button
                         key={u.id}
+                        type="button"
+                        className="btn small"
+                        disabled={busy}
+                        onClick={() => toggleTeamMember(u)}
                         style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          padding: '4px 6px',
-                          fontSize: 13,
-                          cursor: 'pointer',
-                          borderRadius: 6,
+                          display: 'block',
+                          width: '100%',
+                          textAlign: 'left',
+                          margin: '2px 0',
+                          background: checked[String(u.id)]
+                            ? 'rgba(0,229,153,0.15)'
+                            : undefined,
                         }}
                       >
-                        <input
-                          type="checkbox"
-                          checked={!!checked[String(u.id)]}
-                          onChange={() => toggleTeamMember(u)}
-                          disabled={busy}
-                        />
                         {u.username}
-                        {u.display_name ? ` (${u.display_name})` : ''}
-                      </label>
+                        {checked[String(u.id)] ? ' ✓' : ''}
+                      </button>
                     ))}
                     <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
                       <button

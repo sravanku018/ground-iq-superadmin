@@ -518,7 +518,10 @@ export default function AdminUsersScreen({ onToast }) {
           />
         </label>
         <div className="field">
-          <span>Assign surveys to all generated users</span>
+          <span>Assign surveys to all generated users (optional)</span>
+          <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
+            None selected = generated surveyors use the default Field Survey form on the app.
+          </p>
           {allSurveys.length === 0 ? (
             <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
               No surveys yet — create them in the Surveys tab first.
@@ -625,7 +628,10 @@ export default function AdminUsersScreen({ onToast }) {
         )}
         {form.role === 'surveyor' && (
           <div className="field">
-            <span>Assign surveys (field app loads these)</span>
+            <span>Assign surveys (optional)</span>
+            <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
+              None selected = surveyor uses the default Field Survey form on the app.
+            </p>
             {allSurveys.length === 0 ? (
               <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
                 No surveys yet — create them in the Surveys tab first.

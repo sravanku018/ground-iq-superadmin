@@ -239,7 +239,7 @@ export default function AdminSurveysScreen({ onToast }) {
     if (!detail) return
     setSaving(true)
     try {
-      await updateSurvey(detail.id, { title: detail.title, questions: cleanQuestions(detail.questions) })
+      await updateSurvey(detail.id, { title: detail.title })
       onToast?.('Survey saved', 'ok')
       await openDetail(detail.id)
     } catch (e) {
@@ -596,12 +596,9 @@ export default function AdminSurveysScreen({ onToast }) {
           ))}
         </div>
 
-        <h3 style={{ fontSize: 14, margin: '10px 0 6px' }}>Questions</h3>
-        <QuestionEditor
-          questions={detail.questions || []}
-          onChange={(qs) => setDetail({ ...detail, questions: qs })}
-          onToast={onToast}
-        />
+        <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
+          Questions for this survey are edited in the <strong>Questions</strong> tab.
+        </p>
 
         <button
           type="button"
@@ -609,7 +606,7 @@ export default function AdminSurveysScreen({ onToast }) {
           onClick={saveDetailChanges}
           disabled={saving || busy}
         >
-          {saving ? 'Saving…' : 'Save survey (title + questions)'}
+          {saving ? 'Saving…' : 'Save survey (title)'}
         </button>
         <button
           type="button"

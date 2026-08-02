@@ -2373,6 +2373,7 @@ Deno.serve(async (req) => {
           id: r.id,
           source: (payload?.source as string) || "app",
           form_id: (payload?.form_id as string) || "",
+          form_key: String(payload?.form_key || "default"),
           created_at: r.created_at,
           date: dayKey(String(r.created_at || "")),
           status,
@@ -2405,6 +2406,10 @@ Deno.serve(async (req) => {
         items = items.filter((x) =>
           String(x.submitted_by || "").toLowerCase().includes(userQ)
         );
+      }
+      const surveyQ = (url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim();
+      if (surveyQ) {
+        items = items.filter((x) => String(x.form_key || "") === surveyQ);
       }
       if (completenessQ === "complete" || completenessQ === "incomplete") {
         items = items.filter((x) => x.completeness === completenessQ);

@@ -4,6 +4,7 @@ import {
   fetchMediaBlobUrl,
   listSubmissionMedia,
   listSubmissions,
+  listSurveys,
   setSubmissionStatus,
 } from './api'
 import SubmissionEditor from './SubmissionEditor'
@@ -15,6 +16,8 @@ import SubmissionEditor from './SubmissionEditor'
  */
 export default function ReviewQAScreen({ onToast }) {
   const [status, setStatus] = useState('pending')
+  const [survey, setSurvey] = useState('')
+  const [surveys, setSurveys] = useState([])
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState(null)
@@ -25,18 +28,24 @@ export default function ReviewQAScreen({ onToast }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await listSubmissions(200, status === 'all' ? '' : status)
+      const data = await listSubmissions(200, status === 'all' ? '' : status, { survey })
       setItems(data.items || [])
     } catch (e) {
       onToast?.(e.message, 'error')
     } finally {
       setLoading(false)
     }
-  }, [status, onToast])
+  }, [status, survey, onToast])
 
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    listSurveys()
+      .then((d) => setSurveys(d.items || []))
+      .catch(() => {})
+  }, [])
 
   // Load free Neon/external media when a row is opened (no card services)
   useEffect(() => {
@@ -134,6 +143,17 @@ export default function ReviewQAScreen({ onToast }) {
             </button>
           ))}
         </div>
+        <label className="field compact" style={{ marginTop: 10 }}>
+          <span>By survey</span>
+          <select value={survey} onChange={(e) => setSurvey(e.target.value)}>
+            <option value="">All surveys</option>
+            {surveys.map((s) => (
+              <option key={s.id} value={s.form_key}>
+                {s.title}
+              </option>
+            ))}
+          </select>
+        </label>
         {status === 'pending' && (
           <button
             type="button"

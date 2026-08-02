@@ -143,6 +143,7 @@ export default function AdminSurveysScreen({ onToast }) {
   const [checked, setChecked] = useState({})
   const [respForm, setRespForm] = useState({ name: '', phone: '' })
   const [busy, setBusy] = useState(false)
+  const [teamOpen, setTeamOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -258,6 +259,7 @@ export default function AdminSurveysScreen({ onToast }) {
       else nextIds.push(Number(u.id))
       await setSurveySurveyors(detail.id, nextIds)
       onToast?.(idx >= 0 ? `Removed ${u.username} from team` : `Added ${u.username} to team`, 'ok')
+      setTeamOpen(false)
       await openDetail(detail.id)
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -416,51 +418,116 @@ export default function AdminSurveysScreen({ onToast }) {
 
         <h3 style={{ fontSize: 14, margin: '10px 0 6px' }}>Survey people — field team</h3>
         <div className="card" style={{ marginBottom: 12, padding: 12 }}>
-          {allSurveyors.length === 0 && (
+          {allSurveyors.length === 0 ? (
             <p className="muted" style={{ fontSize: 12, margin: 0 }}>
               No surveyor accounts yet — create them in the Users tab first.
             </p>
-          )}
-          {allSurveyors.map((u) => {
-            const inTeam = !!checked[String(u.id)]
-            return (
-              <div
-                key={u.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '5px 0',
-                  borderTop: '1px solid rgba(128,128,128,0.15)',
-                  fontSize: 13,
-                }}
-              >
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  {u.username}
-                  {u.display_name ? ` (${u.display_name})` : ''}
-                </span>
-                {inTeam ? (
-                  <button
-                    type="button"
-                    className="btn small danger"
-                    onClick={() => toggleTeamMember(u)}
-                    disabled={busy}
+          ) : (
+            <>
+              <div style={{ position: 'relative', marginBottom: 8 }}>
+                <button
+                  type="button"
+                  className="btn small primary"
+                  style={{ width: '100%', textAlign: 'left' }}
+                  onClick={() => setTeamOpen((o) => !o)}
+                >
+                  {Object.keys(checked).filter((k) => checked[k]).length > 0
+                    ? `${Object.keys(checked).filter((k) => checked[k]).length} surveyor(s) in team — tap to edit`
+                    : 'Add surveyors… (dropdown)'}
+                </button>
+                {teamOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      zIndex: 20,
+                      top: '100%',
+                      left: 0,
+                      marginTop: 4,
+                      width: '100%',
+                      background: '#fff',
+                      color: '#222',
+                      border: '1px solid rgba(0,0,0,0.25)',
+                      borderRadius: 8,
+                      padding: 8,
+                      maxHeight: 200,
+                      overflowY: 'auto',
+                      boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
+                    }}
                   >
-                    Remove
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn small primary"
-                    onClick={() => toggleTeamMember(u)}
-                    disabled={busy}
-                  >
-                    Add
-                  </button>
+                    {allSurveyors.map((u) => (
+                      <label
+                        key={u.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '4px 6px',
+                          fontSize: 13,
+                          cursor: 'pointer',
+                          borderRadius: 6,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!checked[String(u.id)]}
+                          onChange={() => toggleTeamMember(u)}
+                          disabled={busy}
+                        />
+                        {u.username}
+                        {u.display_name ? ` (${u.display_name})` : ''}
+                      </label>
+                    ))}
+                    <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        className="btn small"
+                        onClick={() => setTeamOpen(false)}
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
-            )
-          })}
+              {Object.keys(checked).filter((k) => checked[k]).length === 0 && (
+                <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                  No surveyors assigned yet — open the dropdown above.
+                </p>
+              )}
+              {Object.keys(checked)
+                .filter((k) => checked[k])
+                .map((k) => {
+                  const u = allSurveyors.find((x) => String(x.id) === k)
+                  if (!u) return null
+                  return (
+                    <div
+                      key={k}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '5px 0',
+                        borderTop: '1px solid rgba(128,128,128,0.15)',
+                        fontSize: 13,
+                      }}
+                    >
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        {u.username}
+                        {u.display_name ? ` (${u.display_name})` : ''}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn small danger"
+                        onClick={() => toggleTeamMember(u)}
+                        disabled={busy}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )
+                })}
+            </>
+          )}
         </div>
 
         <h3 style={{ fontSize: 14, margin: '10px 0 6px' }}>

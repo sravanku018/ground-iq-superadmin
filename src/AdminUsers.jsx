@@ -6,9 +6,11 @@ import {
   enableUser,
   generateUsers,
   getProgressBoard,
+  listSurveys,
   listUsers,
   revokeUserSessions,
   setProgressQuota,
+  setSurveySurveyors,
   updateUser,
 } from './api'
 
@@ -42,17 +44,21 @@ export default function AdminUsersScreen({ onToast }) {
     name: '',
     role: 'surveyor',
     target_quota: 20,
+    surveys: [],
   })
+  const [allSurveys, setAllSurveys] = useState([])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [data, prog] = await Promise.all([
+      const [data, prog, svs] = await Promise.all([
         listUsers(),
         getProgressBoard().catch(() => null),
+        listSurveys('').catch(() => ({ items: [] })),
       ])
       setUsers(data.users || [])
       setBoard(prog)
+      setAllSurveys(svs.items || [])
     } catch (e) {
       onToast?.(e.message, 'error')
     } finally {
@@ -103,6 +109,14 @@ export default function AdminUsersScreen({ onToast }) {
       const displayName = String(created.name || typedName || loginName)
 
       if (typedRole === 'surveyor') {
+        const surveyIds = Array.isArray(form.surveys) ? form.surveys.map(Number) : []
+        if (surveyIds.length && created.id) {
+          try {
+            await setSurveySurveyors(created.id, surveyIds)
+          } catch (e) {
+            onToast?.(`User created but survey assign failed: ${e.message}`, 'error')
+          }
+        }
         setLastGenerated([
           {
             username: loginName,
@@ -140,6 +154,7 @@ export default function AdminUsersScreen({ onToast }) {
         name: '',
         role: 'surveyor',
         target_quota: 20,
+        surveys: [],
       })
       // Scroll credentials into view
       setTimeout(() => {
@@ -548,6 +563,40 @@ export default function AdminUsersScreen({ onToast }) {
               }
             />
           </label>
+        )}
+        {form.role === 'surveyor' && (
+          <div className="field">
+            <span>Assign surveys (field app loads these)</span>
+            {allSurveys.length === 0 ? (
+              <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
+                No surveys yet — create them in the Surveys tab first.
+              </p>
+            ) : (
+              <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid rgba(128,128,128,0.2)', borderRadius: 8, padding: 8 }}>
+                {allSurveys.map((s) => (
+                  <label
+                    key={s.id}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', fontSize: 13 }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={form.surveys.includes(String(s.id))}
+                      onChange={(e) => {
+                        const id = String(s.id)
+                        setForm((f) => ({
+                          ...f,
+                          surveys: e.target.checked
+                            ? [...f.surveys, id]
+                            : f.surveys.filter((x) => x !== id),
+                        }))
+                      }}
+                    />
+                    {s.title}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         <label className="field">
           <span>Username * (field app login — stored lowercase)</span>

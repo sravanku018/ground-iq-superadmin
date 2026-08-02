@@ -222,13 +222,29 @@ export default function AdminSurveysScreen({ onToast }) {
     setSaving(true)
     try {
       await updateSurvey(detail.id, { title: detail.title, questions: cleanQuestions(detail.questions) })
-      await setSurveySurveyors(detail.id, Object.keys(checked).filter((k) => checked[k]).map(Number))
       onToast?.('Survey saved', 'ok')
       await openDetail(detail.id)
     } catch (e) {
       onToast?.(e.message, 'error')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function toggleTeamMember(u) {
+    if (!detail) return
+    setBusy(true)
+    try {
+      const nextIds = Object.keys(checked).filter((k) => checked[k]).map(Number)
+      const idx = nextIds.indexOf(Number(u.id))
+      if (idx >= 0) nextIds.splice(idx, 1)
+      else nextIds.push(Number(u.id))
+      await setSurveySurveyors(detail.id, nextIds)
+      onToast?.(idx >= 0 ? `Removed ${u.username} from team` : `Added ${u.username} to team`, 'ok')
+      await openDetail(detail.id)
+    } catch (e) {
+      onToast?.(e.message, 'error')
+      setBusy(false)
     }
   }
 
@@ -388,20 +404,46 @@ export default function AdminSurveysScreen({ onToast }) {
               No surveyor accounts yet — create them in the Users tab first.
             </p>
           )}
-          {allSurveyors.map((u) => (
-            <label
-              key={u.id}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 13 }}
-            >
-              <input
-                type="checkbox"
-                checked={!!checked[String(u.id)]}
-                onChange={(e) => setChecked((c) => ({ ...c, [String(u.id)]: e.target.checked }))}
-              />
-              {u.username}
-              {u.display_name ? ` (${u.display_name})` : ''}
-            </label>
-          ))}
+          {allSurveyors.map((u) => {
+            const inTeam = !!checked[String(u.id)]
+            return (
+              <div
+                key={u.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '5px 0',
+                  borderTop: '1px solid rgba(128,128,128,0.15)',
+                  fontSize: 13,
+                }}
+              >
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  {u.username}
+                  {u.display_name ? ` (${u.display_name})` : ''}
+                </span>
+                {inTeam ? (
+                  <button
+                    type="button"
+                    className="btn small danger"
+                    onClick={() => toggleTeamMember(u)}
+                    disabled={busy}
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn small primary"
+                    onClick={() => toggleTeamMember(u)}
+                    disabled={busy}
+                  >
+                    Add
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
 
         <h3 style={{ fontSize: 14, margin: '10px 0 6px' }}>
@@ -485,7 +527,7 @@ export default function AdminSurveysScreen({ onToast }) {
           onClick={saveDetailChanges}
           disabled={saving || busy}
         >
-          {saving ? 'Saving…' : 'Save survey (title + questions + team)'}
+          {saving ? 'Saving…' : 'Save survey (title + questions)'}
         </button>
         <button
           type="button"

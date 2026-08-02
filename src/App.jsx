@@ -15,6 +15,12 @@ function isAdminPath() {
   return p === '/admin' || p.startsWith('/admin/') || /\/admin(\/|$)/.test(p)
 }
 
+/**
+ * Website = Client Admin portal only. The Android APK keeps the surveyor
+ * field app (built with VITE_FIELD_APP=1).
+ */
+const FIELD_APP_ENABLED = (import.meta.env.VITE_FIELD_APP ?? '1') !== '0'
+
 export default function App() {
   // Store running build version in localStorage; show in document title
   useEffect(() => {
@@ -27,7 +33,7 @@ export default function App() {
     }
   }, [])
 
-  if (isAdminPath()) {
+  if (!FIELD_APP_ENABLED || isAdminPath()) {
     return <AdminPortal />
   }
   return <SurveyorApp />

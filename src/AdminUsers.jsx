@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   createUser,
   deleteUser,
@@ -18,6 +18,105 @@ import {
  * Client Admin: create / edit surveyor logins for the field app.
  * Edit username + password, disable/enable, revoke sessions.
  */
+
+function SurveySelect({ value, onChange, all }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+
+  if (!all.length) {
+    return (
+      <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
+        No surveys yet — create them in the Surveys tab first.
+      </p>
+    )
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative', width: '100%' }}>
+      <button
+        type="button"
+        className="btn small"
+        style={{ width: '100%', textAlign: 'left' }}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {value.length
+          ? `${value.length} survey${value.length > 1 ? 's' : ''} selected`
+          : 'Select surveys… (none = default form)'}
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            zIndex: 20,
+            top: '100%',
+            left: 0,
+            marginTop: 4,
+            minWidth: '100%',
+            background: '#fff',
+            color: '#222',
+            border: '1px solid rgba(0,0,0,0.25)',
+            borderRadius: 8,
+            padding: 8,
+            maxHeight: 190,
+            overflowY: 'auto',
+            boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
+          }}
+        >
+          {all.map((s) => (
+            <label
+              key={s.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '4px 6px',
+                fontSize: 13,
+                cursor: 'pointer',
+                borderRadius: 6,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={value.includes(String(s.id))}
+                onChange={(e) => {
+                  const id = String(s.id)
+                  onChange(
+                    e.target.checked
+                      ? [...value, id]
+                      : value.filter((x) => x !== id),
+                  )
+                }}
+              />
+              {s.title}
+            </label>
+          ))}
+          <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => onChange(all.map((s) => String(s.id)))}
+            >
+              All
+            </button>
+            <button type="button" className="btn small" onClick={() => onChange([])}>
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AdminUsersScreen({ onToast }) {
   const [users, setUsers] = useState([])
   const [board, setBoard] = useState(null)
@@ -540,35 +639,11 @@ export default function AdminUsersScreen({ onToast }) {
           <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
             None selected = generated surveyors use the default Field Survey form on the app.
           </p>
-          {allSurveys.length === 0 ? (
-            <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
-              No surveys yet — create them in the Surveys tab first.
-            </p>
-          ) : (
-            <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid rgba(128,128,128,0.2)', borderRadius: 8, padding: 8 }}>
-              {allSurveys.map((s) => (
-                <label
-                  key={s.id}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', fontSize: 13 }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={gen.surveys.includes(String(s.id))}
-                    onChange={(e) => {
-                      const id = String(s.id)
-                      setGen((g) => ({
-                        ...g,
-                        surveys: e.target.checked
-                          ? [...g.surveys, id]
-                          : g.surveys.filter((x) => x !== id),
-                      }))
-                    }}
-                  />
-                  {s.title}
-                </label>
-              ))}
-            </div>
-          )}
+          <SurveySelect
+            value={gen.surveys}
+            onChange={(ids) => setGen((g) => ({ ...g, surveys: ids }))}
+            all={allSurveys}
+          />
         </div>
         <button type="submit" className="btn primary" disabled={saving}>
           {saving ? 'Generating…' : 'Generate users + targets'}
@@ -650,35 +725,11 @@ export default function AdminUsersScreen({ onToast }) {
             <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
               None selected = surveyor uses the default Field Survey form on the app.
             </p>
-            {allSurveys.length === 0 ? (
-              <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
-                No surveys yet — create them in the Surveys tab first.
-              </p>
-            ) : (
-              <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid rgba(128,128,128,0.2)', borderRadius: 8, padding: 8 }}>
-                {allSurveys.map((s) => (
-                  <label
-                    key={s.id}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', fontSize: 13 }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={form.surveys.includes(String(s.id))}
-                      onChange={(e) => {
-                        const id = String(s.id)
-                        setForm((f) => ({
-                          ...f,
-                          surveys: e.target.checked
-                            ? [...f.surveys, id]
-                            : f.surveys.filter((x) => x !== id),
-                        }))
-                      }}
-                    />
-                    {s.title}
-                  </label>
-                ))}
-              </div>
-            )}
+            <SurveySelect
+              value={form.surveys}
+              onChange={(ids) => setForm((f) => ({ ...f, surveys: ids }))}
+              all={allSurveys}
+            />
           </div>
         )}
         <label className="field">
@@ -987,49 +1038,11 @@ export default function AdminUsersScreen({ onToast }) {
                           <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
                             None = uses the default Field Survey form on the app.
                           </p>
-                          {allSurveys.length === 0 ? (
-                            <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
-                              No surveys yet — create them in the Surveys tab first.
-                            </p>
-                          ) : (
-                            <div
-                              style={{
-                                maxHeight: 150,
-                                overflowY: 'auto',
-                                border: '1px solid rgba(128,128,128,0.2)',
-                                borderRadius: 8,
-                                padding: 8,
-                              }}
-                            >
-                              {allSurveys.map((s) => (
-                                <label
-                                  key={s.id}
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 8,
-                                    padding: '3px 0',
-                                    fontSize: 13,
-                                  }}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={edit.surveys.includes(String(s.id))}
-                                    onChange={(e) => {
-                                      const id = String(s.id)
-                                      setEdit((ed) => ({
-                                        ...ed,
-                                        surveys: e.target.checked
-                                          ? [...ed.surveys, id]
-                                          : ed.surveys.filter((x) => x !== id),
-                                      }))
-                                    }}
-                                  />
-                                  {s.title}
-                                </label>
-                              ))}
-                            </div>
-                          )}
+                          <SurveySelect
+                            value={edit.surveys}
+                            onChange={(ids) => setEdit((ed) => ({ ...ed, surveys: ids }))}
+                            all={allSurveys}
+                          />
                         </div>
                       )}
                       <div className="user-actions">

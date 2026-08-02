@@ -546,6 +546,15 @@ export default function AdminSurveysScreen({ onToast }) {
     <div className="screen">
       <header className="screen-head">
         <h2>Surveys</h2>
+        <button
+          type="button"
+          className="btn"
+          onClick={() => load()}
+          disabled={loading}
+          style={{ marginRight: 8 }}
+        >
+          ⟳ Refresh
+        </button>
         <button type="button" className="btn primary" onClick={() => setMode('create')}>
           + New survey
         </button>

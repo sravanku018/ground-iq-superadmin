@@ -35,6 +35,7 @@ export default function AdminUsersScreen({ onToast }) {
     prefix: 's',
     password: 'survey123',
     target_quota: 20,
+    surveys: [],
   })
   const [bulkTarget, setBulkTarget] = useState(20)
   const [lastGenerated, setLastGenerated] = useState([])
@@ -180,6 +181,32 @@ export default function AdminUsersScreen({ onToast }) {
         role: 'surveyor',
       })
       const createdUsers = Array.isArray(res.users) ? res.users : []
+      const genSurveyIds = Array.isArray(gen.surveys) ? gen.surveys.map(Number) : []
+      if (genSurveyIds.length && createdUsers.length) {
+        try {
+          const fresh = await listUsers()
+          const byName = new Map(
+            (fresh.users || []).map((u) => [String(u.username).toLowerCase(), u]),
+          )
+          let assigned = 0
+          for (const cu of createdUsers) {
+            const u = byName.get(String(cu.username).toLowerCase())
+            if (u?.id) {
+              try {
+                await setSurveySurveyors(u.id, genSurveyIds)
+                assigned += 1
+              } catch {
+                /* skip */
+              }
+            }
+          }
+          if (assigned) {
+            onToast?.(`Assigned ${genSurveyIds.length} survey(s) to ${assigned} created surveyors`, 'ok')
+          }
+        } catch {
+          /* ignore assign errors — users were created */
+        }
+      }
       setLastGenerated(
         createdUsers.map((u) => ({
           username: u.username,
@@ -490,6 +517,38 @@ export default function AdminUsersScreen({ onToast }) {
             onChange={(e) => setGen({ ...gen, password: e.target.value })}
           />
         </label>
+        <div className="field">
+          <span>Assign surveys to all generated users</span>
+          {allSurveys.length === 0 ? (
+            <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
+              No surveys yet — create them in the Surveys tab first.
+            </p>
+          ) : (
+            <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid rgba(128,128,128,0.2)', borderRadius: 8, padding: 8 }}>
+              {allSurveys.map((s) => (
+                <label
+                  key={s.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', fontSize: 13 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={gen.surveys.includes(String(s.id))}
+                    onChange={(e) => {
+                      const id = String(s.id)
+                      setGen((g) => ({
+                        ...g,
+                        surveys: e.target.checked
+                          ? [...g.surveys, id]
+                          : g.surveys.filter((x) => x !== id),
+                      }))
+                    }}
+                  />
+                  {s.title}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
         <button type="submit" className="btn primary" disabled={saving}>
           {saving ? 'Generating…' : 'Generate users + targets'}
         </button>

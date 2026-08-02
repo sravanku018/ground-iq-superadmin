@@ -72,32 +72,31 @@ function SurveySelect({ value, onChange, all }) {
           }}
         >
           {all.map((s) => (
-            <label
+            <button
               key={s.id}
+              type="button"
+              className="btn small"
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '4px 6px',
-                fontSize: 13,
-                cursor: 'pointer',
-                borderRadius: 6,
+                display: 'block',
+                width: '100%',
+                textAlign: 'left',
+                margin: '2px 0',
+                background: value.includes(String(s.id))
+                  ? 'rgba(0,229,153,0.15)'
+                  : undefined,
+              }}
+              onClick={() => {
+                const id = String(s.id)
+                onChange(
+                  value.includes(id)
+                    ? value.filter((x) => x !== id)
+                    : [...value, id],
+                )
               }}
             >
-              <input
-                type="checkbox"
-                checked={value.includes(String(s.id))}
-                onChange={(e) => {
-                  const id = String(s.id)
-                  onChange(
-                    e.target.checked
-                      ? [...value, id]
-                      : value.filter((x) => x !== id),
-                  )
-                }}
-              />
               {s.title}
-            </label>
+              {value.includes(String(s.id)) ? ' ✓' : ''}
+            </button>
           ))}
           <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
             <button

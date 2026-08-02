@@ -215,11 +215,10 @@ export default function AdminSurveysScreen({ onToast }) {
     }
     setSaving(true)
     try {
-      const d = await createSurvey({ title, questions: cleanQuestions(questions) })
+      const d = await createSurvey({ title, questions: [] })
       onToast?.(`Survey "${title}" created`, 'ok')
       setMode('list')
       setNewTitle('')
-      setQuestions([])
       setExists(null)
       await load()
       if (d?.survey?.id) openDetail(d.survey.id)
@@ -376,7 +375,9 @@ export default function AdminSurveysScreen({ onToast }) {
           )}
         </div>
 
-        <QuestionEditor questions={questions} onChange={setQuestions} onToast={onToast} />
+        <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
+          Questions are added later in the <strong>Questions</strong> tab.
+        </p>
 
         <button
           type="button"

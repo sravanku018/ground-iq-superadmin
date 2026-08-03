@@ -381,70 +381,85 @@ export default function AdminSurveysScreen({ onToast }) {
             </p>
           ) : (
             <>
-              <div style={{ position: 'relative', marginBottom: 8 }}>
-                <button
-                  type="button"
-                  className="btn small primary"
-                  style={{ width: '100%', textAlign: 'left' }}
-                  onClick={() => setTeamOpen((o) => !o)}
+              <button
+                type="button"
+                className="btn small primary"
+                style={{ width: '100%', textAlign: 'left' }}
+                onClick={() => setTeamOpen((o) => !o)}
+              >
+                {Object.keys(checked).filter((k) => checked[k]).length > 0
+                  ? `${Object.keys(checked).filter((k) => checked[k]).length} surveyor(s) in team — tap to edit`
+                  : 'Add surveyors…'}
+              </button>
+              {teamOpen && (
+                <div
+                  style={{
+                    background: '#fff',
+                    color: '#111',
+                    border: '1px solid rgba(0,0,0,0.2)',
+                    borderRadius: 12,
+                    padding: 6,
+                    maxHeight: 220,
+                    overflowY: 'auto',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                  }}
                 >
-                  {Object.keys(checked).filter((k) => checked[k]).length > 0
-                    ? `${Object.keys(checked).filter((k) => checked[k]).length} surveyor(s) in team — tap to edit`
-                    : 'Add surveyors… (dropdown)'}
-                </button>
-                {teamOpen && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      zIndex: 20,
-                      top: '100%',
-                      left: 0,
-                      marginTop: 4,
-                      width: '100%',
-                      background: '#fff',
-                      color: '#222',
-                      border: '1px solid rgba(0,0,0,0.25)',
-                      borderRadius: 8,
-                      padding: 8,
-                      maxHeight: 200,
-                      overflowY: 'auto',
-                      boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
-                    }}
-                  >
-                    {allSurveyors.map((u) => (
+                  {allSurveyors.map((u) => {
+                    const on = checked[String(u.id)]
+                    return (
                       <button
                         key={u.id}
                         type="button"
-                        className="btn small"
                         disabled={busy}
                         onClick={() => toggleTeamMember(u)}
                         style={{
-                          display: 'block',
+                          display: 'flex',
                           width: '100%',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 8,
+                          padding: '10px 12px',
+                          border: 'none',
+                          borderRadius: 8,
+                          background: on ? '#c8f5df' : 'transparent',
+                          color: '#111',
+                          fontSize: 14,
+                          fontWeight: 600,
+                          cursor: 'pointer',
                           textAlign: 'left',
-                          margin: '2px 0',
-                          background: checked[String(u.id)]
-                            ? 'rgba(0,229,153,0.18)'
-                            : 'transparent',
-                          color: checked[String(u.id)] ? '#042f1a' : '#222',
                         }}
                       >
-                        {u.username}
-                        {checked[String(u.id)] ? ' ✓' : ''}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {u.username}
+                        </span>
+                        {on ? (
+                          <span style={{ color: '#00a86b', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
+                            ✓
+                          </span>
+                        ) : null}
                       </button>
-                    ))}
-                    <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
-                      <button
-                        type="button"
-                        className="btn small"
-                        onClick={() => setTeamOpen(false)}
-                      >
-                        Done
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+                    )
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => setTeamOpen(false)}
+                    style={{
+                      width: '100%',
+                      marginTop: 4,
+                      padding: '8px',
+                      border: 'none',
+                      borderRadius: 8,
+                      background: 'rgba(0,0,0,0.06)',
+                      color: '#111',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Done
+                  </button>
+                </div>
+              )}
               {Object.keys(checked).filter((k) => checked[k]).length === 0 && (
                 <p className="muted" style={{ fontSize: 12, margin: 0 }}>
                   No surveyors assigned yet — open the dropdown above.
@@ -476,6 +491,14 @@ export default function AdminSurveysScreen({ onToast }) {
                         className="btn small danger"
                         onClick={() => toggleTeamMember(u)}
                         disabled={busy}
+                        style={{
+                          color: '#ff6b6b',
+                          borderColor: 'rgba(255,107,107,0.4)',
+                          background: 'transparent',
+                          minHeight: 0,
+                          padding: '6px 10px',
+                          fontSize: 13,
+                        }}
                       >
                         Remove
                       </button>

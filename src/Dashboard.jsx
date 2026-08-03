@@ -1044,6 +1044,35 @@ export default function DashboardScreen({ onToast }) {
             </ChartCard>
           )}
 
+          {data?.isFiltered && charts?.contrastConstituency?.length > 0 && (
+            <ChartCard
+              title="Subset vs Rest — Assembly"
+              subtitle="Which assemblies are in this selection vs rest (Δpp = Subset% − Rest%)"
+              tall
+            >
+              <ContrastBars data={charts.contrastConstituency} />
+            </ChartCard>
+          )}
+
+          {data?.isFiltered && charts?.contrastDistrict?.length > 0 && (
+            <ChartCard
+              title="Subset vs Rest — District"
+              subtitle="District mix of this selection vs rest"
+              tall
+            >
+              <ContrastBars data={charts.contrastDistrict} />
+            </ChartCard>
+          )}
+
+          {data?.isFiltered && charts?.contrastMp?.length > 0 && (
+            <ChartCard
+              title="Subset vs Rest — Parliament (MP)"
+              subtitle="MP segment mix of this selection vs rest"
+            >
+              <ContrastBars data={charts.contrastMp} />
+            </ChartCard>
+          )}
+
           <ChartCard
             title="Party preference"
             subtitle="Tap a slice to filter"

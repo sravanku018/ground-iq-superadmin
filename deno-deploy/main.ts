@@ -20,6 +20,7 @@
  */
 
 import { neon } from "npm:@neondatabase/serverless@0.10.4";
+import GEO_ALIASES from "./telangana-aliases.json" with { type: "json" };
 
 // ── Config ────────────────────────────────────────────────
 const DATABASE_URL = Deno.env.get("DATABASE_URL");
@@ -447,7 +448,7 @@ function softEq(a: string, b: string) {
   const n = (x: string) =>
     String(x || "")
       .toLowerCase()
-      .replace(/\(.*?\)/g, " ")
+      .replace(/\(([^)]*)\)/g, " $1 ")
       .replace(/[^a-z0-9]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
@@ -459,6 +460,19 @@ function softEq(a: string, b: string) {
     jagitial: "jagtial",
     jagtial: "jagtial",
     bhongir: "bhuvanagiri",
+    hanamkonda: "hanumakonda",
+    hanumakonda: "hanumakonda",
+    "warangal urban": "hanumakonda",
+    "warangal city": "hanumakonda",
+    "warangal rural": "warangal rural",
+    "ranga reddy": "rangareddy",
+    medchal: "medchal malkajgiri",
+    "medchal malkajgiri": "medchal malkajgiri",
+    bhadradri: "bhadradri kothagudem",
+    "bhadradri kothagudem": "bhadradri kothagudem",
+    jayashankar: "jayashankar bhupalapally",
+    "jayashankar bhupalapally": "jayashankar bhupalapally",
+    mahbubnagar: "mahabubnagar",
   };
   return (alias[na] || na) === (alias[nb] || nb) || na.includes(nb) || nb.includes(na);
 }
@@ -1079,7 +1093,7 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
     const n = (s: string) =>
       String(s || "")
         .toLowerCase()
-        .replace(/\(.*?\)/g, " ")
+        .replace(/\(([^)]*)\)/g, " $1 ")
         .replace(/[^a-z0-9]+/g, " ")
         .replace(/\s+/g, " ")
         .trim();
@@ -1098,20 +1112,99 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
     return primary || sd || "Unknown";
   }
 
+  /** District spelling variants → canonical (Hanamkonda = 2022 name of Warangal Urban) */
+  const DISTRICT_ALIAS: Record<string, string> = GEO_ALIASES.districts as Record<
+    string,
+    string
+  >;
+  const normKey = (s: string) =>
+    String(s || "")
+      .toLowerCase()
+      .replace(/\(([^)]*)\)/g, " $1 ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  /** Edit distance — tolerant fuzzy name matching for any spelling variant */
+  function editDistance(a: string, b: string): number {
+    const m = a.length;
+    const n = b.length;
+    if (!m) return n;
+    if (!n) return m;
+    let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) {
+      const cur = [i, ...Array(n).fill(0)] as number[];
+      for (let j = 1; j <= n; j++) {
+        cur[j] = Math.min(
+          prev[j] + 1,
+          cur[j - 1] + 1,
+          prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+        );
+      }
+      prev = cur;
+    }
+    return prev[n];
+  }
+
+  /** Unique closest candidate by edit distance (ambiguous → null) */
+  function closestName(key: string, candidates: string[]): string | null {
+    if (!key || key.length < 5 || !candidates?.length) return null;
+    const limit = Math.max(1, Math.floor(Math.max(key.length, 6) / 5));
+    let best: string | null = null;
+    let bestD = Infinity;
+    let secondD = Infinity;
+    for (const c of candidates) {
+      const d = editDistance(key, c);
+      if (d < bestD) {
+        secondD = bestD;
+        bestD = d;
+        best = c;
+      } else if (d < secondD) {
+        secondD = d;
+      }
+    }
+    if (!best || bestD > limit || bestD >= secondD) return null;
+    return best;
+  }
+
+  function normDistrict(v: string): string {
+    const key = normKey(String(v || ""));
+    if (!key) return v;
+    const hit = DISTRICT_ALIAS[key];
+    if (hit) return hit;
+    const close = closestName(
+      key,
+      (GEO_ALIASES.districtNames as string[]) || [],
+    );
+    return close || v;
+  }
+
+  /** AC spelling variants → canonical AC name (fixes old/unofficial Excel labels) */
+  const AC_ALIAS: Record<string, string> = GEO_ALIASES.acs as Record<
+    string,
+    string
+  >;
+
   function resolveAc(name: string): AcEntry | null {
     if (!name?.trim()) return null;
     const key = name
       .toLowerCase()
-      .replace(/\(.*?\)/g, " ")
+      .replace(/\(([^)]*)\)/g, " $1 ")
       .replace(/[^a-z0-9]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
     if (!key) return null;
+    // Known spelling variants first (deterministic, before fuzzy scan)
+    const aliased = AC_ALIAS[key];
+    if (aliased) {
+      const hit = acList.find((ac) => normKey(ac.canonical) === normKey(aliased));
+      if (hit) return hit;
+    }
     // exact-ish
     for (const ac of acList) {
       const n = ac.canonical
         .toLowerCase()
-        .replace(/\(.*?\)/g, " ")
+        .replace(/\(([^)]*)\)/g, " $1 ")
         .replace(/[^a-z0-9]+/g, " ")
         .replace(/\s+/g, " ")
         .trim();
@@ -1125,7 +1218,7 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
     for (const ac of acList) {
       const n = ac.canonical
         .toLowerCase()
-        .replace(/\(.*?\)/g, " ")
+        .replace(/\(([^)]*)\)/g, " $1 ")
         .replace(/[^a-z0-9]+/g, " ")
         .replace(/\s+/g, " ")
         .trim();
@@ -1145,7 +1238,22 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
       }
     }
     if (ties > 1) return null;
-    return best;
+    if (best) return best;
+    // Last resort: unique edit-distance match (handles any misspelling)
+    const near = closestName(key, acList.map((ac) => normKey(ac.canonical)));
+    if (near) return acList.find((ac) => normKey(ac.canonical) === near) || null;
+    return null;
+  }
+
+  // Mandal name → district (auto district when AC is unknown)
+  const mandalRows = await sqlFn`
+    SELECT mandal_name, district FROM mandals LIMIT 30000
+  `.catch(() => []);
+  const mandalLookup = new Map<string, string>();
+  for (const m of mandalRows as { mandal_name?: string; district?: string }[]) {
+    const k = normKey(String(m.mandal_name || ""));
+    const d = String(m.district || "").trim();
+    if (k && d && !mandalLookup.has(k)) mandalLookup.set(k, d);
   }
 
   const raw = await sqlFn`
@@ -1168,12 +1276,20 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
     let dist = String(a.district || "").trim();
     let ac = String(a.constituency || a.assembly_constituency || "").trim();
     const respondent = String(a.respondent_name || a.respondentName || "").trim();
+    const mandal = String(a.mandal || "").trim();
 
     // Resolve AC — exclusive single district (primary only, no multi-cover overlap)
     let resolved = resolveAc(ac) || resolveAc(respondent);
     if (resolved) {
       ac = resolved.canonical;
-      dist = exclusiveDistrict(dist, resolved);
+      dist = exclusiveDistrict(normDistrict(dist), resolved);
+    } else {
+      // No AC match → fall back to mandal → district (mandals table) when district missing
+      if (!dist) {
+        const md = mandalLookup.get(normKey(mandal));
+        if (md) dist = md;
+      }
+      dist = normDistrict(dist);
     }
 
     let issues = a.issues as string[] | string;
@@ -1452,6 +1568,27 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
   const contrastPm = isFiltered
     ? compareSets(pctDist(subset, "pm"), pctDist(restRows, "pm"), pctDist(universe, "pm"))
     : [];
+  const contrastConstituency = isFiltered
+    ? compareSets(
+        pctDist(subset.filter((r) => r.constituency && r.constituency !== "Unknown"), "constituency"),
+        pctDist(restRows.filter((r) => r.constituency && r.constituency !== "Unknown"), "constituency"),
+        pctDist(universe.filter((r) => r.constituency && r.constituency !== "Unknown"), "constituency"),
+      ).slice(0, 25)
+    : [];
+  const contrastDistrict = isFiltered
+    ? compareSets(
+        pctDist(subset.filter((r) => r.district && r.district !== "Unknown"), "district"),
+        pctDist(restRows.filter((r) => r.district && r.district !== "Unknown"), "district"),
+        pctDist(universe.filter((r) => r.district && r.district !== "Unknown"), "district"),
+      )
+    : [];
+  const contrastMp = isFiltered
+    ? compareSets(
+        pctDist(subset.filter((r) => r.mp), "mp"),
+        pctDist(restRows.filter((r) => r.mp), "mp"),
+        pctDist(universe.filter((r) => r.mp), "mp"),
+      )
+    : [];
 
   const topParty = byParty[0];
   const topIssue = issues[0];
@@ -1647,6 +1784,9 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
       contrastGender,
       contrastCaste,
       contrastPm,
+      contrastConstituency,
+      contrastDistrict,
+      contrastMp,
     },
   };
 }

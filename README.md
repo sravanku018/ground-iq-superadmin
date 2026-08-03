@@ -1,25 +1,74 @@
-# Ground IQ Web
+# Election Survey App
 
-Client Admin web portal + surveyor field app — static Vite/React SPA.
-API is hosted separately on Deno Deploy (Neon DB):
+Mobile app for Telangana election field surveys.
 
-- Portal (admin login): `https://sravanku018.github.io/ground-iq-web/admin`
-- Field app (surveyor login): `https://sravanku018.github.io/ground-iq-web/`
-- API base: `https://jazzy-crocodile-7790.sravanku018.deno.net` (see `src/api.js`, `.env.production`)
+- **API:** Deno Deploy → Neon PostgreSQL  
+- **UI:** React + Capacitor Android  
 
-## Local dev
+API is fixed in the app (no URL settings):
+
+```
+https://jazzy-crocodile-7790.sravanku018.deno.net
+```
+
+## Install APK
+
+```
+/home/sravan/Downloads/ElectionSurvey-release.apk
+```
+
+1. Uninstall any old build  
+2. Install the APK  
+3. Login  
+
+## Who uses what
+
+| Who | Access | How |
+|-----|--------|-----|
+| **Surveyor** | **Android app only** (no browser needed) | Install APK below |
+| **Client Admin** | **Web portal only** | Browser → `/admin` |
+
+Surveyors do **not** use the website. The React field UI is packaged into the APK with Capacitor.
+
+### Surveyor Android app
+
+```bash
+npm run build:apk:release
+# APK:
+#   android/app/build/outputs/apk/release/app-release.apk
+# Install latest APK (always rebuild after code changes):
+#   npm run build:apk:release
+#   Install: ElectionSurvey-v1.6.3.apk  (or latest ElectionSurvey-release.apk)
+#   or ElectionSurvey-surveyor-app.apk in project root
+```
+
+| Username | Password |
+|----------|----------|
+| `s001` | `survey123` |
+
+(Accounts created in Client Admin portal → app login only.)
+
+Collect: GPS → photo → Q/A + audio → offline queue → sync. Pull to refresh questions.
+
+### Client Admin (web portal — desktop browser)
+
+| Username | Password |
+|----------|----------|
+| `admin` | `admin123` |
+
+http://localhost:5173/admin — users, questions, analyze, review/confirm, report, upload.
+
+## Rebuild APK
+
+```bash
+npm run build:apk:release
+```
+
+## Local web (optional)
 
 ```bash
 npm install
-npm run client   # → http://localhost:5173  (portal at /admin)
+npm run dev
 ```
 
-## Deploy
-
-Push to `main` → GitHub Actions builds with `VITE_BASE=/ground-iq-web/` and publishes to Pages.
-
-## Notes
-
-- `dist/404.html` (copy of index.html) gives the SPA fallback so `/admin` and
-  deep links work on GitHub Pages.
-- Android APK lives in the original `neondbapp` repo — not here.
+Uses the same Deno API by default.

@@ -566,6 +566,22 @@ export default function AdminAnalyzeScreen({ onToast }) {
               </ul>
             </>
           )}
+          {analytics.charts.byConstituency?.length > 0 && (
+            <>
+              <h4 style={{ marginTop: 12 }}>Assemblies</h4>
+              <ul className="user-list">
+                {analytics.charts.byConstituency.slice(0, 8).map((p) => (
+                  <li key={p.name}>
+                    <strong>{p.name}</strong>
+                    <span className="meta">
+                      {' '}
+                      {p.value} ({p.pct}%)
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       )}
 

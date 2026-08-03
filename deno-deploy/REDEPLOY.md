@@ -33,6 +33,21 @@ Redeploy `main.ts` for:
 - `POST /api/submissions/confirm-pending` — bulk confirm
 - `GET /api/analytics?status=confirmed` (default report)
 
+## Geo data fixes (Hanamkonda + missing ACs)
+
+- `assembly_constituencies` now maps Warangal East/West + Wardhannapet to **Hanumakonda**
+  district (2022 reorg); records uploaded as "Hanamkonda" resolve there.
+- Added missing **Secunderabad** AC, removed bogus "Malkajgiri Urban".
+- District names normalized to official 33 (Jagitial, Komarambheem Asifabad, ...).
+
+**After redeploy, re-seed the geo tables once:**
+
+```bash
+psql "$DATABASE_URL" -f neondbapp/scripts/seed-geo.sql
+```
+
+(Existing survey rows are re-resolved on the fly — no data migration needed.)
+
 ## Earlier — district count wrong (33 vs ~7)
 
 Home KPI used **master** `districts` table count (33 Telangana districts).

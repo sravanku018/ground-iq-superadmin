@@ -16,7 +16,10 @@ dist-ssr
 .env.production
 
 # Android signing secrets
-android/keystore.properties
+android/
+!android/keystore.properties
+!android/app/*.jks
+!android/app/*.keystore
 android/app/*.jks
 android/app/*.keystore
 *.jks

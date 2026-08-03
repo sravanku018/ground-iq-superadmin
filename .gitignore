@@ -40,3 +40,4 @@ android/app/*.keystore
 # Android signing info (contains passwords)
 KEYSTORE_INFO.txt
 android/*.apk
+*.apk

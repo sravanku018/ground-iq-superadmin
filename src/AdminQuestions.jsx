@@ -73,12 +73,7 @@ export default function AdminQuestionsScreen({ onToast }) {
       const cleaned = questions.map((q) => ({
         id: String(q.id || '').trim() || `q_${Math.random().toString(36).slice(2, 8)}`,
         label: String(q.label || '').trim() || 'Question',
-        type:
-          q.type === 'choice'
-            ? 'choice'
-            : q.type === 'yesno' || q.type === 'abc' || q.type === 'age'
-              ? q.type
-              : 'text',
+        type: String(q.type || 'text'),
         options:
           q.type === 'yesno'
             ? ['Yes', 'No']

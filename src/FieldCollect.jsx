@@ -432,10 +432,9 @@ export default function FieldCollectScreen({ user, onToast, onDone }) {
       }
       text = text.trim()
       if (!text) return
-      if ((q.type === 'choice' || q.type === 'yesno' || q.type === 'abc') && (q.options?.length || q.type !== 'choice')) {
+      if (q.options?.length) {
         const low = text.toLowerCase()
-        const opts = q.options?.length ? q.options : q.type === 'abc' ? ['A', 'B', 'C', 'D'] : ['Yes', 'No']
-        const hit = opts.find((o) => low.includes(String(o).toLowerCase()))
+        const hit = q.options.find((o) => low.includes(String(o).toLowerCase()))
         setAnswers((a) => ({ ...a, [q.id]: hit || text }))
       } else {
         setAnswers((a) => ({ ...a, [q.id]: text }))
@@ -1037,7 +1036,7 @@ export default function FieldCollectScreen({ user, onToast, onDone }) {
                       </p>
                     )}
 
-                    {q.type === 'choice' || q.type === 'yesno' || q.type === 'abc' ? (
+                    {q.options?.length ? (
                       <div
                         style={{
                           display: 'flex',
@@ -1046,7 +1045,7 @@ export default function FieldCollectScreen({ user, onToast, onDone }) {
                           ...(q.type === 'yesno' || q.type === 'abc' ? { gap: 16 } : {}),
                         }}
                       >
-                        {(q.options?.length ? q.options : q.type === 'abc' ? ['A', 'B', 'C', 'D'] : ['Yes', 'No']).map((opt) => (
+                        {q.options.map((opt) => (
                           <button
                             key={opt}
                             type="button"

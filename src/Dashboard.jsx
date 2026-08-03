@@ -1044,7 +1044,7 @@ export default function DashboardScreen({ onToast }) {
               title={q.label}
               subtitle="From Client Admin questions — tap to filter"
             >
-              {q.type === 'choice' || q.type === 'yesno' ? (
+              {q.type !== 'text' ? (
                 <InteractivePie
                   data={q.counts}
                   activeName={filters[`q_${q.id}`] || ''}

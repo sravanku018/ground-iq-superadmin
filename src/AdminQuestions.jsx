@@ -73,11 +73,18 @@ export default function AdminQuestionsScreen({ onToast }) {
       const cleaned = questions.map((q) => ({
         id: String(q.id || '').trim() || `q_${Math.random().toString(36).slice(2, 8)}`,
         label: String(q.label || '').trim() || 'Question',
-        type: q.type === 'choice' ? 'choice' : q.type === 'yesno' ? 'yesno' : 'text',
+        type:
+          q.type === 'choice'
+            ? 'choice'
+            : q.type === 'yesno' || q.type === 'abc' || q.type === 'age'
+              ? q.type
+              : 'text',
         options:
           q.type === 'yesno'
             ? ['Yes', 'No']
-            : q.type === 'choice'
+            : q.type === 'abc'
+              ? ['A', 'B', 'C', 'D']
+              : q.type === 'choice'
               ? String(q.optionsText || (q.options || []).join(', '))
                   .split(',')
                   .map((s) => s.trim())
@@ -170,6 +177,8 @@ export default function AdminQuestionsScreen({ onToast }) {
               <option value="text">Text</option>
               <option value="choice">Choice</option>
               <option value="yesno">Yes / No buttons</option>
+              <option value="abc">A · B · C · D buttons</option>
+              <option value="age">Age (auto ranges in report)</option>
             </select>
           </label>
           {q.type === 'choice' && (
@@ -185,9 +194,14 @@ export default function AdminQuestionsScreen({ onToast }) {
               />
             </label>
           )}
-          {q.type === 'yesno' && (
+          {(q.type === 'yesno' || q.type === 'abc') && (
             <p className="muted" style={{ fontSize: 12 }}>
-              Field app shows two push buttons: <strong>Yes</strong> · <strong>No</strong>
+              Field app shows push buttons: {q.type === 'yesno' ? <strong>Yes</strong> : 'A · B · C · D'} — report groups automatically
+            </p>
+          )}
+          {q.type === 'age' && (
+            <p className="muted" style={{ fontSize: 12 }}>
+              Field app asks a number; report groups into ranges (18-25, 26-35, 36-45, 46-60, 60+)
             </p>
           )}
           <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

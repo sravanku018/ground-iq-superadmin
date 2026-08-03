@@ -432,9 +432,9 @@ export default function FieldCollectScreen({ user, onToast, onDone }) {
       }
       text = text.trim()
       if (!text) return
-      if ((q.type === 'choice' || q.type === 'yesno') && (q.options?.length || q.type === 'yesno')) {
+      if ((q.type === 'choice' || q.type === 'yesno' || q.type === 'abc') && (q.options?.length || q.type !== 'choice')) {
         const low = text.toLowerCase()
-        const opts = q.options?.length ? q.options : ['Yes', 'No']
+        const opts = q.options?.length ? q.options : q.type === 'abc' ? ['A', 'B', 'C', 'D'] : ['Yes', 'No']
         const hit = opts.find((o) => low.includes(String(o).toLowerCase()))
         setAnswers((a) => ({ ...a, [q.id]: hit || text }))
       } else {
@@ -1037,22 +1037,22 @@ export default function FieldCollectScreen({ user, onToast, onDone }) {
                       </p>
                     )}
 
-                    {q.type === 'choice' || q.type === 'yesno' ? (
+                    {q.type === 'choice' || q.type === 'yesno' || q.type === 'abc' ? (
                       <div
                         style={{
                           display: 'flex',
                           flexWrap: 'wrap',
                           gap: 8,
-                          ...(q.type === 'yesno' ? { gap: 16 } : {}),
+                          ...(q.type === 'yesno' || q.type === 'abc' ? { gap: 16 } : {}),
                         }}
                       >
-                        {(q.options?.length ? q.options : ['Yes', 'No']).map((opt) => (
+                        {(q.options?.length ? q.options : q.type === 'abc' ? ['A', 'B', 'C', 'D'] : ['Yes', 'No']).map((opt) => (
                           <button
                             key={opt}
                             type="button"
                             className={`chip ${answers[q.id] === opt ? 'selected' : ''}`}
                             style={
-                              q.type === 'yesno'
+                              q.type === 'yesno' || q.type === 'abc'
                                 ? { padding: '14px 28px', fontSize: 18, fontWeight: 600 }
                                 : undefined
                             }
@@ -1064,9 +1064,10 @@ export default function FieldCollectScreen({ user, onToast, onDone }) {
                       </div>
                     ) : (
                       <label className="field">
-                        <span>Answer</span>
+                        <span>Answer{q.type === 'age' ? ' (number)' : ''}</span>
                         <input
                           value={answers[q.id] || ''}
+                          inputMode={q.type === 'age' ? 'numeric' : undefined}
                           onChange={(e) =>
                             setAnswers((a) => ({ ...a, [q.id]: e.target.value }))
                           }

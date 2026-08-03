@@ -433,6 +433,23 @@ function answerOf(a: Record<string, unknown> | undefined | null, qid: string, ql
   return undefined;
 }
 
+// Age grouping — "age" type questions bucket answers into ranges everywhere
+const AGE_RANGES = [
+  { lo: 0, hi: 17, name: "0-17" },
+  { lo: 18, hi: 25, name: "18-25" },
+  { lo: 26, hi: 35, name: "26-35" },
+  { lo: 36, hi: 45, name: "36-45" },
+  { lo: 46, hi: 60, name: "46-60" },
+  { lo: 61, hi: Infinity, name: "60+" },
+];
+const AGE_OPTIONS = AGE_RANGES.map((r) => r.name);
+function ageBucket(v: unknown): string | null {
+  const n = Number(String(v ?? "").replace(/[^0-9]/g, ""));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  for (const r of AGE_RANGES) if (n >= r.lo && n <= r.hi) return r.name;
+  return null;
+}
+
 function normParty(v: string) {
   const s = String(v || "").trim();
   if (!s) return "Undecided";
@@ -1462,9 +1479,11 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
       for (const [qid, want] of dynFilters) {
         const q = surveyQuestions.find((sq) => sq.id === qid);
         const av = answerOf(r.answers, qid, q?.label);
-        const hit = Array.isArray(av)
-          ? av.map(String).includes(want)
-          : String(av ?? "") === want;
+        const hit = q?.type === "age"
+          ? ageBucket(av) === want
+          : Array.isArray(av)
+            ? av.map(String).includes(want)
+            : String(av ?? "") === want;
         if (!hit) return false;
       }
       return true;
@@ -1494,7 +1513,7 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
         seen.add(id);
         const type = String(q.type || "text");
         const defined = Array.isArray(q.options) ? q.options.map(String) : [];
-        const opts = [...defined];
+        const opts = type === "age" ? [...AGE_OPTIONS] : [...defined];
         if (type === "text" || !opts.length) {
           const seenVals = new Set<string>(opts);
           for (const r of universe) {
@@ -1620,7 +1639,7 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
         const av = answerOf(r.answers, q.id, q.label);
         const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
         for (const v of vals) {
-          const name = String(v).trim();
+          const name = q.type === "age" ? ageBucket(v) : String(v).trim();
           if (!name || name === "Unknown" || name === "undefined") continue;
           map.set(name, (map.get(name) || 0) + 1);
         }
@@ -1823,8 +1842,9 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
             const av = answerOf(r.answers, q.id, q.label);
             const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
             for (const v of vals) {
-              if (!v || v === "Unknown") continue;
-              map.set(v, (map.get(v) || 0) + 1);
+              const name = q.type === "age" ? ageBucket(v) : v;
+              if (!name || name === "Unknown") continue;
+              map.set(name, (map.get(name) || 0) + 1);
             }
           }
           return [...map.entries()]
@@ -2670,13 +2690,29 @@ Deno.serve(async (req) => {
         items = items.filter((x) => x.status === statusQ);
       }
       if (qFilters.length) {
+        // question id → type, so age-type filters bucket-match ranges
+        const qTypeMap = new Map<string, string>();
+        {
+          const frows = await sql`SELECT questions FROM survey_form`.catch(() => []);
+          for (const f of frows as { questions?: unknown }[]) {
+            let qs = f.questions;
+            if (typeof qs === "string") { try { qs = JSON.parse(qs); } catch { qs = []; } }
+            if (!Array.isArray(qs)) continue;
+            for (const q of qs as Record<string, unknown>[]) {
+              const id = String(q.id || q.label || "");
+              if (id) qTypeMap.set(id, String(q.type || "text"));
+            }
+          }
+        }
         items = items.filter((x) => {
           for (const [qid, want] of qFilters) {
             const av = (x as { answers?: Record<string, unknown> }).answers;
             const val = answerOf(av, qid);
-            const hit = Array.isArray(val)
-              ? val.map(String).includes(want)
-              : String(val ?? "") === want;
+            const hit = qTypeMap.get(qid) === "age"
+              ? ageBucket(val) === want
+              : Array.isArray(val)
+                ? val.map(String).includes(want)
+                : String(val ?? "") === want;
             if (!hit) return false;
           }
           return true;
@@ -2778,6 +2814,20 @@ Deno.serve(async (req) => {
         SELECT id, payload, created_at FROM submissions
         ORDER BY created_at DESC LIMIT 5000
       `;
+      // question id → type, so age-type q_ filters bucket-match ranges
+      const qTypeMap = new Map<string, string>();
+      {
+        const frows = await sql`SELECT questions FROM survey_form`.catch(() => []);
+        for (const f of frows as { questions?: unknown }[]) {
+          let qs = f.questions;
+          if (typeof qs === "string") { try { qs = JSON.parse(qs); } catch { qs = []; } }
+          if (!Array.isArray(qs)) continue;
+          for (const q of qs as Record<string, unknown>[]) {
+            const id = String(q.id || q.label || "");
+            if (id) qTypeMap.set(id, String(q.type || "text"));
+          }
+        }
+      }
       const mediaRows = await sql`
         SELECT submission_id, kind FROM survey_media
       `.catch(() => []);
@@ -2819,9 +2869,11 @@ Deno.serve(async (req) => {
         let qSkip = false;
         for (const [qid, want] of qFilters) {
           const val = answerOf(a, qid);
-          const hit = Array.isArray(val)
-            ? val.map(String).includes(want)
-            : String(val ?? "") === want;
+          const hit = qTypeMap.get(qid) === "age"
+            ? ageBucket(val) === want
+            : Array.isArray(val)
+              ? val.map(String).includes(want)
+              : String(val ?? "") === want;
           if (!hit) {
             qSkip = true;
             break;

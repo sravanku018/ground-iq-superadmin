@@ -432,9 +432,10 @@ export default function FieldCollectScreen({ user, onToast, onDone }) {
       }
       text = text.trim()
       if (!text) return
-      if (q.type === 'choice' && q.options?.length) {
+      if ((q.type === 'choice' || q.type === 'yesno') && (q.options?.length || q.type === 'yesno')) {
         const low = text.toLowerCase()
-        const hit = q.options.find((o) => low.includes(String(o).toLowerCase()))
+        const opts = q.options?.length ? q.options : ['Yes', 'No']
+        const hit = opts.find((o) => low.includes(String(o).toLowerCase()))
         setAnswers((a) => ({ ...a, [q.id]: hit || text }))
       } else {
         setAnswers((a) => ({ ...a, [q.id]: text }))
@@ -1036,13 +1037,25 @@ export default function FieldCollectScreen({ user, onToast, onDone }) {
                       </p>
                     )}
 
-                    {q.type === 'choice' ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                        {(q.options || []).map((opt) => (
+                    {q.type === 'choice' || q.type === 'yesno' ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: 8,
+                          ...(q.type === 'yesno' ? { gap: 16 } : {}),
+                        }}
+                      >
+                        {(q.options?.length ? q.options : ['Yes', 'No']).map((opt) => (
                           <button
                             key={opt}
                             type="button"
                             className={`chip ${answers[q.id] === opt ? 'selected' : ''}`}
+                            style={
+                              q.type === 'yesno'
+                                ? { padding: '14px 28px', fontSize: 18, fontWeight: 600 }
+                                : undefined
+                            }
                             onClick={() => setAnswers((a) => ({ ...a, [q.id]: opt }))}
                           >
                             {opt}

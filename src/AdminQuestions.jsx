@@ -73,14 +73,16 @@ export default function AdminQuestionsScreen({ onToast }) {
       const cleaned = questions.map((q) => ({
         id: String(q.id || '').trim() || `q_${Math.random().toString(36).slice(2, 8)}`,
         label: String(q.label || '').trim() || 'Question',
-        type: q.type === 'choice' ? 'choice' : 'text',
+        type: q.type === 'choice' ? 'choice' : q.type === 'yesno' ? 'yesno' : 'text',
         options:
-          q.type === 'choice'
-            ? String(q.optionsText || (q.options || []).join(', '))
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean)
-            : undefined,
+          q.type === 'yesno'
+            ? ['Yes', 'No']
+            : q.type === 'choice'
+              ? String(q.optionsText || (q.options || []).join(', '))
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              : undefined,
         required: !!q.required,
         speak: String(q.speak || q.label || '').trim(),
       }))
@@ -167,6 +169,7 @@ export default function AdminQuestionsScreen({ onToast }) {
             >
               <option value="text">Text</option>
               <option value="choice">Choice</option>
+              <option value="yesno">Yes / No buttons</option>
             </select>
           </label>
           {q.type === 'choice' && (
@@ -181,6 +184,11 @@ export default function AdminQuestionsScreen({ onToast }) {
                 onChange={(e) => updateQ(i, { optionsText: e.target.value })}
               />
             </label>
+          )}
+          {q.type === 'yesno' && (
+            <p className="muted" style={{ fontSize: 12 }}>
+              Field app shows two push buttons: <strong>Yes</strong> · <strong>No</strong>
+            </p>
           )}
           <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <input

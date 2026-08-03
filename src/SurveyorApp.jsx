@@ -20,7 +20,7 @@ import {
 import LoginScreen from './Login'
 import FieldCollectScreen from './FieldCollect'
 import PullToRefresh from './PullToRefresh'
-import { deleteDraft, draftCount, listDrafts, pushDraft } from './localStore'
+import { deleteDraft, draftCount, listDrafts, listPendingPackages, pushDraft } from './localStore'
 import { clearSession, getSurveyForm } from './api'
 import { APP_VERSION, versionLabel } from './version'
 import './App.css'
@@ -29,7 +29,7 @@ import './App.css'
 const TABS = [
   { id: 'home', label: 'Home', icon: '⌂' },
   { id: 'collect', label: 'Collect', icon: '✎' },
-  { id: 'drafts', label: 'Drafts', icon: '📄' },
+  { id: 'drafts', label: 'Pending', icon: '📦' },
   { id: 'records', label: 'Records', icon: '☰' },
 ]
 
@@ -270,20 +270,25 @@ function MyRecordsScreen({ user, onToast }) {
 }
 
 /**
- * Phone drafts — saved locally, verified by the surveyor, then pushed to
- * the client admin (who confirms them in Review → Confirm).
+ * Phone pending records: drafts (saved locally, verified then pushed) plus
+ * queued packages (collected "done" but not yet synced to the server).
+ * Surveyors see every done record here BEFORE it reaches the admin.
  */
 function DraftsScreen({ user, onToast, onEdit }) {
-  const [drafts, setDrafts] = useState(null)
+  const [items, setItems] = useState(null)
   const [pushing, setPushing] = useState(null)
   const [openId, setOpenId] = useState(null)
 
   const load = useCallback(async () => {
     try {
-      const d = await listDrafts()
-      setDrafts(d || [])
+      const [drafts, queued] = await Promise.all([listDrafts(), listPendingPackages()])
+      const all = [
+        ...(drafts || []).map((d) => ({ ...d, kind: 'draft' })),
+        ...(queued || []).map((q) => ({ ...q, kind: 'queued' })),
+      ].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      setItems(all)
     } catch {
-      setDrafts([])
+      setItems([])
     }
   }, [])
 
@@ -309,74 +314,120 @@ function DraftsScreen({ user, onToast, onEdit }) {
   }
 
   const remove = async (id) => {
-    if (!confirm('Delete this draft from the phone?')) return
+    if (!confirm('Delete this record from the phone?')) return
     await deleteDraft(id).catch(() => {})
     await load()
   }
 
+  const retry = async () => {
+    await forceSyncNow().catch(() => {})
+    await load()
+  }
+
+  const draftN = (items || []).filter((i) => i.kind === 'draft').length
+  const queuedN = (items || []).filter((i) => i.kind === 'queued').length
+
   return (
     <div className="screen home-screen">
-      <p className="ptr-hint">Drafts stay on this phone — verify, edit or push to admin</p>
+      <p className="ptr-hint">Done records stay on this phone until they reach the server</p>
       <div className="hero-card">
-        <p className="eyebrow">Phone drafts</p>
+        <p className="eyebrow">Phone pending</p>
         <h1>{user?.name || user?.username}</h1>
         <p className="hero-sub">
-          {drafts == null ? 'Loading drafts…' : `${drafts.length} draft(s) on this phone`}
+          {items == null
+            ? 'Loading…'
+            : `${items.length} pending · ${draftN} draft · ${queuedN} waiting to sync`}
         </p>
         <div className="pill-row">
           <button type="button" className="cta secondary" onClick={load}>
             Refresh
           </button>
+          {queuedN > 0 && (
+            <button type="button" className="cta" onClick={retry}>
+              Sync now
+            </button>
+          )}
         </div>
       </div>
 
-      {drafts && drafts.length === 0 && (
+      {items && items.length === 0 && (
         <div className="card" style={{ marginTop: 12, padding: '14px' }}>
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-            No drafts yet — use “Save draft only” while collecting.
+            Nothing pending — collected records are synced automatically. Use “Save draft only”
+            while collecting to keep records on this phone.
           </p>
         </div>
       )}
 
-      {drafts?.map((d) => {
+      {items?.map((d) => {
         const qa = d.qa || {}
         const a = qa.answers || {}
         const loc = qa.location_details || {}
         const open = openId === d.id
+        const isDraft = d.kind === 'draft'
+        const isFailed = d.phase === 'failed'
+        const isSyncing = d.phase === 'syncing'
         return (
           <div key={d.id} className="card" style={{ marginTop: 12, padding: 14 }}>
-            <strong>{a.respondent_name || a.district || loc.display_name || 'Draft record'}</strong>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
+              <strong style={{ fontSize: 14 }}>
+                {a.respondent_name ||
+                a.district ||
+                loc.display_name ||
+                (d.recordIndex != null
+                  ? `Record #${d.recordIndex}`
+                  : 'Draft record')}
+              </strong>
+              <span className={`pill ${isFailed ? '' : isDraft ? '' : 'ok'}`} style={{ fontSize: 11 }}>
+                {isFailed ? 'failed' : isDraft ? 'draft' : 'to sync'}
+              </span>
+            </div>
             <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
               {String(d.createdAt || '').slice(0, 16).replace('T', ' ')} · geo{' '}
               {qa.geo?.lat != null ? '✓' : '✗'} · photo {d.photoDataUrl ? '✓' : '✗'} · voice{' '}
               {d.audioDataUrl ? '✓' : '✗'}
             </span>
-            <div className="pill-row" style={{ marginTop: 8 }}>
-              <button
-                type="button"
-                className="cta secondary"
-                disabled={pushing === d.id}
-                onClick={() => onEdit(d)}
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                className="cta"
-                disabled={pushing === d.id}
-                onClick={() => push(d.id)}
-              >
-                {pushing === d.id ? 'Pushing…' : 'Push to admin'}
-              </button>
-              <button
-                type="button"
-                className="cta secondary danger-cta"
-                disabled={pushing === d.id}
-                onClick={() => remove(d.id)}
-              >
-                Delete
-              </button>
-            </div>
+
+            {isFailed && (
+              <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
+                Sync failed{d.lastError ? `: ${d.lastError}` : ''} — tap “Sync now” to retry.
+              </p>
+            )}
+            {!isDraft && !isFailed && (
+              <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
+                {isSyncing ? 'Syncing to server…' : 'Waiting for network — auto-syncs when online.'}
+              </p>
+            )}
+
+            {isDraft && (
+              <div className="pill-row" style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="cta secondary"
+                  disabled={pushing === d.id}
+                  onClick={() => onEdit(d)}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="cta"
+                  disabled={pushing === d.id}
+                  onClick={() => push(d.id)}
+                >
+                  {pushing === d.id ? 'Pushing…' : 'Push to admin'}
+                </button>
+                <button
+                  type="button"
+                  className="cta secondary danger-cta"
+                  disabled={pushing === d.id}
+                  onClick={() => remove(d.id)}
+                >
+                  Delete
+                </button>
+              </div>
+            )}
+
             <button
               type="button"
               className="btn small"
@@ -475,7 +526,7 @@ export default function SurveyorApp() {
     void refreshQueueCountCache().then(setPendingSync)
     void getQueueSnapshot().then((s) => {
       setPendingSync(s.pending)
-      setDraftsCount(s.drafts ?? 0)
+      setDraftsCount((s.drafts ?? 0) + (s.pending ?? 0))
     })
     void refreshDraftCount()
 
@@ -490,7 +541,7 @@ export default function SurveyorApp() {
       if (ev.type === 'package-done') {
         void getQueueSnapshot().then((s) => {
           setPendingSync(s.pending)
-          setDraftsCount(s.drafts ?? 0)
+          setDraftsCount((s.drafts ?? 0) + (s.pending ?? 0))
         })
       }
     })
@@ -498,7 +549,7 @@ export default function SurveyorApp() {
     const onQueue = () => {
       void getQueueSnapshot().then((s) => {
         setPendingSync(s.pending)
-        setDraftsCount(s.drafts ?? 0)
+        setDraftsCount((s.drafts ?? 0) + (s.pending ?? 0))
       })
     }
     window.addEventListener('esurvey-queue-change', onQueue)

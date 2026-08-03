@@ -17,13 +17,23 @@ export default function AdminDataScreen({ onToast }) {
   const [preview, setPreview] = useState([])
   const [fileName, setFileName] = useState('')
   const [mapAnalytics, setMapAnalytics] = useState(null)
+  const [surveys, setSurveys] = useState([])
+  const [survey, setSurvey] = useState('')
+
+  useEffect(() => {
+    import('./api').then(({ listSurveys }) =>
+      listSurveys()
+        .then((d) => setSurveys(d.items || []))
+        .catch(() => {}),
+    )
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const [summary, analytics] = await Promise.all([
         getGeoSummary(),
-        getAnalytics({}).catch(() => null),
+        getAnalytics({ survey }).catch(() => null),
       ])
       setGeo(summary)
       setMapAnalytics(analytics)
@@ -32,7 +42,7 @@ export default function AdminDataScreen({ onToast }) {
     } finally {
       setLoading(false)
     }
-  }, [onToast])
+  }, [onToast, survey])
 
   useEffect(() => {
     load()
@@ -183,7 +193,23 @@ export default function AdminDataScreen({ onToast }) {
 
               {mapAnalytics && (
                 <div className="map-span" style={{ marginBottom: 14 }}>
-                  <SurveyMap analytics={mapAnalytics} filters={{}} />
+                  <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+                    <span className="muted" style={{ fontSize: 13 }}>
+                      Survey volume on geo layers
+                    </span>
+                    <label className="field compact">
+                      <span>By survey</span>
+                      <select value={survey} onChange={(e) => setSurvey(e.target.value)}>
+                        <option value="">All surveys</option>
+                        {surveys.map((s) => (
+                          <option key={s.id} value={s.form_key}>
+                            {s.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <SurveyMap analytics={mapAnalytics} filters={{ survey }} />
                 </div>
               )}
 

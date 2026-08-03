@@ -121,7 +121,7 @@ function Overview({ user, stats, onNav }) {
   )
 }
 
-function DataList({ items, loading, onRefresh }) {
+function DataList({ items, loading, onRefresh, surveys, surveyFilter, onSurveyChange }) {
   return (
     <div className="portal-page">
       <header className="portal-page-head row">
@@ -129,6 +129,17 @@ function DataList({ items, loading, onRefresh }) {
           <h1>Raw data</h1>
           <p className="portal-lead">Latest submissions (use Analyze for filters)</p>
         </div>
+        <label className="field compact">
+          <span>By survey</span>
+          <select value={surveyFilter} onChange={(e) => onSurveyChange(e.target.value)}>
+            <option value="">All surveys</option>
+            {surveys.map((s) => (
+              <option key={s.id} value={s.form_key}>
+                {s.title}
+              </option>
+            ))}
+          </select>
+        </label>
         <button type="button" className="btn small" onClick={onRefresh} disabled={loading}>
           {loading ? '…' : 'Refresh'}
         </button>
@@ -143,11 +154,12 @@ function DataList({ items, loading, onRefresh }) {
         <ul className="user-list">
           {items.map((it) => {
             const a = it.answers || {}
+            const title = surveys.find((s) => s.form_key === it.form_key)?.title || it.form_key || 'Survey'
             return (
               <li key={it.id}>
                 <div>
                   <strong>
-                    #{it.id} · {a.respondent_name || a.district || 'Survey'}
+                    #{it.id} · {title}
                   </strong>
                   <span className="meta">
                     {' '}
@@ -173,8 +185,18 @@ export default function AdminPortal() {
   const [page, setPage] = useState('home')
   const [stats, setStats] = useState(null)
   const [items, setItems] = useState([])
+  const [surveys, setSurveys] = useState([])
+  const [surveyFilter, setSurveyFilter] = useState('')
   const [loadingData, setLoadingData] = useState(false)
   const [toast, setToast] = useState(null)
+
+  useEffect(() => {
+    import('./api').then(({ listSurveys }) =>
+      listSurveys()
+        .then((d) => setSurveys(d.items || []))
+        .catch(() => {}),
+    )
+  }, [])
 
   const notify = useCallback((message, type = 'ok') => {
     setToast({ message, type })
@@ -194,7 +216,7 @@ export default function AdminPortal() {
     if (!getToken()) return
     setLoadingData(true)
     try {
-      const data = await listSubmissions(150)
+      const data = await listSubmissions(150, '', { survey: surveyFilter })
       setItems(data.items || [])
     } catch (e) {
       if (e.status === 401) {
@@ -205,7 +227,7 @@ export default function AdminPortal() {
     } finally {
       setLoadingData(false)
     }
-  }, [notify, handleLogout])
+  }, [notify, handleLogout, surveyFilter])
 
   const loadPortal = useCallback(async () => {
     if (!getToken()) return
@@ -357,7 +379,14 @@ export default function AdminPortal() {
         {page === 'dashboard' && <DashboardScreen onToast={notify} />}
         {page === 'upload' && <AdminDataScreen onToast={notify} />}
         {page === 'data' && (
-          <DataList items={items} loading={loadingData} onRefresh={refreshData} />
+          <DataList
+            items={items}
+            loading={loadingData}
+            onRefresh={refreshData}
+            surveys={surveys}
+            surveyFilter={surveyFilter}
+            onSurveyChange={(v) => setSurveyFilter(v)}
+          />
         )}
       </main>
     </div>

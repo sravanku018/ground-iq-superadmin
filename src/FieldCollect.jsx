@@ -733,6 +733,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
         location_state: locationDetails?.state || '',
       }
 
+      const localSeq = localDoneCount + 1
       const id = await savePackageLocal(
         {
           form_key: formMeta?.form_key || 'default',
@@ -746,11 +747,12 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
           photoDataUrl,
           audioDataUrl,
           audioMime,
-          recordIndex: null,
+          recordIndex: localSeq,
           locks: { geo: true, location: !!locationDetails, photo: true, voice: !!audioDataUrl },
         },
         { draft: true },
       )
+      setLocalDoneCount(localSeq)
       onToast?.('Draft saved on this phone — verify & push from Drafts', 'ok')
       resetForNextRecord()
     } catch (e) {

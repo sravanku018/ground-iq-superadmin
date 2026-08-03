@@ -371,12 +371,13 @@ function DraftsScreen({ user, onToast, onEdit }) {
           <div key={d.id} className="card" style={{ marginTop: 12, padding: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
               <strong style={{ fontSize: 14 }}>
-                {a.respondent_name ||
-                a.district ||
-                loc.display_name ||
-                (d.recordIndex != null
-                  ? `Record #${d.recordIndex}`
-                  : 'Draft record')}
+                {a.respondent_name || a.district || loc.display_name || 'Survey'}
+                {d.recordIndex != null && (
+                  <span className="muted" style={{ fontWeight: 600 }}>
+                    {' '}
+                    · Record #{d.recordIndex}
+                  </span>
+                )}
               </strong>
               <span className={`pill ${isFailed ? '' : isDraft ? '' : 'ok'}`} style={{ fontSize: 11 }}>
                 {isFailed ? 'failed' : isDraft ? 'draft' : 'to sync'}

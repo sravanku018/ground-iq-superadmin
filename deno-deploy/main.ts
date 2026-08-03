@@ -633,6 +633,63 @@ function verifySubmission(
   };
 }
 
+/** Telugu place names → English (district etc.), applied when confirming */
+const TELUGU_ALIAS: Record<string, string> = (GEO_ALIASES as {
+  telugu?: Record<string, string>;
+}).telugu || {};
+const TELUGU_SCRIPT = /[\u0C00-\u0C7F]/;
+
+function translateGeoEnglish(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const a = (payload.answers || {}) as Record<string, unknown>;
+  const geoKeys = [
+    "district",
+    "location_district",
+    "constituency",
+    "assembly_constituency",
+    "mp_constituency",
+    "mandal",
+    "location_mandal",
+    "ward",
+    "village",
+    "revenue_division",
+    "location_area",
+    "location_state",
+    "location_display",
+  ];
+  // Longer keys first so "వరంగల్ (అర్బన్)" beats "వరంగల్"
+  const teluguEntries = Object.entries(TELUGU_ALIAS).sort(
+    (x, y) => y[0].length - x[0].length,
+  );
+  const translate = (v: unknown): unknown => {
+    if (typeof v !== "string" || !TELUGU_SCRIPT.test(v)) return v;
+    const simple = v.replace(/\s+/g, " ").trim();
+    const direct =
+      TELUGU_ALIAS[simple] || TELUGU_ALIAS[simple.toLowerCase()];
+    if (direct) return direct;
+    let out = simple;
+    for (const [te, en] of teluguEntries) {
+      if (out.includes(te)) out = out.split(te).join(en);
+    }
+    return out !== simple ? out : v;
+  };
+  let changed = false;
+  for (const k of geoKeys) {
+    if (a[k] == null) continue;
+    const t = translate(a[k]);
+    if (t !== a[k]) {
+      a[k] = t;
+      changed = true;
+    }
+  }
+  if (changed) {
+    payload.answers = a;
+    payload.translated_from_telugu = true;
+  }
+  return payload;
+}
+
 function parsePayload(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     return raw as Record<string, unknown>;
@@ -1168,7 +1225,10 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
   }
 
   function normDistrict(v: string): string {
-    const key = normKey(String(v || ""));
+    const raw = String(v || "").trim();
+    const tel = TELUGU_ALIAS[raw] || TELUGU_ALIAS[raw.replace(/\s+/g, " ")];
+    if (tel) return tel;
+    const key = normKey(raw);
     if (!key) return v;
     const hit = DISTRICT_ALIAS[key];
     if (hit) return hit;
@@ -2996,6 +3056,7 @@ Deno.serve(async (req) => {
           }, 422);
         }
         if (payloadStatus(payload) !== next) changed.push("status");
+        if (next === "confirmed") payload = translateGeoEnglish(payload);
         payload.status = next;
         payload.confirmed_at = next === "pending" ? null : new Date().toISOString();
         payload.confirmed_by = next === "pending" ? null : me.name || me.username;
@@ -3089,6 +3150,8 @@ Deno.serve(async (req) => {
         }, 422);
       }
 
+      if (next === "confirmed") payload = translateGeoEnglish(payload);
+
       payload = {
         ...payload,
         status: next,
@@ -3137,6 +3200,7 @@ Deno.serve(async (req) => {
           }
         }
         if (payloadStatus(payload) !== "pending") continue;
+        payload = translateGeoEnglish(payload);
         payload = {
           ...payload,
           status: "confirmed",

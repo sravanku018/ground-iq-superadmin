@@ -424,8 +424,9 @@ export default function AdminSurveysScreen({ onToast }) {
                           textAlign: 'left',
                           margin: '2px 0',
                           background: checked[String(u.id)]
-                            ? 'rgba(0,229,153,0.15)'
-                            : undefined,
+                            ? 'rgba(0,229,153,0.18)'
+                            : 'transparent',
+                          color: checked[String(u.id)] ? '#042f1a' : '#222',
                         }}
                       >
                         {u.username}

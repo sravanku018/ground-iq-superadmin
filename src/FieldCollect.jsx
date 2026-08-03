@@ -78,6 +78,28 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
   const [queueInfo, setQueueInfo] = useState(null)
   const [localDoneCount, setLocalDoneCount] = useState(0)
 
+  // Resume the record number after relogin/remount — count records already
+  // saved on this phone by this surveyor (drafts excluded)
+  useEffect(() => {
+    let alive = true
+    import('./localStore')
+      .then(({ listAllPackages }) => listAllPackages())
+      .then((all) => {
+        if (!alive) return
+        const me = user?.name || user?.username || ''
+        const mine = (all || []).filter(
+          (p) =>
+            p.phase !== 'draft' &&
+            String(p.qa?.submitted_by || '') === me,
+        )
+        if (mine.length) setLocalDoneCount(mine.length)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [user])
+
   const mediaRec = useRef(null)
   const chunks = useRef([])
   const recognitionRef = useRef(null)

@@ -2609,6 +2609,11 @@ Deno.serve(async (req) => {
       const dateTo = (url.searchParams.get("date_to") || "").trim();
       const userQ = (url.searchParams.get("user") || "").trim().toLowerCase();
       const completenessQ = (url.searchParams.get("completeness") || "").trim().toLowerCase();
+      // Dynamic question filters (q_<questionId> → value) — from Client Admin question naming
+      const qFilters: [string, string][] = [];
+      for (const [k, v] of url.searchParams) {
+        if (k.startsWith("q_") && v.trim()) qFilters.push([k.slice(2), v.trim()]);
+      }
       const rows = await sql`
         SELECT id, payload, created_at FROM submissions
         ORDER BY created_at DESC LIMIT ${limit}
@@ -2663,6 +2668,19 @@ Deno.serve(async (req) => {
 
       if (statusQ && statusQ !== "all") {
         items = items.filter((x) => x.status === statusQ);
+      }
+      if (qFilters.length) {
+        items = items.filter((x) => {
+          for (const [qid, want] of qFilters) {
+            const av = (x as { answers?: Record<string, unknown> }).answers;
+            const val = answerOf(av, qid);
+            const hit = Array.isArray(val)
+              ? val.map(String).includes(want)
+              : String(val ?? "") === want;
+            if (!hit) return false;
+          }
+          return true;
+        });
       }
       if (dateFrom) items = items.filter((x) => x.date >= dateFrom);
       if (dateTo) items = items.filter((x) => x.date <= dateTo);
@@ -2732,9 +2750,15 @@ Deno.serve(async (req) => {
       let dateFrom = (url.searchParams.get("date_from") || "").trim();
       let dateTo = (url.searchParams.get("date_to") || "").trim();
       const userQ = (url.searchParams.get("user") || "").trim().toLowerCase();
+      const surveyQ = (url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim();
       const period = (url.searchParams.get("period") || "total").trim().toLowerCase();
       const dayParam = (url.searchParams.get("day") || "").trim();
       const monthParam = (url.searchParams.get("month") || "").trim();
+      // Dynamic question filters (q_<questionId> → value) — from Client Admin question naming
+      const qFilters: [string, string][] = [];
+      for (const [k, v] of url.searchParams) {
+        if (k.startsWith("q_") && v.trim()) qFilters.push([k.slice(2), v.trim()]);
+      }
       if (period === "today") {
         const t = new Date().toISOString().slice(0, 10);
         dateFrom = t;
@@ -2791,6 +2815,19 @@ Deno.serve(async (req) => {
         if (dateFrom && date < dateFrom) continue;
         if (dateTo && date > dateTo) continue;
         if (userQ && !user.toLowerCase().includes(userQ)) continue;
+        if (surveyQ && String(payload.form_key || "default") !== surveyQ) continue;
+        let qSkip = false;
+        for (const [qid, want] of qFilters) {
+          const val = answerOf(a, qid);
+          const hit = Array.isArray(val)
+            ? val.map(String).includes(want)
+            : String(val ?? "") === want;
+          if (!hit) {
+            qSkip = true;
+            break;
+          }
+        }
+        if (qSkip) continue;
         list.push({
           id: r.id,
           date,

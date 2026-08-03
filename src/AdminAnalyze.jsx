@@ -68,13 +68,19 @@ export default function AdminAnalyzeScreen({ onToast }) {
         completeness: completeness === 'all' ? undefined : completeness,
       }
       const [analyze, list, charts] = await Promise.all([
-        getAdminAnalyze(scopeParams),
+        getAdminAnalyze({
+          ...scopeParams,
+          survey,
+          ...Object.fromEntries(Object.entries(qFilters).filter(([, v]) => v)),
+        }),
         listSubmissions(300, 'all', {
           period: scopeParams.period,
           day: scopeParams.day,
           month: scopeParams.month,
           user: user,
+          survey,
           completeness: completeness === 'all' ? '' : completeness,
+          ...Object.fromEntries(Object.entries(qFilters).filter(([, v]) => v)),
           // expand day/month for submissions list if needed
           date_from:
             period === 'day'

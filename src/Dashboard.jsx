@@ -385,19 +385,9 @@ export default function DashboardScreen({ onToast }) {
     return () => clearTimeout(t)
   }, [load])
 
-  const setFilter = (key, value) => {
-    setFilters((f) => ({
-      ...f,
-      [key]: f[key] === value ? '' : value,
-    }))
-  }
-
   const clearFilters = () =>
     setFilters({
       district: '',
-      party: '',
-      gender: '',
-      caste: '',
       constituency: '',
       user: '',
       survey: '',
@@ -947,53 +937,6 @@ export default function DashboardScreen({ onToast }) {
             ))}
           </select>
         </label>
-
-        <div className="filter-chips">
-          <span className="filter-label">Party</span>
-          {(opts?.parties || ['Congress', 'BJP', 'BRS', 'Others', 'Undecided']).map((p) => (
-            <button
-              key={p}
-              type="button"
-              className={`chip ${filters.party === p ? 'selected' : ''}`}
-              style={
-                filters.party === p
-                  ? { borderColor: colorFor(p), color: colorFor(p) }
-                  : undefined
-              }
-              onClick={() => setFilter('party', p)}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-
-        <div className="filter-chips">
-          <span className="filter-label">Gender</span>
-          {(opts?.genders || ['Male', 'Female']).map((g) => (
-            <button
-              key={g}
-              type="button"
-              className={`chip ${filters.gender === g ? 'selected' : ''}`}
-              onClick={() => setFilter('gender', g)}
-            >
-              {g}
-            </button>
-          ))}
-        </div>
-
-        <div className="filter-chips">
-          <span className="filter-label">Caste</span>
-          {(opts?.castes || []).slice(0, 8).map((c) => (
-            <button
-              key={c}
-              type="button"
-              className={`chip ${filters.caste === c ? 'selected' : ''}`}
-              onClick={() => setFilter('caste', c)}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
       </section>
 
       {loading && !data ? (
@@ -1073,24 +1016,6 @@ export default function DashboardScreen({ onToast }) {
             </ChartCard>
           )}
 
-          <ChartCard
-            title="Party preference"
-            subtitle="Tap a slice to filter"
-          >
-            <InteractivePie
-              data={charts?.byParty}
-              activeName={filters.party}
-              onSliceClick={(name) => setFilter('party', name)}
-            />
-          </ChartCard>
-
-          <ChartCard title="PM preference" subtitle="Share of responses">
-            <InteractivePie
-              data={charts?.byPm}
-              onSliceClick={undefined}
-            />
-          </ChartCard>
-
           <ChartCard title="Responses over time" subtitle="Daily volume" tall>
             <Timeline data={charts?.timeline} />
           </ChartCard>
@@ -1113,66 +1038,40 @@ export default function DashboardScreen({ onToast }) {
             />
           </ChartCard>
 
-          <ChartCard title="Party × District" subtitle="Stacked share" tall>
-            <StackedParty
-              matrix={charts?.partyByDistrict}
-              activeName={filters.district}
-              onRowClick={(name) =>
-                setFilters((f) => ({
-                  ...f,
-                  district: f.district === name ? '' : name,
-                  constituency: '',
-                }))
-              }
-            />
-          </ChartCard>
-
-          <ChartCard title="Party × Caste" subtitle="Cross-tab" tall>
-            <StackedParty matrix={charts?.partyByCaste} />
-          </ChartCard>
-
-          <ChartCard title="Party × Gender" subtitle="Cross-tab">
-            <StackedParty matrix={charts?.partyByGender} />
-          </ChartCard>
-
-          <ChartCard title="Local issues" subtitle="Most mentioned">
-            <RadialIssues data={charts?.issues} />
-          </ChartCard>
-
-          <ChartCard title="Caste distribution">
-            <HBar
-              data={charts?.byCaste}
-              activeName={filters.caste}
-              onBarClick={(name) => setFilter('caste', name)}
-            />
-          </ChartCard>
-
-          <ChartCard title="Gender split">
-            <InteractivePie
-              data={charts?.byGender}
-              activeName={filters.gender}
-              onSliceClick={(name) => setFilter('gender', name)}
-            />
-          </ChartCard>
-
-          <ChartCard title="Govt performance">
-            <HBar data={charts?.byPerformance} />
-          </ChartCard>
-
-          <ChartCard title="Education" tall>
-            <HBar data={charts?.byEducation} />
-          </ChartCard>
-
-          <ChartCard title="Occupation" tall>
-            <HBar data={charts?.byEmployment} />
-          </ChartCard>
+          {(charts?.questionCharts || []).map((q) => (
+            <ChartCard
+              key={q.id}
+              title={q.label}
+              subtitle="From Client Admin questions — tap to filter"
+            >
+              {q.type === 'choice' ? (
+                <InteractivePie
+                  data={q.counts}
+                  activeName={filters[`q_${q.id}`] || ''}
+                  onSliceClick={(name) =>
+                    setFilters((f) => ({
+                      ...f,
+                      [`q_${q.id}`]: f[`q_${q.id}`] === name ? '' : name,
+                    }))
+                  }
+                />
+              ) : (
+                <HBar
+                  data={q.counts}
+                  activeName={filters[`q_${q.id}`] || ''}
+                  onBarClick={(name) =>
+                    setFilters((f) => ({
+                      ...f,
+                      [`q_${q.id}`]: f[`q_${q.id}`] === name ? '' : name,
+                    }))
+                  }
+                />
+              )}
+            </ChartCard>
+          ))}
 
           <ChartCard title="Top constituencies" subtitle="By response count" tall>
             <HBar data={charts?.byConstituency} />
-          </ChartCard>
-
-          <ChartCard title="Age groups">
-            <HBar data={charts?.byAge} />
           </ChartCard>
         </div>
       )}

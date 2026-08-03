@@ -408,6 +408,28 @@ function ready() {
 }
 
 // ── Analytics helpers (filters + super-set / sub-set) ──────
+/**
+ * Answer lookup keyed by the Client Admin's question naming — matches
+ * question id OR label, case-insensitively (question "Gender" ↔ answer "gender").
+ */
+function answerOf(a: Record<string, unknown> | undefined | null, qid: string, qlabel?: string): unknown {
+  if (!a) return undefined;
+  if (a[qid] != null) return a[qid];
+  const low = qid.toLowerCase();
+  for (const [k, v] of Object.entries(a)) {
+    if (k.toLowerCase() === low) return v;
+  }
+  if (qlabel) {
+    const lbl = qlabel.toLowerCase().trim();
+    if (lbl && lbl !== low) {
+      for (const [k, v] of Object.entries(a)) {
+        if (k.toLowerCase() === lbl) return v;
+      }
+    }
+  }
+  return undefined;
+}
+
 function normParty(v: string) {
   const s = String(v || "").trim();
   if (!s) return "Undecided";
@@ -1435,7 +1457,8 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
   if (dynFilters.size) {
     universe = universe.filter((r) => {
       for (const [qid, want] of dynFilters) {
-        const av = r.answers?.[qid];
+        const q = surveyQuestions.find((sq) => sq.id === qid);
+        const av = answerOf(r.answers, qid, q?.label);
         const hit = Array.isArray(av)
           ? av.map(String).includes(want)
           : String(av ?? "") === want;
@@ -1447,34 +1470,43 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
 
   // Survey questions → dynamic filter bar (options from defined choices + submitted answers)
   const surveyQuestions: { id: string; label: string; type: string; options: string[] }[] = [];
-  if (formFilter) {
-    const frows = await sqlFn`
-      SELECT questions FROM survey_form WHERE form_key = ${formFilter} LIMIT 1
-    `.catch(() => []);
-    if (frows.length) {
-      let qs = (frows[0] as { questions: unknown }).questions;
+  {
+    // Selected survey → its questions only; otherwise union of ALL surveys' questions,
+    // so filters/charts follow the Client Admin's question naming everywhere.
+    const formRows = formFilter
+      ? await sqlFn`
+          SELECT questions FROM survey_form WHERE form_key = ${formFilter} LIMIT 1
+        `.catch(() => [])
+      : await sqlFn`SELECT questions FROM survey_form`.catch(() => []);
+    const seen = new Set<string>();
+    for (const frow of formRows as { questions?: unknown }[]) {
+      let qs = frow?.questions;
       if (typeof qs === "string") {
         try { qs = JSON.parse(qs); } catch { qs = []; }
       }
-      if (Array.isArray(qs)) {
-        for (const q of qs as Record<string, unknown>[]) {
-          const type = String(q.type || "text");
-          const defined = Array.isArray(q.options) ? q.options.map(String) : [];
-          const seen = new Set<string>(defined);
-          if (type === "text" || !defined.length) {
-            for (const r of universe) {
-              const av = r.answers?.[String(q.id || "")];
-              const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
-              for (const v of vals) if (v && v !== "Unknown") seen.add(v);
-            }
+      if (!Array.isArray(qs)) continue;
+      for (const q of qs as Record<string, unknown>[]) {
+        const id = String(q.id || q.label || "").trim();
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const type = String(q.type || "text");
+        const defined = Array.isArray(q.options) ? q.options.map(String) : [];
+        const opts = [...defined];
+        if (type === "text" || !opts.length) {
+          const seenVals = new Set<string>(opts);
+          for (const r of universe) {
+            const av = answerOf(r.answers, id, String(q.label || ""));
+            const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
+            for (const v of vals) if (v && v !== "Unknown" && v !== "undefined") seenVals.add(v);
           }
-          surveyQuestions.push({
-            id: String(q.id || ""),
-            label: String(q.label || q.id || ""),
-            type,
-            options: [...seen].slice(0, 100),
-          });
+          opts.push(...seenVals);
         }
+        surveyQuestions.push({
+          id,
+          label: String(q.label || id),
+          type,
+          options: [...new Set(opts)].slice(0, 100),
+        });
       }
     }
   }
@@ -1575,6 +1607,34 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
     .map(([date, count]) => ({ date, count }))
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-60);
+
+  // Per-question distribution charts — report forms from the Client Admin's
+  // question naming (every survey, or the selected survey only).
+  const questionCharts = surveyQuestions
+    .map((q) => {
+      const map = new Map<string, number>();
+      for (const r of rows) {
+        const av = answerOf(r.answers, q.id, q.label);
+        const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
+        for (const v of vals) {
+          const name = String(v).trim();
+          if (!name || name === "Unknown" || name === "undefined") continue;
+          map.set(name, (map.get(name) || 0) + 1);
+        }
+      }
+      return {
+        id: q.id,
+        label: q.label,
+        type: q.type,
+        counts: withPct(
+          [...map.entries()]
+            .map(([name, value]) => ({ name, value, pct: 0 }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 12),
+        ),
+      };
+    })
+    .filter((q) => q.counts.length > 0);
 
   // Cross-tabs for maps
   const partyOrder = ["Congress", "BJP", "BRS", "Others", "Undecided"];
@@ -1757,7 +1817,7 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
         counts: (() => {
           const map = new Map<string, number>();
           for (const r of universe) {
-            const av = r.answers?.[q.id];
+            const av = answerOf(r.answers, q.id, q.label);
             const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
             for (const v of vals) {
               if (!v || v === "Unknown") continue;
@@ -1834,6 +1894,7 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
       byMp,
       issues,
       timeline,
+      questionCharts,
       partyByDistrict: partyByDistrictChart,
       partyByDistrictFull: partyByDistrict,
       partyByConstituency,

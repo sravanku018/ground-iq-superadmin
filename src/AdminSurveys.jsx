@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  addRespondent,
   createSurvey,
-  deleteRespondent,
   deleteSurvey,
   getSurvey,
   listSurveys,
   listUsers,
-  setRespondentStatus,
   setSurveySurveyors,
   updateSurvey,
 } from './api'
@@ -141,7 +138,6 @@ export default function AdminSurveysScreen({ onToast }) {
   const [detail, setDetail] = useState(null)
   const [allSurveyors, setAllSurveyors] = useState([])
   const [checked, setChecked] = useState({})
-  const [respForm, setRespForm] = useState({ name: '', phone: '' })
   const [busy, setBusy] = useState(false)
   const [teamOpen, setTeamOpen] = useState(false)
 
@@ -267,7 +263,7 @@ export default function AdminSurveysScreen({ onToast }) {
   }
 
   async function removeSurvey() {
-    if (!detail || !window.confirm(`Delete survey "${detail.title}"? Team + respondent list are removed too.`)) return
+    if (!detail || !window.confirm(`Delete survey "${detail.title}"? Team assignments are removed too.`)) return
     setBusy(true)
     try {
       await deleteSurvey(detail.id)
@@ -275,44 +271,6 @@ export default function AdminSurveysScreen({ onToast }) {
       setDetail(null)
       setMode('list')
       await load()
-    } catch (e) {
-      onToast?.(e.message, 'error')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function addResp() {
-    if (!detail || !respForm.name.trim()) return
-    setBusy(true)
-    try {
-      await addRespondent(detail.id, respForm)
-      setRespForm({ name: '', phone: '' })
-      await openDetail(detail.id)
-    } catch (e) {
-      onToast?.(e.message, 'error')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function toggleResp(r, next) {
-    setBusy(true)
-    try {
-      await setRespondentStatus(detail.id, r.id, next)
-      await openDetail(detail.id)
-    } catch (e) {
-      onToast?.(e.message, 'error')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function removeResp(r) {
-    setBusy(true)
-    try {
-      await deleteRespondent(detail.id, r.id)
-      await openDetail(detail.id)
     } catch (e) {
       onToast?.(e.message, 'error')
     } finally {
@@ -365,8 +323,7 @@ export default function AdminSurveysScreen({ onToast }) {
                   <span style={{ fontSize: 13 }}>
                     {s.title}{' '}
                     <span className="muted">
-                      · {s.question_count} Q · {s.surveyors} surveyor(s) ·{' '}
-                      {s.respondents_done}/{s.respondents_total} respondents
+                      · {s.question_count} Q · {s.surveyors} surveyor(s)
                     </span>
                   </span>
                 </div>
@@ -392,7 +349,6 @@ export default function AdminSurveysScreen({ onToast }) {
   }
 
   if (mode === 'detail' && detail) {
-    const done = (detail.respondents || []).filter((r) => r.status === 'done').length
     return (
       <div className="screen">
         <header className="screen-head">
@@ -529,74 +485,6 @@ export default function AdminSurveysScreen({ onToast }) {
           )}
         </div>
 
-        <h3 style={{ fontSize: 14, margin: '10px 0 6px' }}>
-          Survey people — respondents ({done}/{detail.respondents.length})
-        </h3>
-        <div className="card" style={{ marginBottom: 12, padding: 12 }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-            <input
-              style={{ flex: 1, minWidth: 0 }}
-              placeholder="Name"
-              value={respForm.name}
-              onChange={(e) => setRespForm((f) => ({ ...f, name: e.target.value }))}
-            />
-            <input
-              style={{ flex: 1, minWidth: 0 }}
-              placeholder="Phone"
-              value={respForm.phone}
-              onChange={(e) => setRespForm((f) => ({ ...f, phone: e.target.value }))}
-            />
-            <button type="button" className="btn primary" onClick={addResp} disabled={busy}>
-              Add
-            </button>
-          </div>
-          {(detail.respondents || []).length === 0 && (
-            <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-              No respondents yet — add name/phone above.
-            </p>
-          )}
-          {(detail.respondents || []).map((r) => (
-            <div
-              key={r.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '5px 0',
-                borderTop: '1px solid rgba(128,128,128,0.15)',
-                fontSize: 13,
-              }}
-            >
-              <span style={{ flex: 1, minWidth: 0 }}>
-                {r.name}
-                {r.phone ? <span className="muted"> · {r.phone}</span> : ''}
-              </span>
-              <span
-                className={`pill ${r.status === 'done' ? 'ok' : ''}`}
-                style={{ fontSize: 11 }}
-              >
-                {r.status}
-              </span>
-              <button
-                type="button"
-                className="btn small"
-                onClick={() => toggleResp(r, r.status === 'done' ? 'pending' : 'done')}
-                disabled={busy}
-              >
-                {r.status === 'done' ? 'Undo' : 'Done'}
-              </button>
-              <button
-                type="button"
-                className="btn small danger"
-                onClick={() => removeResp(r)}
-                disabled={busy}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-
         <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
           Questions for this survey are edited in the <strong>Questions</strong> tab.
         </p>
@@ -673,9 +561,9 @@ export default function AdminSurveysScreen({ onToast }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <strong style={{ fontSize: 14 }}>{s.title}</strong>
               <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                {s.question_count} question(s) · {s.surveyors} surveyor(s) · respondents{' '}
-                {s.respondents_done}/{s.respondents_total} · {s.submissions} submission(s) ·
-                updated {String(s.updated_at || '').slice(0, 16).replace('T', ' ')}
+                {s.question_count} question(s) · {s.surveyors} surveyor(s) · {s.submissions}{' '}
+                submission(s) · updated{' '}
+                {String(s.updated_at || '').slice(0, 16).replace('T', ' ')}
               </div>
             </div>
           </div>

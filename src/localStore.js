@@ -10,7 +10,7 @@ const DB_VERSION = 1
 const STORE = 'packages'
 const META_KEY = 'esurvey_queue_meta_v2'
 
-/** @typedef {'queued'|'syncing'|'qa_done'|'photo_done'|'done'|'failed'} PackagePhase */
+/** @typedef {'draft'|'queued'|'syncing'|'qa_done'|'photo_done'|'done'|'failed'} PackagePhase */
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -88,22 +88,23 @@ export async function savePackageLocal({
   audioMime,
   recordIndex,
   locks,
-}) {
-  // Hard reject incomplete packages (client-side lock)
-  if (!geo || !Number.isFinite(Number(geo.lat)) || !Number.isFinite(Number(geo.lng))) {
+}, opts = {}) {
+  // Hard reject incomplete packages (client-side lock) — drafts may skip locks
+  const draft = !!opts.draft
+  if (!draft && (!geo || !Number.isFinite(Number(geo.lat)) || !Number.isFinite(Number(geo.lng)))) {
     throw new Error('Package rejected: GPS lock missing')
   }
-  if (!photoDataUrl || String(photoDataUrl).length < 100) {
+  if (!draft && (!photoDataUrl || String(photoDataUrl).length < 100)) {
     throw new Error('Package rejected: photo lock missing')
   }
-  if (!audioDataUrl || String(audioDataUrl).length < 100) {
+  if (!draft && (!audioDataUrl || String(audioDataUrl).length < 100)) {
     throw new Error('Package rejected: voice lock missing')
   }
 
   const id = newId()
   const pkg = {
     id,
-    phase: /** @type {PackagePhase} */ ('queued'),
+    phase: /** @type {PackagePhase} */ (draft ? 'draft' : 'queued'),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     attempts: 0,
@@ -248,13 +249,44 @@ export async function listPendingPackages() {
     const all = await idbReq(db.transaction(STORE, 'readonly').objectStore(STORE).getAll())
     db.close()
     return (all || [])
-      .filter((p) => p.phase !== 'done')
+      .filter((p) => p.phase !== 'done' && p.phase !== 'draft')
       .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
   } catch {
     return listPackagesMetaFallback()
-      .filter((p) => p.phase !== 'done')
+      .filter((p) => p.phase !== 'done' && p.phase !== 'draft')
       .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
   }
+}
+
+/** Drafts stay on this phone until the surveyor verifies and pushes them */
+export async function listDrafts() {
+  const all = await listAllPackages()
+  return (all || []).filter((p) => p.phase === 'draft')
+}
+
+export async function draftCount() {
+  try {
+    const db = await openDb()
+    const all = await idbReq(db.transaction(STORE, 'readonly').objectStore(STORE).getAll())
+    db.close()
+    return (all || []).filter((p) => p.phase === 'draft').length
+  } catch {
+    return listPackagesMetaFallback().filter((p) => p.phase === 'draft').length
+  }
+}
+
+/** Push a draft into the sync queue → client admin sees it as pending */
+export async function pushDraft(id) {
+  const pkg = await getPackage(id)
+  if (!pkg) return null
+  await updatePackage(id, { phase: 'queued', attempts: 0, lastError: null })
+  emitChange({ type: 'saved', id, pushed: true })
+  return id
+}
+
+export async function deleteDraft(id) {
+  await removePackage(id)
+  emitChange({ type: 'deleted', id })
 }
 
 export async function listAllPackages() {
@@ -272,16 +304,18 @@ export async function listAllPackages() {
 
 export async function queueStats() {
   const all = await listAllPackages()
-  const pending = all.filter((p) => p.phase !== 'done')
+  const pending = all.filter((p) => p.phase !== 'done' && p.phase !== 'draft')
   const failed = all.filter((p) => p.phase === 'failed')
   const syncing = all.filter((p) => p.phase === 'syncing')
   const done = all.filter((p) => p.phase === 'done')
+  const drafts = all.filter((p) => p.phase === 'draft')
   return {
     total: all.length,
     pending: pending.length,
     failed: failed.length,
     syncing: syncing.length,
     doneLocal: done.length,
+    drafts: drafts.length,
     items: pending.map((p) => ({
       id: p.id,
       phase: p.phase,

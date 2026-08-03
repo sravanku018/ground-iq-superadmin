@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getMyProgress, getSurveyForm } from './api'
-import { savePackageLocal } from './localStore'
+import { deleteDraft, savePackageLocal } from './localStore'
 import { forceSyncNow, getQueueSnapshot } from './syncEngine'
 /**
  * LOCKED collect flow — surveyor cannot skip:
@@ -57,7 +57,7 @@ async function reverseGeocode(lat, lng) {
   }
 }
 
-export default function FieldCollectScreen({ user, onToast, onDone }) {
+export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
   const [step, setStep] = useState(0) // 0 geo, 1 photo, 2 voice+qa, 3 done
   const [formMeta, setFormMeta] = useState(null)
   const [questions, setQuestions] = useState([])
@@ -85,6 +85,36 @@ export default function FieldCollectScreen({ user, onToast, onDone }) {
   const watchId = useRef(null)
   const streamRef = useRef(null)
   const audioStartedAt = useRef(null)
+
+  // Editing a saved draft: prefill everything from phone storage
+  const draftLoaded = useRef(null)
+  useEffect(() => {
+    if (!draft || draftLoaded.current === draft.id) return
+    draftLoaded.current = draft.id
+    const d = draft.qa || draft
+    const init = {}
+    for (const q of questions) init[q.id] = ''
+    setAnswers({ ...init, ...(d.answers || {}) })
+    const g = d.geo
+    if (g && Number.isFinite(Number(g.lat))) {
+      setGeo({ lat: Number(g.lat), lng: Number(g.lng), accuracy: g.accuracy ?? 0, at: g.at ?? '', locked: true })
+      setLocationDetails(d.location_details || null)
+    }
+    if (draft.photoDataUrl) setPhotoDataUrl(draft.photoDataUrl)
+    if (draft.audioDataUrl) {
+      setAudioUrl(draft.audioDataUrl)
+      setVoiceActivated(true)
+      try {
+        fetch(draft.audioDataUrl)
+          .then((r) => r.blob())
+          .then((b) => setAudioBlob(b))
+          .catch(() => {})
+      } catch {
+        /* ignore */
+      }
+    }
+    setStep(2)
+  }, [draft, questions])
 
   const geoLocked = isGeoValid(geo)
   const locationLocked = geoLocked && !!locationDetails
@@ -604,6 +634,12 @@ export default function FieldCollectScreen({ user, onToast, onDone }) {
         'ok',
       )
 
+      if (draft?.id) {
+        // An edited draft was pushed for real → remove it from phone drafts
+        await deleteDraft(draft.id).catch(() => {})
+        draftLoaded.current = null
+      }
+
       void forceSyncNow()
 
       const p = await refreshProgress()
@@ -631,6 +667,72 @@ export default function FieldCollectScreen({ user, onToast, onDone }) {
       }
     } catch (e) {
       onToast?.(e.message || 'Local save failed', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /** Save to phone storage only — client admin sees it after the surveyor pushes */
+  async function saveDraft() {
+    if (!geoLocked) {
+      onToast?.('Lock GPS first (step 1)', 'error')
+      setStep(0)
+      return
+    }
+    if (!photoLocked) {
+      onToast?.('Capture photo first (step 2)', 'error')
+      setStep(1)
+      return
+    }
+    setSaving(true)
+    try {
+      let audioDataUrl = null
+      let audioMime = 'audio/webm'
+      let blob = audioBlob
+      if ((!blob || blob.size < MIN_AUDIO_BYTES) && chunks.current.length) {
+        blob = new Blob(chunks.current, { type: 'audio/webm' })
+        setAudioBlob(blob)
+      }
+      if (blob && blob.size >= MIN_AUDIO_BYTES) {
+        audioDataUrl = await blobToBase64(blob)
+        audioMime = blob.type || 'audio/webm'
+      }
+
+      const lockedAnswers = {
+        ...answers,
+        _draft: true,
+        geo_lat: geo.lat,
+        geo_lng: geo.lng,
+        geo_accuracy: geo.accuracy,
+        geo_at: geo.at,
+        location_display: locationDetails?.display_name || '',
+        location_district: locationDetails?.district || answers.district || '',
+        location_mandal: locationDetails?.mandal || answers.mandal || '',
+        location_state: locationDetails?.state || '',
+      }
+
+      const id = await savePackageLocal(
+        {
+          form_key: formMeta?.form_key || 'default',
+          form_id: `field-${user?.username || 's'}-${Date.now()}`,
+          source: 'mobile-field-survey',
+          submitted_by: user?.name || user?.username,
+          user_id: user?.id,
+          geo: { ...geo, locked: true },
+          location_details: locationDetails,
+          answers: lockedAnswers,
+          photoDataUrl,
+          audioDataUrl,
+          audioMime,
+          recordIndex: null,
+          locks: { geo: true, location: !!locationDetails, photo: true, voice: !!audioDataUrl },
+        },
+        { draft: true },
+      )
+      onToast?.('Draft saved on this phone — verify & push from Drafts', 'ok')
+      resetForNextRecord()
+    } catch (e) {
+      onToast?.(e.message || 'Draft save failed', 'error')
     } finally {
       setSaving(false)
     }
@@ -1113,10 +1215,18 @@ export default function FieldCollectScreen({ user, onToast, onDone }) {
                           {saving
                             ? 'Saving on device…'
                             : allHardLocks
-                              ? 'Save (all locks OK)'
+                              ? 'Save & push to admin'
                               : 'Locks incomplete'}
                         </button>
                       )}
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        disabled={saving}
+                        onClick={saveDraft}
+                      >
+                        {draft?.id ? 'Keep as draft' : 'Save draft only'}
+                      </button>
                     </div>
                   </div>
                 )}

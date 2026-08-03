@@ -20,6 +20,7 @@ import {
 import LoginScreen from './Login'
 import FieldCollectScreen from './FieldCollect'
 import PullToRefresh from './PullToRefresh'
+import { deleteDraft, draftCount, listDrafts, pushDraft } from './localStore'
 import { clearSession, getSurveyForm } from './api'
 import { APP_VERSION, versionLabel } from './version'
 import './App.css'
@@ -28,6 +29,7 @@ import './App.css'
 const TABS = [
   { id: 'home', label: 'Home', icon: '⌂' },
   { id: 'collect', label: 'Collect', icon: '✎' },
+  { id: 'drafts', label: 'Drafts', icon: '📄' },
   { id: 'records', label: 'Records', icon: '☰' },
 ]
 
@@ -267,6 +269,140 @@ function MyRecordsScreen({ user, onToast }) {
   )
 }
 
+/**
+ * Phone drafts — saved locally, verified by the surveyor, then pushed to
+ * the client admin (who confirms them in Review → Confirm).
+ */
+function DraftsScreen({ user, onToast, onEdit }) {
+  const [drafts, setDrafts] = useState(null)
+  const [pushing, setPushing] = useState(null)
+  const [openId, setOpenId] = useState(null)
+
+  const load = useCallback(async () => {
+    try {
+      const d = await listDrafts()
+      setDrafts(d || [])
+    } catch {
+      setDrafts([])
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+    const onQ = () => load()
+    window.addEventListener('esurvey-queue-change', onQ)
+    return () => window.removeEventListener('esurvey-queue-change', onQ)
+  }, [load])
+
+  const push = async (id) => {
+    setPushing(id)
+    try {
+      await pushDraft(id)
+      onToast?.('Draft pushed to client admin — pending review', 'ok')
+      void forceSyncNow()
+      await load()
+    } catch (e) {
+      onToast?.(e.message || 'Push failed', 'error')
+    } finally {
+      setPushing(null)
+    }
+  }
+
+  const remove = async (id) => {
+    if (!confirm('Delete this draft from the phone?')) return
+    await deleteDraft(id).catch(() => {})
+    await load()
+  }
+
+  return (
+    <div className="screen home-screen">
+      <p className="ptr-hint">Drafts stay on this phone — verify, edit or push to admin</p>
+      <div className="hero-card">
+        <p className="eyebrow">Phone drafts</p>
+        <h1>{user?.name || user?.username}</h1>
+        <p className="hero-sub">
+          {drafts == null ? 'Loading drafts…' : `${drafts.length} draft(s) on this phone`}
+        </p>
+        <div className="pill-row">
+          <button type="button" className="cta secondary" onClick={load}>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {drafts && drafts.length === 0 && (
+        <div className="card" style={{ marginTop: 12, padding: '14px' }}>
+          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+            No drafts yet — use “Save draft only” while collecting.
+          </p>
+        </div>
+      )}
+
+      {drafts?.map((d) => {
+        const qa = d.qa || {}
+        const a = qa.answers || {}
+        const loc = qa.location_details || {}
+        const open = openId === d.id
+        return (
+          <div key={d.id} className="card" style={{ marginTop: 12, padding: 14 }}>
+            <strong>{a.respondent_name || a.district || loc.display_name || 'Draft record'}</strong>
+            <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+              {String(d.createdAt || '').slice(0, 16).replace('T', ' ')} · geo{' '}
+              {qa.geo?.lat != null ? '✓' : '✗'} · photo {d.photoDataUrl ? '✓' : '✗'} · voice{' '}
+              {d.audioDataUrl ? '✓' : '✗'}
+            </span>
+            <div className="pill-row" style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="cta secondary"
+                disabled={pushing === d.id}
+                onClick={() => onEdit(d)}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                className="cta"
+                disabled={pushing === d.id}
+                onClick={() => push(d.id)}
+              >
+                {pushing === d.id ? 'Pushing…' : 'Push to admin'}
+              </button>
+              <button
+                type="button"
+                className="cta secondary danger-cta"
+                disabled={pushing === d.id}
+                onClick={() => remove(d.id)}
+              >
+                Delete
+              </button>
+            </div>
+            <button
+              type="button"
+              className="btn small"
+              style={{ marginTop: 8 }}
+              onClick={() => setOpenId(open ? null : d.id)}
+            >
+              {open ? 'Hide answers ▲' : 'Show answers ▼'}
+            </button>
+            {open && (
+              <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                {Object.entries(a)
+                  .filter(([k]) => !String(k).startsWith('_'))
+                  .map(([k, v]) => (
+                    <div key={k}>
+                      <strong>{k}:</strong> {String(v)}
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function SurveyorApp() {
   const [user, setUser] = useState(null)
   const [authReady, setAuthReady] = useState(false)
@@ -277,6 +413,16 @@ export default function SurveyorApp() {
   const [questionsMeta, setQuestionsMeta] = useState(null)
   const [toast, setToast] = useState(null)
   const [collectKey, setCollectKey] = useState(0)
+  const [editDraft, setEditDraft] = useState(null)
+  const [draftsCount, setDraftsCount] = useState(0)
+
+  const refreshDraftCount = useCallback(async () => {
+    try {
+      setDraftsCount(await draftCount())
+    } catch {
+      /* ignore */
+    }
+  }, [])
 
   const notify = useCallback((message, type = 'ok') => {
     setToast({ message, type })
@@ -327,7 +473,11 @@ export default function SurveyorApp() {
     startSyncEngine()
     setPendingSync(queueCount())
     void refreshQueueCountCache().then(setPendingSync)
-    void getQueueSnapshot().then((s) => setPendingSync(s.pending))
+    void getQueueSnapshot().then((s) => {
+      setPendingSync(s.pending)
+      setDraftsCount(s.drafts ?? 0)
+    })
+    void refreshDraftCount()
 
     const offSync = onSyncEngine((ev) => {
       if (ev.type === 'drain-done') {
@@ -338,12 +488,18 @@ export default function SurveyorApp() {
         }
       }
       if (ev.type === 'package-done') {
-        void getQueueSnapshot().then((s) => setPendingSync(s.pending))
+        void getQueueSnapshot().then((s) => {
+          setPendingSync(s.pending)
+          setDraftsCount(s.drafts ?? 0)
+        })
       }
     })
 
     const onQueue = () => {
-      void getQueueSnapshot().then((s) => setPendingSync(s.pending))
+      void getQueueSnapshot().then((s) => {
+        setPendingSync(s.pending)
+        setDraftsCount(s.drafts ?? 0)
+      })
     }
     window.addEventListener('esurvey-queue-change', onQueue)
 
@@ -534,11 +690,25 @@ export default function SurveyorApp() {
             <FieldCollectScreen
               key={collectKey}
               user={user}
+              draft={editDraft}
               onToast={notify}
               onDone={(_id, prog) => {
+                setEditDraft(null)
                 if (prog) setMyProgress(prog)
                 else getMyProgress().then(setMyProgress).catch(() => {})
                 void getQueueSnapshot().then((s) => setPendingSync(s.pending))
+              }}
+            />
+          )}
+          {tab === 'drafts' && (
+            <DraftsScreen
+              user={user}
+              onToast={notify}
+              onEdit={(d) => {
+                setEditDraft(d)
+                setCollectKey((k) => k + 1)
+                setTab('collect')
+                notify('Draft loaded — review, then push', 'ok')
               }}
             />
           )}
@@ -562,6 +732,21 @@ export default function SurveyorApp() {
               {t.icon}
             </span>
             <span>{t.label}</span>
+            {t.id === 'drafts' && draftsCount > 0 && (
+              <span
+                style={{
+                  background: '#e11d48',
+                  color: '#fff',
+                  borderRadius: 10,
+                  fontSize: 10,
+                  lineHeight: '16px',
+                  padding: '0 6px',
+                  marginLeft: 4,
+                }}
+              >
+                {draftsCount}
+              </span>
+            )}
           </button>
         ))}
       </nav>

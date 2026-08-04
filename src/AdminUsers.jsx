@@ -214,8 +214,11 @@ export default function AdminUsersScreen({ onToast }) {
   }
 
   function openProfile(u) {
+    if (!u) return
+    setProfileUser(u)
     setProfileData(null)
     setProfileFilters((f) => ({ ...f, period: 'total', district: '', survey: '' }))
+    setTab('profiles')
     loadProfile(u)
   }
 
@@ -1177,187 +1180,282 @@ export default function AdminUsersScreen({ onToast }) {
         </div>
       )}
 
-      {tab === 'profiles' && profileUser && (
+      {tab === 'profiles' && (
         <div className="card">
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 8,
-              marginBottom: 10,
-            }}
-          >
-            <h3 style={{ margin: 0 }}>
-              Profile · {profileUser.name || profileUser.username}
-              <span className="meta" style={{ marginLeft: 8 }}>
-                @{profileUser.username}
-              </span>
-            </h3>
-            <button type="button" className="btn small" onClick={() => setProfileUser(null)}>
-              Close
-            </button>
-          </div>
-
-          <div
-            className="admin-subtabs"
-            style={{ justifyContent: 'flex-start', flexWrap: 'wrap', marginBottom: 12 }}
-          >
-            {['total', 'today', 'day', 'month'].map((p) => (
-              <button
-                key={p}
-                type="button"
-                className={profileFilters.period === p ? 'map-tab active' : 'map-tab'}
-                onClick={() =>
-                  setProfileFilters((f) => ({ ...f, period: p }))
-                }
-              >
-                {p === 'total' ? 'Total' : p === 'today' ? 'Today' : p === 'day' ? 'Day' : 'Month'}
-              </button>
-            ))}
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              gap: 10,
-              alignItems: 'flex-end',
-              flexWrap: 'wrap',
-              marginBottom: 12,
-            }}
-          >
-            {profileFilters.period === 'day' && (
-              <label className="field compact">
-                <span>Day</span>
-                <input
-                  type="date"
-                  value={profileFilters.day}
-                  onChange={(e) =>
-                    setProfileFilters((f) => ({ ...f, day: e.target.value }))
-                  }
-                />
-              </label>
-            )}
-            {profileFilters.period === 'month' && (
-              <label className="field compact">
-                <span>Month</span>
-                <input
-                  type="month"
-                  value={profileFilters.month}
-                  onChange={(e) =>
-                    setProfileFilters((f) => ({ ...f, month: e.target.value }))
-                  }
-                />
-              </label>
-            )}
-            <label className="field compact" style={{ minWidth: 180 }}>
-              <span>District (geo)</span>
+          <div style={{ marginBottom: 14 }}>
+            <label className="field">
+              <span>Select Surveyor Profile</span>
               <select
-                value={profileFilters.district}
-                onChange={(e) =>
-                  setProfileFilters((f) => ({ ...f, district: e.target.value }))
-                }
+                value={profileUser?.id || ''}
+                onChange={(e) => {
+                  const val = e.target.value
+                  const found = surveyorRows.find((s) => String(s.id) === String(val))
+                  if (found) openProfile(found)
+                  else setProfileUser(null)
+                }}
               >
-                <option value="">All districts</option>
-                {(profileData?.geoSummary?.districts || []).map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field compact" style={{ minWidth: 180 }}>
-              <span>Survey</span>
-              <select
-                value={profileFilters.survey}
-                onChange={(e) =>
-                  setProfileFilters((f) => ({ ...f, survey: e.target.value }))
-                }
-              >
-                <option value="">All surveys</option>
-                {allSurveys.map((s) => (
+                <option value="">-- Choose a surveyor --</option>
+                {surveyorRows.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name || s.form_key || `#${s.id}`}
+                    {s.name || s.username} (@{s.username}) {s.key_id ? `[${s.key_id}]` : ''} · {s.progress_label}
                   </option>
                 ))}
               </select>
             </label>
-            <button
-              type="button"
-              className="btn primary"
-              disabled={profileLoading}
-              onClick={() => loadProfile(profileUser)}
-            >
-              {profileLoading ? 'Loading…' : 'Load'}
-            </button>
           </div>
 
-          {profileLoading ? (
-            <p className="muted">Loading records…</p>
-          ) : profileData ? (
+          {profileUser ? (
             <>
-              <div className="stat-row" style={{ marginBottom: 12 }}>
-                <div className="stat">
-                  <strong>{profileData.geoSummary.records}</strong>
-                  <span>Records</span>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 12,
+                  marginBottom: 14,
+                  padding: 12,
+                  border: '1px solid #243041',
+                  borderRadius: 10,
+                  background: 'rgba(255,255,255,0.02)',
+                }}
+              >
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  {profileUser.photo ? (
+                    <img
+                      src={profileUser.photo}
+                      alt="Surveyor Photo"
+                      style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: '50%',
+                        objectFit: 'cover',
+                        border: '2px solid #00e599',
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: '50%',
+                        background: '#243041',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 24,
+                      }}
+                    >
+                      👤
+                    </div>
+                  )}
+                  <div>
+                    <h3 style={{ margin: '0 0 4px' }}>
+                      {profileUser.name || profileUser.display_name || profileUser.username}
+                      <span className="meta" style={{ marginLeft: 8 }}>
+                        @{profileUser.username}
+                      </span>
+                    </h3>
+                    <p style={{ margin: 0, fontSize: 13, color: '#aaa' }}>
+                      Key ID: <strong style={{ color: '#00e599' }}>{profileUser.key_id || '—'}</strong>
+                      {' · '}
+                      Phone: <strong>{profileUser.phone || '—'}</strong>
+                      {' · '}
+                      Target: <strong>{profileUser.target_quota || profileUser.target || 0}</strong>
+                    </p>
+                    {(profileUser.aadhaar_front || profileUser.aadhaar_back) && (
+                      <div style={{ display: 'flex', gap: 10, marginTop: 6, fontSize: 12 }}>
+                        {profileUser.aadhaar_front && (
+                          <a
+                            href={profileUser.aadhaar_front}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: '#00e599', textDecoration: 'underline' }}
+                          >
+                            🪪 Aadhaar Front
+                          </a>
+                        )}
+                        {profileUser.aadhaar_back && (
+                          <a
+                            href={profileUser.aadhaar_back}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: '#00e599', textDecoration: 'underline' }}
+                          >
+                            🪪 Aadhaar Back
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="stat">
-                  <strong>{profileData.geoSummary.complete}</strong>
-                  <span>Complete</span>
-                </div>
-                <div className="stat">
-                  <strong>{profileData.geoSummary.confirmed}</strong>
-                  <span>Confirmed</span>
-                </div>
-                <div className="stat">
-                  <strong>{profileData.geoSummary.districts.length}</strong>
-                  <span>Districts</span>
-                </div>
-                <div className="stat">
-                  <strong>{profileData.geoSummary.constituencies.length}</strong>
-                  <span>Constituencies</span>
-                </div>
+                <button type="button" className="btn small" onClick={() => setProfileUser(null)}>
+                  Clear selection
+                </button>
               </div>
 
-              {profileData.geoSummary.districts.length > 0 && (
-                <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
-                  Districts: {profileData.geoSummary.districts.join(' · ')}
-                  {profileData.geoSummary.constituencies.length > 0
-                    ? ` — Constituencies: ${profileData.geoSummary.constituencies.join(' · ')}`
-                    : ''}
-                </p>
-              )}
+              <div
+                className="admin-subtabs"
+                style={{ justifyContent: 'flex-start', flexWrap: 'wrap', marginBottom: 12 }}
+              >
+                {['total', 'today', 'day', 'month'].map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    className={profileFilters.period === p ? 'map-tab active' : 'map-tab'}
+                    onClick={() =>
+                      setProfileFilters((f) => ({ ...f, period: p }))
+                    }
+                  >
+                    {p === 'total' ? 'Total' : p === 'today' ? 'Today' : p === 'day' ? 'Day' : 'Month'}
+                  </button>
+                ))}
+              </div>
 
-              {profileData.items.length === 0 ? (
-                <p className="muted">No records for this filter.</p>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 10,
+                  alignItems: 'flex-end',
+                  flexWrap: 'wrap',
+                  marginBottom: 12,
+                }}
+              >
+                {profileFilters.period === 'day' && (
+                  <label className="field compact">
+                    <span>Day</span>
+                    <input
+                      type="date"
+                      value={profileFilters.day}
+                      onChange={(e) =>
+                        setProfileFilters((f) => ({ ...f, day: e.target.value }))
+                      }
+                    />
+                  </label>
+                )}
+                {profileFilters.period === 'month' && (
+                  <label className="field compact">
+                    <span>Month</span>
+                    <input
+                      type="month"
+                      value={profileFilters.month}
+                      onChange={(e) =>
+                        setProfileFilters((f) => ({ ...f, month: e.target.value }))
+                      }
+                    />
+                  </label>
+                )}
+                <label className="field compact" style={{ minWidth: 180 }}>
+                  <span>District (geo)</span>
+                  <select
+                    value={profileFilters.district}
+                    onChange={(e) =>
+                      setProfileFilters((f) => ({ ...f, district: e.target.value }))
+                    }
+                  >
+                    <option value="">All districts</option>
+                    {(profileData?.geoSummary?.districts || []).map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field compact" style={{ minWidth: 180 }}>
+                  <span>Survey</span>
+                  <select
+                    value={profileFilters.survey}
+                    onChange={(e) =>
+                      setProfileFilters((f) => ({ ...f, survey: e.target.value }))
+                    }
+                  >
+                    <option value="">All surveys</option>
+                    {allSurveys.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name || s.form_key || `#${s.id}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={profileLoading}
+                  onClick={() => loadProfile(profileUser)}
+                >
+                  {profileLoading ? 'Loading…' : 'Load'}
+                </button>
+              </div>
+
+              {profileLoading ? (
+                <p className="muted">Loading records…</p>
+              ) : profileData ? (
+                <>
+                  <div className="stat-row" style={{ marginBottom: 12 }}>
+                    <div className="stat">
+                      <strong>{profileData.geoSummary.records}</strong>
+                      <span>Records</span>
+                    </div>
+                    <div className="stat">
+                      <strong>{profileData.geoSummary.complete}</strong>
+                      <span>Complete</span>
+                    </div>
+                    <div className="stat">
+                      <strong>{profileData.geoSummary.confirmed}</strong>
+                      <span>Confirmed</span>
+                    </div>
+                    <div className="stat">
+                      <strong>{profileData.geoSummary.districts.length}</strong>
+                      <span>Districts</span>
+                    </div>
+                    <div className="stat">
+                      <strong>{profileData.geoSummary.constituencies.length}</strong>
+                      <span>Constituencies</span>
+                    </div>
+                  </div>
+
+                  {profileData.geoSummary.districts.length > 0 && (
+                    <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
+                      Districts: {profileData.geoSummary.districts.join(' · ')}
+                      {profileData.geoSummary.constituencies.length > 0
+                        ? ` — Constituencies: ${profileData.geoSummary.constituencies.join(' · ')}`
+                        : ''}
+                    </p>
+                  )}
+
+                  {profileData.items.length === 0 ? (
+                    <p className="muted">No records for this filter.</p>
+                  ) : (
+                    <ul className="user-list">
+                      {profileData.items.map((it, i) => (
+                        <li key={it.id || i}>
+                          <div>
+                            <strong>#{it.record_index ?? it.id ?? i + 1}</strong>
+                            <span className="meta">
+                              {it.created_at || ''} · {it.form_key || 'field'}
+                            </span>
+                            <span className="meta">
+                              {it.answers?.district || 'no district'}
+                              {it.answers?.constituency
+                                ? ` · ${it.answers.constituency}`
+                                : ''}
+                            </span>
+                          </div>
+                          <span className="pill ok">
+                            <span className="dot" />
+                            {it.status || 'submitted'}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
               ) : (
-                <ul className="user-list">
-                  {profileData.items.map((it, i) => (
-                    <li key={it.id || i}>
-                      <div>
-                        <strong>#{it.record_index ?? it.id ?? i + 1}</strong>
-                        <span className="meta">
-                          {it.created_at || ''} · {it.form_key || 'field'}
-                        </span>
-                        <span className="meta">
-                          {it.answers?.district || 'no district'}
-                          {it.answers?.constituency
-                            ? ` · ${it.answers.constituency}`
-                            : ''}
-                        </span>
-                      </div>
-                      <span className="pill ok">
-                        <span className="dot" />
-                        {it.status || 'submitted'}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <p className="muted">Press Load to fetch records for this profile.</p>
               )}
             </>
           ) : (
-            <p className="muted">Select a surveyor from the list and press Profile.</p>
+            <p className="muted">Select a surveyor from the dropdown above or click <strong>Profile</strong> on any surveyor in the list.</p>
           )}
         </div>
       )}

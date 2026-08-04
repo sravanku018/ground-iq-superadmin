@@ -897,7 +897,7 @@ export default function SurveyorApp() {
 
   useEffect(() => {
     if (!user || !authReady) return undefined
-    const stopNet = watchNetwork(setNetwork, { intervalMs: 20_000 })
+    const stopNet = watchNetwork(setNetwork, { intervalMs: 45_000 })
     startSyncEngine()
     setPendingSync(queueCount())
     void refreshQueueCountCache().then(setPendingSync)

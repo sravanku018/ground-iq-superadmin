@@ -14,7 +14,7 @@ import {
 } from './localStore'
 import { checkNetwork, isStrongEnoughToSync, watchNetwork } from './network'
 
-const TICK_MS = 10_000
+const TICK_MS = 60_000
 const POST_TIMEOUT = 45_000
 
 let running = false
@@ -249,10 +249,13 @@ export function startSyncEngine() {
   stopWatch = watchNetwork((status) => {
     emit({ type: 'network', status })
     if (isStrongEnoughToSync(status)) void drainQueue('network-strong')
-  }, { intervalMs: 20_000 })
+  }, { intervalMs: 45_000 })
 
-  tickTimer = setInterval(() => {
-    void drainQueue('interval')
+  tickTimer = setInterval(async () => {
+    // Skip DB hit entirely when nothing is queued
+    const { queueStats } = await import('./localStore')
+    const stats = await queueStats()
+    if (stats.pending > 0) void drainQueue('interval')
   }, TICK_MS)
 
   if (typeof document !== 'undefined') {

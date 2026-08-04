@@ -1293,53 +1293,72 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                           })}
                         </div>
                       </div>
-                    ) : q.options?.length ? (
-                      <div
-                        style={{
-                          display: 'flex',
-                          flexWrap: 'wrap',
-                          gap: 10,
-                          marginTop: 10,
-                        }}
-                      >
-                        {q.options.map((opt, oi) => {
-                          const sel = answers[q.id] === opt
-                          const optKey = String(opt || '').trim()
-                          const bg =
-                            SENTIMENT_COLORS[optKey] ||
-                            (q.type === 'sentiment'
-                              ? optKey === 'Positive' ? '#059669' : optKey === 'Negative' ? '#dc2626' : '#d97706'
-                              : OPTION_COLORS[oi % OPTION_COLORS.length])
-                          return (
-                            <button
-                              key={opt}
-                              type="button"
-                              className="chip"
-                              style={{
-                                background: bg,
-                                borderColor: bg,
-                                color: '#ffffff',
-                                fontWeight: 'bold',
-                                opacity: answers[q.id] && !sel ? 0.45 : 1,
-                                outline: sel ? '3px solid #ffffff' : 'none',
-                                outlineOffset: 2,
-                                ...(q.type === 'abc'
-                                  ? { padding: '14px 28px', fontSize: 18, borderRadius: 12 }
-                                  : q.type === 'sentiment'
-                                    ? {
-                                        padding: '14px 22px',
-                                        fontSize: 16,
-                                        borderRadius: 20,
-                                        minWidth: 110,
-                                      }
-                                    : { padding: '10px 18px', fontSize: 14, borderRadius: 18 }),
-                              }}
-                              onClick={() => setAnswers((a) => ({ ...a, [q.id]: opt }))}
-                            >
-                              {opt}
-                            </button>
-                          )
-                        })}
+                    ) : (Array.isArray(q.options) && q.options.length > 0) || (q.type === 'range' || q.type === 'numeric_range' || q.type === 'age') ? (
+                      <div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: 10,
+                            marginTop: 10,
+                          }}
+                        >
+                          {(Array.isArray(q.options) && q.options.length > 0
+                            ? q.options
+                            : ['10-20', '21-30', '31-40', '41-50', '50+']
+                          ).map((opt, oi) => {
+                            const sel = answers[q.id] === opt
+                            const optKey = String(opt || '').trim()
+                            const bg =
+                              SENTIMENT_COLORS[optKey] ||
+                              (q.type === 'sentiment'
+                                ? optKey === 'Positive' ? '#059669' : optKey === 'Negative' ? '#dc2626' : '#d97706'
+                                : OPTION_COLORS[oi % OPTION_COLORS.length])
+                            return (
+                              <button
+                                key={opt}
+                                type="button"
+                                className="chip"
+                                style={{
+                                  background: bg,
+                                  borderColor: bg,
+                                  color: '#ffffff',
+                                  fontWeight: 'bold',
+                                  opacity: answers[q.id] && !sel ? 0.45 : 1,
+                                  outline: sel ? '3px solid #ffffff' : 'none',
+                                  outlineOffset: 2,
+                                  ...(q.type === 'abc'
+                                    ? { padding: '14px 28px', fontSize: 18, borderRadius: 12 }
+                                    : (q.type === 'range' || q.type === 'numeric_range' || q.type === 'age')
+                                      ? { padding: '12px 22px', fontSize: 16, borderRadius: 16, minWidth: 90 }
+                                      : q.type === 'sentiment'
+                                        ? {
+                                            padding: '14px 22px',
+                                            fontSize: 16,
+                                            borderRadius: 20,
+                                            minWidth: 110,
+                                          }
+                                        : { padding: '10px 18px', fontSize: 14, borderRadius: 18 }),
+                                }}
+                                onClick={() => setAnswers((a) => ({ ...a, [q.id]: opt }))}
+                              >
+                                {opt}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        {(q.type === 'range' || q.type === 'numeric_range' || q.type === 'age') && (
+                          <label className="field" style={{ marginTop: 12 }}>
+                            <span>Or type exact number / age</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={answers[q.id] || ''}
+                              onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
+                              placeholder="e.g. 25"
+                            />
+                          </label>
+                        )}
                       </div>
                     ) : (
                       <label className="field" style={{ marginTop: 10 }}>

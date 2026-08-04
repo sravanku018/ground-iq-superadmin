@@ -129,7 +129,8 @@ function bearer(req: Request): string | null {
 async function getUser(token: string | null) {
   if (!token || !sql) return null;
   const rows = await sql`
-    SELECT u.id, u.username, u.display_name, u.role, u.active, u.created_at
+    SELECT u.id, u.username, u.display_name, u.role, u.active, u.created_at,
+           u.key_id, u.phone, u.photo, u.aadhaar_front, u.aadhaar_back
     FROM app_sessions s
     JOIN app_users u ON u.id = s.user_id
     WHERE s.token = ${token}
@@ -147,7 +148,31 @@ async function getUser(token: string | null) {
     role: u.role,
     active: u.active,
     created_at: u.created_at,
+    key_id: u.key_id || null,
+    phone: u.phone || null,
+    photo: u.photo || null,
+    aadhaar_front: u.aadhaar_front || null,
+    aadhaar_back: u.aadhaar_back || null,
   };
+}
+
+/** Unique surveyor key ID, e.g. GROUND-8F3K2Q (no 0/O/1/I) */
+function genUserKeyId(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let k = "";
+  for (let i = 0; i < 6; i++) {
+    k += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return `GROUND-${k}`;
+}
+
+async function uniqueUserKeyId(): Promise<string> {
+  for (let i = 0; i < 25; i++) {
+    const k = genUserKeyId();
+    const hit = await sql`SELECT id FROM app_users WHERE key_id = ${k} LIMIT 1`.catch(() => []);
+    if (!hit.length) return k;
+  }
+  return `GROUND-${Date.now().toString(36).toUpperCase().slice(-6)}`;
 }
 
 /** Default Q/A form loaded by field app (admin can edit via dashboard) */
@@ -327,6 +352,20 @@ async function ensureSchema() {
   // Admin-assigned target: how many records each surveyor must complete
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS target_quota INTEGER NOT NULL DEFAULT 0`
     .catch(() => null);
+  // Surveyor profile: unique key ID + contact + photo + Aadhaar card images
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS key_id TEXT`.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS phone TEXT`.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS photo TEXT`.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS aadhaar_front TEXT`.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS aadhaar_back TEXT`.catch(() => null);
+  // Unique key ID backfill for existing users (idempotent — different key per row)
+  const noKey = await sql`
+    SELECT id FROM app_users WHERE key_id IS NULL OR key_id = ''
+  `.catch(() => []);
+  for (const r of noKey as { id: number }[]) {
+    await sql`UPDATE app_users SET key_id = ${await uniqueUserKeyId()} WHERE id = ${r.id}`
+      .catch(() => null);
+  }
   await sql`
     CREATE TABLE IF NOT EXISTS app_sessions (
       token TEXT PRIMARY KEY,
@@ -2541,7 +2580,8 @@ Deno.serve(async (req) => {
       }
       const rows = await sql`
         SELECT id, username, display_name, role, active, created_at,
-               COALESCE(target_quota, 0) AS target_quota
+               COALESCE(target_quota, 0) AS target_quota,
+               key_id, phone, photo, aadhaar_front, aadhaar_back
         FROM app_users
         ORDER BY id
       `.catch(async () =>
@@ -2571,6 +2611,11 @@ Deno.serve(async (req) => {
           created_at: r.created_at,
           target_quota: target,
           done,
+          key_id: r.key_id || null,
+          phone: r.phone || null,
+          photo: r.photo || null,
+          aadhaar_front: r.aadhaar_front || null,
+          aadhaar_back: r.aadhaar_back || null,
           surveys: assignedMap.get(Number(r.id)) || [],
           status: isCollector ? progressStatus(done, target) : "admin",
           progress_label: isCollector
@@ -2590,6 +2635,7 @@ Deno.serve(async (req) => {
       const username = String(body.username || "").trim().toLowerCase();
       const password = String(body.password || "");
       const name = String(body.name || username).trim();
+      const phone = String(body.phone || "").trim();
       const target_quota = Math.max(0, Math.min(Number(body.target_quota) || 0, 100000));
       // surveyor = field collector (can login field app); admin = portal only
       const role = body.role === "admin" ? "admin" : "surveyor";
@@ -2610,10 +2656,11 @@ Deno.serve(async (req) => {
         .catch(() => null);
       try {
         const password_hash = await hashPasswordAsync(password);
+        const key_id = await uniqueUserKeyId();
         const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active)
-          VALUES (${username}, ${password_hash}, ${name}, ${role}, ${target_quota}, TRUE)
-          RETURNING id, username, display_name, role, active, created_at, target_quota
+          INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active, key_id, phone)
+          VALUES (${username}, ${password_hash}, ${name}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null})
+          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone
         `;
         const u = inserted[0] as Record<string, unknown>;
         return json({
@@ -2625,6 +2672,8 @@ Deno.serve(async (req) => {
             active: u.active !== false,
             created_at: u.created_at,
             target_quota: u.target_quota ?? target_quota,
+            key_id: u.key_id || key_id,
+            phone: u.phone || null,
           },
           field_app_access: role === "surveyor",
           field_app_login: role === "surveyor"
@@ -2665,6 +2714,7 @@ Deno.serve(async (req) => {
         password: string;
         name: string;
         target_quota: number;
+        key_id: string;
       }[] = [];
       await sql`ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_role_check`.catch(() => null);
       await sql`
@@ -2680,11 +2730,12 @@ Deno.serve(async (req) => {
       for (const username of names) {
         const displayName = `Surveyor ${username}`;
         try {
+          const key_id = await uniqueUserKeyId();
           await sql`
-            INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active)
-            VALUES (${username}, ${password_hash}, ${displayName}, ${"surveyor"}, ${target_quota}, TRUE)
+            INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active, key_id)
+            VALUES (${username}, ${password_hash}, ${displayName}, ${"surveyor"}, ${target_quota}, TRUE, ${key_id})
           `;
-          created.push({ username, password, name: displayName, target_quota });
+          created.push({ username, password, name: displayName, target_quota, key_id });
         } catch (e) {
           errors.push(`${username}: ${(e as Error).message || "exists"}`);
         }
@@ -2701,6 +2752,74 @@ Deno.serve(async (req) => {
           : "No users created — usernames may already exist. Try prefix t or s2.",
         errors: errors.length ? errors.slice(0, 5) : undefined,
       }, 201);
+    }
+
+    // Profile media upload endpoint (photo, aadhaar_front, aadhaar_back)
+    if (
+      (path === "/api/users/profile-media" ||
+        path.match(/^\/api\/users\/\d+\/media$/) ||
+        path.match(/^\/api\/users\/\d+\/profile-media$/)) &&
+      method === "POST"
+    ) {
+      if (!me) return json({ error: "Login required" }, 401);
+      const urlParts = path.split("/");
+      const pathId = urlParts.length >= 4 && /^\d+$/.test(urlParts[3]) ? Number(urlParts[3]) : null;
+      const body = await readBody(req);
+      const targetId = pathId || Number(body.user_id) || Number(body.id) || me.id;
+      if (!targetId) return json({ error: "Invalid user id" }, 400);
+
+      if (me.role !== "admin" && me.id !== targetId) {
+        return json({ error: "Forbidden — can only edit own profile media" }, 403);
+      }
+
+      const existing = await sql`
+        SELECT id, username, display_name, photo, aadhaar_front, aadhaar_back
+        FROM app_users WHERE id = ${targetId}
+      `;
+      if (!existing.length) return json({ error: "User not found" }, 404);
+
+      let photoVal = body.photo !== undefined ? (body.photo ? String(body.photo) : null) : null;
+      let aadhaarFrontVal = body.aadhaar_front !== undefined ? (body.aadhaar_front ? String(body.aadhaar_front) : null) : null;
+      let aadhaarBackVal = body.aadhaar_back !== undefined ? (body.aadhaar_back ? String(body.aadhaar_back) : null) : null;
+
+      const field = String(body.field || body.kind || "").toLowerCase();
+      const singleData = body.data !== undefined ? String(body.data) : body.url !== undefined ? String(body.url) : body.value !== undefined ? String(body.value) : null;
+
+      if (singleData !== null) {
+        if (field === "photo") photoVal = singleData || null;
+        else if (field === "aadhaar_front" || field === "aadhaar-front" || field === "aadhaarfront") aadhaarFrontVal = singleData || null;
+        else if (field === "aadhaar_back" || field === "aadhaar-back" || field === "aadhaarback") aadhaarBackVal = singleData || null;
+      }
+
+      const ex = existing[0] as Record<string, unknown>;
+      const nextPhoto = photoVal !== null ? photoVal : ((ex.photo as string | null) || null);
+      const nextAadhaarFront = aadhaarFrontVal !== null ? aadhaarFrontVal : ((ex.aadhaar_front as string | null) || null);
+      const nextAadhaarBack = aadhaarBackVal !== null ? aadhaarBackVal : ((ex.aadhaar_back as string | null) || null);
+
+      for (const [k, v] of [["photo", nextPhoto], ["aadhaar_front", nextAadhaarFront], ["aadhaar_back", nextAadhaarBack]] as const) {
+        if (v && typeof v === "string" && v.length > 3_500_000) {
+          return json({ error: `${k} image too large. Max 2.5MB base64 per image.` }, 413);
+        }
+      }
+
+      const updated = await sql`
+        UPDATE app_users
+        SET photo = ${nextPhoto},
+            aadhaar_front = ${nextAadhaarFront},
+            aadhaar_back = ${nextAadhaarBack}
+        WHERE id = ${targetId}
+        RETURNING id, username, display_name, key_id, phone, photo, aadhaar_front, aadhaar_back
+      `;
+
+      const u = updated[0] as Record<string, unknown>;
+      return json({
+        ok: true,
+        user_id: u.id,
+        username: u.username,
+        photo: u.photo || null,
+        aadhaar_front: u.aadhaar_front || null,
+        aadhaar_back: u.aadhaar_back || null,
+      });
     }
 
     // Client Admin: edit username/password/name, disable, revoke sessions
@@ -2768,6 +2887,14 @@ Deno.serve(async (req) => {
       }
 
       const nextName = body.name != null ? String(body.name).trim() : ex.display_name;
+      const nextPhone =
+        body.phone != null ? String(body.phone).trim() : (ex as Record<string, unknown>).phone || null;
+      const nextPhoto =
+        body.photo != null ? String(body.photo).trim() : (ex as Record<string, unknown>).photo || null;
+      const nextAadhaarFront =
+        body.aadhaar_front != null ? String(body.aadhaar_front).trim() : (ex as Record<string, unknown>).aadhaar_front || null;
+      const nextAadhaarBack =
+        body.aadhaar_back != null ? String(body.aadhaar_back).trim() : (ex as Record<string, unknown>).aadhaar_back || null;
       const nextRole =
         body.role === "admin" || body.role === "surveyor" ? body.role : ex.role;
       const nextQuota =
@@ -2784,9 +2911,13 @@ Deno.serve(async (req) => {
               display_name = ${nextName},
               role = ${nextRole},
               active = ${nextActive},
-              target_quota = ${nextQuota}
+              target_quota = ${nextQuota},
+              phone = ${nextPhone},
+              photo = ${nextPhoto},
+              aadhaar_front = ${nextAadhaarFront},
+              aadhaar_back = ${nextAadhaarBack}
           WHERE id = ${id}
-          RETURNING id, username, display_name, role, active, created_at, target_quota
+          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back
         `;
       } catch (e) {
         const msg = (e as Error).message || "";
@@ -2819,6 +2950,11 @@ Deno.serve(async (req) => {
           active: u.active,
           created_at: u.created_at,
           target_quota: u.target_quota ?? nextQuota,
+          key_id: u.key_id || null,
+          phone: u.phone || nextPhone || null,
+          photo: u.photo || nextPhoto || null,
+          aadhaar_front: u.aadhaar_front || nextAadhaarFront || null,
+          aadhaar_back: u.aadhaar_back || nextAadhaarBack || null,
         },
         password_changed: passwordChanged,
         username_changed: nextUsername !== ex.username,
@@ -3054,6 +3190,8 @@ Deno.serve(async (req) => {
       let dateTo = (url.searchParams.get("date_to") || "").trim();
       const userQ = (url.searchParams.get("user") || "").trim().toLowerCase();
       const surveyQ = (url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim();
+      const districtQ = (url.searchParams.get("district") || "").trim().toLowerCase();
+      const constituencyQ = (url.searchParams.get("constituency") || url.searchParams.get("ac") || "").trim().toLowerCase();
       const period = (url.searchParams.get("period") || "total").trim().toLowerCase();
       const dayParam = (url.searchParams.get("day") || "").trim();
       const monthParam = (url.searchParams.get("month") || "").trim();
@@ -3133,6 +3271,8 @@ Deno.serve(async (req) => {
         if (dateTo && date > dateTo) continue;
         if (userQ && !user.toLowerCase().includes(userQ)) continue;
         if (surveyQ && String(payload.form_key || "default") !== surveyQ) continue;
+        if (districtQ && !String(a.district || "").toLowerCase().includes(districtQ)) continue;
+        if (constituencyQ && !String(a.constituency || a.assembly || "").toLowerCase().includes(constituencyQ)) continue;
         let qSkip = false;
         for (const [qid, want] of qFilters) {
           const val = answerOf(a, qid);

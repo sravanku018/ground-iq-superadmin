@@ -24,6 +24,8 @@ export default function AdminAnalyzeScreen({ onToast }) {
   const [month, setMonth] = useState(thisMonthStr())
   const [user, setUser] = useState('')
   const [survey, setSurvey] = useState('')
+  const [district, setDistrict] = useState('')
+  const [constituency, setConstituency] = useState('')
   const [qFilters, setQFilters] = useState({}) // q_<questionId> → value
   const [surveys, setSurveys] = useState([])
   const [completeness, setCompleteness] = useState('all')
@@ -44,14 +46,19 @@ export default function AdminAnalyzeScreen({ onToast }) {
   }, [])
 
   const scopeParams = useMemo(() => {
-    const p = { period, user: user || undefined }
+    const p = {
+      period,
+      user: user || undefined,
+      district: district || undefined,
+      constituency: constituency || undefined,
+    }
     if (period === 'day') p.day = day
     if (period === 'month') p.month = month
     if (period === 'today') {
       /* server expands */
     }
     return p
-  }, [period, day, month, user])
+  }, [period, day, month, user, district, constituency])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -64,6 +71,8 @@ export default function AdminAnalyzeScreen({ onToast }) {
         getAdminAnalyze({
           ...scopeParams,
           survey,
+          district: district || undefined,
+          constituency: constituency || undefined,
           ...Object.fromEntries(Object.entries(qFilters).filter(([, v]) => v)),
         }),
         listSubmissions(300, 'all', {
@@ -72,6 +81,8 @@ export default function AdminAnalyzeScreen({ onToast }) {
           month: scopeParams.month,
           user: user,
           survey,
+          district: district || undefined,
+          constituency: constituency || undefined,
           completeness: completeness === 'all' ? '' : completeness,
           ...Object.fromEntries(Object.entries(qFilters).filter(([, v]) => v)),
           // expand day/month for submissions list if needed
@@ -99,6 +110,8 @@ export default function AdminAnalyzeScreen({ onToast }) {
           month: scopeParams.month,
           user,
           survey,
+          district: district || undefined,
+          constituency: constituency || undefined,
           completeness: completeness === 'all' ? 'all' : completeness,
           ...Object.fromEntries(
             Object.entries(qFilters).filter(([, v]) => v),
@@ -110,7 +123,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
       setSummary(list.summary || analyze.totals)
       setAnalytics(charts)
       onToast?.(
-        `Loaded ${list.total ?? analyze.totals?.records ?? 0} · ${period}${user ? ` · ${user}` : ''}`,
+        `Loaded ${list.total ?? analyze.totals?.records ?? 0} · ${period}${user ? ` · ${user}` : ''}${district ? ` · ${district}` : ''}`,
         'ok',
       )
     } catch (e) {
@@ -118,7 +131,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
     } finally {
       setLoading(false)
     }
-  }, [scopeParams, completeness, user, survey, qFilters, period, day, month, onToast])
+  }, [scopeParams, completeness, user, survey, district, constituency, qFilters, period, day, month, onToast])
 
   async function confirmOne(id, force = false) {
     setBusyId(id)
@@ -152,14 +165,14 @@ export default function AdminAnalyzeScreen({ onToast }) {
     <div className="screen">
       <header className="screen-head">
         <h2>Client Admin · Analyze</h2>
-        <p>Daily · monthly · surveyor daily · surveyor monthly · then confirm</p>
+        <p>Survey → surveyor → geolocation → day / month → rest</p>
       </header>
 
       <div className="card" style={{ marginBottom: 12 }}>
         <h3>Data filters</h3>
         <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-          Step by step: pick a <strong>survey</strong> → <strong>surveyor</strong> →{' '}
-          <strong>day / month</strong>. Question filters load from the survey.
+          Step by step: <strong>1. Survey name</strong> → <strong>2. Surveyor name</strong> →{' '}
+          <strong>3. Geolocation</strong> → <strong>4. Day / Month</strong> → <strong>5. Rest</strong> (questions & status).
         </p>
 
         {/* Step 1 · Survey name */}
@@ -191,7 +204,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
           </label>
         </div>
 
-        {/* Step 2 · Surveyor — options load per survey */}
+        {/* Step 2 · Surveyor name */}
         <div
           style={{
             border: '1px solid #243041',
@@ -221,7 +234,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
           )}
         </div>
 
-        {/* Step 3 · Day / Month */}
+        {/* Step 3 · Geolocation */}
         <div
           style={{
             border: '1px solid #243041',
@@ -230,7 +243,41 @@ export default function AdminAnalyzeScreen({ onToast }) {
             marginBottom: 10,
           }}
         >
-          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>3 · Day / Month</p>
+          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>3 · Geolocation</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+            <label className="field">
+              <span>District</span>
+              <select value={district} onChange={(e) => setDistrict(e.target.value)}>
+                <option value="">All districts</option>
+                {(analytics?.filterOptions?.districts || []).map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Assembly constituency</span>
+              <input
+                type="text"
+                placeholder="Filter by AC name…"
+                value={constituency}
+                onChange={(e) => setConstituency(e.target.value)}
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* Step 4 · Day / Month */}
+        <div
+          style={{
+            border: '1px solid #243041',
+            borderRadius: 10,
+            padding: 10,
+            marginBottom: 10,
+          }}
+        >
+          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>4 · Day / Month</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
             {[
               { id: 'total', label: 'Total data' },
@@ -262,7 +309,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
           )}
         </div>
 
-        {/* Question filters — load per survey */}
+        {/* Step 5 · Rest (Question filters & status) */}
         <div
           style={{
             border: '1px solid #243041',
@@ -272,7 +319,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
           }}
         >
           <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
-            Question filters (auto from survey)
+            5 · Rest (Question filters & status)
           </p>
           {analytics?.dataFilters?.questions?.map((q) => (
             <label className="field" key={q.id}>
@@ -294,7 +341,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
           ))}
           {survey && (analytics?.dataFilters?.questions || []).length === 0 && (
             <p className="muted" style={{ fontSize: 12 }}>
-              This survey has no questions yet — add them in the Surveys tab.
+              This survey has no question filters yet.
             </p>
           )}
           {!survey && (

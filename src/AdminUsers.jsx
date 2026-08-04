@@ -527,6 +527,9 @@ export default function AdminUsersScreen({ onToast }) {
       const next = !user.verified
       await updateUser(user.id, { verified: next })
       onToast?.(`Surveyor @${user.username} ${next ? 'Verified ✓' : 'Unverified'}`, 'ok')
+      if (profileUser && String(profileUser.id) === String(user.id)) {
+        setProfileUser((prev) => (prev ? { ...prev, verified: next } : null))
+      }
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -1354,29 +1357,42 @@ export default function AdminUsersScreen({ onToast }) {
                 </div>
 
                 {/* Aadhaar Cards */}
-                {(profileUser.aadhaar_front || profileUser.aadhaar_back) && (
-                  <div style={{ background: '#1e293b', padding: 12, borderRadius: 10, border: '1px solid #334155', marginBottom: 16 }}>
-                    <h5 style={{ margin: '0 0 10px', fontSize: 13, color: '#38bdf8' }}>🪪 Aadhaar Identity Cards</h5>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={{ background: '#1e293b', padding: 14, borderRadius: 10, border: '1px solid #334155', marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <h5 style={{ margin: 0, fontSize: 14, color: '#38bdf8', fontWeight: 'bold' }}>🪪 Aadhaar Identity Verification</h5>
+                    <span style={{ fontSize: 11, color: profileUser.verified ? '#00e599' : '#f59e0b', fontWeight: 'bold' }}>
+                      {profileUser.verified ? '✓ Identity Verified' : '⏳ Verification Pending'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <span style={{ display: 'block', fontSize: 11, color: '#aaa', marginBottom: 6, fontWeight: 'bold' }}>Front Side</span>
                       {profileUser.aadhaar_front ? (
-                        <div>
-                          <span style={{ display: 'block', fontSize: 11, color: '#aaa', marginBottom: 4 }}>Front Side</span>
-                          <a href={profileUser.aadhaar_front} target="_blank" rel="noreferrer">
-                            <img src={profileUser.aadhaar_front} alt="Aadhaar Front" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid #00e599' }} />
-                          </a>
+                        <a href={profileUser.aadhaar_front} target="_blank" rel="noreferrer">
+                          <img src={profileUser.aadhaar_front} alt="Aadhaar Front" style={{ width: '100%', height: 130, objectFit: 'cover', borderRadius: 8, border: '2px solid #00e599' }} />
+                        </a>
+                      ) : (
+                        <div style={{ height: 130, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px dashed #475569', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12 }}>
+                          <span style={{ fontSize: 24, marginBottom: 4 }}>🪪</span>
+                          <span>No Front Card Uploaded</span>
                         </div>
-                      ) : null}
+                      )}
+                    </div>
+                    <div>
+                      <span style={{ display: 'block', fontSize: 11, color: '#aaa', marginBottom: 6, fontWeight: 'bold' }}>Back Side</span>
                       {profileUser.aadhaar_back ? (
-                        <div>
-                          <span style={{ display: 'block', fontSize: 11, color: '#aaa', marginBottom: 4 }}>Back Side</span>
-                          <a href={profileUser.aadhaar_back} target="_blank" rel="noreferrer">
-                            <img src={profileUser.aadhaar_back} alt="Aadhaar Back" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid #00e599' }} />
-                          </a>
+                        <a href={profileUser.aadhaar_back} target="_blank" rel="noreferrer">
+                          <img src={profileUser.aadhaar_back} alt="Aadhaar Back" style={{ width: '100%', height: 130, objectFit: 'cover', borderRadius: 8, border: '2px solid #00e599' }} />
+                        </a>
+                      ) : (
+                        <div style={{ height: 130, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px dashed #475569', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12 }}>
+                          <span style={{ fontSize: 24, marginBottom: 4 }}>🪪</span>
+                          <span>No Back Card Uploaded</span>
                         </div>
-                      ) : null}
+                      )}
                     </div>
                   </div>
-                )}
+                </div>
 
                 {/* Filters */}
                 <div

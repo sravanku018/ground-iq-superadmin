@@ -298,6 +298,17 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
     setPhone(user?.phone || '')
   }, [user?.phone])
 
+  // Fetch latest live profile on mount (including verification status from admin)
+  useEffect(() => {
+    me()
+      .then((res) => {
+        if (res?.user) {
+          onUserUpdated?.(res.user)
+        }
+      })
+      .catch(() => {})
+  }, [onUserUpdated])
+
   const handleMediaUpload = (field, file) => {
     if (!file) return
     if (file.size > 4 * 1024 * 1024) {
@@ -311,9 +322,11 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
       const dataUrl = e.target?.result
       if (typeof dataUrl === 'string') {
         try {
-          await uploadProfileMedia(fieldKey, dataUrl)
-          onUserUpdated?.((prev) => ({ ...prev, [fieldKey]: dataUrl }))
-          onToast?.(`${fieldKey.replace('_', ' ')} updated ✓`, 'ok')
+          const res = await uploadProfileMedia(fieldKey, dataUrl)
+          const newUrl = res?.[fieldKey] || dataUrl
+          onUserUpdated?.((prev) => ({ ...prev, [fieldKey]: newUrl }))
+          onToast?.(`${fieldKey.replace('_', ' ')} uploaded ✓`, 'ok')
+          me().then((m) => m?.user && onUserUpdated?.(m.user)).catch(() => {})
         } catch (err) {
           onToast?.(err.message || 'Upload failed', 'error')
         } finally {
@@ -330,6 +343,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
       await updateUser(user.id, { phone: phone.trim() })
       onUserUpdated?.((prev) => ({ ...prev, phone: phone.trim() }))
       onToast?.('Phone number updated ✓', 'ok')
+      me().then((m) => m?.user && onUserUpdated?.(m.user)).catch(() => {})
     } catch (err) {
       onToast?.(err.message || 'Failed to update phone', 'error')
     } finally {
@@ -736,13 +750,14 @@ export default function SurveyorApp() {
     setTimeout(() => setToast(null), 3200)
   }, [])
 
-  /** App-wide pull-to-refresh: questions + progress + queue */
+  /** App-wide pull-to-refresh: questions + progress + queue + user profile */
   const pullRefreshAll = useCallback(async () => {
     try {
-      const [data, prog, queue] = await Promise.all([
+      const [data, prog, queue, meRes] = await Promise.all([
         getSurveyForm(),
         getMyProgress().catch(() => null),
         getQueueSnapshot().catch(() => null),
+        me().catch(() => null),
       ])
       setQuestionsMeta({
         title: data.title,
@@ -752,6 +767,7 @@ export default function SurveyorApp() {
       })
       if (prog) setMyProgress(prog)
       if (queue) setPendingSync(queue.pending ?? 0)
+      if (meRes?.user) setUser(meRes.user)
       // Remount Collect so form reloads latest questions from admin
       setCollectKey((k) => k + 1)
       notify(

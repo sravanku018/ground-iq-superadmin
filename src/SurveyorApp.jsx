@@ -352,7 +352,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
   }
 
   return (
-    <div className="screen profile-screen" style={{ padding: '12px 14px' }}>
+    <div className="screen profile-screen" style={{ padding: '12px 14px 110px' }}>
       <div className="card" style={{ marginBottom: 14, textAlign: 'center', padding: '16px 14px' }}>
         <div style={{ position: 'relative', display: 'inline-block', marginBottom: 10 }}>
           {user?.photo ? (
@@ -435,44 +435,68 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
               </span>
             </div>
           )}
+          <button
+            type="button"
+            className="btn small"
+            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, background: '#1e293b', border: '1px solid #475569', color: '#38bdf8' }}
+            onClick={() => {
+              me().then((m) => {
+                if (m?.user) {
+                  onUserUpdated?.(m.user)
+                  onToast?.(m.user.verified ? 'Verified ✓' : 'Verification pending', 'ok')
+                }
+              }).catch(() => {})
+            }}
+          >
+            Check Status 🔄
+          </button>
         </div>
       </div>
 
       <div className="card" style={{ marginBottom: 14 }}>
-        <h3>📞 Surveyor Mobile Number</h3>
-        <p className="muted" style={{ fontSize: 12, margin: '2px 0 10px' }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 15, color: '#f8fafc' }}>📞 Surveyor Mobile Number</h3>
+        <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
           Registered phone number for contact & admin verification.
         </p>
-        <div className="field" style={{ margin: 0 }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <input
-              type="tel"
-              placeholder="+91 9876543210"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              style={{
-                flex: 1,
-                fontSize: 18,
-                fontWeight: 'bold',
-                letterSpacing: '0.04em',
-                padding: '12px 16px',
-                minHeight: 52,
-                borderRadius: 12,
-                border: '1px solid #00e599',
-                background: '#1a2332',
-                color: '#ffffff',
-              }}
-            />
-            <button
-              type="button"
-              className="btn primary"
-              style={{ padding: '12px 24px', fontSize: 15, fontWeight: 'bold', minHeight: 52, minWidth: 90 }}
-              disabled={savingPhone || phone === (user?.phone || '')}
-              onClick={handleSavePhone}
-            >
-              {savingPhone ? 'Saving…' : 'Save'}
-            </button>
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input
+            type="tel"
+            placeholder="+91 9876543210"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              fontSize: 18,
+              fontWeight: 'bold',
+              letterSpacing: '0.04em',
+              padding: '12px 16px',
+              minHeight: 52,
+              borderRadius: 12,
+              border: '2px solid #00e599',
+              background: '#1a2332',
+              color: '#ffffff',
+            }}
+          />
+          <button
+            type="button"
+            className="btn primary"
+            style={{
+              width: '100%',
+              padding: '12px',
+              fontSize: 15,
+              fontWeight: 'bold',
+              minHeight: 48,
+              borderRadius: 12,
+              background: '#00e599',
+              color: '#0f172a',
+              cursor: 'pointer',
+            }}
+            disabled={savingPhone || phone === (user?.phone || '')}
+            onClick={handleSavePhone}
+          >
+            {savingPhone ? 'Saving Phone…' : 'Save Phone Number'}
+          </button>
         </div>
       </div>
 

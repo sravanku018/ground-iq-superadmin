@@ -2332,6 +2332,12 @@ Deno.serve(async (req) => {
           role: user.role,
           active: user.active,
           created_at: user.created_at,
+          key_id: (user as Record<string, unknown>).key_id || null,
+          phone: (user as Record<string, unknown>).phone || null,
+          photo: (user as Record<string, unknown>).photo || null,
+          aadhaar_front: (user as Record<string, unknown>).aadhaar_front || null,
+          aadhaar_back: (user as Record<string, unknown>).aadhaar_back || null,
+          verified: (user as Record<string, unknown>).verified === true,
         },
         expires_at: expires.toISOString(),
         access:

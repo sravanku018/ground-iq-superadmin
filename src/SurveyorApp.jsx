@@ -855,14 +855,37 @@ export default function SurveyorApp() {
     setTimeout(() => setToast(null), 3200)
   }, [])
 
-  /** App-wide pull-to-refresh: questions + progress + queue + user profile */
+  /** App-wide pull-to-refresh: tab-aware — refreshes right data for active tab */
   const pullRefreshAll = useCallback(async () => {
     try {
-      const [data, prog, queue, meRes] = await Promise.all([
+      // Always fetch fresh user profile (catches admin verification, phone changes)
+      const meRes = await me().catch(() => null)
+      if (meRes?.user) setUser(meRes.user)
+
+      if (tab === 'profile') {
+        // Profile tab: just user refresh + feedback
+        notify(
+          meRes?.user?.verified
+            ? 'Profile refreshed · ✓ Verified'
+            : 'Profile refreshed',
+          'ok',
+        )
+        return
+      }
+
+      if (tab === 'records') {
+        // Records tab: user + progress
+        const prog = await getMyProgress().catch(() => null)
+        if (prog) setMyProgress(prog)
+        notify('Records refreshed ✓', 'ok')
+        return
+      }
+
+      // Home / Collect / Drafts: full refresh
+      const [data, prog, queue] = await Promise.all([
         getSurveyForm(),
         getMyProgress().catch(() => null),
         getQueueSnapshot().catch(() => null),
-        me().catch(() => null),
       ])
       setQuestionsMeta({
         title: data.title,
@@ -872,8 +895,7 @@ export default function SurveyorApp() {
       })
       if (prog) setMyProgress(prog)
       if (queue) setPendingSync(queue.pending ?? 0)
-      if (meRes?.user) setUser(meRes.user)
-      // Remount Collect so form reloads latest questions from admin
+      // Remount Collect so form reloads latest questions
       setCollectKey((k) => k + 1)
       notify(
         `Refreshed · ${(data.questions || []).length} question(s)` +
@@ -884,7 +906,7 @@ export default function SurveyorApp() {
       notify(e.message || 'Pull refresh failed', 'error')
       throw e
     }
-  }, [notify])
+  }, [notify, tab])
 
   const handleLogout = useCallback(async () => {
     stopSyncEngine()
@@ -938,6 +960,48 @@ export default function SurveyorApp() {
       stopSyncEngine()
     }
   }, [user, authReady, notify])
+
+  // ── Background user-change detector ──────────────────────────────────────
+  // Polls me() every 90s while the app is open. If admin changed something
+  // (verified status, phone, photo) it silently updates state + toasts once.
+  useEffect(() => {
+    if (!user || !authReady) return undefined
+    let cancelled = false
+    const check = async () => {
+      if (cancelled) return
+      try {
+        const res = await me()
+        const fresh = res?.user
+        if (!fresh || cancelled) return
+        setUser((prev) => {
+          if (!prev) return prev
+          const changes = []
+          if (fresh.verified !== prev.verified) {
+            changes.push(fresh.verified ? '✅ Admin Verified your account!' : 'Verification removed by Admin')
+          }
+          if (fresh.phone !== prev.phone && fresh.phone) {
+            changes.push(`📞 Phone updated: ${fresh.phone}`)
+          }
+          if (fresh.photo !== prev.photo && fresh.photo) {
+            changes.push('🖼 Profile photo updated by Admin')
+          }
+          if (changes.length > 0) {
+            // Toast outside setUser to avoid stale closure on notify
+            setTimeout(() => notify(changes[0], 'ok'), 50)
+          }
+          // Always merge fresh data even if no toast-worthy change
+          return { ...prev, ...fresh }
+        })
+      } catch {
+        /* silently ignore offline / token errors */
+      }
+    }
+    const iv = setInterval(check, 90_000)
+    return () => {
+      cancelled = true
+      clearInterval(iv)
+    }
+  }, [user?.id, authReady, notify])
 
   const loadAppData = useCallback(async () => {
     if (!getToken()) return
@@ -1097,8 +1161,8 @@ export default function SurveyorApp() {
       <main className="main">
         <PullToRefresh
           onRefresh={pullRefreshAll}
-          label="↓ Pull to refresh"
-          refreshingLabel="Refreshing questions…"
+          label={tab === 'profile' ? '↓ Pull to refresh profile' : tab === 'records' ? '↓ Pull to refresh records' : '↓ Pull to refresh'}
+          refreshingLabel={tab === 'profile' ? 'Refreshing profile…' : tab === 'records' ? 'Refreshing records…' : 'Refreshing…'}
         >
           {tab === 'home' && (
             <HomeScreen

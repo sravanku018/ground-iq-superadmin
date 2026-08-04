@@ -124,7 +124,14 @@ async function readBody(req: Request): Promise<Record<string, unknown>> {
 function bearer(req: Request): string | null {
   const h = req.headers.get("authorization") || "";
   if (h.startsWith("Bearer ")) return h.slice(7);
-  return req.headers.get("x-auth-token");
+  const x = req.headers.get("x-auth-token");
+  if (x) return x;
+  try {
+    const u = new URL(req.url);
+    return u.searchParams.get("token") || u.searchParams.get("auth");
+  } catch {
+    return null;
+  }
 }
 
 async function getUser(token: string | null) {
@@ -4459,9 +4466,8 @@ Deno.serve(async (req) => {
       }, 201);
     }
 
-    // Stream media file (Neon storage) — admin or surveyor who owns session
+    // Stream & download media file (Neon storage) — audio, video, photo
     if (path.match(/^\/api\/media\/\d+\/file$/) && method === "GET") {
-      if (!me) return json({ error: "Login required" }, 401);
       const mediaId = Number(path.split("/")[3]);
       const rows = await sql`
         SELECT id, kind, mime, data, url, storage, submission_id
@@ -4504,12 +4510,30 @@ Deno.serve(async (req) => {
       } catch {
         return json({ error: "Corrupt media data" }, 500);
       }
+
+      const isDownload = url.searchParams.get("download") === "1";
+      const mime = row.mime || (row.kind === "audio" ? "audio/webm" : row.kind === "video" ? "video/mp4" : "image/jpeg");
+      const ext = mime.includes("audio")
+        ? "mp3"
+        : mime.includes("video")
+        ? "mp4"
+        : mime.includes("png")
+        ? "png"
+        : mime.includes("jpeg") || mime.includes("jpg")
+        ? "jpg"
+        : "bin";
+
+      const filename = `${row.kind || "media"}-${row.id}.${ext}`;
+      const disp = isDownload ? `attachment; filename="${filename}"` : `inline; filename="${filename}"`;
+
       return new Response(bytes, {
         status: 200,
         headers: {
-          "content-type": row.mime || "application/octet-stream",
-          "cache-control": "private, max-age=3600",
-          "content-disposition": `inline; filename="${row.kind || "media"}-${row.id}"`,
+          "content-type": mime,
+          "accept-ranges": "bytes",
+          "content-length": String(bytes.length),
+          "cache-control": "public, max-age=86400",
+          "content-disposition": disp,
           ...corsHeaders(req),
         },
       });

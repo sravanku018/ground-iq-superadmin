@@ -523,6 +523,47 @@ export async function fetchMediaBlobUrl(pathOrUrl) {
 }
 
 /**
+ * Helper to download photo, audio, or video files to device with admin auth token.
+ */
+export async function downloadMediaFile(pathOrUrl, filename = 'media-file') {
+  if (!pathOrUrl) return
+  const token = getToken()
+  let url = pathOrUrl
+  if (!/^https?:\/\//i.test(url)) {
+    const base = getApiBase()
+    url = `${base}${pathOrUrl.startsWith('/') ? '' : '/'}${pathOrUrl}`
+  }
+  
+  let urlObj
+  try {
+    urlObj = new URL(url)
+  } catch {
+    urlObj = new URL(url, window.location.origin)
+  }
+  if (token && !urlObj.searchParams.has('token')) {
+    urlObj.searchParams.set('token', token)
+  }
+  urlObj.searchParams.set('download', '1')
+
+  try {
+    const headers = {}
+    if (token) headers.Authorization = `Bearer ${token}`
+    const res = await fetch(urlObj.toString(), { headers })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const blob = await res.blob()
+    const blobUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(blobUrl)
+  } catch (e) {
+    console.warn('Direct fetch download failed, attempting window open fallback:', e)
+    window.open(urlObj.toString(), '_blank')
+  }
+}
+
+/**
  * Always save to device queue first (systematic sync later).
  * No direct upload from callers.
  */

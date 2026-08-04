@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   confirmAllPending,
+  downloadMediaFile,
   fetchMediaBlobUrl,
   listSubmissionMedia,
   listSubmissions,
@@ -243,20 +244,24 @@ export default function ReviewQAScreen({ onToast }) {
                               (mediaById[item.id] || []).find((m) => m.kind === 'photo') ||
                               null
                             const src = photo?.playUrl || photo?.url || item.photo_url
+                            const rawUrl = photo?.url || item.photo_url || src
                             if (!src) return null
-                            const isHttp = /^https?:\/\//i.test(src)
                             return (
                               <div>
-                                <span className="muted" style={{ fontSize: 12 }}>
-                                  Photo
-                                  {photo?.storage ? ` · ${photo.storage}` : ''}
-                                </span>
-                                {isHttp && !src.includes('/api/media/') ? (
-                                  <a href={src} target="_blank" rel="noreferrer">
-                                    {' '}
-                                    Open
-                                  </a>
-                                ) : null}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  <span className="muted" style={{ fontSize: 12 }}>
+                                    Photo
+                                    {photo?.storage ? ` · ${photo.storage}` : ''}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="btn small"
+                                    style={{ fontSize: 11, padding: '2px 8px' }}
+                                    onClick={() => downloadMediaFile(rawUrl, `photo-${item.id}.jpg`)}
+                                  >
+                                    ⬇ Download Photo
+                                  </button>
+                                </div>
                                 <img
                                   src={src}
                                   alt="survey photo"
@@ -275,17 +280,28 @@ export default function ReviewQAScreen({ onToast }) {
                               (mediaById[item.id] || []).find((m) => m.kind === 'audio') ||
                               null
                             const src = audio?.playUrl || audio?.url || item.audio_url
+                            const rawUrl = audio?.url || item.audio_url || src
                             if (!src) return null
                             return (
                               <div>
-                                <span className="muted" style={{ fontSize: 12 }}>
-                                  Audio
-                                  {audio?.storage ? ` · ${audio.storage}` : ''}
-                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                                  <span className="muted" style={{ fontSize: 12 }}>
+                                    Audio
+                                    {audio?.storage ? ` · ${audio.storage}` : ''}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="btn small primary"
+                                    style={{ fontSize: 11, padding: '2px 8px' }}
+                                    onClick={() => downloadMediaFile(rawUrl, `audio-${item.id}.mp3`)}
+                                  >
+                                    ⬇ Download Audio
+                                  </button>
+                                </div>
                                 <audio
                                   controls
                                   src={src}
-                                  style={{ width: '100%', marginTop: 6 }}
+                                  style={{ width: '100%', marginTop: 2 }}
                                 />
                               </div>
                             )

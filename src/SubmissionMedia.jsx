@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchMediaBlobUrl, listSubmissionMedia } from './api'
+import { downloadMediaFile, fetchMediaBlobUrl, listSubmissionMedia } from './api'
 
 /**
  * Shared photo/audio viewer for one submission.
@@ -57,25 +57,30 @@ export default function SubmissionMedia({ item, compact }) {
     : null
   const photoSrc = (photo && (photo.playUrl || photo.url)) || item?.photo_url || ''
   const audioSrc = (audio && (audio.playUrl || audio.url)) || item?.audio_url || ''
-  const isHttpPhoto = /^https?:\/\//i.test(photoSrc) && !photoSrc.includes('/api/media/')
+  const rawPhotoUrl = photo?.url || item?.photo_url || photoSrc
+  const rawAudioUrl = audio?.url || item?.audio_url || audioSrc
 
   if (!photoSrc && !audioSrc) return null
 
   return (
     <div className="card" style={{ marginBottom: 10, padding: 10 }}>
       <strong style={{ fontSize: 13 }}>Media (free · Neon · no card)</strong>
-      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {photoSrc && (
           <div>
-            <span className="muted" style={{ fontSize: 12 }}>
-              Photo{photo?.storage ? ` · ${photo.storage}` : ''}
-            </span>
-            {isHttpPhoto && (
-              <a href={photoSrc} target="_blank" rel="noreferrer">
-                {' '}
-                Open
-              </a>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span className="muted" style={{ fontSize: 12 }}>
+                Photo{photo?.storage ? ` · ${photo.storage}` : ''}
+              </span>
+              <button
+                type="button"
+                className="btn small"
+                style={{ fontSize: 11, padding: '3px 8px' }}
+                onClick={() => downloadMediaFile(rawPhotoUrl, `photo-${item?.id || 'record'}.jpg`)}
+              >
+                ⬇ Download Photo
+              </button>
+            </div>
             <img
               src={photoSrc}
               alt="survey photo"
@@ -92,10 +97,20 @@ export default function SubmissionMedia({ item, compact }) {
         )}
         {audioSrc && (
           <div>
-            <span className="muted" style={{ fontSize: 12 }}>
-              Audio{audio?.storage ? ` · ${audio.storage}` : ''}
-            </span>
-            <audio controls src={audioSrc} style={{ width: '100%', marginTop: 6 }} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span className="muted" style={{ fontSize: 12 }}>
+                Audio Recording{audio?.storage ? ` · ${audio.storage}` : ''}
+              </span>
+              <button
+                type="button"
+                className="btn small primary"
+                style={{ fontSize: 11, padding: '3px 8px' }}
+                onClick={() => downloadMediaFile(rawAudioUrl, `audio-recording-${item?.id || 'record'}.mp3`)}
+              >
+                ⬇ Download Audio File
+              </button>
+            </div>
+            <audio controls src={audioSrc} style={{ width: '100%', marginTop: 2 }} />
           </div>
         )}
       </div>

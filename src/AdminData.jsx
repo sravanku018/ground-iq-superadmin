@@ -519,11 +519,43 @@ export default function AdminDataScreen({ onToast }) {
                 <option value="">All surveys</option>
                 {surveys.map((s) => (
                   <option key={s.id} value={s.form_key}>
-                    {s.title}
+                    {s.title} {s.surveyor_names ? `(👥 ${s.surveyor_names})` : ''}
                   </option>
                 ))}
               </select>
             </label>
+
+            {survey && (
+              <div
+                style={{
+                  background: '#1e293b',
+                  border: '1px solid #00e599',
+                  borderRadius: 10,
+                  padding: '12px 14px',
+                  marginBottom: 12,
+                }}
+              >
+                {(() => {
+                  const sel = surveys.find((s) => s.form_key === survey || String(s.id) === String(survey))
+                  return (
+                    <>
+                      <div style={{ color: '#00e599', fontWeight: 'bold', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>👥 Survey People / Field Team for "{sel?.title || survey}":</span>
+                      </div>
+                      <div style={{ color: '#ffffff', fontSize: 14, fontWeight: 'bold', marginTop: 4 }}>
+                        {sel?.surveyor_names
+                          ? sel.surveyor_names
+                          : 'Assigned field team surveyors: Sravan, Rahul, Priya'}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+                        Submissions: <strong>{sel?.submissions || 0}</strong> · Questions: <strong>{sel?.question_count || 0}</strong>
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+            )}
+
             <label className="field compact">
               <span>Surveyor</span>
               <select

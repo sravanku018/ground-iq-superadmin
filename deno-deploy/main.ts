@@ -3820,8 +3820,17 @@ Deno.serve(async (req) => {
         SELECT id, form_key, title, questions, updated_at FROM survey_form ORDER BY title
       `;
       const asg = await sql`
-        SELECT survey_id, COUNT(*)::int AS n FROM survey_assignments GROUP BY survey_id
-      `.catch(() => []);
+        SELECT a.survey_id, COUNT(*)::int AS n,
+               ARRAY_AGG(DISTINCT COALESCE(u.name, u.username)) AS names
+        FROM survey_assignments a
+        JOIN users u ON a.user_id = u.id
+        GROUP BY a.survey_id
+      `.catch(async () =>
+        await sql`
+          SELECT survey_id, COUNT(*)::int AS n, NULL AS names
+          FROM survey_assignments GROUP BY survey_id
+        `.catch(() => [])
+      );
       const rsp = await sql`
         SELECT survey_id, COUNT(*)::int AS total,
                COUNT(*) FILTER (WHERE status = 'done')::int AS done
@@ -3830,7 +3839,7 @@ Deno.serve(async (req) => {
       const sub = await sql`
         SELECT payload->>'form_key' AS fk, COUNT(*)::int AS n FROM submissions GROUP BY payload->>'form_key'
       `.catch(() => []);
-      const asgMap = new Map(asg.map((r) => [Number((r as { survey_id: number }).survey_id), (r as { n: number }).n]));
+      const asgMap = new Map(asg.map((r) => [Number((r as { survey_id: number }).survey_id), r as { n: number; names?: string[] }]));
       const rspMap = new Map(rsp.map((r) => [Number((r as { survey_id: number }).survey_id), r as { total: number; done: number }]));
       const subMap = new Map(sub.map((r) => [String((r as { fk: string }).fk), (r as { n: number }).n]));
       const items = (rows as Record<string, unknown>[]).map((r) => {
@@ -3838,13 +3847,16 @@ Deno.serve(async (req) => {
         if (typeof qs === "string") {
           try { qs = JSON.parse(qs); } catch { qs = []; }
         }
+        const asgData = asgMap.get(Number(r.id));
+        const names = Array.isArray(asgData?.names) ? asgData.names.filter(Boolean) : [];
         return {
           id: r.id,
           form_key: r.form_key,
           title: r.title,
           question_count: Array.isArray(qs) ? qs.length : 0,
           updated_at: r.updated_at,
-          surveyors: asgMap.get(Number(r.id)) || 0,
+          surveyors: asgData?.n || 0,
+          surveyor_names: names.join(", ") || "",
           respondents_total: rspMap.get(Number(r.id))?.total || 0,
           respondents_done: rspMap.get(Number(r.id))?.done || 0,
           submissions: subMap.get(String(r.form_key)) || 0,

@@ -410,27 +410,29 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
               position: 'absolute',
               bottom: 0,
               right: 0,
-              background: '#00e599',
-              color: '#111',
+              background: user?.verified ? '#334155' : '#00e599',
+              color: user?.verified ? '#64748b' : '#111',
               borderRadius: '50%',
               width: 30,
               height: 30,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
+              cursor: user?.verified ? 'not-allowed' : 'pointer',
               fontWeight: 'bold',
               boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
             }}
-            title="Upload photo"
+            title={user?.verified ? 'Photo locked after Admin Verification' : 'Upload photo'}
           >
-            📷
-            <input
-              type="file"
-              accept="image/*"
-              style={{ display: 'none' }}
-              onChange={(e) => handleMediaUpload('photo', e.target.files?.[0])}
-            />
+            {user?.verified ? '🔒' : '📷'}
+            {!user?.verified && (
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => handleMediaUpload('photo', e.target.files?.[0])}
+              />
+            )}
           </label>
         </div>
         <h2 style={{ margin: '4px 0 2px', fontSize: 20 }}>
@@ -561,59 +563,78 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
       </div>
 
       <div className="card" style={{ marginBottom: 14 }}>
-        <h3>Aadhaar Identity Verification</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <h3 style={{ margin: 0 }}>🪪 Aadhaar Identity Verification</h3>
+          {user?.verified && (
+            <span style={{ fontSize: 11, background: '#059669', color: '#fff', fontWeight: 'bold', padding: '2px 10px', borderRadius: 12 }}>
+              🔒 Verified & Locked
+            </span>
+          )}
+        </div>
         <p className="muted" style={{ fontSize: 12, margin: '0 0 12px' }}>
-          Upload front & back images of your Aadhaar card for field surveyor verification.
+          {user?.verified
+            ? 'Aadhaar documents locked after Admin Verification. Only Admin can update them.'
+            : 'Upload front & back images of your Aadhaar card for field surveyor verification.'}
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {/* Front */}
-          <div style={{ border: '1px dashed #334155', borderRadius: 8, padding: 10, textAlign: 'center', background: 'rgba(0,0,0,0.15)' }}>
-            <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 'bold' }}>Aadhaar Front</p>
+          <div style={{ border: user?.verified ? '1px solid #1e293b' : '1px dashed #334155', borderRadius: 8, padding: 10, textAlign: 'center', background: user?.verified ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.15)' }}>
+            <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 'bold', color: user?.verified ? '#64748b' : '#f8fafc' }}>Aadhaar Front</p>
             {user?.aadhaar_front ? (
               <img
                 src={user.aadhaar_front}
                 alt="Aadhaar Front"
-                style={{ width: '100%', height: 95, objectFit: 'cover', borderRadius: 6, marginBottom: 8 }}
+                style={{ width: '100%', height: 95, objectFit: 'cover', borderRadius: 6, marginBottom: 8, opacity: user?.verified ? 0.7 : 1 }}
               />
             ) : (
               <div style={{ height: 95, background: 'rgba(255,255,255,0.03)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 8 }}>
                 🪪
               </div>
             )}
-            <label className="btn small primary" style={{ display: 'block', width: '100%', boxSizing: 'border-box', cursor: 'pointer', textAlign: 'center' }}>
-              {uploading.front ? 'Uploading…' : user?.aadhaar_front ? 'Change Front' : 'Upload Front'}
-              <input
-                type="file"
-                accept="image/*"
-                style={{ display: 'none' }}
-                onChange={(e) => handleMediaUpload('front', e.target.files?.[0])}
-              />
+            <label
+              className="btn small"
+              style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', cursor: user?.verified ? 'not-allowed' : 'pointer', background: user?.verified ? '#1e293b' : undefined, color: user?.verified ? '#64748b' : undefined, border: user?.verified ? '1px solid #334155' : undefined }}
+            >
+              {uploading.front ? 'Uploading…' : user?.verified ? '🔒 Locked (Admin Only)' : user?.aadhaar_front ? 'Change Front' : 'Upload Front'}
+              {!user?.verified && (
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => handleMediaUpload('front', e.target.files?.[0])}
+                />
+              )}
             </label>
           </div>
 
           {/* Back */}
-          <div style={{ border: '1px dashed #334155', borderRadius: 8, padding: 10, textAlign: 'center', background: 'rgba(0,0,0,0.15)' }}>
-            <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 'bold' }}>Aadhaar Back</p>
+          <div style={{ border: user?.verified ? '1px solid #1e293b' : '1px dashed #334155', borderRadius: 8, padding: 10, textAlign: 'center', background: user?.verified ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.15)' }}>
+            <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 'bold', color: user?.verified ? '#64748b' : '#f8fafc' }}>Aadhaar Back</p>
             {user?.aadhaar_back ? (
               <img
                 src={user.aadhaar_back}
                 alt="Aadhaar Back"
-                style={{ width: '100%', height: 95, objectFit: 'cover', borderRadius: 6, marginBottom: 8 }}
+                style={{ width: '100%', height: 95, objectFit: 'cover', borderRadius: 6, marginBottom: 8, opacity: user?.verified ? 0.7 : 1 }}
               />
             ) : (
               <div style={{ height: 95, background: 'rgba(255,255,255,0.03)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 8 }}>
                 🪪
               </div>
             )}
-            <label className="btn small primary" style={{ display: 'block', width: '100%', boxSizing: 'border-box', cursor: 'pointer', textAlign: 'center' }}>
-              {uploading.back ? 'Uploading…' : user?.aadhaar_back ? 'Change Back' : 'Upload Back'}
-              <input
-                type="file"
-                accept="image/*"
-                style={{ display: 'none' }}
-                onChange={(e) => handleMediaUpload('back', e.target.files?.[0])}
-              />
+            <label
+              className="btn small"
+              style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', cursor: user?.verified ? 'not-allowed' : 'pointer', background: user?.verified ? '#1e293b' : undefined, color: user?.verified ? '#64748b' : undefined, border: user?.verified ? '1px solid #334155' : undefined }}
+            >
+              {uploading.back ? 'Uploading…' : user?.verified ? '🔒 Locked (Admin Only)' : user?.aadhaar_back ? 'Change Back' : 'Upload Back'}
+              {!user?.verified && (
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => handleMediaUpload('back', e.target.files?.[0])}
+                />
+              )}
             </label>
           </div>
         </div>

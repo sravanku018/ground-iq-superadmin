@@ -2808,10 +2808,18 @@ Deno.serve(async (req) => {
       }
 
       const existing = await sql`
-        SELECT id, username, display_name, photo, aadhaar_front, aadhaar_back
+        SELECT id, username, display_name, photo, aadhaar_front, aadhaar_back, verified
         FROM app_users WHERE id = ${targetId}
       `;
       if (!existing.length) return json({ error: "User not found" }, 404);
+
+      // Lock uploads for verified surveyors — only admin can change
+      const exUser = existing[0] as Record<string, unknown>;
+      if (exUser.verified === true && me.role !== "admin") {
+        return json({
+          error: "Profile media is locked after Admin Verification. Only Admin can update photo or Aadhaar documents.",
+        }, 403);
+      }
 
       let photoVal = body.photo !== undefined ? (body.photo ? String(body.photo) : null) : null;
       let aadhaarFrontVal = body.aadhaar_front !== undefined ? (body.aadhaar_front ? String(body.aadhaar_front) : null) : null;
@@ -2897,11 +2905,14 @@ Deno.serve(async (req) => {
         return json({ error: "Forbidden — can only update own profile" }, 403);
       }
 
-      // Freeze phone edits for surveyors once verified by Admin
-      if (ex.verified === true && !isAdmin && body.phone !== undefined) {
-        return json({
-          error: "Phone number is frozen after Admin Verification. Only Admin can change it.",
-        }, 403);
+      // Freeze phone, photo and Aadhaar edits for surveyors once verified by Admin
+      if (ex.verified === true && !isAdmin) {
+        const lockedFields = ['phone', 'photo', 'aadhaar_front', 'aadhaar_back'].filter(f => body[f] !== undefined)
+        if (lockedFields.length > 0) {
+          return json({
+            error: `${lockedFields.join(', ')} ${lockedFields.length > 1 ? 'are' : 'is'} locked after Admin Verification. Only Admin can change them.`,
+          }, 403);
+        }
       }
 
       // Non-admins can ONLY update their own phone or photo

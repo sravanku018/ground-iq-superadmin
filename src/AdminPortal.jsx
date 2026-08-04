@@ -20,19 +20,19 @@ import './App.css'
 import './portal.css'
 
 const NAV = [
-  { id: 'dashboard', label: 'Dashboard', icon: '◈', pages: ['overview', 'report'] },
+  { id: 'dashboard', label: 'Dashboard', icon: '◈', pages: ['overview', 'report', 'analyze'] },
   { id: 'surveyors', label: 'Surveyors', icon: '👤', pages: ['users'] },
   { id: 'surveys', label: 'Surveys', icon: '▤', pages: ['surveys'] },
-  { id: 'data', label: 'Data collection', icon: '☰', pages: ['questions', 'analyze', 'review', 'upload', 'data'] },
+  { id: 'data', label: 'Data collection', icon: '☰', pages: ['questions', 'review', 'upload', 'data'] },
 ]
 
 const PAGE_LABELS = {
   overview: 'Overview',
   report: 'Report',
+  analyze: 'Analyze',
   users: 'Users & targets',
   surveys: 'Surveys',
   questions: 'Questions',
-  analyze: 'Analyze',
   review: 'Review',
   upload: 'Upload',
   data: 'Data',

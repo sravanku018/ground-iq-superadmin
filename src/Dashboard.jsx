@@ -337,6 +337,7 @@ export default function DashboardScreen({ onToast }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [surveys, setSurveys] = useState([])
+  const [boardTab, setBoardTab] = useState('day') // day | month | surveyor | geo
 
   useEffect(() => {
     import('./api').then(({ listSurveys }) =>
@@ -612,7 +613,39 @@ export default function DashboardScreen({ onToast }) {
             </div>
           </div>
 
+          <div className="admin-subtabs">
+            <button
+              type="button"
+              className={boardTab === 'day' ? 'map-tab active' : 'map-tab'}
+              onClick={() => setBoardTab('day')}
+            >
+              By day
+            </button>
+            <button
+              type="button"
+              className={boardTab === 'month' ? 'map-tab active' : 'map-tab'}
+              onClick={() => setBoardTab('month')}
+            >
+              By month
+            </button>
+            <button
+              type="button"
+              className={boardTab === 'surveyor' ? 'map-tab active' : 'map-tab'}
+              onClick={() => setBoardTab('surveyor')}
+            >
+              By surveyor
+            </button>
+            <button
+              type="button"
+              className={boardTab === 'geo' ? 'map-tab active' : 'map-tab'}
+              onClick={() => setBoardTab('geo')}
+            >
+              By geo location
+            </button>
+          </div>
+
           {/* 1. Daily data */}
+          {boardTab === 'day' && (
           <div className="card" style={{ marginBottom: 12 }}>
             <h3 style={{ marginTop: 0 }}>Daily data</h3>
             <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
@@ -655,8 +688,10 @@ export default function DashboardScreen({ onToast }) {
               </div>
             )}
           </div>
+          )}
 
           {/* 2. Monthly data */}
+          {boardTab === 'month' && (
           <div className="card" style={{ marginBottom: 12 }}>
             <h3 style={{ marginTop: 0 }}>Monthly data</h3>
             <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
@@ -703,8 +738,10 @@ export default function DashboardScreen({ onToast }) {
               </div>
             )}
           </div>
+          )}
 
           {/* 3. Surveyor daily data */}
+          {boardTab === 'surveyor' && (
           <div className="card" style={{ marginBottom: 12 }}>
             <h3 style={{ marginTop: 0 }}>Surveyor daily data</h3>
             <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
@@ -783,8 +820,10 @@ export default function DashboardScreen({ onToast }) {
               </>
             )}
           </div>
+          )}
 
           {/* 4. Surveyor monthly data */}
+          {boardTab === 'surveyor' && (
           <div className="card" style={{ marginBottom: 12 }}>
             <h3 style={{ marginTop: 0 }}>Surveyor monthly data</h3>
             <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
@@ -839,7 +878,10 @@ export default function DashboardScreen({ onToast }) {
               </div>
             )}
           </div>
+          )}
+
           {/* 5. By survey — submissions, participants, locations */}
+          {boardTab === 'geo' && (
           <div className="card" style={{ marginBottom: 12 }}>
             <h3 style={{ marginTop: 0 }}>By survey</h3>
             <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
@@ -893,6 +935,7 @@ export default function DashboardScreen({ onToast }) {
               </div>
             )}
           </div>
+          )}
         </div>
       )}
       {filtersBroken && reportReady && (

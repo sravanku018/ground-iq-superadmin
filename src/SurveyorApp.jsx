@@ -454,15 +454,25 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
       </div>
 
       <div className="card" style={{ marginBottom: 14 }}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 15, color: '#f8fafc' }}>📞 Surveyor Mobile Number</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <h3 style={{ margin: 0, fontSize: 15, color: '#f8fafc' }}>📞 Surveyor Mobile Number</h3>
+          {user?.verified && (
+            <span style={{ fontSize: 11, background: '#059669', color: '#ffffff', fontWeight: 'bold', padding: '2px 10px', borderRadius: 12 }}>
+              🔒 Verified & Frozen
+            </span>
+          )}
+        </div>
         <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
-          Registered phone number for contact & admin verification.
+          {user?.verified
+            ? 'Phone number verified by Client Admin. Only Admin can modify this.'
+            : 'Registered phone number for contact & admin verification.'}
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <input
             type="tel"
             placeholder="+91 9876543210"
             value={phone}
+            disabled={user?.verified === true}
             onChange={(e) => setPhone(e.target.value)}
             style={{
               width: '100%',
@@ -473,30 +483,53 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
               padding: '12px 16px',
               minHeight: 52,
               borderRadius: 12,
-              border: '2px solid #00e599',
-              background: '#1a2332',
-              color: '#ffffff',
+              border: user?.verified ? '1px solid #475569' : '2px solid #00e599',
+              background: user?.verified ? '#0f172a' : '#1a2332',
+              color: user?.verified ? '#00e599' : '#ffffff',
+              cursor: user?.verified ? 'not-allowed' : 'text',
             }}
           />
-          <button
-            type="button"
-            className="btn primary"
-            style={{
-              width: '100%',
-              padding: '12px',
-              fontSize: 15,
-              fontWeight: 'bold',
-              minHeight: 48,
-              borderRadius: 12,
-              background: '#00e599',
-              color: '#0f172a',
-              cursor: 'pointer',
-            }}
-            disabled={savingPhone || phone === (user?.phone || '')}
-            onClick={handleSavePhone}
-          >
-            {savingPhone ? 'Saving Phone…' : 'Save Phone Number'}
-          </button>
+          {user?.verified ? (
+            <button
+              type="button"
+              className="btn"
+              disabled={true}
+              style={{
+                width: '100%',
+                padding: '12px',
+                fontSize: 13,
+                fontWeight: 'bold',
+                minHeight: 48,
+                borderRadius: 12,
+                background: '#1e293b',
+                border: '1px solid #334155',
+                color: '#94a3b8',
+                cursor: 'not-allowed',
+              }}
+            >
+              🔒 Phone Frozen (Contact Admin to Change)
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn primary"
+              style={{
+                width: '100%',
+                padding: '12px',
+                fontSize: 15,
+                fontWeight: 'bold',
+                minHeight: 48,
+                borderRadius: 12,
+                background: '#00e599',
+                color: '#0f172a',
+                cursor: 'pointer',
+              }}
+              disabled={savingPhone || phone === (user?.phone || '')}
+              onClick={handleSavePhone}
+            >
+              {savingPhone ? 'Saving Phone…' : 'Save Phone Number'}
+            </button>
+          )}
         </div>
       </div>
 

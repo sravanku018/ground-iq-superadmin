@@ -239,6 +239,7 @@ export default function AdminUsersScreen({ onToast }) {
     setEdit({
       username: u.username || '',
       name: u.name || u.display_name || '',
+      phone: u.phone || '',
       password: '',
       target_quota: u.target ?? u.target_quota ?? 0,
       surveys: (u.surveys || []).map((s) => String(s.id)),
@@ -247,7 +248,7 @@ export default function AdminUsersScreen({ onToast }) {
 
   function closeEdit() {
     setEditingId(null)
-    setEdit({ username: '', name: '', password: '', target_quota: 0, surveys: [] })
+    setEdit({ username: '', name: '', phone: '', password: '', target_quota: 0, surveys: [] })
   }
 
   async function handleCreate(e) {
@@ -425,6 +426,7 @@ export default function AdminUsersScreen({ onToast }) {
       const body = {
         username: edit.username.trim().toLowerCase(),
         name: edit.name.trim(),
+        phone: edit.phone ? edit.phone.trim() : null,
         target_quota: Number(edit.target_quota) || 0,
       }
       if (edit.password.trim()) {
@@ -1008,6 +1010,15 @@ export default function AdminUsersScreen({ onToast }) {
                         <input
                           value={edit.name}
                           onChange={(e) => setEdit({ ...edit, name: e.target.value })}
+                        />
+                      </label>
+                      <label className="field compact">
+                        <span>Mobile Phone Number</span>
+                        <input
+                          type="tel"
+                          placeholder="+91 9876543210"
+                          value={edit.phone || ''}
+                          onChange={(e) => setEdit({ ...edit, phone: e.target.value })}
                         />
                       </label>
                       <label className="field compact">

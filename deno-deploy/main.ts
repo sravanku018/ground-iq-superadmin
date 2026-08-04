@@ -2879,24 +2879,36 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Client Admin: edit username/password/name, disable, revoke sessions
+    // Edit user profile (Admin: all fields / Surveyor: own phone before verification)
     if (path.startsWith("/api/users/") && method === "PATCH") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/").pop());
       if (!id) return json({ error: "Invalid id" }, 400);
-      const body = await readBody(req);
+
       const existing = await sql`SELECT * FROM app_users WHERE id = ${id}`;
       if (!existing.length) return json({ error: "Not found" }, 404);
-      const ex = existing[0] as {
-        id: number;
-        username: string;
-        password_hash: string;
-        display_name: string;
-        role: string;
-        active: boolean;
-        target_quota?: number;
-      };
+      const ex = existing[0] as Record<string, unknown>;
+
+      const isSelf = me.id === id;
+      const isAdmin = me.role === "admin";
+
+      if (!isAdmin && !isSelf) {
+        return json({ error: "Forbidden — can only update own profile" }, 403);
+      }
+
+      // Freeze phone edits for surveyors once verified by Admin
+      if (ex.verified === true && !isAdmin && body.phone !== undefined) {
+        return json({
+          error: "Phone number is frozen after Admin Verification. Only Admin can change it.",
+        }, 403);
+      }
+
+      // Non-admins can ONLY update their own phone or photo
+      if (!isAdmin) {
+        if (body.username !== undefined || body.password !== undefined || body.active !== undefined || body.role !== undefined || body.verified !== undefined || body.target_quota !== undefined) {
+          return json({ error: "Surveyors can only update their phone number or profile photo." }, 403);
+        }
+      }
 
       // revoke_sessions only — kick user offline without other changes
       if (body.revoke_sessions === true && body.password == null && body.username == null &&

@@ -1233,257 +1233,266 @@ export default function AdminUsersScreen({ onToast }) {
           </div>
 
           {profileUser ? (
-            <>
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 9999,
+                background: 'rgba(0, 0, 0, 0.75)',
+                backdropFilter: 'blur(4px)',
+                display: 'flex',
+                justifyContent: 'flex-end',
+              }}
+              onClick={() => setProfileUser(null)}
+            >
               <div
                 style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: 12,
-                  marginBottom: 14,
-                  padding: 12,
-                  border: '1px solid #243041',
-                  borderRadius: 10,
-                  background: 'rgba(255,255,255,0.02)',
+                  width: '100%',
+                  maxWidth: 580,
+                  height: '100%',
+                  background: '#0f172a',
+                  borderLeft: '1px solid #334155',
+                  padding: 20,
+                  overflowY: 'auto',
+                  boxShadow: '-10px 0 30px rgba(0,0,0,0.5)',
                 }}
+                onClick={(e) => e.stopPropagation()}
               >
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <h3 style={{ margin: 0, fontSize: 18, color: '#f8fafc' }}>👤 Surveyor Profile & Identity</h3>
+                  <button
+                    type="button"
+                    className="btn small danger"
+                    onClick={() => setProfileUser(null)}
+                    style={{ fontSize: 14, padding: '4px 14px', fontWeight: 'bold' }}
+                  >
+                    Close ✕
+                  </button>
+                </div>
+
+                {/* Profile Avatar, Key ID, Verified Badge & Action Button */}
+                <div style={{ display: 'flex', gap: 14, alignItems: 'center', background: '#1e293b', padding: 14, borderRadius: 12, border: '1px solid #334155', marginBottom: 14 }}>
                   {profileUser.photo ? (
                     <img
                       src={profileUser.photo}
-                      alt="Surveyor Photo"
-                      style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: '50%',
-                        objectFit: 'cover',
-                        border: '2px solid #00e599',
-                      }}
+                      alt="Profile Photo"
+                      style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: '3px solid #00e599' }}
                     />
                   ) : (
-                    <div
-                      style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: '50%',
-                        background: '#243041',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 24,
-                      }}
-                    >
+                    <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>
                       👤
                     </div>
                   )}
-                  <div>
-                    <h3 style={{ margin: '0 0 4px' }}>
-                      {profileUser.name || profileUser.display_name || profileUser.username}
-                      <span className="meta" style={{ marginLeft: 8 }}>
-                        @{profileUser.username}
-                      </span>
-                    </h3>
-                    <p style={{ margin: 0, fontSize: 13, color: '#aaa' }}>
-                      Key ID: <strong style={{ color: '#00e599' }}>{profileUser.key_id || '—'}</strong>
-                      {' · '}
-                      Phone: <strong>{profileUser.phone || '—'}</strong>
-                      {' · '}
-                      Target: <strong>{profileUser.target_quota || profileUser.target || 0}</strong>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <h4 style={{ margin: 0, fontSize: 18, color: '#ffffff' }}>
+                        {profileUser.display_name || profileUser.name || profileUser.username}
+                      </h4>
+                      {profileUser.verified ? (
+                        <span style={{ background: '#059669', color: '#fff', fontSize: 11, fontWeight: 'bold', padding: '2px 8px', borderRadius: 12 }}>
+                          Verified ✓
+                        </span>
+                      ) : (
+                        <span style={{ background: '#d97706', color: '#fff', fontSize: 11, fontWeight: 'bold', padding: '2px 8px', borderRadius: 12 }}>
+                          Verification Pending ⏳
+                        </span>
+                      )}
+                    </div>
+                    <p style={{ margin: '4px 0 0', fontSize: 13, color: '#94a3b8' }}>
+                      @{profileUser.username} · Key ID: <strong style={{ color: '#00e599' }}>{profileUser.key_id || '—'}</strong>
                     </p>
-                    {(profileUser.aadhaar_front || profileUser.aadhaar_back) && (
-                      <div style={{ display: 'flex', gap: 10, marginTop: 6, fontSize: 12 }}>
-                        {profileUser.aadhaar_front && (
-                          <a
-                            href={profileUser.aadhaar_front}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ color: '#00e599', textDecoration: 'underline' }}
-                          >
-                            🪪 Aadhaar Front
-                          </a>
-                        )}
-                        {profileUser.aadhaar_back && (
-                          <a
-                            href={profileUser.aadhaar_back}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ color: '#00e599', textDecoration: 'underline' }}
-                          >
-                            🪪 Aadhaar Back
-                          </a>
-                        )}
-                      </div>
+                    {profileUser.phone && (
+                      <p style={{ margin: '3px 0 0', fontSize: 13, color: '#38bdf8', fontWeight: 'bold' }}>
+                        📞 {profileUser.phone}
+                      </p>
                     )}
                   </div>
-                </div>
-                <button type="button" className="btn small" onClick={() => setProfileUser(null)}>
-                  Clear selection
-                </button>
-              </div>
-
-              <div
-                className="admin-subtabs"
-                style={{ justifyContent: 'flex-start', flexWrap: 'wrap', marginBottom: 12 }}
-              >
-                {['total', 'today', 'day', 'month'].map((p) => (
                   <button
-                    key={p}
                     type="button"
-                    className={profileFilters.period === p ? 'map-tab active' : 'map-tab'}
-                    onClick={() =>
-                      setProfileFilters((f) => ({ ...f, period: p }))
-                    }
+                    className="btn small"
+                    style={{
+                      background: profileUser.verified ? '#dc2626' : '#059669',
+                      color: '#ffffff',
+                      fontWeight: 'bold',
+                      padding: '8px 16px',
+                      fontSize: 12,
+                      border: 0,
+                    }}
+                    onClick={() => handleToggleVerify(profileUser)}
                   >
-                    {p === 'total' ? 'Total' : p === 'today' ? 'Today' : p === 'day' ? 'Day' : 'Month'}
+                    {profileUser.verified ? 'Unverify' : 'Verify Identity ✓'}
                   </button>
-                ))}
-              </div>
+                </div>
 
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 10,
-                  alignItems: 'flex-end',
-                  flexWrap: 'wrap',
-                  marginBottom: 12,
-                }}
-              >
-                {profileFilters.period === 'day' && (
-                  <label className="field compact">
-                    <span>Day</span>
-                    <input
-                      type="date"
-                      value={profileFilters.day}
-                      onChange={(e) =>
-                        setProfileFilters((f) => ({ ...f, day: e.target.value }))
-                      }
-                    />
-                  </label>
-                )}
-                {profileFilters.period === 'month' && (
-                  <label className="field compact">
-                    <span>Month</span>
-                    <input
-                      type="month"
-                      value={profileFilters.month}
-                      onChange={(e) =>
-                        setProfileFilters((f) => ({ ...f, month: e.target.value }))
-                      }
-                    />
-                  </label>
-                )}
-                <label className="field compact" style={{ minWidth: 180 }}>
-                  <span>District (geo)</span>
-                  <select
-                    value={profileFilters.district}
-                    onChange={(e) =>
-                      setProfileFilters((f) => ({ ...f, district: e.target.value }))
-                    }
-                  >
-                    <option value="">All districts</option>
-                    {(profileData?.geoSummary?.districts || []).map((d) => (
-                      <option key={d} value={d}>
-                        {d}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field compact" style={{ minWidth: 180 }}>
-                  <span>Survey</span>
-                  <select
-                    value={profileFilters.survey}
-                    onChange={(e) =>
-                      setProfileFilters((f) => ({ ...f, survey: e.target.value }))
-                    }
-                  >
-                    <option value="">All surveys</option>
-                    {allSurveys.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name || s.form_key || `#${s.id}`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  className="btn primary"
-                  disabled={profileLoading}
-                  onClick={() => loadProfile(profileUser)}
-                >
-                  {profileLoading ? 'Loading…' : 'Load'}
-                </button>
-              </div>
+                {/* Metrics: Surveys Done / Approved / Pending */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+                  <div style={{ background: '#1e293b', padding: '12px 10px', borderRadius: 10, textAlign: 'center', border: '1px solid #334155' }}>
+                    <span style={{ display: 'block', fontSize: 22, fontWeight: '800', color: '#00e599' }}>
+                      {profileData?.geoSummary?.records ?? (profileUser.done_count || 0)}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>
+                      Surveys Done
+                    </span>
+                  </div>
+                  <div style={{ background: '#1e293b', padding: '12px 10px', borderRadius: 10, textAlign: 'center', border: '1px solid #059669' }}>
+                    <span style={{ display: 'block', fontSize: 22, fontWeight: '800', color: '#10b981' }}>
+                      {profileData?.geoSummary?.confirmed ?? (profileUser.confirmed_count || 0)}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>
+                      Approved ✓
+                    </span>
+                  </div>
+                  <div style={{ background: '#1e293b', padding: '12px 10px', borderRadius: 10, textAlign: 'center', border: '1px solid #d97706' }}>
+                    <span style={{ display: 'block', fontSize: 22, fontWeight: '800', color: '#f59e0b' }}>
+                      {profileData?.items ? profileData.items.filter((it) => it.status === 'pending').length : (profileUser.pending_count || 0)}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>
+                      Pending ⏳
+                    </span>
+                  </div>
+                </div>
 
-              {profileLoading ? (
-                <p className="muted">Loading records…</p>
-              ) : profileData ? (
-                <>
-                  <div className="stat-row" style={{ marginBottom: 12 }}>
-                    <div className="stat">
-                      <strong>{profileData.geoSummary.records}</strong>
-                      <span>Records</span>
-                    </div>
-                    <div className="stat">
-                      <strong>{profileData.geoSummary.complete}</strong>
-                      <span>Complete</span>
-                    </div>
-                    <div className="stat">
-                      <strong>{profileData.geoSummary.confirmed}</strong>
-                      <span>Confirmed</span>
-                    </div>
-                    <div className="stat">
-                      <strong>{profileData.geoSummary.districts.length}</strong>
-                      <span>Districts</span>
-                    </div>
-                    <div className="stat">
-                      <strong>{profileData.geoSummary.constituencies.length}</strong>
-                      <span>Constituencies</span>
+                {/* Aadhaar Cards */}
+                {(profileUser.aadhaar_front || profileUser.aadhaar_back) && (
+                  <div style={{ background: '#1e293b', padding: 12, borderRadius: 10, border: '1px solid #334155', marginBottom: 16 }}>
+                    <h5 style={{ margin: '0 0 10px', fontSize: 13, color: '#38bdf8' }}>🪪 Aadhaar Identity Cards</h5>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      {profileUser.aadhaar_front ? (
+                        <div>
+                          <span style={{ display: 'block', fontSize: 11, color: '#aaa', marginBottom: 4 }}>Front Side</span>
+                          <a href={profileUser.aadhaar_front} target="_blank" rel="noreferrer">
+                            <img src={profileUser.aadhaar_front} alt="Aadhaar Front" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid #00e599' }} />
+                          </a>
+                        </div>
+                      ) : null}
+                      {profileUser.aadhaar_back ? (
+                        <div>
+                          <span style={{ display: 'block', fontSize: 11, color: '#aaa', marginBottom: 4 }}>Back Side</span>
+                          <a href={profileUser.aadhaar_back} target="_blank" rel="noreferrer">
+                            <img src={profileUser.aadhaar_back} alt="Aadhaar Back" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid #00e599' }} />
+                          </a>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
+                )}
 
-                  {profileData.geoSummary.districts.length > 0 && (
-                    <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
-                      Districts: {profileData.geoSummary.districts.join(' · ')}
-                      {profileData.geoSummary.constituencies.length > 0
-                        ? ` — Constituencies: ${profileData.geoSummary.constituencies.join(' · ')}`
-                        : ''}
-                    </p>
+                {/* Filters */}
+                <div
+                  className="admin-subtabs"
+                  style={{ justifyContent: 'flex-start', flexWrap: 'wrap', marginBottom: 12 }}
+                >
+                  {['total', 'today', 'day', 'month'].map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      className={profileFilters.period === p ? 'map-tab active' : 'map-tab'}
+                      onClick={() =>
+                        setProfileFilters((f) => ({ ...f, period: p }))
+                      }
+                    >
+                      {p === 'total' ? 'Total' : p === 'today' ? 'Today' : p === 'day' ? 'Day' : 'Month'}
+                    </button>
+                  ))}
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 10,
+                    alignItems: 'flex-end',
+                    flexWrap: 'wrap',
+                    marginBottom: 12,
+                  }}
+                >
+                  {profileFilters.period === 'day' && (
+                    <label className="field compact">
+                      <span>Day</span>
+                      <input
+                        type="date"
+                        value={profileFilters.day}
+                        onChange={(e) =>
+                          setProfileFilters((f) => ({ ...f, day: e.target.value }))
+                        }
+                      />
+                    </label>
                   )}
-
-                  {profileData.items.length === 0 ? (
-                    <p className="muted">No records for this filter.</p>
-                  ) : (
-                    <ul className="user-list">
-                      {profileData.items.map((it, i) => (
-                        <li key={it.id || i}>
-                          <div>
-                            <strong>#{it.record_index ?? it.id ?? i + 1}</strong>
-                            <span className="meta">
-                              {it.created_at || ''} · {it.form_key || 'field'}
-                            </span>
-                            <span className="meta">
-                              {it.answers?.district || 'no district'}
-                              {it.answers?.constituency
-                                ? ` · ${it.answers.constituency}`
-                                : ''}
-                            </span>
-                          </div>
-                          <span className="pill ok">
-                            <span className="dot" />
-                            {it.status || 'submitted'}
-                          </span>
-                        </li>
+                  {profileFilters.period === 'month' && (
+                    <label className="field compact">
+                      <span>Month</span>
+                      <input
+                        type="month"
+                        value={profileFilters.month}
+                        onChange={(e) =>
+                          setProfileFilters((f) => ({ ...f, month: e.target.value }))
+                        }
+                      />
+                    </label>
+                  )}
+                  <label className="field compact" style={{ minWidth: 160 }}>
+                    <span>District</span>
+                    <select
+                      value={profileFilters.district}
+                      onChange={(e) =>
+                        setProfileFilters((f) => ({ ...f, district: e.target.value }))
+                      }
+                    >
+                      <option value="">All districts</option>
+                      {(profileData?.geoSummary?.districts || []).map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
                       ))}
-                    </ul>
-                  )}
-                </>
-              ) : (
-                <p className="muted">Press Load to fetch records for this profile.</p>
-              )}
-            </>
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    disabled={profileLoading}
+                    onClick={() => loadProfile(profileUser)}
+                  >
+                    {profileLoading ? 'Loading…' : 'Filter'}
+                  </button>
+                </div>
+
+                {profileLoading ? (
+                  <p className="muted">Loading records…</p>
+                ) : profileData ? (
+                  <>
+                    {profileData.items.length === 0 ? (
+                      <p className="muted">No records for this filter.</p>
+                    ) : (
+                      <ul className="user-list">
+                        {profileData.items.map((it, i) => (
+                          <li key={it.id || i} style={{ padding: '10px 12px', background: '#1e293b', borderRadius: 8, marginBottom: 8 }}>
+                            <div>
+                              <strong>#{it.record_index ?? it.id ?? i + 1}</strong>
+                              <span className="meta" style={{ marginLeft: 8 }}>
+                                {it.created_at || ''} · {it.form_key || 'field'}
+                              </span>
+                              <span className="meta" style={{ display: 'block', marginTop: 2 }}>
+                                {it.answers?.district || 'no district'}
+                                {it.answers?.constituency
+                                  ? ` · ${it.answers.constituency}`
+                                  : ''}
+                              </span>
+                            </div>
+                            <span className={`pill ${it.status === 'confirmed' ? 'ok' : ''}`} style={{ background: it.status === 'confirmed' ? '#059669' : '#d97706', color: '#fff', fontWeight: 'bold' }}>
+                              {it.status === 'confirmed' ? 'Approved ✓' : 'Pending ⏳'}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                ) : (
+                  <p className="muted">Click Filter to load submission details.</p>
+                )}
+              </div>
+            </div>
           ) : (
-            <p className="muted">Select a surveyor from the dropdown above or click <strong>Profile</strong> on any surveyor in the list.</p>
+            <p className="muted">Select a surveyor from the dropdown above or click <strong>View Profile</strong> on any surveyor in the list.</p>
           )}
         </div>
       )}

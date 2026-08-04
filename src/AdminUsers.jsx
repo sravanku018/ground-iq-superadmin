@@ -14,10 +14,42 @@ import {
   updateUser,
 } from './api'
 
-/**
- * Client Admin: create / edit surveyor logins for the field app.
- * Edit username + password, disable/enable, revoke sessions.
- */
+/** Compress profile/Aadhaar image file before upload (max 1200px, 0.75 quality) */
+function compressImageFile(file, maxDimension = 1200, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      reject(new Error('No file provided'))
+      return
+    }
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Failed to read image file'))
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onerror = () => reject(new Error('Failed to load image'))
+      img.onload = () => {
+        let { width, height } = img
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width)
+            width = maxDimension
+          } else {
+            width = Math.round((width * maxDimension) / height)
+            height = maxDimension
+          }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, width, height)
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality)
+        resolve(compressedDataUrl)
+      }
+      img.src = e.target?.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
 
 function SurveySelect({ value, onChange, all }) {
   const [open, setOpen] = useState(false)
@@ -547,6 +579,21 @@ export default function AdminUsersScreen({ onToast }) {
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
+    }
+  }
+
+  async function handleAdminUploadMedia(fieldKey, file) {
+    if (!file || !profileUser) return
+    try {
+      const { uploadProfileMedia } = await import('./api')
+      const compressedDataUrl = await compressImageFile(file, 1200, 0.75)
+      const res = await uploadProfileMedia(fieldKey, compressedDataUrl, profileUser.id)
+      const newUrl = res?.[fieldKey] || compressedDataUrl
+      setProfileUser((prev) => (prev ? { ...prev, [fieldKey]: newUrl } : null))
+      onToast?.(`Uploaded ${fieldKey.replace('_', ' ')} to DB ✓`, 'ok')
+      load()
+    } catch (err) {
+      onToast?.(err.message || 'Upload failed', 'error')
     }
   }
 
@@ -1411,27 +1458,45 @@ export default function AdminUsersScreen({ onToast }) {
                       <span style={{ display: 'block', fontSize: 11, color: '#aaa', marginBottom: 6, fontWeight: 'bold' }}>Front Side</span>
                       {profileUser.aadhaar_front ? (
                         <a href={profileUser.aadhaar_front} target="_blank" rel="noreferrer">
-                          <img src={profileUser.aadhaar_front} alt="Aadhaar Front" style={{ width: '100%', height: 130, objectFit: 'cover', borderRadius: 8, border: '2px solid #00e599' }} />
+                          <img src={profileUser.aadhaar_front} alt="Aadhaar Front" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, border: '2px solid #00e599', marginBottom: 6 }} />
                         </a>
                       ) : (
-                        <div style={{ height: 130, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px dashed #475569', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12 }}>
-                          <span style={{ fontSize: 24, marginBottom: 4 }}>🪪</span>
+                        <div style={{ height: 100, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px dashed #475569', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12, marginBottom: 6 }}>
+                          <span style={{ fontSize: 22, marginBottom: 2 }}>🪪</span>
                           <span>No Front Card Uploaded</span>
                         </div>
                       )}
+                      <label className="btn small primary" style={{ display: 'block', width: '100%', boxSizing: 'border-box', cursor: 'pointer', textAlign: 'center', fontSize: 11, padding: '4px 8px' }}>
+                        {profileUser.aadhaar_front ? 'Change Front' : 'Upload Front'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          style={{ display: 'none' }}
+                          onChange={(e) => handleAdminUploadMedia('aadhaar_front', e.target.files?.[0])}
+                        />
+                      </label>
                     </div>
                     <div>
                       <span style={{ display: 'block', fontSize: 11, color: '#aaa', marginBottom: 6, fontWeight: 'bold' }}>Back Side</span>
                       {profileUser.aadhaar_back ? (
                         <a href={profileUser.aadhaar_back} target="_blank" rel="noreferrer">
-                          <img src={profileUser.aadhaar_back} alt="Aadhaar Back" style={{ width: '100%', height: 130, objectFit: 'cover', borderRadius: 8, border: '2px solid #00e599' }} />
+                          <img src={profileUser.aadhaar_back} alt="Aadhaar Back" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, border: '2px solid #00e599', marginBottom: 6 }} />
                         </a>
                       ) : (
-                        <div style={{ height: 130, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px dashed #475569', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12 }}>
-                          <span style={{ fontSize: 24, marginBottom: 4 }}>🪪</span>
+                        <div style={{ height: 100, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px dashed #475569', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12, marginBottom: 6 }}>
+                          <span style={{ fontSize: 22, marginBottom: 2 }}>🪪</span>
                           <span>No Back Card Uploaded</span>
                         </div>
                       )}
+                      <label className="btn small primary" style={{ display: 'block', width: '100%', boxSizing: 'border-box', cursor: 'pointer', textAlign: 'center', fontSize: 11, padding: '4px 8px' }}>
+                        {profileUser.aadhaar_back ? 'Change Back' : 'Upload Back'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          style={{ display: 'none' }}
+                          onChange={(e) => handleAdminUploadMedia('aadhaar_back', e.target.files?.[0])}
+                        />
+                      </label>
                     </div>
                   </div>
                 </div>

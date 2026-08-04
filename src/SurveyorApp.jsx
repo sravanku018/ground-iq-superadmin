@@ -289,6 +289,43 @@ function MyRecordsScreen({ user, onToast }) {
 }
 
 /** Surveyor Profile Screen: Name, Photo, Phone, Aadhaar Front & Back, Key ID */
+/** Compress profile/Aadhaar image file before upload (max 1200px, 0.75 quality) */
+function compressImageFile(file, maxDimension = 1200, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      reject(new Error('No file provided'))
+      return
+    }
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Failed to read image file'))
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onerror = () => reject(new Error('Failed to load image'))
+      img.onload = () => {
+        let { width, height } = img
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width)
+            width = maxDimension
+          } else {
+            width = Math.round((width * maxDimension) / height)
+            height = maxDimension
+          }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, width, height)
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality)
+        resolve(compressedDataUrl)
+      }
+      img.src = e.target?.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
 function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
   const [phone, setPhone] = useState(user?.phone || '')
   const [savingPhone, setSavingPhone] = useState(false)
@@ -309,32 +346,22 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
       .catch(() => {})
   }, [onUserUpdated])
 
-  const handleMediaUpload = (field, file) => {
+  const handleMediaUpload = async (field, file) => {
     if (!file) return
-    if (file.size > 4 * 1024 * 1024) {
-      onToast?.('Image too large. Max 3MB.', 'error')
-      return
-    }
     const fieldKey = field === 'front' ? 'aadhaar_front' : field === 'back' ? 'aadhaar_back' : 'photo'
     setUploading((u) => ({ ...u, [field]: true }))
-    const reader = new FileReader()
-    reader.onload = async (e) => {
-      const dataUrl = e.target?.result
-      if (typeof dataUrl === 'string') {
-        try {
-          const res = await uploadProfileMedia(fieldKey, dataUrl)
-          const newUrl = res?.[fieldKey] || dataUrl
-          onUserUpdated?.((prev) => ({ ...prev, [fieldKey]: newUrl }))
-          onToast?.(`${fieldKey.replace('_', ' ')} uploaded ✓`, 'ok')
-          me().then((m) => m?.user && onUserUpdated?.(m.user)).catch(() => {})
-        } catch (err) {
-          onToast?.(err.message || 'Upload failed', 'error')
-        } finally {
-          setUploading((u) => ({ ...u, [field]: false }))
-        }
-      }
+    try {
+      const compressedDataUrl = await compressImageFile(file, 1200, 0.75)
+      const res = await uploadProfileMedia(fieldKey, compressedDataUrl)
+      const newUrl = res?.[fieldKey] || compressedDataUrl
+      onUserUpdated?.((prev) => ({ ...prev, [fieldKey]: newUrl }))
+      onToast?.(`${fieldKey.replace('_', ' ')} uploaded to DB ✓`, 'ok')
+      me().then((m) => m?.user && onUserUpdated?.(m.user)).catch(() => {})
+    } catch (err) {
+      onToast?.(err.message || 'Upload failed', 'error')
+    } finally {
+      setUploading((u) => ({ ...u, [field]: false }))
     }
-    reader.readAsDataURL(file)
   }
 
   const handleSavePhone = async () => {

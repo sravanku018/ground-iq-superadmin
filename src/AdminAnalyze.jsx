@@ -120,17 +120,6 @@ export default function AdminAnalyzeScreen({ onToast }) {
     }
   }, [scopeParams, completeness, user, survey, qFilters, period, day, month, onToast])
 
-  useEffect(() => {
-    load()
-  }, []) // initial
-
-  // Survey change → reload so question filters match the selected survey
-  useEffect(() => {
-    if (!survey) return
-    const t = setTimeout(load, 150)
-    return () => clearTimeout(t)
-  }, [survey]) // eslint-disable-line react-hooks/exhaustive-deps
-
   async function confirmOne(id, force = false) {
     setBusyId(id)
     try {

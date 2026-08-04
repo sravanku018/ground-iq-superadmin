@@ -2,7 +2,7 @@ name: Deploy web portal to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, ground-sync]
   workflow_dispatch:
 
 permissions:

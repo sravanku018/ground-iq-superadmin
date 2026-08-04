@@ -20,16 +20,23 @@ import './App.css'
 import './portal.css'
 
 const NAV = [
-  { id: 'home', label: 'Overview', icon: '⌂' },
-  { id: 'surveys', label: 'Surveys', icon: '▤' },
-  { id: 'users', label: 'Users', icon: '👤' },
-  { id: 'questions', label: 'Questions', icon: '?' },
-  { id: 'analyze', label: 'Analyze', icon: '▣' },
-  { id: 'review', label: 'Review', icon: '✓' },
-  { id: 'dashboard', label: 'Report', icon: '◈' },
-  { id: 'upload', label: 'Upload', icon: '⬆' },
-  { id: 'data', label: 'Data', icon: '☰' },
+  { id: 'dashboard', label: 'Dashboard', icon: '◈', pages: ['overview', 'report'] },
+  { id: 'surveyors', label: 'Surveyors', icon: '👤', pages: ['users'] },
+  { id: 'surveys', label: 'Surveys', icon: '▤', pages: ['surveys'] },
+  { id: 'data', label: 'Data collection', icon: '☰', pages: ['questions', 'analyze', 'review', 'upload', 'data'] },
 ]
+
+const PAGE_LABELS = {
+  overview: 'Overview',
+  report: 'Report',
+  users: 'Users & targets',
+  surveys: 'Surveys',
+  questions: 'Questions',
+  analyze: 'Analyze',
+  review: 'Review',
+  upload: 'Upload',
+  data: 'Data',
+}
 
 function formatDate(v) {
   if (!v) return '—'
@@ -51,8 +58,8 @@ function Overview({ user, stats, onNav }) {
           <p className="eyebrow">Client Admin</p>
           <h1>Overview</h1>
           <p className="portal-lead">
-            Welcome, {user?.name || user?.username}. Pipeline: Users → Questions → Collect →
-            Review/Edit → Confirm → Report.
+            Welcome, {user?.name || user?.username}. Pipeline: Surveyors → Surveys → Data
+            collection → Dashboard.
           </p>
         </div>
       </header>
@@ -97,7 +104,7 @@ function Overview({ user, stats, onNav }) {
           <strong>Review · edit · confirm</strong>
           <span>Correct answers, delete bad rows, then confirm</span>
         </button>
-        <button type="button" className="portal-action primary" onClick={() => onNav('dashboard')}>
+        <button type="button" className="portal-action primary" onClick={() => onNav('report')}>
           <span className="portal-action-n">5</span>
           <strong>Report dashboard</strong>
           <span>Charts form after confirm only</span>
@@ -182,7 +189,7 @@ export default function AdminPortal() {
     return u?.role === 'admin' ? u : null
   })
   const [authReady, setAuthReady] = useState(false)
-  const [page, setPage] = useState('home')
+  const [page, setPage] = useState('overview')
   const [stats, setStats] = useState(null)
   const [items, setItems] = useState([])
   const [surveys, setSurveys] = useState([])
@@ -208,7 +215,7 @@ export default function AdminPortal() {
     setUser(null)
     setStats(null)
     setItems([])
-    setPage('home')
+    setPage('overview')
     notify('Logged out', 'ok')
   }, [notify])
 
@@ -316,7 +323,7 @@ export default function AdminPortal() {
           onToast={notify}
           onSuccess={(u) => {
             setUser(u)
-            setPage('home')
+            setPage('overview')
           }}
         />
       </div>
@@ -344,8 +351,10 @@ export default function AdminPortal() {
             <button
               key={n.id}
               type="button"
-              className={page === n.id ? 'portal-nav-item active' : 'portal-nav-item'}
-              onClick={() => setPage(n.id)}
+              className={
+                n.pages.includes(page) ? 'portal-nav-item active' : 'portal-nav-item'
+              }
+              onClick={() => setPage(n.pages[0])}
             >
               <span aria-hidden>{n.icon}</span>
               {n.label}
@@ -370,13 +379,27 @@ export default function AdminPortal() {
       </aside>
 
       <main className="portal-main">
-        {page === 'home' && <Overview user={user} stats={stats} onNav={setPage} />}
+        {NAV.filter((n) => n.pages.length > 1 && n.pages.includes(page)).map((n) => (
+          <div className="admin-subtabs" key={n.id}>
+            {n.pages.map((p) => (
+              <button
+                key={p}
+                type="button"
+                className={page === p ? 'map-tab active' : 'map-tab'}
+                onClick={() => setPage(p)}
+              >
+                {PAGE_LABELS[p]}
+              </button>
+            ))}
+          </div>
+        ))}
+        {page === 'overview' && <Overview user={user} stats={stats} onNav={setPage} />}
         {page === 'users' && <AdminUsersScreen onToast={notify} />}
         {page === 'surveys' && <AdminSurveysScreen onToast={notify} />}
         {page === 'questions' && <AdminQuestionsScreen onToast={notify} />}
         {page === 'analyze' && <AdminAnalyzeScreen onToast={notify} />}
         {page === 'review' && <ReviewQAScreen onToast={notify} />}
-        {page === 'dashboard' && <DashboardScreen onToast={notify} />}
+        {page === 'report' && <DashboardScreen onToast={notify} />}
         {page === 'upload' && <AdminDataScreen onToast={notify} />}
         {page === 'data' && (
           <DataList

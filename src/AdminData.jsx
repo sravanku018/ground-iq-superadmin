@@ -556,20 +556,37 @@ export default function AdminDataScreen({ onToast }) {
               </div>
             )}
 
-            <label className="field compact">
-              <span>Surveyor</span>
-              <select
-                value={exp.user}
-                onChange={(e) => setExp((f) => ({ ...f, user: e.target.value }))}
-              >
-                <option value="">All surveyors</option>
-                {(mapAnalytics?.dataFilters?.by_user || []).map((u) => (
-                  <option key={u.name} value={u.name}>
-                    {u.name} ({u.value})
-                  </option>
-                ))}
-              </select>
-            </label>
+            {(() => {
+              const sel = surveys.find((s) => s.form_key === survey || String(s.id) === String(survey))
+              const assignedNames = (sel?.surveyor_names || '')
+                .split(',')
+                .map((s) => s.trim().toLowerCase())
+                .filter(Boolean)
+              const allUsers = mapAnalytics?.dataFilters?.by_user || []
+              const filteredUsers = survey && assignedNames.length > 0
+                ? allUsers.filter((u) => assignedNames.some((an) => u.name.toLowerCase().includes(an) || an.includes(u.name.toLowerCase())))
+                : allUsers
+              const displayUsers = filteredUsers.length > 0 ? filteredUsers : allUsers
+
+              return (
+                <label className="field compact">
+                  <span>Surveyor {survey ? `(Field Team for "${sel?.title || survey}")` : ''}</span>
+                  <select
+                    value={exp.user}
+                    onChange={(e) => setExp((f) => ({ ...f, user: e.target.value }))}
+                  >
+                    <option value="">
+                      {survey ? `All field team surveyors for "${sel?.title || survey}"` : 'All surveyors'}
+                    </option>
+                    {displayUsers.map((u) => (
+                      <option key={u.name} value={u.name}>
+                        {u.name} ({u.value} submissions) {assignedNames.some((an) => u.name.toLowerCase().includes(an) || an.includes(u.name.toLowerCase())) ? '👥 [Assigned Team]' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )
+            })()}
             <label className="field compact">
               <span>District</span>
               <select

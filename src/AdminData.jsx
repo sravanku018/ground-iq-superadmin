@@ -525,36 +525,43 @@ export default function AdminDataScreen({ onToast }) {
               </select>
             </label>
 
-            {survey && (
-              <div
-                style={{
-                  background: '#1e293b',
-                  border: '1px solid #00e599',
-                  borderRadius: 10,
-                  padding: '12px 14px',
-                  marginBottom: 12,
-                }}
-              >
-                {(() => {
-                  const sel = surveys.find((s) => s.form_key === survey || String(s.id) === String(survey))
-                  return (
-                    <>
-                      <div style={{ color: '#00e599', fontWeight: 'bold', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span>👥 Survey People / Field Team for "{sel?.title || survey}":</span>
-                      </div>
-                      <div style={{ color: '#ffffff', fontSize: 14, fontWeight: 'bold', marginTop: 4 }}>
-                        {sel?.surveyor_names
-                          ? sel.surveyor_names
-                          : 'Assigned field team surveyors: Sravan, Rahul, Priya'}
-                      </div>
-                      <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
-                        Submissions: <strong>{sel?.submissions || 0}</strong> · Questions: <strong>{sel?.question_count || 0}</strong>
-                      </div>
-                    </>
-                  )
-                })()}
-              </div>
-            )}
+            {(() => {
+              if (!survey) return null
+              const sel = surveys.find((s) => s.form_key === survey || String(s.id) === String(survey))
+              const assignedNames = (sel?.surveyor_names || '')
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+
+              const rawItems = mapAnalytics?.items || mapAnalytics?.rawItems || []
+              const matchingSubmissions = rawItems.filter((r) => String(r.formKey || r.form_key || r.survey || '') === survey)
+              const activeNames = [...new Set(matchingSubmissions.map((r) => r.submitted_by || r.surveyor).filter(Boolean))]
+
+              const allTeamNames = [...new Set([...assignedNames, ...activeNames])]
+              const teamDisplay = allTeamNames.length > 0 ? allTeamNames.join(', ') : 'No surveyors registered for this survey yet'
+
+              return (
+                <div
+                  style={{
+                    background: '#1e293b',
+                    border: '1px solid #00e599',
+                    borderRadius: 10,
+                    padding: '12px 14px',
+                    marginBottom: 12,
+                  }}
+                >
+                  <div style={{ color: '#00e599', fontWeight: 'bold', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span>👥 Field Team Surveyors for "{sel?.title || survey}":</span>
+                  </div>
+                  <div style={{ color: '#ffffff', fontSize: 14, fontWeight: 'bold', marginTop: 4 }}>
+                    {teamDisplay}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+                    Submissions: <strong>{matchingSubmissions.length || sel?.submissions || 0}</strong> · Questions: <strong>{sel?.question_count || 0}</strong>
+                  </div>
+                </div>
+              )
+            })()}
 
             {(() => {
               const sel = surveys.find((s) => s.form_key === survey || String(s.id) === String(survey))
@@ -562,27 +569,44 @@ export default function AdminDataScreen({ onToast }) {
                 .split(',')
                 .map((s) => s.trim().toLowerCase())
                 .filter(Boolean)
+
+              const rawItems = mapAnalytics?.items || mapAnalytics?.rawItems || []
+              const matchingSubmissions = rawItems.filter((r) => String(r.formKey || r.form_key || r.survey || '') === survey)
+              const activeNames = [...new Set(matchingSubmissions.map((r) => String(r.submitted_by || r.surveyor || '').trim().toLowerCase()).filter(Boolean))]
+
               const allUsers = mapAnalytics?.dataFilters?.by_user || []
-              const filteredUsers = survey && assignedNames.length > 0
-                ? allUsers.filter((u) => assignedNames.some((an) => u.name.toLowerCase().includes(an) || an.includes(u.name.toLowerCase())))
-                : allUsers
-              const displayUsers = filteredUsers.length > 0 ? filteredUsers : allUsers
+              let displayUsers = allUsers
+
+              if (survey) {
+                const teamUsers = allUsers.filter((u) => {
+                  const uname = u.name.toLowerCase()
+                  return assignedNames.some((an) => uname.includes(an) || an.includes(uname)) ||
+                         activeNames.some((ac) => uname.includes(ac) || ac.includes(uname))
+                })
+                if (teamUsers.length > 0) {
+                  displayUsers = teamUsers
+                }
+              }
 
               return (
                 <label className="field compact">
-                  <span>Surveyor {survey ? `(Field Team for "${sel?.title || survey}")` : ''}</span>
+                  <span>Surveyor {survey ? `(Field Collectors for "${sel?.title || survey}")` : ''}</span>
                   <select
                     value={exp.user}
                     onChange={(e) => setExp((f) => ({ ...f, user: e.target.value }))}
                   >
                     <option value="">
-                      {survey ? `All field team surveyors for "${sel?.title || survey}"` : 'All surveyors'}
+                      {survey ? `All field team collectors for "${sel?.title || survey}"` : 'All surveyors'}
                     </option>
-                    {displayUsers.map((u) => (
-                      <option key={u.name} value={u.name}>
-                        {u.name} ({u.value} submissions) {assignedNames.some((an) => u.name.toLowerCase().includes(an) || an.includes(u.name.toLowerCase())) ? '👥 [Assigned Team]' : ''}
-                      </option>
-                    ))}
+                    {displayUsers.map((u) => {
+                      const uname = u.name.toLowerCase()
+                      const isAssigned = assignedNames.some((an) => uname.includes(an) || an.includes(uname))
+                      return (
+                        <option key={u.name} value={u.name}>
+                          {u.name} ({u.value} submissions) {isAssigned ? '👥 [Assigned Team]' : ''}
+                        </option>
+                      )
+                    })}
                   </select>
                 </label>
               )

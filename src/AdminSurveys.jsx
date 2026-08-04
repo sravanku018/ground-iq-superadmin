@@ -64,6 +64,10 @@ function QuestionEditor({ questions, onChange, onToast }) {
             >
               <option value="text">Text</option>
               <option value="choice">Choice</option>
+              <option value="yesno">Yes / No buttons</option>
+              <option value="abc">A · B · C · D buttons</option>
+              <option value="sentiment">Sentiment (Positive / Neutral / Negative)</option>
+              <option value="age">Age (auto ranges in report)</option>
             </select>
           </label>
           {q.type === 'choice' && (
@@ -109,14 +113,25 @@ function cleanQuestions(questions) {
   return (questions || []).map((q) => ({
     id: String(q.id || '').trim() || `q_${Math.random().toString(36).slice(2, 8)}`,
     label: String(q.label || '').trim() || 'Question',
-    type: q.type === 'choice' ? 'choice' : 'text',
+    type:
+      q.type === 'yesno' || q.type === 'abc' || q.type === 'sentiment' || q.type === 'age'
+        ? q.type
+        : q.type === 'choice'
+          ? 'choice'
+          : 'text',
     options:
-      q.type === 'choice'
-        ? String(q.optionsText || (q.options || []).join(', '))
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : undefined,
+      q.type === 'yesno'
+        ? ['Yes', 'No']
+        : q.type === 'abc'
+          ? ['A', 'B', 'C', 'D']
+          : q.type === 'sentiment'
+            ? ['Positive', 'Neutral', 'Negative']
+            : q.type === 'choice'
+              ? String(q.optionsText || (q.options || []).join(', '))
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              : undefined,
     required: !!q.required,
     speak: String(q.speak || q.label || '').trim(),
   }))
@@ -234,8 +249,11 @@ export default function AdminSurveysScreen({ onToast }) {
     if (!detail) return
     setSaving(true)
     try {
-      await updateSurvey(detail.id, { title: detail.title })
-      onToast?.('Survey saved', 'ok')
+      await updateSurvey(detail.id, {
+        title: detail.title,
+        questions: cleanQuestions(detail.questions),
+      })
+      onToast?.('Survey name + questions saved', 'ok')
       await openDetail(detail.id)
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -333,7 +351,7 @@ export default function AdminSurveysScreen({ onToast }) {
         </div>
 
         <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
-          Questions are added later in the <strong>Questions</strong> tab.
+          Questions are added after creating — open the survey to edit them (name, questions, team).
         </p>
 
         <button
@@ -510,8 +528,16 @@ export default function AdminSurveysScreen({ onToast }) {
         </div>
 
         <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
-          Questions for this survey are edited in the <strong>Questions</strong> tab.
+          Survey questions — add/edit here. Options support text, choice, Yes/No, A·B·C·D,
+          sentiment (Positive/Neutral/Negative) and age (auto ranges in report).
         </p>
+
+        <h3 style={{ fontSize: 14, margin: '14px 0 6px' }}>Survey questions</h3>
+        <QuestionEditor
+          questions={detail.questions || []}
+          onChange={(qs) => setDetail({ ...detail, questions: qs })}
+          onToast={onToast}
+        />
 
         <button
           type="button"
@@ -519,7 +545,7 @@ export default function AdminSurveysScreen({ onToast }) {
           onClick={saveDetailChanges}
           disabled={saving || busy}
         >
-          {saving ? 'Saving…' : 'Save survey (title)'}
+          {saving ? 'Saving…' : 'Save survey (name + questions)'}
         </button>
         <button
           type="button"

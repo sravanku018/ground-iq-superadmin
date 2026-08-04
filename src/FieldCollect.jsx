@@ -15,6 +15,28 @@ const MAX_ACCURACY_M = 120 // meters — reject coarse GPS
 const MIN_AUDIO_BYTES = 2500 // ~tiny silence rejection
 const MIN_PHOTO_CHARS = 800 // base64 length floor
 
+// Auto colors for option buttons (choice / A·B·C·D / Yes-No)
+const OPTION_COLORS = [
+  '#00e599',
+  '#38bdf8',
+  '#a78bfa',
+  '#f472b6',
+  '#fbbf24',
+  '#34d399',
+  '#fb7185',
+  '#60a5fa',
+  '#c084fc',
+  '#2dd4bf',
+  '#f59e0b',
+  '#e879f9',
+]
+// Sentiment type: Positive / Neutral / Negative
+const SENTIMENT_COLORS = {
+  Positive: '#16a34a',
+  Neutral: '#fbbf24',
+  Negative: '#ef4444',
+}
+
 function isGeoValid(g) {
   if (!g) return false
   const lat = Number(g.lat)
@@ -57,7 +79,7 @@ async function reverseGeocode(lat, lng) {
   }
 }
 
-export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
+export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft, draft }) {
   const [step, setStep] = useState(0) // 0 geo, 1 photo, 2 voice+qa, 3 done
   const [formMeta, setFormMeta] = useState(null)
   const [questions, setQuestions] = useState([])
@@ -79,7 +101,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
   const [localDoneCount, setLocalDoneCount] = useState(0)
 
   // Resume the record number after relogin/remount — count records already
-  // saved on this phone by this surveyor (drafts excluded)
+  // saved on this phone by this surveyor (drafts included)
   useEffect(() => {
     let alive = true
     import('./localStore')
@@ -88,11 +110,11 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
         if (!alive) return
         const me = user?.name || user?.username || ''
         const mine = (all || []).filter(
-          (p) =>
-            p.phase !== 'draft' &&
-            String(p.qa?.submitted_by || '') === me,
+          (p) => String(p.qa?.submitted_by || '') === me,
         )
-        if (mine.length) setLocalDoneCount(mine.length)
+        const maxIdx = mine.reduce((m, p) => Math.max(m, Number(p.recordIndex) || 0), 0)
+        if (maxIdx) setLocalDoneCount(maxIdx)
+        else if (mine.length) setLocalDoneCount(mine.length)
       })
       .catch(() => {})
     return () => {
@@ -111,7 +133,8 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
   // Editing a saved draft: prefill everything from phone storage
   const draftLoaded = useRef(null)
   useEffect(() => {
-    if (!draft || draftLoaded.current === draft.id) return
+    if (!draft) return
+    if (draftLoaded.current === draft.id && questions.length) return
     draftLoaded.current = draft.id
     const d = draft.qa || draft
     const init = {}
@@ -142,6 +165,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
   const locationLocked = geoLocked && !!locationDetails
   const photoLocked = !!(photoDataUrl && photoDataUrl.length >= MIN_PHOTO_CHARS)
   const voiceLocked = voiceActivated && (!!audioBlob || recording)
+  const editingDraft = !!draft?.id
   const locks = {
     geo: geoLocked,
     location: locationLocked,
@@ -200,7 +224,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
   )
 
   useEffect(() => {
-    loadQuestions({ silent: true }).catch(() => {})
+    loadQuestions({ silent: true, resetAnswers: !draft }).catch(() => {})
     return () => {
       if (watchId.current != null && navigator.geolocation) {
         navigator.geolocation.clearWatch(watchId.current)
@@ -211,7 +235,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
         /* ignore */
       }
     }
-  }, [loadQuestions])
+  }, [loadQuestions, draft])
 
   function clearAudioUrl() {
     if (audioUrl) {
@@ -627,7 +651,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
         location_state: locationDetails?.state || '',
       }
 
-      const localSeq = localDoneCount + 1
+      const localSeq = Math.max(progress?.next_record || 0, localDoneCount) + 1
       const packageId = await savePackageLocal({
         form_key: formMeta?.form_key || 'default',
         form_id: `field-${user?.username || 's'}-${Date.now()}`,
@@ -733,7 +757,10 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
         location_state: locationDetails?.state || '',
       }
 
-      const localSeq = localDoneCount + 1
+      const localSeq =
+        draft?.recordIndex != null
+          ? draft.recordIndex
+          : Math.max(progress?.next_record || 0, localDoneCount) + 1
       const id = await savePackageLocal(
         {
           form_key: formMeta?.form_key || 'default',
@@ -753,8 +780,12 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
         { draft: true },
       )
       setLocalDoneCount(localSeq)
+      if (draft?.id) {
+        await deleteDraft(draft.id).catch(() => {})
+        draftLoaded.current = null
+      }
       onToast?.('Draft saved on this phone — verify & push from Drafts', 'ok')
-      resetForNextRecord()
+      onSavedDraft?.()
     } catch (e) {
       onToast?.(e.message || 'Draft save failed', 'error')
     } finally {
@@ -1063,9 +1094,11 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
               </p>
             )}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button type="button" className="btn secondary" onClick={() => setStep(0)}>
-                Back
-              </button>
+              {!editingDraft && (
+                <button type="button" className="btn secondary" onClick={() => setStep(0)}>
+                  Back
+                </button>
+              )}
               <button
                 type="button"
                 className="btn primary"
@@ -1144,9 +1177,11 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
                   Questions stay locked until voice is activated. Tap{' '}
                   <strong>Activate voice</strong> above.
                 </p>
-                <button type="button" className="btn secondary" onClick={() => setStep(1)}>
-                  Back to photo
-                </button>
+                {!editingDraft && (
+                  <button type="button" className="btn secondary" onClick={() => setStep(1)}>
+                    Back to photo
+                  </button>
+                )}
               </div>
             ) : (
               <>
@@ -1168,24 +1203,48 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
                           display: 'flex',
                           flexWrap: 'wrap',
                           gap: 8,
-                          ...(q.type === 'yesno' || q.type === 'abc' ? { gap: 16 } : {}),
+                          ...(q.type === 'yesno' || q.type === 'abc' || q.type === 'sentiment'
+                            ? { gap: 16 }
+                            : {}),
                         }}
                       >
-                        {q.options.map((opt) => (
-                          <button
-                            key={opt}
-                            type="button"
-                            className={`chip ${answers[q.id] === opt ? 'selected' : ''}`}
-                            style={
-                              q.type === 'yesno' || q.type === 'abc'
-                                ? { padding: '14px 28px', fontSize: 18, fontWeight: 600 }
-                                : undefined
-                            }
-                            onClick={() => setAnswers((a) => ({ ...a, [q.id]: opt }))}
-                          >
-                            {opt}
-                          </button>
-                        ))}
+                        {q.options.map((opt, oi) => {
+                          const sel = answers[q.id] === opt
+                          const optKey = String(opt || '').trim()
+                          const bg =
+                            SENTIMENT_COLORS[optKey] ||
+                            (q.type === 'sentiment'
+                              ? '#64748b'
+                              : OPTION_COLORS[oi % OPTION_COLORS.length])
+                          return (
+                            <button
+                              key={opt}
+                              type="button"
+                              className="chip"
+                              style={{
+                                background: bg,
+                                borderColor: bg,
+                                color: '#04231a',
+                                opacity: answers[q.id] && !sel ? 0.45 : 1,
+                                outline: sel ? '2px solid #fff' : 'none',
+                                outlineOffset: 2,
+                                ...(q.type === 'yesno' || q.type === 'abc'
+                                  ? { padding: '14px 28px', fontSize: 18, fontWeight: 600 }
+                                  : q.type === 'sentiment'
+                                    ? {
+                                        padding: '16px 26px',
+                                        fontSize: 17,
+                                        fontWeight: 700,
+                                        minWidth: 130,
+                                      }
+                                    : {}),
+                              }}
+                              onClick={() => setAnswers((a) => ({ ...a, [q.id]: opt }))}
+                            >
+                              {opt}
+                            </button>
+                          )
+                        })}
                       </div>
                     ) : (
                       <label className="field">
@@ -1263,14 +1322,16 @@ export default function FieldCollectScreen({ user, onToast, onDone, draft }) {
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  className="btn secondary"
-                  style={{ marginTop: 10 }}
-                  onClick={() => setStep(1)}
-                >
-                  Back to photo
-                </button>
+                {!editingDraft && (
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    style={{ marginTop: 10 }}
+                    onClick={() => setStep(1)}
+                  >
+                    Back to photo
+                  </button>
+                )}
               </>
             )}
           </div>

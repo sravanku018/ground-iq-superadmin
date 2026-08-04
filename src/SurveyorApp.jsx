@@ -750,6 +750,11 @@ export default function SurveyorApp() {
                 else getMyProgress().then(setMyProgress).catch(() => {})
                 void getQueueSnapshot().then((s) => setPendingSync(s.pending))
               }}
+              onSavedDraft={() => {
+                setEditDraft(null)
+                setTab('drafts')
+                refreshDraftCount()
+              }}
             />
           )}
           {tab === 'drafts' && (

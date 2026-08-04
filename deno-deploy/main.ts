@@ -237,6 +237,80 @@ const DEFAULT_QUESTIONS = [
   },
 ];
 
+// Legacy rows (excel-upload / old app): no GPS/camera, but answers exist.
+// Question definitions matching the excel columns so the Report/Analyze tabs
+// build question filters + charts for the legacy survey (empty options = the
+// analytics pipeline collects actual submitted values automatically).
+const LEGACY_QUESTIONS = [
+  {
+    id: "gender",
+    label: "Gender",
+    type: "choice",
+    options: ["Male", "Female", "Other"],
+    required: true,
+  },
+  {
+    id: "caste",
+    label: "Caste category",
+    type: "choice",
+    options: ["BC", "SC", "ST", "OC", "Minority", "Other"],
+    required: false,
+  },
+  {
+    id: "age",
+    label: "Age group",
+    type: "age",
+    required: false,
+  },
+  {
+    id: "education",
+    label: "Education",
+    type: "choice",
+    options: [],
+    required: false,
+  },
+  {
+    id: "employment",
+    label: "Employment",
+    type: "choice",
+    options: [],
+    required: false,
+  },
+  {
+    id: "performance",
+    label: "Government performance",
+    type: "choice",
+    options: [],
+    required: false,
+  },
+  {
+    id: "winning_party",
+    label: "Who will win here?",
+    type: "choice",
+    options: ["Congress", "BJP", "BRS", "Others", "Undecided"],
+    required: true,
+  },
+  {
+    id: "pm_preference",
+    label: "Preferred PM",
+    type: "choice",
+    options: ["Narendra Modi", "Rahul Gandhi", "Other", "Undecided"],
+    required: false,
+  },
+  {
+    id: "ward",
+    label: "Ward",
+    type: "text",
+    required: false,
+  },
+  {
+    id: "issues",
+    label: "Top issues (comma separated)",
+    type: "text",
+    required: false,
+  },
+];
+
 async function ensureSchema() {
   if (!sql) return;
   await sql`
@@ -349,8 +423,16 @@ async function ensureSchema() {
   try {
     await sql`
       INSERT INTO survey_form (form_key, title, questions, updated_at)
-      VALUES ('legacy', 'Legacy Data (no GPS/Camera)', '[]'::jsonb, NOW())
+      VALUES ('legacy', 'Legacy Data (no GPS/Camera)', ${JSON.stringify(LEGACY_QUESTIONS)}::jsonb, NOW())
       ON CONFLICT (form_key) DO NOTHING
+    `;
+    // Backfill: earlier deploys seeded the legacy survey with empty questions,
+    // so the report had no filters/charts for it. Idempotent — only fills when empty.
+    await sql`
+      UPDATE survey_form
+      SET questions = ${JSON.stringify(LEGACY_QUESTIONS)}::jsonb, updated_at = NOW()
+      WHERE form_key = 'legacy'
+        AND (questions IS NULL OR jsonb_array_length(questions) = 0)
     `;
   } catch (e) {
     console.warn("legacy survey seed", e);
@@ -476,7 +558,14 @@ const AGE_RANGES = [
 ];
 const AGE_OPTIONS = AGE_RANGES.map((r) => r.name);
 function ageBucket(v: unknown): string | null {
-  const n = Number(String(v ?? "").replace(/[^0-9]/g, ""));
+  const s = String(v ?? "").trim();
+  // Range values like "26-35 years" (legacy excel) → exact bucket
+  const range = s.match(/(\d{1,2})\s*[-–—to]+\s*(\d{1,3})/);
+  if (range) {
+    const hit = AGE_RANGES.find((r) => r.lo === Number(range[1]) && r.hi === Number(range[2]));
+    if (hit) return hit.name;
+  }
+  const n = Number(s.replace(/[^0-9]/g, ""));
   if (!Number.isFinite(n) || n <= 0) return null;
   for (const r of AGE_RANGES) if (n >= r.lo && n <= r.hi) return r.name;
   return null;
@@ -1185,46 +1274,11 @@ function qaFromAnswers(a: Record<string, unknown>) {
     .filter(Boolean) as { q: string; a: string }[];
 }
 
-async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
-  const district = (url.searchParams.get("district") || "").trim();
-  const party = (url.searchParams.get("party") || "").trim();
-  const gender = (url.searchParams.get("gender") || "").trim();
-  const caste = (url.searchParams.get("caste") || "").trim();
-  const constituency = (url.searchParams.get("constituency") || "").trim();
-  // Report pipeline: default analytics = confirmed only
-  // report=locked → Client Admin dashboard: force confirmed + complete (no raw/pending charts)
-  const reportLocked = (url.searchParams.get("report") || "").trim().toLowerCase() === "locked";
-  let statusFilter = (url.searchParams.get("status") || "confirmed").trim().toLowerCase();
-  let completenessFilter = (url.searchParams.get("completeness") || "all").trim().toLowerCase();
-  if (reportLocked) {
-    statusFilter = "confirmed";
-    completenessFilter = "complete";
-  }
-  let dateFrom = (url.searchParams.get("date_from") || url.searchParams.get("from") || "").trim();
-  let dateTo = (url.searchParams.get("date_to") || url.searchParams.get("to") || "").trim();
-  const userFilter = (url.searchParams.get("user") || url.searchParams.get("submitted_by") || "").trim();
-  const formFilter = (url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim();
-  // period: total | day | month | today — Client Admin data scopes
-  const period = (url.searchParams.get("period") || "total").trim().toLowerCase();
-  const dayParam = (url.searchParams.get("day") || "").trim(); // YYYY-MM-DD
-  const monthParam = (url.searchParams.get("month") || "").trim(); // YYYY-MM
-  if (period === "today") {
-    const t = new Date().toISOString().slice(0, 10);
-    dateFrom = t;
-    dateTo = t;
-  } else if (period === "day" && dayParam) {
-    dateFrom = dayParam;
-    dateTo = dayParam;
-  } else if (period === "month" && monthParam) {
-    const [y, m] = monthParam.split("-").map(Number);
-    if (y && m) {
-      const last = new Date(y, m, 0).getDate();
-      dateFrom = `${monthParam}-01`;
-      dateTo = `${monthParam}-${String(last).padStart(2, "0")}`;
-    }
-  }
-  // period=total → leave dateFrom/dateTo as provided (or empty = all time)
-
+/** Load + resolve all submissions into analytics rows (AC → district resolution, mandal fallback, party/gender/caste normalisation). Shared by analytics + export. */
+async function loadAnalyticsRows(
+  sqlFn: NonNullable<typeof sql>,
+  limit = 10000,
+): Promise<Row[]> {
   // AC name → first covering district (excel often puts AC in respondent_name)
   const acRows = await sqlFn`
     SELECT name, covering_districts, mp_constituency FROM assembly_constituencies
@@ -1423,7 +1477,7 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
     SELECT id, payload, created_at
     FROM submissions
     ORDER BY created_at DESC
-    LIMIT 10000
+    LIMIT ${limit}
   `;
 
   const allRows: Row[] = (raw as Record<string, unknown>[]).map((row) => {
@@ -1492,6 +1546,50 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
       answers: a,
     };
   });
+  return allRows;
+}
+
+async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
+  const district = (url.searchParams.get("district") || "").trim();
+  const party = (url.searchParams.get("party") || "").trim();
+  const gender = (url.searchParams.get("gender") || "").trim();
+  const caste = (url.searchParams.get("caste") || "").trim();
+  const constituency = (url.searchParams.get("constituency") || "").trim();
+  // Report pipeline: default analytics = confirmed only
+  // report=locked → Client Admin dashboard: force confirmed + complete (no raw/pending charts)
+  const reportLocked = (url.searchParams.get("report") || "").trim().toLowerCase() === "locked";
+  let statusFilter = (url.searchParams.get("status") || "confirmed").trim().toLowerCase();
+  let completenessFilter = (url.searchParams.get("completeness") || "all").trim().toLowerCase();
+  if (reportLocked) {
+    statusFilter = "confirmed";
+    completenessFilter = "complete";
+  }
+  let dateFrom = (url.searchParams.get("date_from") || url.searchParams.get("from") || "").trim();
+  let dateTo = (url.searchParams.get("date_to") || url.searchParams.get("to") || "").trim();
+  const userFilter = (url.searchParams.get("user") || url.searchParams.get("submitted_by") || "").trim();
+  const formFilter = (url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim();
+  // period: total | day | month | today — Client Admin data scopes
+  const period = (url.searchParams.get("period") || "total").trim().toLowerCase();
+  const dayParam = (url.searchParams.get("day") || "").trim(); // YYYY-MM-DD
+  const monthParam = (url.searchParams.get("month") || "").trim(); // YYYY-MM
+  if (period === "today") {
+    const t = new Date().toISOString().slice(0, 10);
+    dateFrom = t;
+    dateTo = t;
+  } else if (period === "day" && dayParam) {
+    dateFrom = dayParam;
+    dateTo = dayParam;
+  } else if (period === "month" && monthParam) {
+    const [y, m] = monthParam.split("-").map(Number);
+    if (y && m) {
+      const last = new Date(y, m, 0).getDate();
+      dateFrom = `${monthParam}-01`;
+      dateTo = `${monthParam}-${String(last).padStart(2, "0")}`;
+    }
+  }
+  // period=total → leave dateFrom/dateTo as provided (or empty = all time)
+
+  const allRows = await loadAnalyticsRows(sqlFn);
 
   const statusCounts = {
     pending: allRows.filter((r) => r.status === "pending").length,
@@ -1528,27 +1626,6 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
     universe = universe.filter((r) =>
       String(r.formKey || "") === formFilter
     );
-  }
-
-  // Dynamic filters: q_<questionId>=value (driven by survey questions)
-  const dynFilters = new Map<string, string>();
-  for (const [k, v] of url.searchParams) {
-    if (k.startsWith("q_") && v) dynFilters.set(k.slice(2), v);
-  }
-  if (dynFilters.size) {
-    universe = universe.filter((r) => {
-      for (const [qid, want] of dynFilters) {
-        const q = surveyQuestions.find((sq) => sq.id === qid);
-        const av = answerOf(r.answers, qid, q?.label);
-        const hit = q?.type === "age"
-          ? ageBucket(av) === want
-          : Array.isArray(av)
-            ? av.map(String).includes(want)
-            : String(av ?? "") === want;
-        if (!hit) return false;
-      }
-      return true;
-    });
   }
 
   // Survey questions → dynamic filter bar (options from defined choices + submitted answers)
@@ -1591,6 +1668,36 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
           options: [...new Set(opts)].slice(0, 100),
         });
       }
+    }
+  }
+
+  // Dynamic filters: q_<questionId>=value (driven by survey questions)
+  const dynFilters = new Map<string, string>();
+  for (const [k, v] of url.searchParams) {
+    if (k.startsWith("q_") && v) dynFilters.set(k.slice(2), v);
+  }
+  if (dynFilters.size) {
+    universe = universe.filter((r) => {
+      for (const [qid, want] of dynFilters) {
+        const q = surveyQuestions.find((sq) => sq.id === qid);
+        const av = answerOf(r.answers, qid, q?.label);
+        const hit = q?.type === "age"
+          ? ageBucket(av) === want
+          : Array.isArray(av)
+            ? av.map(String).includes(want)
+            : String(av ?? "") === want;
+        if (!hit) return false;
+      }
+      return true;
+    });
+  }
+
+  // Survey titles for the by_survey board (participants + locations per survey)
+  const surveyTitles = new Map<string, string>();
+  {
+    const trows = await sqlFn`SELECT form_key, title FROM survey_form`.catch(() => []);
+    for (const t of trows as { form_key?: string; title?: string }[]) {
+      surveyTitles.set(String(t.form_key || ""), String(t.title || ""));
     }
   }
   if (completenessFilter === "complete") {
@@ -1930,6 +2037,49 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
           if (m !== 0) return m;
           return b.value - a.value || a.surveyor.localeCompare(b.surveyor);
         });
+      })(),
+      // By survey: submissions, participating surveyors, locations covered
+      by_survey: (() => {
+        type SurveyStat = {
+          name: string;
+          title: string;
+          value: number;
+          surveyors: Set<string>;
+          districts: Set<string>;
+          constituencies: Set<string>;
+        };
+        const map = new Map<string, SurveyStat>();
+        for (const r of universe) {
+          const key = r.formKey || "default";
+          let row = map.get(key);
+          if (!row) {
+            row = {
+              name: key,
+              title: surveyTitles.get(key) || key,
+              value: 0,
+              surveyors: new Set(),
+              districts: new Set(),
+              constituencies: new Set(),
+            };
+            map.set(key, row);
+          }
+          row.value += 1;
+          if (r.submitted_by) row.surveyors.add(r.submitted_by);
+          if (r.district && r.district !== "Unknown") row.districts.add(r.district);
+          if (r.constituency && r.constituency !== "Unknown") {
+            row.constituencies.add(r.constituency);
+          }
+        }
+        return [...map.values()]
+          .map((s) => ({
+            name: s.name,
+            title: s.title,
+            value: s.value,
+            surveyors: [...s.surveyors].sort(),
+            districts: [...s.districts].sort(),
+            constituencies: [...s.constituencies].sort(),
+          }))
+          .sort((a, b) => b.value - a.value);
       })(),
     },
     filterOptions,
@@ -4275,6 +4425,122 @@ Deno.serve(async (req) => {
           districts,
           assembly_constituencies: acs,
           mp_constituencies: mps,
+        });
+      } catch (e) {
+        return json({ error: (e as Error).message }, 500);
+      }
+    }
+
+    // Admin data export: text/CSV of submissions with photo + audio links.
+    // Filters: period (total | today | day | month), day, month, user (surveyor),
+    // survey (form_key), district, constituency, status (default confirmed).
+    if (path === "/api/admin/export" && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      try {
+        let dateFrom = (url.searchParams.get("date_from") || url.searchParams.get("from") || "").trim();
+        let dateTo = (url.searchParams.get("date_to") || url.searchParams.get("to") || "").trim();
+        const period = (url.searchParams.get("period") || "total").trim().toLowerCase();
+        const dayParam = (url.searchParams.get("day") || "").trim();
+        const monthParam = (url.searchParams.get("month") || "").trim();
+        if (period === "today") {
+          const t = new Date().toISOString().slice(0, 10);
+          dateFrom = t;
+          dateTo = t;
+        } else if (period === "day" && dayParam) {
+          dateFrom = dayParam;
+          dateTo = dayParam;
+        } else if (period === "month" && monthParam) {
+          const [y, m] = monthParam.split("-").map(Number);
+          if (y && m) {
+            const last = new Date(y, m, 0).getDate();
+            dateFrom = `${monthParam}-01`;
+            dateTo = `${monthParam}-${String(last).padStart(2, "0")}`;
+          }
+        }
+        const userQ = (url.searchParams.get("user") || "").trim().toLowerCase();
+        const surveyQ = (url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim();
+        const districtQ = (url.searchParams.get("district") || "").trim().toLowerCase();
+        const constituencyQ = (url.searchParams.get("constituency") || "").trim().toLowerCase();
+        const statusQ = (url.searchParams.get("status") || "confirmed").trim().toLowerCase();
+
+        const allRows = await loadAnalyticsRows(sql, 20000);
+        let rows = allRows;
+        if (statusQ !== "all") rows = rows.filter((r) => r.status === statusQ);
+        if (dateFrom) rows = rows.filter((r) => dayKey(r.created_at) >= dateFrom);
+        if (dateTo) rows = rows.filter((r) => dayKey(r.created_at) <= dateTo);
+        if (userQ) {
+          rows = rows.filter((r) =>
+            String(r.submitted_by || "").toLowerCase().includes(userQ)
+          );
+        }
+        if (surveyQ) rows = rows.filter((r) => r.formKey === surveyQ);
+        if (districtQ) {
+          rows = rows.filter((r) => String(r.district || "").toLowerCase() === districtQ);
+        }
+        if (constituencyQ) {
+          rows = rows.filter((r) => String(r.constituency || "").toLowerCase() === constituencyQ);
+        }
+
+        // Photo / audio links per submission (first of each kind)
+        const mediaRows = await sql`
+          SELECT submission_id, kind, url FROM survey_media
+        `.catch(() => []);
+        const photoUrl = new Map<number, string>();
+        const audioUrl = new Map<number, string>();
+        for (const m of mediaRows as { submission_id: number; kind: string; url: string | null }[]) {
+          const id = Number(m.submission_id);
+          const u = m.url || "";
+          if (m.kind === "photo" && !photoUrl.has(id)) photoUrl.set(id, u);
+          if (m.kind === "audio" && !audioUrl.has(id)) audioUrl.set(id, u);
+        }
+
+        // Columns: fixed fields + union of all answer keys
+        const fixed = [
+          "id", "date", "survey", "surveyor", "district", "constituency",
+          "party", "gender", "caste", "age", "respondent", "photo_url", "audio_url",
+        ];
+        const qKeys = new Set<string>();
+        for (const r of rows) {
+          for (const k of Object.keys(r.answers || {})) qKeys.add(k);
+        }
+        const qCols = [...qKeys].sort();
+        const esc = (v: unknown) => {
+          const s = String(v ?? "");
+          return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+        const lines: string[] = [];
+        lines.push([...fixed, ...qCols].map(esc).join(","));
+        for (const r of rows) {
+          const base: Record<string, unknown> = {
+            id: r.id,
+            date: dayKey(r.created_at),
+            survey: r.formKey,
+            surveyor: r.submitted_by,
+            district: r.district,
+            constituency: r.constituency,
+            party: r.party,
+            gender: r.gender,
+            caste: r.caste,
+            age: r.age,
+            respondent: r.respondent,
+            photo_url: photoUrl.get(Number(r.id)) || "",
+            audio_url: audioUrl.get(Number(r.id)) || "",
+          };
+          const rec: string[] = [];
+          for (const c of fixed) rec.push(esc(base[c]));
+          for (const c of qCols) {
+            const v = (r.answers || {})[c];
+            rec.push(esc(Array.isArray(v) ? v.join(" | ") : v));
+          }
+          lines.push(rec.join(","));
+        }
+        return new Response(lines.join("\n"), {
+          status: 200,
+          headers: {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": `attachment; filename="survey-export-${dayParam || monthParam || "total"}.csv"`,
+          },
         });
       } catch (e) {
         return json({ error: (e as Error).message }, 500);

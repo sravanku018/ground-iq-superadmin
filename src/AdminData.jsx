@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import Papa from 'papaparse'
-import { getGeoSummary, uploadSurveys } from './api'
+import { exportSubmissions, getGeoSummary, uploadSurveys } from './api'
 import SurveyMap from './SurveyMap'
 import { getAnalytics } from './api'
 
@@ -10,7 +10,7 @@ import { getAnalytics } from './api'
  * 2) Survey upload — CSV/JSON survey responses into Neon
  */
 export default function AdminDataScreen({ onToast }) {
-  const [tab, setTab] = useState('geography') // geography | surveys
+  const [tab, setTab] = useState('geography') // geography | surveys | export
   const [geo, setGeo] = useState(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -19,6 +19,16 @@ export default function AdminDataScreen({ onToast }) {
   const [mapAnalytics, setMapAnalytics] = useState(null)
   const [surveys, setSurveys] = useState([])
   const [survey, setSurvey] = useState('')
+  const [exporting, setExporting] = useState(false)
+  const [exp, setExp] = useState({
+    period: 'total',
+    day: new Date().toISOString().slice(0, 10),
+    month: new Date().toISOString().slice(0, 7),
+    user: '',
+    district: '',
+    constituency: '',
+    status: 'confirmed',
+  })
 
   useEffect(() => {
     import('./api').then(({ listSurveys }) =>
@@ -137,11 +147,40 @@ export default function AdminDataScreen({ onToast }) {
 
   const counts = geo?.counts || {}
 
+  async function doExport() {
+    setExporting(true)
+    try {
+      const csv = await exportSubmissions({
+        period: exp.period,
+        day: exp.day,
+        month: exp.month,
+        user: exp.user,
+        survey,
+        district: exp.district,
+        constituency: exp.constituency,
+        status: exp.status,
+      })
+      const rows = csv.split('\n').filter(Boolean)
+      const stamp = exp.period === 'day' ? exp.day : exp.period === 'month' ? exp.month : 'total'
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `survey-export-${stamp}.csv`
+      a.click()
+      URL.revokeObjectURL(a.href)
+      onToast?.(`Exported ${rows.length - 1} record(s) to CSV`, 'ok')
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="screen admin-data-screen">
       <header className="screen-head">
         <h2>Admin data</h2>
-        <p>Geography inventory + survey upload (2 tabs)</p>
+        <p>Geography inventory + survey upload + data export (3 tabs)</p>
       </header>
 
       <div className="admin-subtabs">
@@ -158,6 +197,13 @@ export default function AdminDataScreen({ onToast }) {
           onClick={() => setTab('surveys')}
         >
           2 · Survey upload
+        </button>
+        <button
+          type="button"
+          className={tab === 'export' ? 'map-tab active' : 'map-tab'}
+          onClick={() => setTab('export')}
+        >
+          3 · Export
         </button>
       </div>
 
@@ -348,6 +394,131 @@ export default function AdminDataScreen({ onToast }) {
             </p>
             <p className="muted" style={{ fontSize: 12 }}>
               Includes field app + Excel/CSV admin uploads (same survey schema).
+            </p>
+          </div>
+        </div>
+      )}
+      {tab === 'export' && (
+        <div className="admin-pane">
+          <div className="card" style={{ marginBottom: 14 }}>
+            <h3>Export collected data (CSV text file)</h3>
+            <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+              One row per record — answers + photo/audio links. Filter by day, month, total,
+              surveyor, survey, district or assembly.
+            </p>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+              {[
+                { id: 'total', label: 'Total' },
+                { id: 'today', label: 'Today' },
+                { id: 'day', label: 'Day' },
+                { id: 'month', label: 'Month' },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`chip ${exp.period === p.id ? 'selected' : ''}`}
+                  onClick={() => setExp((f) => ({ ...f, period: p.id }))}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            {exp.period === 'day' && (
+              <label className="field compact">
+                <span>Day</span>
+                <input
+                  type="date"
+                  value={exp.day}
+                  onChange={(e) => setExp((f) => ({ ...f, day: e.target.value }))}
+                />
+              </label>
+            )}
+            {exp.period === 'month' && (
+              <label className="field compact">
+                <span>Month</span>
+                <input
+                  type="month"
+                  value={exp.month}
+                  onChange={(e) => setExp((f) => ({ ...f, month: e.target.value }))}
+                />
+              </label>
+            )}
+            <label className="field compact">
+              <span>Survey</span>
+              <select value={survey} onChange={(e) => setSurvey(e.target.value)}>
+                <option value="">All surveys</option>
+                {surveys.map((s) => (
+                  <option key={s.id} value={s.form_key}>
+                    {s.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field compact">
+              <span>Surveyor</span>
+              <select
+                value={exp.user}
+                onChange={(e) => setExp((f) => ({ ...f, user: e.target.value }))}
+              >
+                <option value="">All surveyors</option>
+                {(mapAnalytics?.dataFilters?.by_user || []).map((u) => (
+                  <option key={u.name} value={u.name}>
+                    {u.name} ({u.value})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field compact">
+              <span>District</span>
+              <select
+                value={exp.district}
+                onChange={(e) => setExp((f) => ({ ...f, district: e.target.value }))}
+              >
+                <option value="">All districts</option>
+                {(mapAnalytics?.filterOptions?.districts || []).map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field compact">
+              <span>Assembly</span>
+              <select
+                value={exp.constituency}
+                onChange={(e) => setExp((f) => ({ ...f, constituency: e.target.value }))}
+              >
+                <option value="">All assemblies</option>
+                {(mapAnalytics?.filterOptions?.constituencies || []).map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field compact">
+              <span>Status</span>
+              <select
+                value={exp.status}
+                onChange={(e) => setExp((f) => ({ ...f, status: e.target.value }))}
+              >
+                <option value="confirmed">Confirmed</option>
+                <option value="pending">Pending</option>
+                <option value="all">All</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              className="btn primary"
+              style={{ marginTop: 12 }}
+              disabled={exporting}
+              onClick={doExport}
+            >
+              {exporting ? 'Exporting…' : 'Download CSV (text file) with photo + audio links'}
+            </button>
+            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+              Photo/audio appear as links per record (media stored on R2 / free Neon storage).
             </p>
           </div>
         </div>

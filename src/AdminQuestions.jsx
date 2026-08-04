@@ -79,12 +79,14 @@ export default function AdminQuestionsScreen({ onToast }) {
             ? ['Yes', 'No']
             : q.type === 'abc'
               ? ['A', 'B', 'C', 'D']
-              : q.type === 'choice'
-              ? String(q.optionsText || (q.options || []).join(', '))
-                  .split(',')
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-              : undefined,
+              : q.type === 'sentiment'
+                ? ['Positive', 'Neutral', 'Negative']
+                : q.type === 'choice'
+                ? String(q.optionsText || (q.options || []).join(', '))
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                : undefined,
         required: !!q.required,
         speak: String(q.speak || q.label || '').trim(),
       }))
@@ -173,6 +175,7 @@ export default function AdminQuestionsScreen({ onToast }) {
               <option value="choice">Choice</option>
               <option value="yesno">Yes / No buttons</option>
               <option value="abc">A · B · C · D buttons</option>
+              <option value="sentiment">Sentiment (Positive / Neutral / Negative)</option>
               <option value="age">Age (auto ranges in report)</option>
             </select>
           </label>
@@ -189,9 +192,17 @@ export default function AdminQuestionsScreen({ onToast }) {
               />
             </label>
           )}
-          {(q.type === 'yesno' || q.type === 'abc') && (
+          {(q.type === 'yesno' || q.type === 'abc' || q.type === 'sentiment') && (
             <p className="muted" style={{ fontSize: 12 }}>
-              Field app shows push buttons: {q.type === 'yesno' ? <strong>Yes</strong> : 'A · B · C · D'} — report groups automatically
+              Field app shows colored push buttons:{' '}
+              {q.type === 'yesno' ? (
+                <strong>Yes (green) / No (pink)</strong>
+              ) : q.type === 'sentiment' ? (
+                <strong>Positive (green) / Neutral (amber) / Negative (red)</strong>
+              ) : (
+                'A · B · C · D'
+              )}{' '}
+              — report groups automatically
             </p>
           )}
           {q.type === 'age' && (

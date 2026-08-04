@@ -26,6 +26,9 @@ const PARTY_COLORS = {
   Others: '#94a3b8',
   Undecided: '#64748b',
   Unknown: '#475569',
+  Positive: '#16a34a',
+  Neutral: '#fbbf24',
+  Negative: '#ef4444',
 }
 
 const PALETTE = [
@@ -836,10 +839,62 @@ export default function DashboardScreen({ onToast }) {
               </div>
             )}
           </div>
+          {/* 5. By survey — submissions, participants, locations */}
+          <div className="card" style={{ marginBottom: 12 }}>
+            <h3 style={{ marginTop: 0 }}>By survey</h3>
+            <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+              Each survey: records, surveyors who participated, locations covered
+            </p>
+            {!data.dataFilters.by_survey?.length ? (
+              <p className="muted">No survey rows yet.</p>
+            ) : (
+              <div className="data-table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Survey</th>
+                      <th>Records</th>
+                      <th>Surveyors</th>
+                      <th>Locations</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.dataFilters.by_survey.slice(0, 25).map((s) => (
+                      <tr key={s.name}>
+                        <td>
+                          <strong>{s.title}</strong>
+                        </td>
+                        <td>{s.value}</td>
+                        <td>
+                          {(s.surveyors || []).length
+                            ? (s.surveyors || []).join(', ')
+                            : '—'}
+                        </td>
+                        <td>
+                          {(s.districts || []).length} district(s)
+                          {s.constituencies?.length
+                            ? ` · ${s.constituencies.length} AC(s)`
+                            : ''}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn small"
+                            onClick={() => setFilters((f) => ({ ...f, survey: s.name }))}
+                          >
+                            Filter
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
-
-      {error && <div className="banner error">{error}</div>}
       {filtersBroken && reportReady && (
         <div className="banner error" role="alert">
           Filters did not apply. Redeploy Deno API if this persists.

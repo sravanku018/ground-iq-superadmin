@@ -2884,6 +2884,7 @@ Deno.serve(async (req) => {
       if (!me) return json({ error: "Login required" }, 401);
       const id = Number(path.split("/").pop());
       if (!id) return json({ error: "Invalid id" }, 400);
+      const body = await readBody(req);
 
       const existing = await sql`SELECT * FROM app_users WHERE id = ${id}`;
       if (!existing.length) return json({ error: "Not found" }, 404);

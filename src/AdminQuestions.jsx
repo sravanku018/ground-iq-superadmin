@@ -208,13 +208,28 @@ export default function AdminQuestionsScreen({ onToast }) {
               </label>
             )}
 
-            <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, margin: '6px 0 10px' }}>
+            <label
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 10,
+                background: q.required ? 'rgba(0, 229, 153, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                border: q.required ? '1px solid #00e599' : '1px solid #334155',
+                borderRadius: 8,
+                padding: '10px 14px',
+                cursor: 'pointer',
+                margin: '8px 0 12px',
+                width: 'fit-content',
+              }}
+            >
               <input
                 type="checkbox"
                 checked={!!q.required}
                 onChange={(e) => updateQ(i, { required: e.target.checked })}
               />
-              <span style={{ fontWeight: 'bold' }}>Required for surveyor submit</span>
+              <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#00e599' : '#e2e8f0' }}>
+                {q.required ? '✓ Required Question (Surveyor must answer)' : 'Optional Question'}
+              </span>
             </label>
 
             {/* Live App Preview */}

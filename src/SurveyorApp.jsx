@@ -425,27 +425,41 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
       </div>
 
       <div className="card" style={{ marginBottom: 14 }}>
-        <h3>Surveyor Contact</h3>
-        <label className="field" style={{ margin: 0 }}>
-          <span>Mobile Number</span>
-          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+        <h3>📞 Surveyor Mobile Number</h3>
+        <p className="muted" style={{ fontSize: 12, margin: '2px 0 10px' }}>
+          Registered phone number for contact & admin verification.
+        </p>
+        <div className="field" style={{ margin: 0 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <input
               type="tel"
               placeholder="+91 9876543210"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              style={{ flex: 1 }}
+              style={{
+                flex: 1,
+                fontSize: 18,
+                fontWeight: 'bold',
+                letterSpacing: '0.04em',
+                padding: '12px 16px',
+                minHeight: 52,
+                borderRadius: 12,
+                border: '1px solid #00e599',
+                background: '#1a2332',
+                color: '#ffffff',
+              }}
             />
             <button
               type="button"
               className="btn primary"
+              style={{ padding: '12px 24px', fontSize: 15, fontWeight: 'bold', minHeight: 52, minWidth: 90 }}
               disabled={savingPhone || phone === (user?.phone || '')}
               onClick={handleSavePhone}
             >
               {savingPhone ? 'Saving…' : 'Save'}
             </button>
           </div>
-        </label>
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: 14 }}>

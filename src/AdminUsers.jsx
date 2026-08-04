@@ -942,6 +942,11 @@ export default function AdminUsersScreen({ onToast }) {
                           Surveys: {(u.surveys || []).map((s) => s.title).join(' · ')}
                         </span>
                       )}
+                      {u.phone && (
+                        <span className="meta" style={{ display: 'block', marginTop: 3, fontSize: 13, color: '#38bdf8', fontWeight: 'bold' }}>
+                          📞 Mobile: {u.phone}
+                        </span>
+                      )}
                     </div>
                     {u.verified && (
                       <span className="pill ok" style={{ background: '#059669', color: '#fff', marginLeft: 6, fontWeight: 'bold' }}>

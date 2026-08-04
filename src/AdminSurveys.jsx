@@ -560,18 +560,21 @@ export default function AdminSurveysScreen({ onToast }) {
           </button>
         </header>
 
-        <div className="card" style={{ marginBottom: 12 }}>
-          <label className="field">
-            <span>Survey name</span>
-            <input
-              value={detail.title}
-              onChange={(e) => setDetail({ ...detail, title: e.target.value })}
-            />
-          </label>
-          <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-            form_key: <strong>{detail.form_key}</strong> ·{' '}
-            {(detail.questions || []).length} question(s) · updated{' '}
-            {String(detail.updated_at || '').slice(0, 16).replace('T', ' ')}
+        <div className="card" style={{ marginBottom: 12, borderLeft: '4px solid #00e599' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ fontSize: 12, color: '#00e599', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              🔒 Survey Title (Locked / Non-Editable)
+            </span>
+            <span style={{ fontSize: 11, color: '#aaa' }}>form_key: {detail.form_key}</span>
+          </div>
+          <h3 style={{ margin: '4px 0 8px', fontSize: 20, color: '#ffffff', fontWeight: 'bold' }}>
+            {detail.title}
+          </h3>
+          <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+            👥 <strong>Field Team (People who take survey):</strong>{' '}
+            {(detail.surveyors || []).length > 0
+              ? (detail.surveyors || []).map((s) => s.username || s.name).join(', ')
+              : 'No surveyors assigned yet'}
           </p>
         </div>
 
@@ -782,21 +785,24 @@ export default function AdminSurveysScreen({ onToast }) {
       )}
 
       {surveys.map((s) => (
-        <div key={s.id} className="card" style={{ marginBottom: 10, padding: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div key={s.id} className="card" style={{ marginBottom: 10, padding: 14, borderLeft: '4px solid #00e599' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button
               type="button"
-              className="btn small"
+              className="btn small primary"
               onClick={() => openDetail(s.id)}
               disabled={busy}
+              style={{ fontWeight: 'bold', padding: '8px 16px' }}
             >
               Open
             </button>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <strong style={{ fontSize: 14 }}>{s.title}</strong>
-              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                {s.question_count} question(s) · {s.surveyors} surveyor(s) · {s.submissions}{' '}
-                submission(s) · updated{' '}
+              <strong style={{ fontSize: 16, color: '#ffffff' }}>{s.title}</strong>
+              <div style={{ fontSize: 13, color: '#38bdf8', fontWeight: 'bold', marginTop: 3 }}>
+                👥 Field Team (People who took survey): {s.surveyor_names || `${s.surveyors || 0} assigned surveyor(s)`}
+              </div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
+                📊 {s.submissions || 0} Submissions · 📋 {s.question_count || 0} Questions · Updated{' '}
                 {String(s.updated_at || '').slice(0, 16).replace('T', ' ')}
               </div>
             </div>

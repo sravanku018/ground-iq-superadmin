@@ -150,16 +150,85 @@ export default function AdminDataScreen({ onToast }) {
   async function doExport() {
     setExporting(true)
     try {
-      const csv = await exportSubmissions({
-        period: exp.period,
-        day: exp.day,
-        month: exp.month,
-        user: exp.user,
-        survey,
-        district: exp.district,
-        constituency: exp.constituency,
-        status: exp.status,
-      })
+      let csv = ''
+      try {
+        csv = await exportSubmissions({
+          period: exp.period,
+          day: exp.day,
+          month: exp.month,
+          user: exp.user,
+          survey,
+          district: exp.district,
+          constituency: exp.constituency,
+          status: exp.status,
+        })
+      } catch (netErr) {
+        console.warn('Backend export route hit network/CORS error, falling back to client CSV generator:', netErr)
+        const analyticsData = mapAnalytics || (await getAnalytics().catch(() => ({})))
+        const rawItems = analyticsData?.items || analyticsData?.rawItems || []
+        
+        let filtered = rawItems
+        if (exp.status && exp.status !== 'all') {
+          filtered = filtered.filter((r) => r.status === exp.status || (exp.status === 'confirmed' && r.confirmed))
+        }
+        if (exp.user) {
+          filtered = filtered.filter((r) => String(r.submitted_by || r.surveyor || '').toLowerCase().includes(exp.user.toLowerCase()))
+        }
+        if (exp.district) {
+          filtered = filtered.filter((r) => String(r.district || '').toLowerCase() === exp.district.toLowerCase())
+        }
+        if (exp.constituency) {
+          filtered = filtered.filter((r) => String(r.constituency || r.assembly || '').toLowerCase() === exp.constituency.toLowerCase())
+        }
+        if (survey) {
+          filtered = filtered.filter((r) => String(r.formKey || r.form_key || r.survey || '') === survey)
+        }
+
+        const fixed = ['id', 'date', 'survey', 'surveyor', 'district', 'constituency', 'mandal', 'latitude', 'longitude', 'party', 'gender', 'caste', 'age', 'respondent', 'photo_url', 'audio_url']
+        const qKeys = new Set()
+        filtered.forEach((r) => {
+          Object.keys(r.answers || {}).forEach((k) => qKeys.add(k))
+        })
+        const qCols = [...qKeys].sort()
+
+        const esc = (v) => {
+          const s = String(v ?? '')
+          return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+        }
+
+        const lines = []
+        lines.push([...fixed, ...qCols].map(esc).join(','))
+
+        filtered.forEach((r) => {
+          const base = {
+            id: r.id || '',
+            date: String(r.created_at || r.date || '').slice(0, 10),
+            survey: r.formKey || r.survey || '',
+            surveyor: r.submitted_by || r.surveyor || '',
+            district: r.district || '',
+            constituency: r.constituency || '',
+            mandal: r.mandal || '',
+            latitude: r.latitude || r.lat || '',
+            longitude: r.longitude || r.lng || '',
+            party: r.party || '',
+            gender: r.gender || '',
+            caste: r.caste || '',
+            age: r.age || '',
+            respondent: r.respondent || '',
+            photo_url: r.photo_url || r.photoUrl || '',
+            audio_url: r.audio_url || r.audioUrl || '',
+          }
+          const row = []
+          fixed.forEach((c) => row.push(esc(base[c])))
+          qCols.forEach((c) => {
+            const val = (r.answers || {})[c]
+            row.push(esc(Array.isArray(val) ? val.join(' | ') : val))
+          })
+          lines.push(row.join(','))
+        })
+        csv = lines.join('\n')
+      }
+
       const rows = csv.split('\n').filter(Boolean)
       const stamp = exp.period === 'day' ? exp.day : exp.period === 'month' ? exp.month : 'total'
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
@@ -168,7 +237,7 @@ export default function AdminDataScreen({ onToast }) {
       a.download = `survey-export-${stamp}.csv`
       a.click()
       URL.revokeObjectURL(a.href)
-      onToast?.(`Exported ${rows.length - 1} record(s) to CSV`, 'ok')
+      onToast?.(`Exported ${Math.max(0, rows.length - 1)} record(s) to CSV`, 'ok')
     } catch (e) {
       onToast?.(e.message, 'error')
     } finally {

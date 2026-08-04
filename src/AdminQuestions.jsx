@@ -14,6 +14,7 @@ const defaultOptionsForType = (t) => {
   if (t === 'yesno') return ['Yes', 'No']
   if (t === 'abc') return ['A', 'B', 'C', 'D']
   if (t === 'sentiment' || t === 'sentiment_text') return ['Positive', 'Neutral', 'Negative']
+  if (t === 'range' || t === 'numeric_range' || t === 'age') return ['10-20', '21-30', '31-40', '41-50', '50+']
   if (t === 'choice') return ['Option 1', 'Option 2', 'Option 3']
   return []
 }
@@ -171,7 +172,7 @@ export default function AdminQuestionsScreen({ onToast }) {
 
       {questions.map((q, i) => {
         const type = q.type || 'text'
-        const hasOptions = ['choice', 'yesno', 'abc', 'sentiment', 'sentiment_text'].includes(type)
+        const hasOptions = ['choice', 'yesno', 'abc', 'sentiment', 'sentiment_text', 'range', 'numeric_range', 'age'].includes(type)
         const currentOpts = Array.isArray(q.options) && q.options.length > 0
           ? q.options
           : (q.optionsText || '').split(',').map((s) => s.trim()).filter(Boolean)
@@ -192,7 +193,7 @@ export default function AdminQuestionsScreen({ onToast }) {
               <input
                 value={q.id}
                 onChange={(e) => updateQ(i, { id: e.target.value })}
-                placeholder="e.g. voter_opinion"
+                placeholder="e.g. age_range"
               />
             </label>
 
@@ -201,7 +202,7 @@ export default function AdminQuestionsScreen({ onToast }) {
               <input
                 value={q.label}
                 onChange={(e) => updateQ(i, { label: e.target.value })}
-                placeholder="What is your opinion on local development?"
+                placeholder="What is your age or income bracket?"
               />
             </label>
 
@@ -210,7 +211,7 @@ export default function AdminQuestionsScreen({ onToast }) {
               <input
                 value={q.speak || ''}
                 onChange={(e) => updateQ(i, { speak: e.target.value })}
-                placeholder="Ask respondent their opinion on local development"
+                placeholder="Ask respondent their age bracket"
               />
             </label>
 
@@ -221,6 +222,7 @@ export default function AdminQuestionsScreen({ onToast }) {
                 onChange={(e) => handleTypeChange(i, e.target.value)}
                 style={{ fontWeight: 'bold' }}
               >
+                <option value="range">🔢 Numeric Range Buttons (e.g. 10-20, 21-30, 31-40, 50+)</option>
                 <option value="yesno">✓ Yes / ✕ No Buttons (Green & Red)</option>
                 <option value="sentiment_text">📝 Text + Sentiment Fillers (Positive/Neutral/Negative)</option>
                 <option value="choice">🔘 Choice / Custom Options (Multi-Pill)</option>

@@ -22,6 +22,7 @@ const defaultOptionsForType = (t) => {
   if (t === 'yesno') return ['Yes', 'No']
   if (t === 'abc') return ['A', 'B', 'C', 'D']
   if (t === 'sentiment' || t === 'sentiment_text') return ['Positive', 'Neutral', 'Negative']
+  if (t === 'range' || t === 'numeric_range' || t === 'age') return ['10-20', '21-30', '31-40', '41-50', '50+']
   if (t === 'choice') return ['Option 1', 'Option 2', 'Option 3']
   return []
 }
@@ -56,7 +57,7 @@ function QuestionEditor({ questions, onChange }) {
     <>
       {questions.map((q, i) => {
         const type = q.type || 'text'
-        const hasOptions = ['choice', 'yesno', 'abc', 'sentiment', 'sentiment_text'].includes(type)
+        const hasOptions = ['choice', 'yesno', 'abc', 'sentiment', 'sentiment_text', 'range', 'numeric_range', 'age'].includes(type)
         const currentOpts = Array.isArray(q.options) && q.options.length > 0
           ? q.options
           : (q.optionsText || '').split(',').map((s) => s.trim()).filter(Boolean)
@@ -77,7 +78,7 @@ function QuestionEditor({ questions, onChange }) {
               <input
                 value={q.id}
                 onChange={(e) => updateQ(i, { id: e.target.value })}
-                placeholder="e.g. voter_opinion"
+                placeholder="e.g. age_range"
               />
             </label>
 
@@ -86,7 +87,7 @@ function QuestionEditor({ questions, onChange }) {
               <input
                 value={q.label}
                 onChange={(e) => updateQ(i, { label: e.target.value })}
-                placeholder="What is your opinion on local development?"
+                placeholder="What is your age or income bracket?"
               />
             </label>
 
@@ -95,7 +96,7 @@ function QuestionEditor({ questions, onChange }) {
               <input
                 value={q.speak || ''}
                 onChange={(e) => updateQ(i, { speak: e.target.value })}
-                placeholder="Ask respondent their opinion on local development"
+                placeholder="Ask respondent their age bracket"
               />
             </label>
 
@@ -106,6 +107,7 @@ function QuestionEditor({ questions, onChange }) {
                 onChange={(e) => handleTypeChange(i, e.target.value)}
                 style={{ fontWeight: 'bold' }}
               >
+                <option value="range">🔢 Numeric Range Buttons (e.g. 10-20, 21-30, 31-40, 50+)</option>
                 <option value="yesno">✓ Yes / ✕ No Buttons (Green & Red)</option>
                 <option value="sentiment_text">📝 Text + Sentiment Fillers (Positive/Neutral/Negative)</option>
                 <option value="choice">🔘 Choice / Custom Options (Multi-Pill)</option>
@@ -119,7 +121,7 @@ function QuestionEditor({ questions, onChange }) {
             {hasOptions && (
               <div style={{ marginTop: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid #334155', borderRadius: 8, padding: 12 }}>
                 <label className="field" style={{ marginBottom: 8 }}>
-                  <span>Answer Options (comma-separated or add chips below)</span>
+                  <span>Answer Options / Range Pills (comma-separated list, e.g. 10-20, 21-30, 31-40, 50+)</span>
                   <input
                     value={
                       q.optionsText != null
@@ -131,12 +133,12 @@ function QuestionEditor({ questions, onChange }) {
                       const parsed = val.split(',').map((s) => s.trim()).filter(Boolean)
                       updateQ(i, { optionsText: val, options: parsed })
                     }}
-                    placeholder="Satisfied, Neutral, Unsatisfied, Don't Know"
+                    placeholder="10-20, 21-30, 31-40, 41-50, 50+"
                   />
                 </label>
 
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, fontWeight: 'bold', color: '#38bdf8' }}>Active Option Pills:</span>
+                  <span style={{ fontSize: 11, fontWeight: 'bold', color: '#38bdf8' }}>Active Range/Option Pills:</span>
                   {(currentOpts.length > 0 ? currentOpts : defaultOptionsForType(type)).map((opt, optIdx) => (
                     <span
                       key={optIdx}
@@ -145,8 +147,8 @@ function QuestionEditor({ questions, onChange }) {
                         border: '1px solid #00e599',
                         color: '#fff',
                         borderRadius: 16,
-                        padding: '4px 10px',
-                        fontSize: 12,
+                        padding: '4px 12px',
+                        fontSize: 13,
                         fontWeight: 'bold',
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -182,11 +184,11 @@ function QuestionEditor({ questions, onChange }) {
                     style={{ padding: '3px 10px', fontSize: 11 }}
                     onClick={() => {
                       const base = currentOpts.length > 0 ? currentOpts : defaultOptionsForType(type)
-                      const next = [...base, `Option ${base.length + 1}`]
+                      const next = [...base, '51-60']
                       updateQ(i, { options: next, optionsText: next.join(', ') })
                     }}
                   >
-                    + Add Option
+                    + Add Range
                   </button>
                 </div>
               </div>
@@ -257,8 +259,8 @@ function QuestionEditor({ questions, onChange }) {
                 </div>
               ) : hasOptions ? (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {(currentOpts.length > 0 ? currentOpts : ['Option 1', 'Option 2', 'Option 3']).map((opt, idx) => (
-                    <span key={idx} style={{ background: '#38bdf8', color: '#111', padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 'bold' }}>
+                  {(currentOpts.length > 0 ? currentOpts : ['10-20', '21-30', '31-40', '41-50', '50+']).map((opt, idx) => (
+                    <span key={idx} style={{ background: '#38bdf8', color: '#111', padding: '6px 14px', borderRadius: 16, fontSize: 13, fontWeight: 'bold' }}>
                       {opt}
                     </span>
                   ))}
@@ -302,9 +304,11 @@ function cleanQuestions(questions) {
               ? ['A', 'B', 'C', 'D']
               : q.type === 'sentiment' || q.type === 'sentiment_text'
                 ? ['Positive', 'Neutral', 'Negative']
-                : q.type === 'choice'
-                  ? ['Option 1', 'Option 2']
-                  : undefined
+                : q.type === 'range' || q.type === 'numeric_range' || q.type === 'age'
+                  ? ['10-20', '21-30', '31-40', '41-50', '50+']
+                  : q.type === 'choice'
+                    ? ['Option 1', 'Option 2']
+                    : undefined
 
     return {
       id: String(q.id || '').trim() || `q_${Math.random().toString(36).slice(2, 8)}`,

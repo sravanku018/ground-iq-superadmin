@@ -2792,15 +2792,37 @@ Deno.serve(async (req) => {
       }
 
       const ex = existing[0] as Record<string, unknown>;
-      const nextPhoto = photoVal !== null ? photoVal : ((ex.photo as string | null) || null);
-      const nextAadhaarFront = aadhaarFrontVal !== null ? aadhaarFrontVal : ((ex.aadhaar_front as string | null) || null);
-      const nextAadhaarBack = aadhaarBackVal !== null ? aadhaarBackVal : ((ex.aadhaar_back as string | null) || null);
+      let nextPhoto = photoVal !== null ? photoVal : ((ex.photo as string | null) || null);
+      let nextAadhaarFront = aadhaarFrontVal !== null ? aadhaarFrontVal : ((ex.aadhaar_front as string | null) || null);
+      let nextAadhaarBack = aadhaarBackVal !== null ? aadhaarBackVal : ((ex.aadhaar_back as string | null) || null);
 
       for (const [k, v] of [["photo", nextPhoto], ["aadhaar_front", nextAadhaarFront], ["aadhaar_back", nextAadhaarBack]] as const) {
-        if (v && typeof v === "string" && v.length > 3_500_000) {
-          return json({ error: `${k} image too large. Max 2.5MB base64 per image.` }, 413);
+        if (v && typeof v === "string" && v.length > 4_500_000) {
+          return json({ error: `${k} image too large. Max 3MB base64 per image.` }, 413);
         }
       }
+
+      // Store in Cloudflare R2 if configured
+      const processR2 = async (field: "photo" | "aadhaar_front" | "aadhaar_back", val: string | null) => {
+        if (!val || !val.startsWith("data:image/")) return val;
+        const mimeMatch = val.match(/^data:([^;]+);base64,/);
+        const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
+        const b64Data = mimeMatch ? val.slice(mimeMatch[0].length) : val;
+        try {
+          const bytes = b64ToBytes(b64Data);
+          const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+          const objectKey = `profiles/${targetId}/${field}_${Date.now()}.${ext}`;
+          const r2 = await tryOptionalExternalUpload(bytes, mime, field, objectKey, `${field}.${ext}`);
+          if (r2?.url) return r2.url;
+        } catch {
+          /* fallback to dataUrl */
+        }
+        return val;
+      };
+
+      if (photoVal !== null && photoVal) nextPhoto = await processR2("photo", photoVal);
+      if (aadhaarFrontVal !== null && aadhaarFrontVal) nextAadhaarFront = await processR2("aadhaar_front", aadhaarFrontVal);
+      if (aadhaarBackVal !== null && aadhaarBackVal) nextAadhaarBack = await processR2("aadhaar_back", aadhaarBackVal);
 
       const updated = await sql`
         UPDATE app_users

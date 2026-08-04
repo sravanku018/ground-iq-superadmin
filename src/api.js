@@ -165,6 +165,16 @@ export function deleteUser(id) {
   })
 }
 
+/** Upload surveyor profile media (photo, aadhaar_front, aadhaar_back) */
+export function uploadProfileMedia(field, data, userId) {
+  const url = userId ? `/api/users/${userId}/media` : '/api/users/profile-media'
+  return request(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ field, data }),
+  })
+}
+
 /** Surveyor: my done/target ticks */
 export function getMyProgress() {
   return request('/api/progress/me')

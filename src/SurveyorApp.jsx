@@ -6,6 +6,8 @@ import {
   getToken,
   logout,
   me,
+  updateUser,
+  uploadProfileMedia,
 } from './api'
 import SubmissionMedia from './SubmissionMedia'
 import { QUALITY, watchNetwork } from './network'
@@ -31,6 +33,7 @@ const TABS = [
   { id: 'collect', label: 'Collect', icon: '✎' },
   { id: 'drafts', label: 'Pending', icon: '📦' },
   { id: 'records', label: 'Records', icon: '☰' },
+  { id: 'profile', label: 'Profile', icon: '👤' },
 ]
 
 /** On version change, clear old session so login screen + new build show cleanly */
@@ -265,6 +268,206 @@ function MyRecordsScreen({ user, onToast }) {
             </div>
           )
         })}
+    </div>
+  )
+}
+
+/** Surveyor Profile Screen: Name, Photo, Phone, Aadhaar Front & Back, Key ID */
+function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
+  const [phone, setPhone] = useState(user?.phone || '')
+  const [savingPhone, setSavingPhone] = useState(false)
+  const [uploading, setUploading] = useState({ photo: false, front: false, back: false })
+
+  useEffect(() => {
+    setPhone(user?.phone || '')
+  }, [user?.phone])
+
+  const handleMediaUpload = (field, file) => {
+    if (!file) return
+    if (file.size > 4 * 1024 * 1024) {
+      onToast?.('Image too large. Max 3MB.', 'error')
+      return
+    }
+    const fieldKey = field === 'front' ? 'aadhaar_front' : field === 'back' ? 'aadhaar_back' : 'photo'
+    setUploading((u) => ({ ...u, [field]: true }))
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      const dataUrl = e.target?.result
+      if (typeof dataUrl === 'string') {
+        try {
+          await uploadProfileMedia(fieldKey, dataUrl)
+          onUserUpdated?.((prev) => ({ ...prev, [fieldKey]: dataUrl }))
+          onToast?.(`${fieldKey.replace('_', ' ')} updated ✓`, 'ok')
+        } catch (err) {
+          onToast?.(err.message || 'Upload failed', 'error')
+        } finally {
+          setUploading((u) => ({ ...u, [field]: false }))
+        }
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleSavePhone = async () => {
+    setSavingPhone(true)
+    try {
+      await updateUser(user.id, { phone: phone.trim() })
+      onUserUpdated?.((prev) => ({ ...prev, phone: phone.trim() }))
+      onToast?.('Phone number updated ✓', 'ok')
+    } catch (err) {
+      onToast?.(err.message || 'Failed to update phone', 'error')
+    } finally {
+      setSavingPhone(false)
+    }
+  }
+
+  return (
+    <div className="screen profile-screen" style={{ padding: '12px 14px' }}>
+      <div className="card" style={{ marginBottom: 14, textAlign: 'center', padding: '16px 14px' }}>
+        <div style={{ position: 'relative', display: 'inline-block', marginBottom: 10 }}>
+          {user?.photo ? (
+            <img
+              src={user.photo}
+              alt="Profile"
+              style={{ width: 84, height: 84, borderRadius: '50%', objectFit: 'cover', border: '3px solid #00e599' }}
+            />
+          ) : (
+            <div
+              style={{
+                width: 84,
+                height: 84,
+                borderRadius: '50%',
+                background: '#243041',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 38,
+                margin: '0 auto',
+              }}
+            >
+              👤
+            </div>
+          )}
+          <label
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              right: 0,
+              background: '#00e599',
+              color: '#111',
+              borderRadius: '50%',
+              width: 30,
+              height: 30,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+            }}
+            title="Upload photo"
+          >
+            📷
+            <input
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={(e) => handleMediaUpload('photo', e.target.files?.[0])}
+            />
+          </label>
+        </div>
+        <h2 style={{ margin: '4px 0 2px', fontSize: 20 }}>{user?.name || user?.display_name || user?.username}</h2>
+        <p className="muted" style={{ margin: '0 0 10px', fontSize: 13 }}>@{user?.username}</p>
+
+        <div style={{ display: 'inline-block', background: 'rgba(0,229,153,0.12)', border: '1px solid rgba(0,229,153,0.3)', borderRadius: 20, padding: '4px 14px' }}>
+          <span style={{ fontSize: 12, color: '#00e599', fontWeight: 'bold' }}>
+            Unique Key ID: {user?.key_id || 'GROUND-KEY'}
+          </span>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <h3>Surveyor Contact</h3>
+        <label className="field" style={{ margin: 0 }}>
+          <span>Mobile Number</span>
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <input
+              type="tel"
+              placeholder="+91 9876543210"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <button
+              type="button"
+              className="btn primary"
+              disabled={savingPhone || phone === (user?.phone || '')}
+              onClick={handleSavePhone}
+            >
+              {savingPhone ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </label>
+      </div>
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <h3>Aadhaar Identity Verification</h3>
+        <p className="muted" style={{ fontSize: 12, margin: '0 0 12px' }}>
+          Upload front & back images of your Aadhaar card for field surveyor verification.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {/* Front */}
+          <div style={{ border: '1px dashed #334155', borderRadius: 8, padding: 10, textAlign: 'center', background: 'rgba(0,0,0,0.15)' }}>
+            <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 'bold' }}>Aadhaar Front</p>
+            {user?.aadhaar_front ? (
+              <img
+                src={user.aadhaar_front}
+                alt="Aadhaar Front"
+                style={{ width: '100%', height: 95, objectFit: 'cover', borderRadius: 6, marginBottom: 8 }}
+              />
+            ) : (
+              <div style={{ height: 95, background: 'rgba(255,255,255,0.03)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 8 }}>
+                🪪
+              </div>
+            )}
+            <label className="btn small primary" style={{ display: 'block', width: '100%', boxSizing: 'border-box', cursor: 'pointer', textAlign: 'center' }}>
+              {uploading.front ? 'Uploading…' : user?.aadhaar_front ? 'Change Front' : 'Upload Front'}
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => handleMediaUpload('front', e.target.files?.[0])}
+              />
+            </label>
+          </div>
+
+          {/* Back */}
+          <div style={{ border: '1px dashed #334155', borderRadius: 8, padding: 10, textAlign: 'center', background: 'rgba(0,0,0,0.15)' }}>
+            <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 'bold' }}>Aadhaar Back</p>
+            {user?.aadhaar_back ? (
+              <img
+                src={user.aadhaar_back}
+                alt="Aadhaar Back"
+                style={{ width: '100%', height: 95, objectFit: 'cover', borderRadius: 6, marginBottom: 8 }}
+              />
+            ) : (
+              <div style={{ height: 95, background: 'rgba(255,255,255,0.03)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 8 }}>
+                🪪
+              </div>
+            )}
+            <label className="btn small primary" style={{ display: 'block', width: '100%', boxSizing: 'border-box', cursor: 'pointer', textAlign: 'center' }}>
+              {uploading.back ? 'Uploading…' : user?.aadhaar_back ? 'Change Back' : 'Upload Back'}
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => handleMediaUpload('back', e.target.files?.[0])}
+              />
+            </label>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -770,6 +973,13 @@ export default function SurveyorApp() {
             />
           )}
           {tab === 'records' && <MyRecordsScreen user={user} onToast={notify} />}
+          {tab === 'profile' && (
+            <SurveyorProfileScreen
+              user={user}
+              onToast={notify}
+              onUserUpdated={(updater) => setUser(updater)}
+            />
+          )}
         </PullToRefresh>
       </main>
 

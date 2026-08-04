@@ -1570,6 +1570,9 @@ async function loadAnalyticsRows(
       created_at: isoStamp(row.created_at),
       district: dist || "Unknown",
       constituency: ac || "Unknown",
+      mandal: mandal || "",
+      lat: String(a.latitude || a.lat || payload.latitude || payload.lat || ""),
+      lng: String(a.longitude || a.lng || payload.longitude || payload.lng || ""),
       party: normParty(String(a.winning_party || a.winningParty || "")),
       gender: normGender(String(a.gender || "")),
       caste: normCaste(String(a.caste || "")),
@@ -4710,8 +4713,9 @@ Deno.serve(async (req) => {
 
         // Columns: fixed fields + union of all answer keys
         const fixed = [
-          "id", "date", "survey", "surveyor", "district", "constituency",
-          "party", "gender", "caste", "age", "respondent", "photo_url", "audio_url",
+          "id", "date", "survey", "surveyor", "district", "constituency", "mandal",
+          "latitude", "longitude", "party", "gender", "caste", "age", "respondent",
+          "photo_url", "audio_url",
         ];
         const qKeys = new Set<string>();
         for (const r of rows) {
@@ -4725,6 +4729,7 @@ Deno.serve(async (req) => {
         const lines: string[] = [];
         lines.push([...fixed, ...qCols].map(esc).join(","));
         for (const r of rows) {
+          const rObj = r as unknown as Record<string, unknown>;
           const base: Record<string, unknown> = {
             id: r.id,
             date: dayKey(r.created_at),
@@ -4732,6 +4737,9 @@ Deno.serve(async (req) => {
             surveyor: r.submitted_by,
             district: r.district,
             constituency: r.constituency,
+            mandal: rObj.mandal || "",
+            latitude: rObj.lat || "",
+            longitude: rObj.lng || "",
             party: r.party,
             gender: r.gender,
             caste: r.caste,

@@ -140,8 +140,21 @@ async function getUser(token: string | null) {
       AND u.active = TRUE
       AND u.role IN ('admin', 'surveyor')
     LIMIT 1
-  `;
-  const u = rows[0];
+  `.catch(async () =>
+    await sql`
+      SELECT u.id, u.username, u.display_name, u.role, u.active, u.created_at,
+             NULL AS key_id, NULL AS phone, NULL AS photo, NULL AS aadhaar_front, NULL AS aadhaar_back,
+             FALSE AS verified
+      FROM app_sessions s
+      JOIN app_users u ON u.id = s.user_id
+      WHERE s.token = ${token}
+        AND s.expires_at > NOW()
+        AND u.active = TRUE
+        AND u.role IN ('admin', 'surveyor')
+      LIMIT 1
+    `.catch(() => [])
+  );
+  const u = rows[0] as Record<string, unknown> | undefined;
   if (!u) return null;
   return {
     id: u.id,
@@ -361,6 +374,7 @@ async function ensureSchema() {
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS photo TEXT`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS aadhaar_front TEXT`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS aadhaar_back TEXT`.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS verified BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   // Unique key ID backfill for existing users (idempotent — different key per row)
   const noKey = await sql`
     SELECT id FROM app_users WHERE key_id IS NULL OR key_id = ''

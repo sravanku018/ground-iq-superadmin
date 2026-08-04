@@ -131,6 +131,13 @@ export default function AdminAnalyzeScreen({ onToast }) {
     load()
   }, []) // initial
 
+  // Survey change → reload so question filters match the selected survey
+  useEffect(() => {
+    if (!survey) return
+    const t = setTimeout(load, 150)
+    return () => clearTimeout(t)
+  }, [survey]) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function confirmOne(id, force = false) {
     setBusyId(id)
     try {
@@ -228,6 +235,9 @@ export default function AdminAnalyzeScreen({ onToast }) {
             ))}
           </select>
         </label>
+        <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+          Picking a survey reloads filters for that survey's questions.
+        </p>
         {analytics?.dataFilters?.questions?.map((q) => (
           <label className="field" key={q.id}>
             <span>{q.label}</span>

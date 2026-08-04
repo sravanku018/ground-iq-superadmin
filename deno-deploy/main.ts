@@ -1245,6 +1245,13 @@ function dayKey(iso: string) {
   return String(iso || "").slice(0, 10);
 }
 
+// Neon returns TIMESTAMPTZ as Date objects; String(Date) yields locale text
+// ("Tue Aug 04 2026…") which breaks dayKey()/date comparisons. Always ISO.
+function isoStamp(v: unknown): string {
+  if (v instanceof Date) return v.toISOString();
+  return String(v || "");
+}
+
 function qaFromAnswers(a: Record<string, unknown>) {
   const keys = [
     ["respondent_name", "Respondent"],
@@ -1519,7 +1526,7 @@ async function loadAnalyticsRows(
     const verify = verifySubmission(payload, []);
     return {
       id: row.id as string | number,
-      created_at: String(row.created_at || ""),
+      created_at: isoStamp(row.created_at),
       district: dist || "Unknown",
       constituency: ac || "Unknown",
       party: normParty(String(a.winning_party || a.winningParty || "")),
@@ -2886,7 +2893,7 @@ Deno.serve(async (req) => {
           form_id: (payload?.form_id as string) || "",
           form_key: String(payload?.form_key || "default"),
           created_at: r.created_at,
-          date: dayKey(String(r.created_at || "")),
+          date: dayKey(isoStamp(r.created_at)),
           status,
           completeness: verify.completeness,
           verification: verify,
@@ -3084,7 +3091,7 @@ Deno.serve(async (req) => {
         if (kinds.includes("photo")) payload.has_photo = true;
         const v = verifySubmission(payload, kinds);
         const user = String(payload.submitted_by || a.data_collector || "unknown");
-        const date = dayKey(String(r.created_at || ""));
+        const date = dayKey(isoStamp(r.created_at));
         const month = date.slice(0, 7);
         if (dateFrom && date < dateFrom) continue;
         if (dateTo && date > dateTo) continue;

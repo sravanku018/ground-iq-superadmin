@@ -181,26 +181,37 @@ export default function AdminUsersScreen({ onToast }) {
     load()
   }, [load])
 
-  async function loadProfile(u) {
+  async function loadProfile(u, filters = profileFilters) {
     if (!u) return
     setProfileUser(u)
     setProfileLoading(true)
     try {
       const { listSubmissions } = await import('./api')
-      const period = profileFilters.period === 'today' ? 'today' : profileFilters.period === 'day' ? 'day' : profileFilters.period === 'month' ? 'month' : 'total'
-      const res = await listSubmissions(300, 'all', {
+      const period = filters.period === 'today' ? 'today' : filters.period === 'day' ? 'day' : filters.period === 'month' ? 'month' : 'total'
+      const surveyParam = (filters.survey === 'active' || filters.survey === 'all_with_legacy') ? '' : filters.survey
+      const res = await listSubmissions(500, 'all', {
         user: u.username,
         period,
-        day: period === 'day' ? profileFilters.day : '',
-        month: period === 'month' ? profileFilters.month : '',
-        survey: profileFilters.survey,
-        district: profileFilters.district,
+        day: period === 'day' ? filters.day : '',
+        month: period === 'month' ? filters.month : '',
+        survey: surveyParam,
+        district: filters.district,
       })
-      const items = res.items || []
+      let items = res.items || []
+
+      // Exclude legacy records by default unless 'all_with_legacy' or 'legacy' is chosen
+      if (!filters.survey || filters.survey === 'active') {
+        items = items.filter((i) => i.form_key !== 'legacy' && !i.legacy)
+      } else if (filters.survey === 'legacy') {
+        items = items.filter((i) => i.form_key === 'legacy' || i.legacy)
+      } else if (filters.survey && filters.survey !== 'all_with_legacy') {
+        items = items.filter((i) => i.form_key === filters.survey)
+      }
+
       const geoSummary = {
         records: items.length,
-        districts: [...new Set(items.map((i) => i.answers?.district).filter(Boolean))],
-        constituencies: [...new Set(items.map((i) => i.answers?.constituency).filter(Boolean))],
+        districts: [...new Set(items.map((i) => i.answers?.district || i.district).filter(Boolean))],
+        constituencies: [...new Set(items.map((i) => i.answers?.constituency || i.constituency).filter(Boolean))],
         complete: items.filter((i) => i.completeness === 'complete').length,
         confirmed: items.filter((i) => i.status === 'confirmed').length,
       }
@@ -217,9 +228,10 @@ export default function AdminUsersScreen({ onToast }) {
     if (!u) return
     setProfileUser(u)
     setProfileData(null)
-    setProfileFilters((f) => ({ ...f, period: 'total', district: '', survey: '' }))
+    const initialFilters = { period: 'total', district: '', survey: 'active', day: '', month: '' }
+    setProfileFilters(initialFilters)
     setTab('profiles')
-    loadProfile(u)
+    loadProfile(u, initialFilters)
   }
 
   function openEdit(u) {
@@ -1446,6 +1458,24 @@ export default function AdminUsersScreen({ onToast }) {
                       />
                     </label>
                   )}
+                  <label className="field compact" style={{ minWidth: 220 }}>
+                    <span>Survey</span>
+                    <select
+                      value={profileFilters.survey}
+                      onChange={(e) =>
+                        setProfileFilters((f) => ({ ...f, survey: e.target.value }))
+                      }
+                    >
+                      <option value="active">All Active Surveys (Excludes Legacy)</option>
+                      {allSurveys.map((s) => (
+                        <option key={s.id} value={s.form_key}>
+                          {s.title}
+                        </option>
+                      ))}
+                      <option value="all_with_legacy">Include Legacy Records</option>
+                      <option value="legacy">Legacy Records Only</option>
+                    </select>
+                  </label>
                   <label className="field compact" style={{ minWidth: 160 }}>
                     <span>District</span>
                     <select

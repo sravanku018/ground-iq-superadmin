@@ -134,6 +134,7 @@ export default function AdminUsersScreen({ onToast }) {
     password: 'survey123',
     target_quota: 20,
     surveys: [],
+    usernames_list: '',
   })
   const [bulkTarget, setBulkTarget] = useState(20)
   const [lastGenerated, setLastGenerated] = useState([])
@@ -146,6 +147,17 @@ export default function AdminUsersScreen({ onToast }) {
     surveys: [],
   })
   const [allSurveys, setAllSurveys] = useState([])
+  const [tab, setTab] = useState('create') // create | bulk | profiles
+  const [profileUser, setProfileUser] = useState(null)
+  const [profileData, setProfileData] = useState(null)
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [profileFilters, setProfileFilters] = useState({
+    period: 'total',
+    day: new Date().toISOString().slice(0, 10),
+    month: new Date().toISOString().slice(0, 7),
+    district: '',
+    survey: '',
+  })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -168,6 +180,44 @@ export default function AdminUsersScreen({ onToast }) {
   useEffect(() => {
     load()
   }, [load])
+
+  async function loadProfile(u) {
+    if (!u) return
+    setProfileUser(u)
+    setProfileLoading(true)
+    try {
+      const { listSubmissions } = await import('./api')
+      const period = profileFilters.period === 'today' ? 'today' : profileFilters.period === 'day' ? 'day' : profileFilters.period === 'month' ? 'month' : 'total'
+      const res = await listSubmissions(300, 'all', {
+        user: u.username,
+        period,
+        day: period === 'day' ? profileFilters.day : '',
+        month: period === 'month' ? profileFilters.month : '',
+        survey: profileFilters.survey,
+        district: profileFilters.district,
+      })
+      const items = res.items || []
+      const geoSummary = {
+        records: items.length,
+        districts: [...new Set(items.map((i) => i.answers?.district).filter(Boolean))],
+        constituencies: [...new Set(items.map((i) => i.answers?.constituency).filter(Boolean))],
+        complete: items.filter((i) => i.completeness === 'complete').length,
+        confirmed: items.filter((i) => i.status === 'confirmed').length,
+      }
+      setProfileData({ items, geoSummary })
+    } catch (e) {
+      onToast?.(e.message, 'error')
+      setProfileData(null)
+    } finally {
+      setProfileLoading(false)
+    }
+  }
+
+  function openProfile(u) {
+    setProfileData(null)
+    setProfileFilters((f) => ({ ...f, period: 'total', district: '', survey: '' }))
+    loadProfile(u)
+  }
 
   function openEdit(u) {
     setEditingId(u.id)
@@ -540,12 +590,85 @@ export default function AdminUsersScreen({ onToast }) {
   return (
     <div className="screen">
       <header className="screen-head">
-        <h2>Client Admin · Users</h2>
+        <h2>Client Admin · Surveyors</h2>
         <p>
-          Create / edit surveyor logins · change username &amp; password · disable / revoke
-          access
+          Create surveyor logins · bulk create with surveys · per-surveyor profile with
+          day / month / geo filters
         </p>
       </header>
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="stat-row" style={{ marginBottom: 10 }}>
+          <div className="stat">
+            <strong>{board?.totals?.surveyors ?? '—'}</strong>
+            <span>Surveyors</span>
+          </div>
+          <div className="stat">
+            <strong>{board?.totals?.done ?? '—'}</strong>
+            <span>Records done</span>
+          </div>
+          <div className="stat">
+            <strong>{board?.totals?.targets ?? '—'}</strong>
+            <span>Total targets</span>
+          </div>
+          <div className="stat">
+            <strong>{board?.totals?.completed_users ?? '—'}</strong>
+            <span>Completed</span>
+          </div>
+          <div className="stat">
+            <strong>{board?.totals?.in_progress ?? '—'}</strong>
+            <span>In progress</span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span className="muted" style={{ fontSize: 12 }}>
+            Set ALL surveyors target:
+          </span>
+          <input
+            type="number"
+            min={0}
+            value={bulkTarget}
+            onChange={(e) => setBulkTarget(Number(e.target.value) || 0)}
+            style={{ width: 80 }}
+            aria-label="All surveyors target"
+          />
+          <button
+            type="button"
+            className="btn small primary"
+            disabled={saving}
+            onClick={applyBulkQuota}
+          >
+            Apply to all
+          </button>
+          <button type="button" className="btn small" onClick={load}>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="admin-subtabs">
+        <button
+          type="button"
+          className={tab === 'create' ? 'map-tab active' : 'map-tab'}
+          onClick={() => setTab('create')}
+        >
+          1 · Create surveyor
+        </button>
+        <button
+          type="button"
+          className={tab === 'bulk' ? 'map-tab active' : 'map-tab'}
+          onClick={() => setTab('bulk')}
+        >
+          2 · Bulk create
+        </button>
+        <button
+          type="button"
+          className={tab === 'profiles' ? 'map-tab active' : 'map-tab'}
+          onClick={() => setTab('profiles')}
+        >
+          3 · Surveyor profiles
+        </button>
+      </div>
 
       <div className="card" style={{ marginBottom: 14, padding: '12px 14px' }}>
         <p style={{ margin: 0, fontSize: 13 }}>
@@ -555,99 +678,148 @@ export default function AdminUsersScreen({ onToast }) {
         </p>
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
-        <h3>Client Admin status board</h3>
-        {board?.totals ? (
-          <div className="stat-row" style={{ marginBottom: 10 }}>
-            <div className="stat">
-              <strong>{board.totals.surveyors}</strong>
-              <span>Surveyors</span>
-            </div>
-            <div className="stat">
-              <strong>{board.totals.done}</strong>
-              <span>Records done</span>
-            </div>
-            <div className="stat">
-              <strong>{board.totals.targets}</strong>
-              <span>Total targets</span>
-            </div>
-            <div className="stat">
-              <strong>{board.totals.completed_users}</strong>
-              <span>Finished quota</span>
-            </div>
-          </div>
-        ) : (
-          <p className="muted">Progress board loads after Deno redeploy.</p>
-        )}
-        <label className="field">
-          <span>Set ALL surveyors target (records each)</span>
-          <input
-            type="number"
-            min={0}
-            value={bulkTarget}
-            onChange={(e) => setBulkTarget(Number(e.target.value) || 0)}
-          />
-        </label>
-        <button type="button" className="btn primary" onClick={applyBulkQuota} disabled={saving}>
-          Apply target to all surveyors
-        </button>
-        <button type="button" className="btn secondary" style={{ marginTop: 8 }} onClick={load}>
-          Refresh
-        </button>
-      </div>
-
-      <form className="card" onSubmit={handleGenerate} style={{ marginBottom: 14 }}>
-        <h3>Bulk generate surveyors</h3>
-        <label className="field">
-          <span>How many users (1–100)</span>
-          <input
-            type="number"
-            min={1}
-            max={100}
-            value={gen.count}
-            onChange={(e) => setGen({ ...gen, count: Number(e.target.value) || 1 })}
-          />
-        </label>
-        <label className="field">
-          <span>Records each must complete (target)</span>
-          <input
-            type="number"
-            min={0}
-            value={gen.target_quota}
-            onChange={(e) =>
-              setGen({ ...gen, target_quota: Number(e.target.value) || 0 })
-            }
-          />
-        </label>
-        <label className="field">
-          <span>Username prefix</span>
-          <input
-            value={gen.prefix}
-            onChange={(e) => setGen({ ...gen, prefix: e.target.value })}
-          />
-        </label>
-        <label className="field">
-          <span>Password (batch)</span>
-          <input
-            value={gen.password}
-            onChange={(e) => setGen({ ...gen, password: e.target.value })}
-          />
-        </label>
-        <div className="field">
-          <span>Assign surveys to all generated users (optional)</span>
-          <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
-            None selected = generated surveyors use the default Field Survey form on the app.
+      {tab === 'bulk' && (
+        <form className="card" onSubmit={handleGenerate} style={{ marginBottom: 14 }}>
+          <h3>Bulk create surveyors</h3>
+          <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+            Option A: type one username per line (or comma separated) — exact usernames.
+            Option B: leave blank and use count + prefix below.
           </p>
-          <SurveySelect
-            value={gen.surveys}
-            onChange={(ids) => setGen((g) => ({ ...g, surveys: ids }))}
-            all={allSurveys}
-          />
-        </div>
-        <button type="submit" className="btn primary" disabled={saving}>
-          {saving ? 'Generating…' : 'Generate users + targets'}
-        </button>
-      </form>
+          <label className="field">
+            <span>Usernames (one per line / comma separated)</span>
+            <textarea
+              rows={5}
+              value={gen.usernames_list}
+              onChange={(e) => setGen({ ...gen, usernames_list: e.target.value })}
+              placeholder={'sravan\nravi\nanil\n'}
+              style={{ width: '100%', boxSizing: 'border-box' }}
+            />
+          </label>
+          <label className="field">
+            <span>How many users (1–100) — only when usernames list is empty</span>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={gen.count}
+              onChange={(e) => setGen({ ...gen, count: Number(e.target.value) || 1 })}
+            />
+          </label>
+          <label className="field">
+            <span>Username prefix — only when usernames list is empty</span>
+            <input
+              value={gen.prefix}
+              onChange={(e) => setGen({ ...gen, prefix: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Records each must complete (target)</span>
+            <input
+              type="number"
+              min={0}
+              value={gen.target_quota}
+              onChange={(e) =>
+                setGen({ ...gen, target_quota: Number(e.target.value) || 0 })
+              }
+            />
+          </label>
+          <label className="field">
+            <span>Password (batch — same for all)</span>
+            <input
+              value={gen.password}
+              onChange={(e) => setGen({ ...gen, password: e.target.value })}
+            />
+          </label>
+          <div className="field">
+            <span>Assign surveys to all created users (multiple)</span>
+            <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
+              Pick one or more surveys — every created surveyor gets all of them. None
+              selected = default Field Survey form on the app.
+            </p>
+            <SurveySelect
+              value={gen.surveys}
+              onChange={(ids) => setGen((g) => ({ ...g, surveys: ids }))}
+              all={allSurveys}
+            />
+          </div>
+          <button type="submit" className="btn primary" disabled={saving}>
+            {saving ? 'Generating…' : 'Create surveyors + assign surveys'}
+          </button>
+        </form>
+      )}
+
+      {tab === 'create' && (
+        <form className="card" onSubmit={handleCreate} style={{ marginBottom: 14 }}>
+          <h3>Add one surveyor</h3>
+          <label className="field">
+            <span>Role</span>
+            <select
+              value={form.role}
+              onChange={(e) => setForm({ ...form, role: e.target.value })}
+            >
+              <option value="surveyor">Surveyor (field app)</option>
+              <option value="admin">Admin (portal)</option>
+            </select>
+          </label>
+          {form.role === 'surveyor' && (
+            <label className="field">
+              <span>Target records</span>
+              <input
+                type="number"
+                min={0}
+                value={form.target_quota}
+                onChange={(e) =>
+                  setForm({ ...form, target_quota: Number(e.target.value) || 0 })
+                }
+              />
+            </label>
+          )}
+          {form.role === 'surveyor' && (
+            <div className="field">
+              <span>Assign surveys (multiple, optional)</span>
+              <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
+                None selected = surveyor uses the default Field Survey form on the app.
+              </p>
+              <SurveySelect
+                value={form.surveys}
+                onChange={(ids) => setForm((f) => ({ ...f, surveys: ids }))}
+                all={allSurveys}
+              />
+            </div>
+          )}
+          <label className="field">
+            <span>Username * (field app login — stored lowercase)</span>
+            <input
+              required
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="e.g. s010 or ravi01"
+            />
+          </label>
+          <label className="field">
+            <span>Display name</span>
+            <input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Password *</span>
+            <input
+              required
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+            />
+          </label>
+          <button type="submit" className="btn primary" disabled={saving}>
+            Create
+          </button>
+        </form>
+      )}
 
       {lastGenerated.length > 0 && (
         <div
@@ -693,88 +865,19 @@ export default function AdminUsersScreen({ onToast }) {
         </div>
       )}
 
-      <form className="card" onSubmit={handleCreate} style={{ marginBottom: 14 }}>
-        <h3>Add one user</h3>
-        <label className="field">
-          <span>Role</span>
-          <select
-            value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value })}
-          >
-            <option value="surveyor">Surveyor (field app)</option>
-            <option value="admin">Admin (portal)</option>
-          </select>
-        </label>
-        {form.role === 'surveyor' && (
-          <label className="field">
-            <span>Target records</span>
-            <input
-              type="number"
-              min={0}
-              value={form.target_quota}
-              onChange={(e) =>
-                setForm({ ...form, target_quota: Number(e.target.value) || 0 })
-              }
-            />
-          </label>
-        )}
-        {form.role === 'surveyor' && (
-          <div className="field">
-            <span>Assign surveys (optional)</span>
-            <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
-              None selected = surveyor uses the default Field Survey form on the app.
+      {tab === 'profiles' && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <h3>
+            Surveyors ({surveyorRows.length}) · Admins ({admins.length})
+          </h3>
+          {loading ? (
+            <p className="muted">Loading…</p>
+          ) : surveyorRows.length === 0 ? (
+            <p className="muted">
+              No surveyors yet. Use <strong>Bulk create</strong> or{' '}
+              <strong>Create surveyor</strong>.
             </p>
-            <SurveySelect
-              value={form.surveys}
-              onChange={(ids) => setForm((f) => ({ ...f, surveys: ids }))}
-              all={allSurveys}
-            />
-          </div>
-        )}
-        <label className="field">
-          <span>Username * (field app login — stored lowercase)</span>
-          <input
-            required
-            value={form.username}
-            onChange={(e) => setForm({ ...form, username: e.target.value })}
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            placeholder="e.g. s010 or ravi01"
-          />
-        </label>
-        <label className="field">
-          <span>Display name</span>
-          <input
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-          />
-        </label>
-        <label className="field">
-          <span>Password *</span>
-          <input
-            required
-            type="password"
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-          />
-        </label>
-        <button type="submit" className="btn primary" disabled={saving}>
-          Create
-        </button>
-      </form>
-
-      <div className="card">
-        <h3>
-          Surveyors ({surveyorRows.length}) · Admins ({admins.length})
-        </h3>
-        {loading ? (
-          <p className="muted">Loading…</p>
-        ) : surveyorRows.length === 0 ? (
-          <p className="muted">
-            No surveyors yet. Use <strong>Generate</strong> or <strong>Add one user</strong>.
-          </p>
-        ) : (
+          ) : (
           <ul className="user-list">
             {surveyorRows.map((u) => {
               const done = u.done ?? 0
@@ -915,6 +1018,13 @@ export default function AdminUsersScreen({ onToast }) {
                       onClick={() => (isEditing ? closeEdit() : openEdit(u))}
                     >
                       {isEditing ? 'Close edit' : 'Edit login'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn small primary"
+                      onClick={() => openProfile(u)}
+                    >
+                      Profile
                     </button>
                     <input
                       type="number"
@@ -1064,7 +1174,193 @@ export default function AdminUsersScreen({ onToast }) {
             </ul>
           </>
         )}
-      </div>
+        </div>
+      )}
+
+      {tab === 'profiles' && profileUser && (
+        <div className="card">
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 8,
+              marginBottom: 10,
+            }}
+          >
+            <h3 style={{ margin: 0 }}>
+              Profile · {profileUser.name || profileUser.username}
+              <span className="meta" style={{ marginLeft: 8 }}>
+                @{profileUser.username}
+              </span>
+            </h3>
+            <button type="button" className="btn small" onClick={() => setProfileUser(null)}>
+              Close
+            </button>
+          </div>
+
+          <div
+            className="admin-subtabs"
+            style={{ justifyContent: 'flex-start', flexWrap: 'wrap', marginBottom: 12 }}
+          >
+            {['total', 'today', 'day', 'month'].map((p) => (
+              <button
+                key={p}
+                type="button"
+                className={profileFilters.period === p ? 'map-tab active' : 'map-tab'}
+                onClick={() =>
+                  setProfileFilters((f) => ({ ...f, period: p }))
+                }
+              >
+                {p === 'total' ? 'Total' : p === 'today' ? 'Today' : p === 'day' ? 'Day' : 'Month'}
+              </button>
+            ))}
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              gap: 10,
+              alignItems: 'flex-end',
+              flexWrap: 'wrap',
+              marginBottom: 12,
+            }}
+          >
+            {profileFilters.period === 'day' && (
+              <label className="field compact">
+                <span>Day</span>
+                <input
+                  type="date"
+                  value={profileFilters.day}
+                  onChange={(e) =>
+                    setProfileFilters((f) => ({ ...f, day: e.target.value }))
+                  }
+                />
+              </label>
+            )}
+            {profileFilters.period === 'month' && (
+              <label className="field compact">
+                <span>Month</span>
+                <input
+                  type="month"
+                  value={profileFilters.month}
+                  onChange={(e) =>
+                    setProfileFilters((f) => ({ ...f, month: e.target.value }))
+                  }
+                />
+              </label>
+            )}
+            <label className="field compact" style={{ minWidth: 180 }}>
+              <span>District (geo)</span>
+              <select
+                value={profileFilters.district}
+                onChange={(e) =>
+                  setProfileFilters((f) => ({ ...f, district: e.target.value }))
+                }
+              >
+                <option value="">All districts</option>
+                {(profileData?.geoSummary?.districts || []).map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field compact" style={{ minWidth: 180 }}>
+              <span>Survey</span>
+              <select
+                value={profileFilters.survey}
+                onChange={(e) =>
+                  setProfileFilters((f) => ({ ...f, survey: e.target.value }))
+                }
+              >
+                <option value="">All surveys</option>
+                {allSurveys.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name || s.form_key || `#${s.id}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={profileLoading}
+              onClick={() => loadProfile(profileUser)}
+            >
+              {profileLoading ? 'Loading…' : 'Load'}
+            </button>
+          </div>
+
+          {profileLoading ? (
+            <p className="muted">Loading records…</p>
+          ) : profileData ? (
+            <>
+              <div className="stat-row" style={{ marginBottom: 12 }}>
+                <div className="stat">
+                  <strong>{profileData.geoSummary.records}</strong>
+                  <span>Records</span>
+                </div>
+                <div className="stat">
+                  <strong>{profileData.geoSummary.complete}</strong>
+                  <span>Complete</span>
+                </div>
+                <div className="stat">
+                  <strong>{profileData.geoSummary.confirmed}</strong>
+                  <span>Confirmed</span>
+                </div>
+                <div className="stat">
+                  <strong>{profileData.geoSummary.districts.length}</strong>
+                  <span>Districts</span>
+                </div>
+                <div className="stat">
+                  <strong>{profileData.geoSummary.constituencies.length}</strong>
+                  <span>Constituencies</span>
+                </div>
+              </div>
+
+              {profileData.geoSummary.districts.length > 0 && (
+                <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
+                  Districts: {profileData.geoSummary.districts.join(' · ')}
+                  {profileData.geoSummary.constituencies.length > 0
+                    ? ` — Constituencies: ${profileData.geoSummary.constituencies.join(' · ')}`
+                    : ''}
+                </p>
+              )}
+
+              {profileData.items.length === 0 ? (
+                <p className="muted">No records for this filter.</p>
+              ) : (
+                <ul className="user-list">
+                  {profileData.items.map((it, i) => (
+                    <li key={it.id || i}>
+                      <div>
+                        <strong>#{it.record_index ?? it.id ?? i + 1}</strong>
+                        <span className="meta">
+                          {it.created_at || ''} · {it.form_key || 'field'}
+                        </span>
+                        <span className="meta">
+                          {it.answers?.district || 'no district'}
+                          {it.answers?.constituency
+                            ? ` · ${it.answers.constituency}`
+                            : ''}
+                        </span>
+                      </div>
+                      <span className="pill ok">
+                        <span className="dot" />
+                        {it.status || 'submitted'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          ) : (
+            <p className="muted">Select a surveyor from the list and press Profile.</p>
+          )}
+        </div>
+      )}
     </div>
   )
 }

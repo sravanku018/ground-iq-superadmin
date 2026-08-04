@@ -125,7 +125,7 @@ export function createUser(body) {
   })
 }
 
-/** Bulk generate surveyor accounts: { count, prefix, password } */
+/** Bulk generate surveyor accounts: { count, prefix, password } or { usernames_list, password } */
 export function generateUsers(body) {
   return request('/api/users/generate', {
     method: 'POST',

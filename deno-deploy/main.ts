@@ -2649,6 +2649,17 @@ Deno.serve(async (req) => {
       const prefix = String(body.prefix || "s").trim().toLowerCase().replace(/[^a-z0-9_]/g, "") || "s";
       const password = String(body.password || "survey123");
       const target_quota = Math.max(0, Math.min(Number(body.target_quota) || 0, 100000));
+      // Explicit usernames (one per line / comma separated) take priority over prefix+count
+      const rawUsernames = Array.isArray(body.usernames)
+        ? body.usernames
+        : String(body.usernames_list || "").split(/[\n,;]+/);
+      const usernames = rawUsernames
+        .map((u: unknown) => String(u).trim().toLowerCase())
+        .filter((u: string) => /^[a-z0-9_]{2,40}$/.test(u))
+        .slice(0, 100);
+      const names = usernames.length
+        ? usernames
+        : Array.from({ length: count }, (_, i) => `${prefix}${String(i + 1).padStart(3, "0")}`);
       const created: {
         username: string;
         password: string;
@@ -2666,15 +2677,14 @@ Deno.serve(async (req) => {
 
       const password_hash = await hashPasswordAsync(password);
       const errors: string[] = [];
-      for (let i = 1; i <= count; i++) {
-        const username = `${prefix}${String(i).padStart(3, "0")}`;
-        const name = `Surveyor ${username}`;
+      for (const username of names) {
+        const displayName = `Surveyor ${username}`;
         try {
           await sql`
             INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active)
-            VALUES (${username}, ${password_hash}, ${name}, ${"surveyor"}, ${target_quota}, TRUE)
+            VALUES (${username}, ${password_hash}, ${displayName}, ${"surveyor"}, ${target_quota}, TRUE)
           `;
-          created.push({ username, password, name, target_quota });
+          created.push({ username, password, name: displayName, target_quota });
         } catch (e) {
           errors.push(`${username}: ${(e as Error).message || "exists"}`);
         }
@@ -2843,9 +2853,28 @@ Deno.serve(async (req) => {
       if (me.role !== "admin") return json({ error: "Admin only" }, 403);
       const limit = Math.min(Number(url.searchParams.get("limit") || 200), 1000);
       const statusQ = (url.searchParams.get("status") || "").trim().toLowerCase();
-      const dateFrom = (url.searchParams.get("date_from") || "").trim();
-      const dateTo = (url.searchParams.get("date_to") || "").trim();
+      let dateFrom = (url.searchParams.get("date_from") || "").trim();
+      let dateTo = (url.searchParams.get("date_to") || "").trim();
+      const periodQ = (url.searchParams.get("period") || "total").trim().toLowerCase();
+      const dayParam = (url.searchParams.get("day") || "").trim();
+      const monthParam = (url.searchParams.get("month") || "").trim();
+      if (periodQ === "today") {
+        const t = new Date().toISOString().slice(0, 10);
+        dateFrom = t;
+        dateTo = t;
+      } else if (periodQ === "day" && dayParam) {
+        dateFrom = dayParam;
+        dateTo = dayParam;
+      } else if (periodQ === "month" && monthParam) {
+        const [y, m] = monthParam.split("-").map(Number);
+        if (y && m) {
+          const last = new Date(y, m, 0).getDate();
+          dateFrom = `${monthParam}-01`;
+          dateTo = `${monthParam}-${String(last).padStart(2, "0")}`;
+        }
+      }
       const userQ = (url.searchParams.get("user") || "").trim().toLowerCase();
+      const districtQ = (url.searchParams.get("district") || "").trim().toLowerCase();
       const completenessQ = (url.searchParams.get("completeness") || "").trim().toLowerCase();
       // Dynamic question filters (q_<questionId> → value) — from Client Admin question naming
       const qFilters: [string, string][] = [];
@@ -2859,6 +2888,7 @@ Deno.serve(async (req) => {
         Boolean(dateFrom) ||
         Boolean(dateTo) ||
         Boolean(userQ) ||
+        Boolean(districtQ) ||
         Boolean(completenessQ && completenessQ !== "all") ||
         qFilters.length > 0 ||
         Boolean((url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim());
@@ -2958,6 +2988,12 @@ Deno.serve(async (req) => {
       const surveyQ = (url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim();
       if (surveyQ) {
         items = items.filter((x) => String(x.form_key || "") === surveyQ);
+      }
+      if (districtQ) {
+        items = items.filter((x) => {
+          const a = (x as { answers?: Record<string, unknown> }).answers || {};
+          return String(a.district || "").toLowerCase().includes(districtQ);
+        });
       }
       if (completenessQ === "complete" || completenessQ === "incomplete") {
         items = items.filter((x) => x.completeness === completenessQ);

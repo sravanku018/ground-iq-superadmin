@@ -1197,15 +1197,109 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                       </p>
                     )}
 
-                    {q.options?.length ? (
+                    {q.type === 'yesno' ? (
+                      <div style={{ display: 'flex', gap: 16, marginTop: 10 }}>
+                        <button
+                          type="button"
+                          className="chip"
+                          style={{
+                            flex: 1,
+                            background: '#059669',
+                            borderColor: '#059669',
+                            color: '#ffffff',
+                            padding: '16px 24px',
+                            fontSize: 18,
+                            fontWeight: 'bold',
+                            opacity: answers[q.id] && answers[q.id] !== 'Yes' ? 0.45 : 1,
+                            outline: answers[q.id] === 'Yes' ? '3px solid #ffffff' : 'none',
+                            outlineOffset: 2,
+                            boxShadow: answers[q.id] === 'Yes' ? '0 4px 14px rgba(5,150,105,0.6)' : 'none',
+                          }}
+                          onClick={() => setAnswers((a) => ({ ...a, [q.id]: 'Yes' }))}
+                        >
+                          ✓ YES
+                        </button>
+                        <button
+                          type="button"
+                          className="chip"
+                          style={{
+                            flex: 1,
+                            background: '#dc2626',
+                            borderColor: '#dc2626',
+                            color: '#ffffff',
+                            padding: '16px 24px',
+                            fontSize: 18,
+                            fontWeight: 'bold',
+                            opacity: answers[q.id] && answers[q.id] !== 'No' ? 0.45 : 1,
+                            outline: answers[q.id] === 'No' ? '3px solid #ffffff' : 'none',
+                            outlineOffset: 2,
+                            boxShadow: answers[q.id] === 'No' ? '0 4px 14px rgba(220,38,38,0.6)' : 'none',
+                          }}
+                          onClick={() => setAnswers((a) => ({ ...a, [q.id]: 'No' }))}
+                        >
+                          ✕ NO
+                        </button>
+                      </div>
+                    ) : q.type === 'sentiment_text' ? (
+                      <div style={{ marginTop: 10 }}>
+                        <label className="field" style={{ marginBottom: 8 }}>
+                          <span>Response Text</span>
+                          <textarea
+                            rows={3}
+                            value={answers[q.id] || ''}
+                            onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
+                            placeholder="Type respondent feedback or opinion…"
+                            style={{ width: '100%', resize: 'vertical' }}
+                          />
+                        </label>
+                        <p style={{ margin: '4px 0 6px', fontSize: 12, fontWeight: 'bold', color: '#38bdf8' }}>
+                          Tag Sentiment Filler:
+                        </p>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {[
+                            { label: '😀 Positive', val: 'Positive', color: '#059669' },
+                            { label: '😐 Neutral', val: 'Neutral', color: '#d97706' },
+                            { label: '🙁 Negative', val: 'Negative', color: '#dc2626' },
+                          ].map((item) => {
+                            const active = (answers[q.id] || '').includes(`[${item.val}]`)
+                            return (
+                              <button
+                                key={item.val}
+                                type="button"
+                                style={{
+                                  background: item.color,
+                                  color: '#fff',
+                                  border: 0,
+                                  borderRadius: 20,
+                                  padding: '8px 16px',
+                                  fontSize: 13,
+                                  fontWeight: 'bold',
+                                  cursor: 'pointer',
+                                  outline: active ? '2px solid #fff' : 'none',
+                                  outlineOffset: 2,
+                                  opacity: answers[q.id] && !active ? 0.7 : 1,
+                                }}
+                                onClick={() => {
+                                  setAnswers((a) => {
+                                    const prev = a[q.id] || ''
+                                    const cleaned = prev.replace(/\s*\[(Positive|Neutral|Negative)\]/g, '').trim()
+                                    return { ...a, [q.id]: `${cleaned} [${item.val}]`.trim() }
+                                  })
+                                }}
+                              >
+                                {item.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : q.options?.length ? (
                       <div
                         style={{
                           display: 'flex',
                           flexWrap: 'wrap',
-                          gap: 8,
-                          ...(q.type === 'yesno' || q.type === 'abc' || q.type === 'sentiment'
-                            ? { gap: 16 }
-                            : {}),
+                          gap: 10,
+                          marginTop: 10,
                         }}
                       >
                         {q.options.map((opt, oi) => {
@@ -1214,7 +1308,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                           const bg =
                             SENTIMENT_COLORS[optKey] ||
                             (q.type === 'sentiment'
-                              ? '#64748b'
+                              ? optKey === 'Positive' ? '#059669' : optKey === 'Negative' ? '#dc2626' : '#d97706'
                               : OPTION_COLORS[oi % OPTION_COLORS.length])
                           return (
                             <button
@@ -1224,20 +1318,21 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                               style={{
                                 background: bg,
                                 borderColor: bg,
-                                color: '#04231a',
+                                color: '#ffffff',
+                                fontWeight: 'bold',
                                 opacity: answers[q.id] && !sel ? 0.45 : 1,
-                                outline: sel ? '2px solid #fff' : 'none',
+                                outline: sel ? '3px solid #ffffff' : 'none',
                                 outlineOffset: 2,
-                                ...(q.type === 'yesno' || q.type === 'abc'
-                                  ? { padding: '14px 28px', fontSize: 18, fontWeight: 600 }
+                                ...(q.type === 'abc'
+                                  ? { padding: '14px 28px', fontSize: 18, borderRadius: 12 }
                                   : q.type === 'sentiment'
                                     ? {
-                                        padding: '16px 26px',
-                                        fontSize: 17,
-                                        fontWeight: 700,
-                                        minWidth: 130,
+                                        padding: '14px 22px',
+                                        fontSize: 16,
+                                        borderRadius: 20,
+                                        minWidth: 110,
                                       }
-                                    : {}),
+                                    : { padding: '10px 18px', fontSize: 14, borderRadius: 18 }),
                               }}
                               onClick={() => setAnswers((a) => ({ ...a, [q.id]: opt }))}
                             >
@@ -1247,7 +1342,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                         })}
                       </div>
                     ) : (
-                      <label className="field">
+                      <label className="field" style={{ marginTop: 10 }}>
                         <span>Answer{q.type === 'age' ? ' (number)' : ''}</span>
                         <input
                           value={answers[q.id] || ''}

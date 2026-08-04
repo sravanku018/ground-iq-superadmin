@@ -343,6 +343,38 @@ async function ensureSchema() {
     console.warn("survey_form seed", e);
   }
 
+  // Legacy rows (pre GPS/camera: excel-upload + old app, no geo, no media)
+  // become their own survey so old data never mixes with current surveys,
+  // and they are auto-confirmed so they appear in the report immediately.
+  try {
+    await sql`
+      INSERT INTO survey_form (form_key, title, questions, updated_at)
+      VALUES ('legacy', 'Legacy Data (no GPS/Camera)', '[]'::jsonb, NOW())
+      ON CONFLICT (form_key) DO NOTHING
+    `;
+  } catch (e) {
+    console.warn("legacy survey seed", e);
+  }
+  try {
+    await sql`
+      UPDATE submissions
+      SET payload = jsonb_set(
+        jsonb_set(
+          jsonb_set(
+            jsonb_set(payload, '{form_key}', '"legacy"'::jsonb, true),
+            '{status}', '"confirmed"'::jsonb, true
+          ),
+          '{confirmed_by}', '"system (legacy migration)"'::jsonb, true
+        ),
+        '{confirmed_at}', to_jsonb(NOW()), true
+      )
+      WHERE payload->'geo' IS NULL
+        AND (payload->>'form_key' IS NULL OR payload->>'status' IS NULL)
+    `;
+  } catch (e) {
+    console.warn("legacy migration", e);
+  }
+
   // Allow surveyor role (Client Admin creates field collectors)
   await sql`ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_role_check`.catch(() => null);
   await sql`
@@ -611,6 +643,11 @@ function payloadStatus(payload: Record<string, unknown>): string {
 /**
  * Strict verification: geo tagging + voice (audio) required for COMPLETE.
  * Incomplete cannot enter confirmed analytics without override.
+ *
+ * LEGACY rows (collected before GPS/camera existed — no geo and never any
+ * media) are exempt: they are not subject to the geo/voice/photo checks, so
+ * old data can be confirmed and reported normally. Only at least one answer
+ * is required.
  */
 function verifySubmission(
   payload: Record<string, unknown>,
@@ -629,14 +666,22 @@ function verifySubmission(
     Math.abs(lng) <= 180 &&
     !(lat === 0 && lng === 0);
 
+  // Legacy = pre GPS/camera data: no geo ever attached AND no media/flags.
+  // (New submissions always carry geo — the server requires it on POST.)
+  const legacy =
+    geo == null &&
+    mediaKinds.length === 0 &&
+    payload?.has_photo !== true &&
+    payload?.has_audio !== true;
+
   // Voice: session audio stored separately or flagged on payload
   const hasAudioFlag = payload?.has_audio === true;
   const hasAudioMedia = mediaKinds.includes("audio");
-  const voice_ok = hasAudioFlag || hasAudioMedia;
+  const voice_ok = legacy || hasAudioFlag || hasAudioMedia;
 
   const hasPhotoFlag = payload?.has_photo === true;
   const hasPhotoMedia = mediaKinds.includes("photo");
-  const photo_ok = hasPhotoFlag || hasPhotoMedia;
+  const photo_ok = legacy || hasPhotoFlag || hasPhotoMedia;
 
   const answers = (payload?.answers || {}) as Record<string, unknown>;
   const answerKeys = Object.keys(answers).filter(
@@ -645,18 +690,27 @@ function verifySubmission(
   const qa_ok = answerKeys.length >= 1;
 
   const failures: string[] = [];
-  if (!geo_ok) failures.push("geo_missing_or_invalid");
-  if (!voice_ok) failures.push("voice_missing");
-  if (!photo_ok) failures.push("photo_missing");
+  if (!legacy) {
+    if (!geo_ok) failures.push("geo_missing_or_invalid");
+    if (!voice_ok) failures.push("voice_missing");
+    if (!photo_ok) failures.push("photo_missing");
+  }
   if (!qa_ok) failures.push("qa_empty");
 
-  // Strict complete = geo + voice + photo + at least one answer
-  const completeness: "complete" | "incomplete" =
-    geo_ok && voice_ok && photo_ok && qa_ok ? "complete" : "incomplete";
+  // Strict complete = geo + voice + photo + at least one answer.
+  // Legacy rows only need answers (no GPS/camera available back then).
+  const completeness: "complete" | "incomplete" = legacy
+    ? qa_ok
+      ? "complete"
+      : "incomplete"
+    : geo_ok && voice_ok && photo_ok && qa_ok
+    ? "complete"
+    : "incomplete";
 
   return {
     completeness,
-    geo_ok,
+    legacy,
+    geo_ok: legacy ? true : geo_ok,
     voice_ok,
     photo_ok,
     qa_ok,
@@ -666,12 +720,19 @@ function verifySubmission(
       ? { lat: geo.lat, lng: geo.lng, invalid: true }
       : null,
     failures,
-    checks: {
-      geo_tagging: geo_ok ? "pass" : "fail",
-      voice_detection: voice_ok ? "pass" : "fail",
-      photo: photo_ok ? "pass" : "fail",
-      qa: qa_ok ? "pass" : "fail",
-    },
+    checks: legacy
+      ? {
+          geo_tagging: "n/a",
+          voice_detection: "n/a",
+          photo: "n/a",
+          qa: qa_ok ? "pass" : "fail",
+        }
+      : {
+          geo_tagging: geo_ok ? "pass" : "fail",
+          voice_detection: voice_ok ? "pass" : "fail",
+          photo: photo_ok ? "pass" : "fail",
+          qa: qa_ok ? "pass" : "fail",
+        },
   };
 }
 
@@ -1754,7 +1815,7 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
       note: reportLocked
         ? "Dashboard locked to confirmed + complete only. Unconfirmed data never forms charts."
         : statusFilter === "confirmed"
-        ? "Report uses confirmed surveys. Strict geo + voice required for complete."
+        ? "Report uses confirmed surveys. Strict geo + voice required for complete; legacy rows (no GPS/camera) are exempt."
         : `Analytics scope: ${statusFilter}`,
     },
     filters: {
@@ -2634,9 +2695,20 @@ Deno.serve(async (req) => {
       for (const [k, v] of url.searchParams) {
         if (k.startsWith("q_") && v.trim()) qFilters.push([k.slice(2), v.trim()]);
       }
+      // Filters apply AFTER the LIMIT in JS below — so when any filter is set, fetch
+      // a wide slice (oldest rows like legacy data would otherwise be unreachable).
+      const hasSliceFilter =
+        (statusQ && statusQ !== "all") ||
+        Boolean(dateFrom) ||
+        Boolean(dateTo) ||
+        Boolean(userQ) ||
+        Boolean(completenessQ && completenessQ !== "all") ||
+        qFilters.length > 0 ||
+        Boolean((url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim());
+      const fetchRows = hasSliceFilter ? 5000 : limit;
       const rows = await sql`
         SELECT id, payload, created_at FROM submissions
-        ORDER BY created_at DESC LIMIT ${limit}
+        ORDER BY created_at DESC LIMIT ${fetchRows}
       `;
       // media kinds for strict voice/photo checks
       const mediaRows = await sql`
@@ -2668,6 +2740,7 @@ Deno.serve(async (req) => {
           status,
           completeness: verify.completeness,
           verification: verify,
+          legacy: !!verify.legacy,
           submitted_by: String(
             payload?.submitted_by || answers?.data_collector || "",
           ),
@@ -2775,6 +2848,7 @@ Deno.serve(async (req) => {
           voice_detection: "required",
           photo: "required",
           rule: "complete = geo_ok AND voice_ok AND photo_ok AND qa_ok",
+          legacy: "Legacy rows (no GPS/camera) are exempt from geo/voice/photo checks",
         },
       });
     }
@@ -3085,6 +3159,7 @@ Deno.serve(async (req) => {
         status: payloadStatus(payload),
         completeness: verify.completeness,
         verification: verify,
+        legacy: !!verify.legacy,
         submitted_by: String(
           payload.submitted_by || answers.data_collector || "",
         ),

@@ -212,6 +212,7 @@ export default function ReviewQAScreen({ onToast }) {
                   <span className="meta">
                     {' '}
                     · {item.status || 'pending'}
+                    {item.legacy ? ' · legacy (no GPS/camera)' : ''}
                     {item.submitted_by ? ` · ${item.submitted_by}` : ''}
                     {a.district ? ` · ${a.district}` : ''}
                   </span>

@@ -362,6 +362,32 @@ export default function AdminPortal() {
           ))}
         </nav>
         <div className="portal-sidebar-foot">
+          <button
+            type="button"
+            className="btn small"
+            style={{
+              width: '100%',
+              marginBottom: 10,
+              fontWeight: 'bold',
+              background: '#1e293b',
+              border: '1px solid #334155',
+              color: '#00e599',
+              padding: '8px 12px',
+              borderRadius: 8,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+            }}
+            onClick={() => {
+              loadPortal()
+              notify('Portal data refreshed ✓', 'ok')
+            }}
+            disabled={loadingData}
+          >
+            {loadingData ? 'Refreshing…' : '🔄 Refresh Data'}
+          </button>
           <div className="portal-user">
             <strong>{user.name || user.username}</strong>
             <span>@{user.username}</span>

@@ -356,22 +356,7 @@ export default function AdminSurveysScreen({ onToast }) {
     if (mode === 'list') load()
   }, [load, mode])
 
-  // Auto-refresh while the Surveys screen is open — keeps team counts /
-  // submissions current without manual reload
-  useEffect(() => {
-    if (mode !== 'list') return
-    const iv = setInterval(() => load(), 30000)
-    const onVis = () => {
-      if (document.visibilityState === 'visible') load()
-    }
-    document.addEventListener('visibilitychange', onVis)
-    window.addEventListener('focus', onVis)
-    return () => {
-      clearInterval(iv)
-      document.removeEventListener('visibilitychange', onVis)
-      window.removeEventListener('focus', onVis)
-    }
-  }, [load, mode])
+  // Manual refresh only — auto-refresh disabled to prevent unwanted background database wake-ups
 
   // Live name filter while creating: find existing surveys matching the typed name
   const nameMatches = useMemo(() => {

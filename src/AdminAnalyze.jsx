@@ -3,7 +3,6 @@ import {
   getAdminAnalyze,
   getAnalytics,
   listSubmissions,
-  listUsers,
   setSubmissionStatus,
 } from './api'
 import SubmissionEditor from './SubmissionEditor'
@@ -28,7 +27,6 @@ export default function AdminAnalyzeScreen({ onToast }) {
   const [qFilters, setQFilters] = useState({}) // q_<questionId> → value
   const [surveys, setSurveys] = useState([])
   const [completeness, setCompleteness] = useState('all')
-  const [users, setUsers] = useState([])
   const [board, setBoard] = useState(null)
   const [items, setItems] = useState([])
   const [summary, setSummary] = useState(null)
@@ -39,11 +37,6 @@ export default function AdminAnalyzeScreen({ onToast }) {
   const [editingId, setEditingId] = useState(null)
 
   useEffect(() => {
-    listUsers()
-      .then((d) =>
-        setUsers((d.users || []).filter((u) => u.role === 'surveyor' || u.role === 'field')),
-      )
-      .catch(() => {})
     import('./api')
       .then(({ listSurveys }) => listSurveys())
       .then((d) => setSurveys(d.items || []))
@@ -176,91 +169,152 @@ export default function AdminAnalyzeScreen({ onToast }) {
       <div className="card" style={{ marginBottom: 12 }}>
         <h3>Data filters</h3>
         <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-          Scope
+          Step by step: pick a <strong>survey</strong> → <strong>surveyor</strong> →{' '}
+          <strong>day / month</strong>. Question filters load from the survey.
         </p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-          {[
-            { id: 'total', label: 'Total data' },
-            { id: 'today', label: 'Today' },
-            { id: 'day', label: 'Day data' },
-            { id: 'month', label: 'Month data' },
-          ].map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className={`chip ${period === c.id ? 'selected' : ''}`}
-              onClick={() => setPeriod(c.id)}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-        {period === 'day' && (
+
+        {/* Step 1 · Survey name */}
+        <div
+          style={{
+            border: '1px solid #243041',
+            borderRadius: 10,
+            padding: 10,
+            marginBottom: 10,
+          }}
+        >
+          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>1 · Survey name</p>
           <label className="field">
-            <span>Day</span>
-            <input type="date" value={day} onChange={(e) => setDay(e.target.value)} />
-          </label>
-        )}
-        {period === 'month' && (
-          <label className="field">
-            <span>Month</span>
-            <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-          </label>
-        )}
-        <label className="field">
-          <span>By user (surveyor)</span>
-          <select value={user} onChange={(e) => setUser(e.target.value)}>
-            <option value="">All users</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.username}>
-                {u.name || u.username} (@{u.username})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>By survey (auto question filters below)</span>
-          <select
-            value={survey}
-            onChange={(e) => {
-              setSurvey(e.target.value)
-              setQFilters({})
-            }}
-          >
-            <option value="">All surveys</option>
-            {surveys.map((s) => (
-              <option key={s.id} value={s.form_key}>
-                {s.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-          Picking a survey reloads filters for that survey's questions.
-        </p>
-        {analytics?.dataFilters?.questions?.map((q) => (
-          <label className="field" key={q.id}>
-            <span>{q.label}</span>
+            <span>By survey</span>
             <select
-              value={qFilters[`q_${q.id}`] || ''}
-              onChange={(e) =>
-                setQFilters((f) => ({ ...f, [`q_${q.id}`]: e.target.value }))
-              }
+              value={survey}
+              onChange={(e) => {
+                setSurvey(e.target.value)
+                setQFilters({})
+              }}
             >
-              <option value="">All {q.label}</option>
-              {(q.counts || []).map((c) => (
-                <option key={c.name} value={c.name}>
-                  {c.name} ({c.value})
+              <option value="">All surveys</option>
+              {surveys.map((s) => (
+                <option key={s.id} value={s.form_key}>
+                  {s.title}
                 </option>
               ))}
             </select>
           </label>
-        ))}
-        {survey && (analytics?.dataFilters?.questions || []).length === 0 && (
-          <p className="muted" style={{ fontSize: 12 }}>
-            This survey has no questions yet — add them in the Surveys tab.
+        </div>
+
+        {/* Step 2 · Surveyor — options load per survey */}
+        <div
+          style={{
+            border: '1px solid #243041',
+            borderRadius: 10,
+            padding: 10,
+            marginBottom: 10,
+          }}
+        >
+          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>2 · Surveyor name</p>
+          <label className="field">
+            <span>By surveyor</span>
+            <select value={user} onChange={(e) => setUser(e.target.value)}>
+              <option value="">
+                {board?.by_user?.length ? 'All surveyors' : 'No surveyors yet'}
+              </option>
+              {(board?.by_user || []).map((u) => (
+                <option key={u.user} value={u.user}>
+                  {u.user} ({u.complete}/{u.total} complete)
+                </option>
+              ))}
+            </select>
+          </label>
+          {!survey && (
+            <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+              Pick a survey first to load its surveyors.
+            </p>
+          )}
+        </div>
+
+        {/* Step 3 · Day / Month */}
+        <div
+          style={{
+            border: '1px solid #243041',
+            borderRadius: 10,
+            padding: 10,
+            marginBottom: 10,
+          }}
+        >
+          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>3 · Day / Month</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            {[
+              { id: 'total', label: 'Total data' },
+              { id: 'today', label: 'Today' },
+              { id: 'day', label: 'Day data' },
+              { id: 'month', label: 'Month data' },
+            ].map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className={`chip ${period === c.id ? 'selected' : ''}`}
+                onClick={() => setPeriod(c.id)}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+          {period === 'day' && (
+            <label className="field">
+              <span>Day</span>
+              <input type="date" value={day} onChange={(e) => setDay(e.target.value)} />
+            </label>
+          )}
+          {period === 'month' && (
+            <label className="field">
+              <span>Month</span>
+              <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
+            </label>
+          )}
+        </div>
+
+        {/* Question filters — load per survey */}
+        <div
+          style={{
+            border: '1px solid #243041',
+            borderRadius: 10,
+            padding: 10,
+            marginBottom: 10,
+          }}
+        >
+          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
+            Question filters (auto from survey)
           </p>
-        )}
+          {analytics?.dataFilters?.questions?.map((q) => (
+            <label className="field" key={q.id}>
+              <span>{q.label}</span>
+              <select
+                value={qFilters[`q_${q.id}`] || ''}
+                onChange={(e) =>
+                  setQFilters((f) => ({ ...f, [`q_${q.id}`]: e.target.value }))
+                }
+              >
+                <option value="">All {q.label}</option>
+                {(q.counts || []).map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name} ({c.value})
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+          {survey && (analytics?.dataFilters?.questions || []).length === 0 && (
+            <p className="muted" style={{ fontSize: 12 }}>
+              This survey has no questions yet — add them in the Surveys tab.
+            </p>
+          )}
+          {!survey && (
+            <p className="muted" style={{ fontSize: 12 }}>
+              Pick a survey to load its question filters.
+            </p>
+          )}
+        </div>
+
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
           {[
             { id: 'all', label: 'All status' },

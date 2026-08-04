@@ -2247,7 +2247,6 @@ Deno.serve(async (req) => {
           r2: r2Status,
         });
       }
-      await sql`SELECT 1`;
       return json({
         ok: true,
         database: "connected",

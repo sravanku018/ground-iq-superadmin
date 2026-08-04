@@ -80,7 +80,14 @@ function HomeScreen({
       <p className="ptr-hint">↓ Pull down to refresh questions · progress · queue</p>
       <div className="hero-card">
         <p className="eyebrow">Field survey · Surveyor</p>
-        <h1>Hi, {user?.name || user?.username}</h1>
+        <h1>
+          Hi, {user?.name || user?.username}
+          {user?.verified && (
+            <span className="pill ok" style={{ background: '#059669', color: '#fff', fontSize: 12, marginLeft: 8, verticalAlign: 'middle', fontWeight: 'bold' }}>
+              Verified ✓
+            </span>
+          )}
+        </h1>
         <p className="hero-sub">
           {myProgress?.label ||
             'GPS → Photo → Q/A + audio · saved on device · auto next'}
@@ -90,6 +97,12 @@ function HomeScreen({
             <span className="dot" />
             {label}
           </div>
+          {user?.verified && (
+            <div className="pill ok" style={{ background: '#059669', color: '#fff', fontWeight: 'bold' }}>
+              <span className="dot" />
+              Verified ✓
+            </div>
+          )}
           {pendingSync > 0 && (
             <div className="pill warn">
               <span className="dot" />
@@ -208,32 +221,34 @@ function MyRecordsScreen({ user, onToast }) {
   }, [load])
 
   return (
-    <div className="screen home-screen">
-      <p className="ptr-hint">Your submitted records · photo + audio open here</p>
-      <div className="hero-card">
-        <p className="eyebrow">Field survey · My records</p>
-        <h1>{user?.name || user?.username}</h1>
-        <p className="hero-sub">
-          {records == null
-            ? 'Loading your records…'
-            : `${records.length} record(s) on server`}
-        </p>
-        <div className="pill-row">
-          <button type="button" className="cta secondary" onClick={load} disabled={refreshing}>
-            {refreshing ? 'Refreshing…' : 'Refresh'}
-          </button>
-        </div>
+    <div className="screen records-screen">
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 10,
+        }}
+      >
+        <h2 style={{ margin: 0 }}>My Submitted Records</h2>
+        <button
+          type="button"
+          className="btn small"
+          onClick={load}
+          disabled={refreshing}
+        >
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
       </div>
+      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+        Submissions stored on server for @{user?.username}. Tap a record to open photo/audio.
+      </p>
 
-      {records && records.length === 0 && (
-        <div className="card" style={{ marginTop: 12, padding: '14px' }}>
-          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-            No records yet — collect and sync your first survey.
-          </p>
-        </div>
-      )}
-
-      {records &&
+      {records === null ? (
+        <p className="muted">Loading records…</p>
+      ) : records.length === 0 ? (
+        <p className="muted">No records submitted yet.</p>
+      ) : (
         records.map((r) => {
           const open = openId === r.id
           return (
@@ -267,7 +282,8 @@ function MyRecordsScreen({ user, onToast }) {
               {open && <SubmissionMedia item={r} compact style={{ marginTop: 8 }} />}
             </div>
           )
-        })}
+        })
+      )}
     </div>
   )
 }
@@ -376,13 +392,35 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
             />
           </label>
         </div>
-        <h2 style={{ margin: '4px 0 2px', fontSize: 20 }}>{user?.name || user?.display_name || user?.username}</h2>
+        <h2 style={{ margin: '4px 0 2px', fontSize: 20 }}>
+          {user?.name || user?.display_name || user?.username}
+          {user?.verified && (
+            <span className="pill ok" style={{ background: '#059669', color: '#fff', fontSize: 12, marginLeft: 8, verticalAlign: 'middle', fontWeight: 'bold' }}>
+              Verified ✓
+            </span>
+          )}
+        </h2>
         <p className="muted" style={{ margin: '0 0 10px', fontSize: 13 }}>@{user?.username}</p>
 
-        <div style={{ display: 'inline-block', background: 'rgba(0,229,153,0.12)', border: '1px solid rgba(0,229,153,0.3)', borderRadius: 20, padding: '4px 14px' }}>
-          <span style={{ fontSize: 12, color: '#00e599', fontWeight: 'bold' }}>
-            Unique Key ID: {user?.key_id || 'GROUND-KEY'}
-          </span>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ background: 'rgba(0,229,153,0.12)', border: '1px solid rgba(0,229,153,0.3)', borderRadius: 20, padding: '4px 14px' }}>
+            <span style={{ fontSize: 12, color: '#00e599', fontWeight: 'bold' }}>
+              Key ID: {user?.key_id || 'GROUND-KEY'}
+            </span>
+          </div>
+          {user?.verified ? (
+            <div style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid #10b981', borderRadius: 20, padding: '4px 14px' }}>
+              <span style={{ fontSize: 12, color: '#10b981', fontWeight: 'bold' }}>
+                Identity Verified ✓
+              </span>
+            </div>
+          ) : (
+            <div style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid #f59e0b', borderRadius: 20, padding: '4px 14px' }}>
+              <span style={{ fontSize: 12, color: '#f59e0b', fontWeight: 'bold' }}>
+                Verification Pending ⏳
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

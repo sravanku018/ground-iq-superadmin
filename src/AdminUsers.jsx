@@ -522,6 +522,17 @@ export default function AdminUsersScreen({ onToast }) {
     }
   }
 
+  async function handleToggleVerify(user) {
+    try {
+      const next = !user.verified
+      await updateUser(user.id, { verified: next })
+      onToast?.(`Surveyor @${user.username} ${next ? 'Verified ✓' : 'Unverified'}`, 'ok')
+      await load()
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    }
+  }
+
   async function setUserQuota(user, target) {
     try {
       await updateUser(user.id, { target_quota: Number(target) || 0 })
@@ -932,6 +943,11 @@ export default function AdminUsersScreen({ onToast }) {
                         </span>
                       )}
                     </div>
+                    {u.verified && (
+                      <span className="pill ok" style={{ background: '#059669', color: '#fff', marginLeft: 6, fontWeight: 'bold' }}>
+                        Verified ✓
+                      </span>
+                    )}
                     <span className={`pill ${statusColor(status)}`}>
                       <span className="dot" />
                       {justCreated ? 'new' : status}
@@ -1028,6 +1044,13 @@ export default function AdminUsersScreen({ onToast }) {
                       onClick={() => openProfile(u)}
                     >
                       Profile
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn small ${u.verified ? 'ok' : 'primary'}`}
+                      onClick={() => handleToggleVerify(u)}
+                    >
+                      {u.verified ? 'Verified ✓' : 'Verify Identity'}
                     </button>
                     <input
                       type="number"

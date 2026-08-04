@@ -130,7 +130,8 @@ async function getUser(token: string | null) {
   if (!token || !sql) return null;
   const rows = await sql`
     SELECT u.id, u.username, u.display_name, u.role, u.active, u.created_at,
-           u.key_id, u.phone, u.photo, u.aadhaar_front, u.aadhaar_back
+           u.key_id, u.phone, u.photo, u.aadhaar_front, u.aadhaar_back,
+           COALESCE(u.verified, FALSE) AS verified
     FROM app_sessions s
     JOIN app_users u ON u.id = s.user_id
     WHERE s.token = ${token}
@@ -153,6 +154,7 @@ async function getUser(token: string | null) {
     photo: u.photo || null,
     aadhaar_front: u.aadhaar_front || null,
     aadhaar_back: u.aadhaar_back || null,
+    verified: u.verified === true,
   };
 }
 
@@ -2581,7 +2583,8 @@ Deno.serve(async (req) => {
       const rows = await sql`
         SELECT id, username, display_name, role, active, created_at,
                COALESCE(target_quota, 0) AS target_quota,
-               key_id, phone, photo, aadhaar_front, aadhaar_back
+               key_id, phone, photo, aadhaar_front, aadhaar_back,
+               COALESCE(verified, FALSE) AS verified
         FROM app_users
         ORDER BY id
       `.catch(async () =>
@@ -2616,6 +2619,7 @@ Deno.serve(async (req) => {
           photo: r.photo || null,
           aadhaar_front: r.aadhaar_front || null,
           aadhaar_back: r.aadhaar_back || null,
+          verified: r.verified === true,
           surveys: assignedMap.get(Number(r.id)) || [],
           status: isCollector ? progressStatus(done, target) : "admin",
           progress_label: isCollector
@@ -2917,6 +2921,8 @@ Deno.serve(async (req) => {
         body.aadhaar_front != null ? String(body.aadhaar_front).trim() : (ex as Record<string, unknown>).aadhaar_front || null;
       const nextAadhaarBack =
         body.aadhaar_back != null ? String(body.aadhaar_back).trim() : (ex as Record<string, unknown>).aadhaar_back || null;
+      const nextVerified =
+        typeof body.verified === "boolean" ? body.verified : (ex as Record<string, unknown>).verified === true;
       const nextRole =
         body.role === "admin" || body.role === "surveyor" ? body.role : ex.role;
       const nextQuota =
@@ -2937,9 +2943,10 @@ Deno.serve(async (req) => {
               phone = ${nextPhone},
               photo = ${nextPhoto},
               aadhaar_front = ${nextAadhaarFront},
-              aadhaar_back = ${nextAadhaarBack}
+              aadhaar_back = ${nextAadhaarBack},
+              verified = ${nextVerified}
           WHERE id = ${id}
-          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back
+          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified
         `;
       } catch (e) {
         const msg = (e as Error).message || "";
@@ -2977,6 +2984,7 @@ Deno.serve(async (req) => {
           photo: u.photo || nextPhoto || null,
           aadhaar_front: u.aadhaar_front || nextAadhaarFront || null,
           aadhaar_back: u.aadhaar_back || nextAadhaarBack || null,
+          verified: u.verified === true,
         },
         password_changed: passwordChanged,
         username_changed: nextUsername !== ex.username,

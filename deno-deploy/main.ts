@@ -100,8 +100,9 @@ function json(data: unknown, status = 200) {
 function corsHeaders(_req?: Request): Record<string, string> {
   return {
     "access-control-allow-origin": "*",
-    "access-control-allow-headers": "authorization, content-type, x-auth-token",
+    "access-control-allow-headers": "authorization, content-type, x-auth-token, accept, origin, range, content-disposition",
     "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
+    "access-control-expose-headers": "content-disposition, content-type, content-length, location",
   };
 }
 
@@ -4761,6 +4762,7 @@ Deno.serve(async (req) => {
           headers: {
             "Content-Type": "text/csv; charset=utf-8",
             "Content-Disposition": `attachment; filename="survey-export-${dayParam || monthParam || "total"}.csv"`,
+            ...corsHeaders(req),
           },
         });
       } catch (e) {

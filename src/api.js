@@ -293,16 +293,24 @@ export async function exportSubmissions(filters = {}) {
       .filter(([, v]) => v != null && v !== '')
       .map(([k, v]) => [k, String(v)]),
   ).toString()
-  const res = await fetch(`${base}/api/admin/export${q ? `?${q}` : ''}`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    const err = new Error(data.error || `HTTP ${res.status}`)
-    err.status = res.status
+  const url = `${base}/api/admin/export${q ? `?${q}` : ''}`
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      const err = new Error(data.error || `Export failed with HTTP status ${res.status}`)
+      err.status = res.status
+      throw err
+    }
+    return res.text()
+  } catch (err) {
+    if (err.name === 'TypeError' || String(err.message).includes('Failed to fetch') || String(err.message).includes('NetworkError')) {
+      throw new Error(`Network error accessing ${base}. Please ensure the backend server is reachable and CORS headers are allowed.`)
+    }
     throw err
   }
-  return res.text()
 }
 
 export function getGeoSummary() {

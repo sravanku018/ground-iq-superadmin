@@ -960,7 +960,45 @@ export default function SurveyorApp() {
       stopSyncEngine()
     }
   }, [user, authReady, notify])
-
+  // ── Background user-change detector ──────────────────────────────────────
+  // Polls me() every 90s while the app is open. If admin changed something
+  // (verified status, phone, photo) it silently updates state + toasts once.
+  useEffect(() => {
+    if (!user || !authReady) return undefined
+    let cancelled = false
+    const check = async () => {
+      if (cancelled) return
+      try {
+        const res = await me()
+        const fresh = res?.user
+        if (!fresh || cancelled) return
+        setUser((prev) => {
+          if (!prev) return prev
+          const changes = []
+          if (fresh.verified !== prev.verified) {
+            changes.push(fresh.verified ? '✅ Admin Verified your account!' : 'Verification removed by Admin')
+          }
+          if (fresh.phone !== prev.phone && fresh.phone) {
+            changes.push(`📞 Phone updated: ${fresh.phone}`)
+          }
+          if (fresh.photo !== prev.photo && fresh.photo) {
+            changes.push('🖼 Profile photo updated by Admin')
+          }
+          if (changes.length > 0) {
+            setTimeout(() => notify(changes[0], 'ok'), 50)
+          }
+          return { ...prev, ...fresh }
+        })
+      } catch {
+        /* silently ignore offline / token errors */
+      }
+    }
+    const iv = setInterval(check, 90_000)
+    return () => {
+      cancelled = true
+      clearInterval(iv)
+    }
+  }, [user?.id, authReady, notify])
 
 
   const loadAppData = useCallback(async () => {

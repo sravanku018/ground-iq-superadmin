@@ -18,17 +18,36 @@ const EMPTY_Q = {
   speak: '',
 }
 
-/** Shared question editor with rich question types & live app preview */
+const defaultOptionsForType = (t) => {
+  if (t === 'yesno') return ['Yes', 'No']
+  if (t === 'abc') return ['A', 'B', 'C', 'D']
+  if (t === 'sentiment' || t === 'sentiment_text') return ['Positive', 'Neutral', 'Negative']
+  if (t === 'choice') return ['Option 1', 'Option 2', 'Option 3']
+  return []
+}
+
+/** Shared question editor with rich question types, interactive options & live app preview */
 function QuestionEditor({ questions, onChange }) {
   function updateQ(i, patch) {
     onChange(questions.map((q, idx) => (idx === i ? { ...q, ...patch } : q)))
   }
+
+  function handleTypeChange(i, newType) {
+    const defaults = defaultOptionsForType(newType)
+    updateQ(i, {
+      type: newType,
+      options: defaults,
+      optionsText: defaults.join(', '),
+    })
+  }
+
   function addQ() {
     onChange([
       ...questions,
       { ...EMPTY_Q, id: `q_${Date.now()}`, label: 'New question', speak: 'New question' },
     ])
   }
+
   function removeQ(i) {
     onChange(questions.filter((_, idx) => idx !== i))
   }
@@ -37,6 +56,11 @@ function QuestionEditor({ questions, onChange }) {
     <>
       {questions.map((q, i) => {
         const type = q.type || 'text'
+        const hasOptions = ['choice', 'yesno', 'abc', 'sentiment', 'sentiment_text'].includes(type)
+        const currentOpts = Array.isArray(q.options) && q.options.length > 0
+          ? q.options
+          : (q.optionsText || '').split(',').map((s) => s.trim()).filter(Boolean)
+
         return (
           <div key={q.id || i} className="card" style={{ marginBottom: 14, borderLeft: '4px solid #00e599' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -79,7 +103,7 @@ function QuestionEditor({ questions, onChange }) {
               <span>Question Type</span>
               <select
                 value={type}
-                onChange={(e) => updateQ(i, { type: e.target.value })}
+                onChange={(e) => handleTypeChange(i, e.target.value)}
                 style={{ fontWeight: 'bold' }}
               >
                 <option value="yesno">✓ Yes / ✕ No Buttons (Green & Red)</option>
@@ -92,15 +116,80 @@ function QuestionEditor({ questions, onChange }) {
               </select>
             </label>
 
-            {type === 'choice' && (
-              <label className="field">
-                <span>Options (comma separated list)</span>
-                <input
-                  value={q.optionsText != null ? q.optionsText : (q.options || []).join(', ')}
-                  onChange={(e) => updateQ(i, { optionsText: e.target.value })}
-                  placeholder="Satisfied, Neutral, Unsatisfied, Don't Know"
-                />
-              </label>
+            {hasOptions && (
+              <div style={{ marginTop: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid #334155', borderRadius: 8, padding: 12 }}>
+                <label className="field" style={{ marginBottom: 8 }}>
+                  <span>Answer Options (comma-separated or add chips below)</span>
+                  <input
+                    value={
+                      q.optionsText != null
+                        ? q.optionsText
+                        : (Array.isArray(q.options) && q.options.length ? q.options.join(', ') : defaultOptionsForType(type).join(', '))
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value
+                      const parsed = val.split(',').map((s) => s.trim()).filter(Boolean)
+                      updateQ(i, { optionsText: val, options: parsed })
+                    }}
+                    placeholder="Satisfied, Neutral, Unsatisfied, Don't Know"
+                  />
+                </label>
+
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontWeight: 'bold', color: '#38bdf8' }}>Active Option Pills:</span>
+                  {(currentOpts.length > 0 ? currentOpts : defaultOptionsForType(type)).map((opt, optIdx) => (
+                    <span
+                      key={optIdx}
+                      style={{
+                        background: '#243041',
+                        border: '1px solid #00e599',
+                        color: '#fff',
+                        borderRadius: 16,
+                        padding: '4px 10px',
+                        fontSize: 12,
+                        fontWeight: 'bold',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      {opt}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const list = currentOpts.filter((_, idx) => idx !== optIdx)
+                          updateQ(i, { options: list, optionsText: list.join(', ') })
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 0,
+                          color: '#ff6b6b',
+                          cursor: 'pointer',
+                          fontWeight: 'bold',
+                          fontSize: 13,
+                          padding: 0,
+                          lineHeight: 1,
+                        }}
+                        title="Remove option"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                  <button
+                    type="button"
+                    className="btn small primary"
+                    style={{ padding: '3px 10px', fontSize: 11 }}
+                    onClick={() => {
+                      const base = currentOpts.length > 0 ? currentOpts : defaultOptionsForType(type)
+                      const next = [...base, `Option ${base.length + 1}`]
+                      updateQ(i, { options: next, optionsText: next.join(', ') })
+                    }}
+                  >
+                    + Add Option
+                  </button>
+                </div>
+              </div>
             )}
 
             <label
@@ -113,7 +202,7 @@ function QuestionEditor({ questions, onChange }) {
                 borderRadius: 8,
                 padding: '10px 14px',
                 cursor: 'pointer',
-                margin: '8px 0 12px',
+                margin: '10px 0 12px',
                 width: 'fit-content',
               }}
             >
@@ -166,18 +255,9 @@ function QuestionEditor({ questions, onChange }) {
                     </span>
                   ))}
                 </div>
-              ) : type === 'choice' ? (
+              ) : hasOptions ? (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {((q.optionsText != null ? q.optionsText : (q.options || []).join(', '))
-                    .split(',')
-                    .map((s) => s.trim())
-                    .filter(Boolean).length
-                      ? (q.optionsText != null ? q.optionsText : (q.options || []).join(', '))
-                          .split(',')
-                          .map((s) => s.trim())
-                          .filter(Boolean)
-                      : ['Option 1', 'Option 2', 'Option 3']
-                  ).map((opt, idx) => (
+                  {(currentOpts.length > 0 ? currentOpts : ['Option 1', 'Option 2', 'Option 3']).map((opt, idx) => (
                     <span key={idx} style={{ background: '#38bdf8', color: '#111', padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 'bold' }}>
                       {opt}
                     </span>
@@ -203,26 +283,38 @@ function QuestionEditor({ questions, onChange }) {
 }
 
 function cleanQuestions(questions) {
-  return (questions || []).map((q) => ({
-    id: String(q.id || '').trim() || `q_${Math.random().toString(36).slice(2, 8)}`,
-    label: String(q.label || '').trim() || 'Question',
-    type: String(q.type || 'text'),
-    options:
-      q.type === 'yesno'
-        ? ['Yes', 'No']
-        : q.type === 'abc'
-          ? ['A', 'B', 'C', 'D']
-          : q.type === 'sentiment' || q.type === 'sentiment_text'
-            ? ['Positive', 'Neutral', 'Negative']
-            : q.type === 'choice'
-              ? String(q.optionsText != null ? q.optionsText : (q.options || []).join(', '))
-                  .split(',')
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-              : undefined,
-    required: !!q.required,
-    speak: String(q.speak || q.label || '').trim(),
-  }))
+  return (questions || []).map((q) => {
+    const optsFromText =
+      q.optionsText != null
+        ? String(q.optionsText)
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : null
+    const finalOptions =
+      optsFromText && optsFromText.length > 0
+        ? optsFromText
+        : Array.isArray(q.options) && q.options.length > 0
+          ? q.options
+          : q.type === 'yesno'
+            ? ['Yes', 'No']
+            : q.type === 'abc'
+              ? ['A', 'B', 'C', 'D']
+              : q.type === 'sentiment' || q.type === 'sentiment_text'
+                ? ['Positive', 'Neutral', 'Negative']
+                : q.type === 'choice'
+                  ? ['Option 1', 'Option 2']
+                  : undefined
+
+    return {
+      id: String(q.id || '').trim() || `q_${Math.random().toString(36).slice(2, 8)}`,
+      label: String(q.label || '').trim() || 'Question',
+      type: String(q.type || 'text'),
+      options: finalOptions,
+      required: !!q.required,
+      speak: String(q.speak || q.label || '').trim(),
+    }
+  })
 }
 
 export default function AdminSurveysScreen({ onToast }) {

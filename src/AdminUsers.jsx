@@ -1328,11 +1328,30 @@ export default function AdminUsersScreen({ onToast }) {
                     <p style={{ margin: '4px 0 0', fontSize: 13, color: '#94a3b8' }}>
                       @{profileUser.username} · Key ID: <strong style={{ color: '#00e599' }}>{profileUser.key_id || '—'}</strong>
                     </p>
-                    {profileUser.phone && (
-                      <p style={{ margin: '3px 0 0', fontSize: 13, color: '#38bdf8', fontWeight: 'bold' }}>
-                        📞 {profileUser.phone}
-                      </p>
-                    )}
+                    <div style={{ margin: '5px 0 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 13, color: profileUser.phone ? '#38bdf8' : '#f59e0b', fontWeight: 'bold' }}>
+                        📞 Mobile: {profileUser.phone || 'Not Provided'}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn small"
+                        style={{ fontSize: 11, padding: '2px 8px', background: '#334155', border: '1px solid #475569', color: '#ffffff', borderRadius: 6 }}
+                        onClick={() => {
+                          const next = prompt('Edit Mobile Phone Number for @' + profileUser.username + ':', profileUser.phone || '')
+                          if (next !== null) {
+                            updateUser(profileUser.id, { phone: next.trim() })
+                              .then(() => {
+                                setProfileUser((prev) => (prev ? { ...prev, phone: next.trim() } : null))
+                                onToast?.(`Updated phone for @${profileUser.username} ✓`, 'ok')
+                                load()
+                              })
+                              .catch((err) => onToast?.(err.message || 'Failed to update phone', 'error'))
+                          }
+                        }}
+                      >
+                        ✏️ Edit Phone
+                      </button>
+                    </div>
                   </div>
                   <button
                     type="button"

@@ -207,7 +207,7 @@ export async function updatePackage(id, patch) {
   const next = {
     ...pkg,
     ...patch,
-    flags: { ...pkg.flags, ...(patch.flags || {}) },
+    flags: { ...pkg.flags, ...patch.flags },
     updatedAt: new Date().toISOString(),
   }
   try {

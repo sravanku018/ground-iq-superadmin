@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Papa from 'papaparse'
 import { exportSubmissions, getAnalytics, getGeoSummary, uploadSurveys } from './api'
-import { FilterSection, PortalSkeleton } from './PortalUI'
+import { FilterSection } from './PortalUI'
 import SurveyMap from './SurveyMap'
 
 /**

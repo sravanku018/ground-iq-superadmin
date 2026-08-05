@@ -61,7 +61,7 @@ export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, o
   const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
-    const a = { ...(item?.answers || {}) }
+    const a = { ...item?.answers }
     if (a.issues != null) a.issues = issuesToText(a.issues)
     setAnswers(a)
     setSubmittedBy(item?.submitted_by || '')

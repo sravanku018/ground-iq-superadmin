@@ -58,7 +58,7 @@ async function request(path, options = {}) {
   const url = `${base}${path}`
   const headers = {
     Accept: 'application/json',
-    ...(options.headers || {}),
+    ...options.headers,
   }
 
   const token = getToken()

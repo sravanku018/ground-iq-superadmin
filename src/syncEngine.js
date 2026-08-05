@@ -42,14 +42,15 @@ async function fetchJson(url, { method = 'GET', token, body } = {}) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), POST_TIMEOUT)
   try {
+    const hasBody = body != null && method !== 'GET' && method !== 'HEAD'
     const res = await fetch(url, {
       method,
       headers: {
         Accept: 'application/json',
-        'Content-Type': 'application/json',
+        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: body != null ? JSON.stringify(body) : undefined,
+      ...(hasBody ? { body: JSON.stringify(body) } : {}),
       signal: controller.signal,
       cache: 'no-store',
     })

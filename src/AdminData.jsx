@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import Papa from 'papaparse'
-import { exportSubmissions, getGeoSummary, uploadSurveys } from './api'
+import { exportSubmissions, getAnalytics, getGeoSummary, uploadSurveys } from './api'
+import { FilterSection, PortalSkeleton } from './PortalUI'
 import SurveyMap from './SurveyMap'
-import { getAnalytics } from './api'
 
 /**
  * Admin-only: 2 tabs
@@ -472,184 +472,248 @@ export default function AdminDataScreen({ onToast }) {
           <div className="card" style={{ marginBottom: 14 }}>
             <h3>Export collected data (CSV text file)</h3>
             <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-              One row per record — answers + photo/audio links. Filter by day, month, total,
-              surveyor, survey, district or assembly.
+              One row per record — answers + photo/audio links. Open sections below for filters.
             </p>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-              {[
-                { id: 'total', label: 'Total' },
-                { id: 'today', label: 'Today' },
-                { id: 'day', label: 'Day' },
-                { id: 'month', label: 'Month' },
-              ].map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={`chip ${exp.period === p.id ? 'selected' : ''}`}
-                  onClick={() => setExp((f) => ({ ...f, period: p.id }))}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            {exp.period === 'day' && (
-              <label className="field compact">
-                <span>Day</span>
-                <input
-                  type="date"
-                  value={exp.day}
-                  onChange={(e) => setExp((f) => ({ ...f, day: e.target.value }))}
-                />
-              </label>
-            )}
-            {exp.period === 'month' && (
-              <label className="field compact">
-                <span>Month</span>
-                <input
-                  type="month"
-                  value={exp.month}
-                  onChange={(e) => setExp((f) => ({ ...f, month: e.target.value }))}
-                />
-              </label>
-            )}
-            <label className="field compact">
-              <span>Survey</span>
-              <select value={survey} onChange={(e) => setSurvey(e.target.value)}>
-                <option value="">All surveys</option>
-                {surveys.map((s) => (
-                  <option key={s.id} value={s.form_key}>
-                    {s.title} {s.surveyor_names ? `(👥 ${s.surveyor_names})` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {(() => {
-              if (!survey) return null
-              const sel = surveys.find((s) => s.form_key === survey || String(s.id) === String(survey))
-              const assignedNames = (sel?.surveyor_names || '')
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean)
-
-              const rawItems = mapAnalytics?.items || mapAnalytics?.rawItems || []
-              const matchingSubmissions = rawItems.filter((r) => String(r.formKey || r.form_key || r.survey || '') === survey)
-              const activeNames = [...new Set(matchingSubmissions.map((r) => r.submitted_by || r.surveyor).filter(Boolean))]
-
-              const allTeamNames = [...new Set([...assignedNames, ...activeNames])]
-              const teamDisplay = allTeamNames.length > 0 ? allTeamNames.join(', ') : 'No surveyors registered for this survey yet'
-
-              return (
-                <div
-                  style={{
-                    background: '#1e293b',
-                    border: '1px solid #00e599',
-                    borderRadius: 10,
-                    padding: '12px 14px',
-                    marginBottom: 12,
-                  }}
-                >
-                  <div style={{ color: '#00e599', fontWeight: 'bold', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span>👥 Field Team Surveyors for "{sel?.title || survey}":</span>
-                  </div>
-                  <div style={{ color: '#ffffff', fontSize: 14, fontWeight: 'bold', marginTop: 4 }}>
-                    {teamDisplay}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
-                    Submissions: <strong>{matchingSubmissions.length || sel?.submissions || 0}</strong> · Questions: <strong>{sel?.question_count || 0}</strong>
-                  </div>
-                </div>
-              )
-            })()}
-
-            {(() => {
-              const sel = surveys.find((s) => s.form_key === survey || String(s.id) === String(survey))
-              const assignedNames = (sel?.surveyor_names || '')
-                .split(',')
-                .map((s) => s.trim().toLowerCase())
-                .filter(Boolean)
-
-              const rawItems = mapAnalytics?.items || mapAnalytics?.rawItems || []
-              const matchingSubmissions = rawItems.filter((r) => String(r.formKey || r.form_key || r.survey || '') === survey)
-              const activeNames = [...new Set(matchingSubmissions.map((r) => String(r.submitted_by || r.surveyor || '').trim().toLowerCase()).filter(Boolean))]
-
-              const allUsers = mapAnalytics?.dataFilters?.by_user || []
-              let displayUsers = allUsers
-
-              if (survey) {
-                const teamUsers = allUsers.filter((u) => {
-                  const uname = u.name.toLowerCase()
-                  return assignedNames.some((an) => uname.includes(an) || an.includes(uname)) ||
-                         activeNames.some((ac) => uname.includes(ac) || ac.includes(uname))
-                })
-                if (teamUsers.length > 0) {
-                  displayUsers = teamUsers
-                }
-              }
-
-              return (
-                <label className="field compact">
-                  <span>Surveyor {survey ? `(Field Collectors for "${sel?.title || survey}")` : ''}</span>
-                  <select
-                    value={exp.user}
-                    onChange={(e) => setExp((f) => ({ ...f, user: e.target.value }))}
+            <FilterSection
+              title="Time range"
+              badge={exp.period}
+              defaultOpen
+            >
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                {[
+                  { id: 'total', label: 'Total' },
+                  { id: 'today', label: 'Today' },
+                  { id: 'day', label: 'Day' },
+                  { id: 'month', label: 'Month' },
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`chip ${exp.period === p.id ? 'selected' : ''}`}
+                    onClick={() => setExp((f) => ({ ...f, period: p.id }))}
                   >
-                    <option value="">
-                      {survey ? `All field team collectors for "${sel?.title || survey}"` : 'All surveyors'}
-                    </option>
-                    {displayUsers.map((u) => {
-                      const uname = u.name.toLowerCase()
-                      const isAssigned = assignedNames.some((an) => uname.includes(an) || an.includes(uname))
-                      return (
-                        <option key={u.name} value={u.name}>
-                          {u.name} ({u.value} submissions) {isAssigned ? '👥 [Assigned Team]' : ''}
-                        </option>
-                      )
-                    })}
-                  </select>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              {exp.period === 'day' && (
+                <label className="field compact">
+                  <span>Day</span>
+                  <input
+                    type="date"
+                    value={exp.day}
+                    onChange={(e) => setExp((f) => ({ ...f, day: e.target.value }))}
+                  />
                 </label>
-              )
-            })()}
-            <label className="field compact">
-              <span>District</span>
-              <select
-                value={exp.district}
-                onChange={(e) => setExp((f) => ({ ...f, district: e.target.value }))}
-              >
-                <option value="">All districts</option>
-                {(mapAnalytics?.filterOptions?.districts || []).map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field compact">
-              <span>Assembly</span>
-              <select
-                value={exp.constituency}
-                onChange={(e) => setExp((f) => ({ ...f, constituency: e.target.value }))}
-              >
-                <option value="">All assemblies</option>
-                {(mapAnalytics?.filterOptions?.constituencies || []).map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field compact">
-              <span>Status</span>
-              <select
-                value={exp.status}
-                onChange={(e) => setExp((f) => ({ ...f, status: e.target.value }))}
-              >
-                <option value="confirmed">Confirmed</option>
-                <option value="pending">Pending</option>
-                <option value="all">All</option>
-              </select>
-            </label>
+              )}
+              {exp.period === 'month' && (
+                <label className="field compact">
+                  <span>Month</span>
+                  <input
+                    type="month"
+                    value={exp.month}
+                    onChange={(e) => setExp((f) => ({ ...f, month: e.target.value }))}
+                  />
+                </label>
+              )}
+            </FilterSection>
+
+            <FilterSection title="Survey & surveyor" badge={survey || 'all'} defaultOpen>
+              <label className="field compact">
+                <span>Survey</span>
+                <select value={survey} onChange={(e) => setSurvey(e.target.value)}>
+                  <option value="">All surveys</option>
+                  {surveys.map((s) => (
+                    <option key={s.id} value={s.form_key}>
+                      {s.title} {s.surveyor_names ? `(👥 ${s.surveyor_names})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {(() => {
+                if (!survey) return null
+                const sel = surveys.find(
+                  (s) => s.form_key === survey || String(s.id) === String(survey),
+                )
+                const assignedNames = (sel?.surveyor_names || '')
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+
+                const rawItems = mapAnalytics?.items || mapAnalytics?.rawItems || []
+                const matchingSubmissions = rawItems.filter(
+                  (r) => String(r.formKey || r.form_key || r.survey || '') === survey,
+                )
+                const activeNames = [
+                  ...new Set(
+                    matchingSubmissions
+                      .map((r) => r.submitted_by || r.surveyor)
+                      .filter(Boolean),
+                  ),
+                ]
+
+                const allTeamNames = [...new Set([...assignedNames, ...activeNames])]
+                const teamDisplay =
+                  allTeamNames.length > 0
+                    ? allTeamNames.join(', ')
+                    : 'No surveyors registered for this survey yet'
+
+                return (
+                  <div
+                    style={{
+                      background: '#1e293b',
+                      border: '1px solid #00e599',
+                      borderRadius: 10,
+                      padding: '12px 14px',
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: '#00e599',
+                        fontWeight: 'bold',
+                        fontSize: 13,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <span>👥 Field team for &quot;{sel?.title || survey}&quot;:</span>
+                    </div>
+                    <div style={{ color: '#ffffff', fontSize: 14, fontWeight: 'bold', marginTop: 4 }}>
+                      {teamDisplay}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+                      Submissions:{' '}
+                      <strong>{matchingSubmissions.length || sel?.submissions || 0}</strong> ·
+                      Questions: <strong>{sel?.question_count || 0}</strong>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {(() => {
+                const sel = surveys.find(
+                  (s) => s.form_key === survey || String(s.id) === String(survey),
+                )
+                const assignedNames = (sel?.surveyor_names || '')
+                  .split(',')
+                  .map((s) => s.trim().toLowerCase())
+                  .filter(Boolean)
+
+                const rawItems = mapAnalytics?.items || mapAnalytics?.rawItems || []
+                const matchingSubmissions = rawItems.filter(
+                  (r) => String(r.formKey || r.form_key || r.survey || '') === survey,
+                )
+                const activeNames = [
+                  ...new Set(
+                    matchingSubmissions
+                      .map((r) =>
+                        String(r.submitted_by || r.surveyor || '')
+                          .trim()
+                          .toLowerCase(),
+                      )
+                      .filter(Boolean),
+                  ),
+                ]
+
+                const allUsers = mapAnalytics?.dataFilters?.by_user || []
+                let displayUsers = allUsers
+
+                if (survey) {
+                  const teamUsers = allUsers.filter((u) => {
+                    const uname = u.name.toLowerCase()
+                    return (
+                      assignedNames.some((an) => uname.includes(an) || an.includes(uname)) ||
+                      activeNames.some((ac) => uname.includes(ac) || ac.includes(uname))
+                    )
+                  })
+                  if (teamUsers.length > 0) {
+                    displayUsers = teamUsers
+                  }
+                }
+
+                return (
+                  <label className="field compact">
+                    <span>
+                      Surveyor
+                      {survey ? ` (team for "${sel?.title || survey}")` : ''}
+                    </span>
+                    <select
+                      value={exp.user}
+                      onChange={(e) => setExp((f) => ({ ...f, user: e.target.value }))}
+                    >
+                      <option value="">
+                        {survey
+                          ? `All field team collectors for "${sel?.title || survey}"`
+                          : 'All surveyors'}
+                      </option>
+                      {displayUsers.map((u) => {
+                        const uname = u.name.toLowerCase()
+                        const isAssigned = assignedNames.some(
+                          (an) => uname.includes(an) || an.includes(uname),
+                        )
+                        return (
+                          <option key={u.name} value={u.name}>
+                            {u.name} ({u.value} submissions){' '}
+                            {isAssigned ? '👥 [Assigned Team]' : ''}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </label>
+                )
+              })()}
+            </FilterSection>
+
+            <FilterSection
+              title="Location & status"
+              badge={[exp.district, exp.constituency, exp.status].filter(Boolean).join(' · ') || 'all'}
+              defaultOpen={false}
+            >
+              <label className="field compact">
+                <span>District</span>
+                <select
+                  value={exp.district}
+                  onChange={(e) => setExp((f) => ({ ...f, district: e.target.value }))}
+                >
+                  <option value="">All districts</option>
+                  {(mapAnalytics?.filterOptions?.districts || []).map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field compact">
+                <span>Assembly</span>
+                <select
+                  value={exp.constituency}
+                  onChange={(e) => setExp((f) => ({ ...f, constituency: e.target.value }))}
+                >
+                  <option value="">All assemblies</option>
+                  {(mapAnalytics?.filterOptions?.constituencies || []).map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field compact">
+                <span>Status</span>
+                <select
+                  value={exp.status}
+                  onChange={(e) => setExp((f) => ({ ...f, status: e.target.value }))}
+                >
+                  <option value="confirmed">Confirmed</option>
+                  <option value="pending">Pending</option>
+                  <option value="all">All</option>
+                </select>
+              </label>
+            </FilterSection>
+
             <button
               type="button"
               className="btn primary"

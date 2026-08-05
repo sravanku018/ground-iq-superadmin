@@ -1105,7 +1105,16 @@ export default function DashboardScreen({ onToast }) {
       </section>
 
       {loading && !data ? (
-        <p className="muted center">Checking confirmed data…</p>
+        <div className="card" style={{ padding: 16 }}>
+          <p className="muted center" style={{ margin: 0 }}>
+            Checking confirmed data…
+          </p>
+          <div className="portal-skeleton-rows" style={{ marginTop: 12 }}>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="portal-skeleton-row" style={{ width: `${90 - i * 10}%` }} />
+            ))}
+          </div>
+        </div>
       ) : reportLocked ? null : !reportReady ? null : (
         <div className="chart-grid">
           {data && (
@@ -1202,6 +1211,28 @@ export default function DashboardScreen({ onToast }) {
               }
             />
           </ChartCard>
+
+          {charts?.partyByDistrict?.rows?.length > 0 && (
+            <ChartCard title="Party × District" subtitle="Stacked share" tall>
+              <StackedParty
+                matrix={charts.partyByDistrict}
+                activeName={filters.district}
+                onRowClick={(name) =>
+                  setFilters((f) => ({
+                    ...f,
+                    district: f.district === name ? '' : name,
+                    constituency: '',
+                  }))
+                }
+              />
+            </ChartCard>
+          )}
+
+          {charts?.issues?.length > 0 && (
+            <ChartCard title="Local issues" subtitle="Most mentioned">
+              <RadialIssues data={charts.issues} />
+            </ChartCard>
+          )}
 
           {(charts?.questionCharts || []).map((q) => (
             <ChartCard

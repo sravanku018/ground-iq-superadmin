@@ -15,6 +15,7 @@ import AdminAnalyzeScreen from './AdminAnalyze'
 import ReviewQAScreen from './ReviewQA'
 import DashboardScreen from './Dashboard'
 import AdminDataScreen from './AdminData'
+import { PortalEmpty, PortalSkeleton } from './PortalUI'
 import { versionLabel } from './version'
 import './App.css'
 import './portal.css'
@@ -152,16 +153,17 @@ function DataList({ items, loading, onRefresh, surveys, surveyFilter, onSurveyCh
         </button>
       </header>
       {loading ? (
-        <p className="muted">Loading…</p>
+        <PortalSkeleton rows={5} label="Loading submissions…" />
       ) : !items.length ? (
-        <div className="card">
-          <p className="muted">No rows yet.</p>
-        </div>
+        <PortalEmpty title="No rows yet">
+          Collect from the field app or widen the survey filter.
+        </PortalEmpty>
       ) : (
         <ul className="user-list">
           {items.map((it) => {
             const a = it.answers || {}
-            const title = surveys.find((s) => s.form_key === it.form_key)?.title || it.form_key || 'Survey'
+            const title =
+              surveys.find((s) => s.form_key === it.form_key)?.title || it.form_key || 'Survey'
             return (
               <li key={it.id}>
                 <div>
@@ -196,6 +198,12 @@ export default function AdminPortal() {
   const [surveyFilter, setSurveyFilter] = useState('')
   const [loadingData, setLoadingData] = useState(false)
   const [toast, setToast] = useState(null)
+  const [navOpen, setNavOpen] = useState(false)
+
+  const goPage = useCallback((p) => {
+    setPage(p)
+    setNavOpen(false)
+  }, [])
 
   useEffect(() => {
     import('./api').then(({ listSurveys }) =>
@@ -330,15 +338,54 @@ export default function AdminPortal() {
     )
   }
 
+  const activeNavLabel =
+    NAV.find((n) => n.pages.includes(page))?.label || PAGE_LABELS[page] || 'Admin'
+
   return (
-    <div className="portal-shell">
+    <div className={`portal-shell${navOpen ? ' nav-open' : ''}`}>
       {toast && (
         <div className={`toast portal-toast ${toast.type}`} role="status">
           {toast.message}
         </div>
       )}
 
-      <aside className="portal-sidebar">
+      <header className="portal-topbar">
+        <button
+          type="button"
+          className="portal-menu-btn"
+          aria-label={navOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={navOpen}
+          onClick={() => setNavOpen((o) => !o)}
+        >
+          {navOpen ? '✕' : '☰'}
+        </button>
+        <div className="portal-topbar-brand">
+          <strong>Ground IQ · Admin</strong>
+          <span>{activeNavLabel}</span>
+        </div>
+        <button
+          type="button"
+          className="btn small"
+          disabled={loadingData}
+          onClick={() => {
+            loadPortal()
+            notify('Portal data refreshed ✓', 'ok')
+          }}
+        >
+          {loadingData ? '…' : '↻'}
+        </button>
+      </header>
+
+      {navOpen ? (
+        <button
+          type="button"
+          className="portal-drawer-backdrop"
+          aria-label="Close menu"
+          onClick={() => setNavOpen(false)}
+        />
+      ) : null}
+
+      <aside className="portal-sidebar" aria-label="Main navigation">
         <div className="portal-sidebar-brand">
           <span className="portal-logo">◆</span>
           <div>
@@ -354,7 +401,7 @@ export default function AdminPortal() {
               className={
                 n.pages.includes(page) ? 'portal-nav-item active' : 'portal-nav-item'
               }
-              onClick={() => setPage(n.pages[0])}
+              onClick={() => goPage(n.pages[0])}
             >
               <span aria-hidden>{n.icon}</span>
               {n.label}
@@ -412,14 +459,14 @@ export default function AdminPortal() {
                 key={p}
                 type="button"
                 className={page === p ? 'map-tab active' : 'map-tab'}
-                onClick={() => setPage(p)}
+                onClick={() => goPage(p)}
               >
                 {PAGE_LABELS[p]}
               </button>
             ))}
           </div>
         ))}
-        {page === 'overview' && <Overview user={user} stats={stats} onNav={setPage} />}
+        {page === 'overview' && <Overview user={user} stats={stats} onNav={goPage} />}
         {page === 'users' && <AdminUsersScreen onToast={notify} />}
         {page === 'surveys' && <AdminSurveysScreen onToast={notify} />}
         {page === 'questions' && <AdminQuestionsScreen onToast={notify} />}

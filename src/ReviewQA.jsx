@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   confirmAllPending,
   downloadMediaFile,
@@ -8,12 +8,12 @@ import {
   listSurveys,
   setSubmissionStatus,
 } from './api'
+import { PortalEmpty, PortalError, PortalSkeleton } from './PortalUI'
 import SubmissionEditor from './SubmissionEditor'
 
 /**
- * Q/A review → confirm done or not.
- * Only confirmed surveys feed the analytics report.
- * Client Admin can edit / delete any record.
+ * Q/A review → confirm / reject.
+ * Keyboard: j/k move · Enter expand · c confirm · r reject · e edit
  */
 export default function ReviewQAScreen({ onToast }) {
   const [status, setStatus] = useState('pending')
@@ -21,17 +21,24 @@ export default function ReviewQAScreen({ onToast }) {
   const [surveys, setSurveys] = useState([])
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [busyId, setBusyId] = useState(null)
   const [expanded, setExpanded] = useState(null)
   const [editingId, setEditingId] = useState(null)
   const [mediaById, setMediaById] = useState({})
+  const [focusIdx, setFocusIdx] = useState(0)
+  const listRef = useRef(null)
 
   const load = useCallback(async () => {
     setLoading(true)
+    setError('')
     try {
       const data = await listSubmissions(200, status === 'all' ? '' : status, { survey })
-      setItems(data.items || [])
+      const next = data.items || []
+      setItems(next)
+      setFocusIdx((i) => (next.length ? Math.min(i, next.length - 1) : 0))
     } catch (e) {
+      setError(e.message || 'Failed to load')
       onToast?.(e.message, 'error')
     } finally {
       setLoading(false)
@@ -48,7 +55,7 @@ export default function ReviewQAScreen({ onToast }) {
       .catch(() => {})
   }, [])
 
-  // Load free Neon/external media when a row is opened (no card services)
+  // Prefetch media when expanded
   useEffect(() => {
     if (!expanded) return
     let cancelled = false
@@ -61,7 +68,10 @@ export default function ReviewQAScreen({ onToast }) {
         for (const m of list) {
           let playUrl = m.url || ''
           try {
-            if (playUrl && (playUrl.startsWith('/api/media/') || playUrl.includes('/api/media/'))) {
+            if (
+              playUrl &&
+              (playUrl.startsWith('/api/media/') || playUrl.includes('/api/media/'))
+            ) {
               playUrl = await fetchMediaBlobUrl(playUrl)
               blobUrls.push(playUrl)
             }
@@ -87,24 +97,31 @@ export default function ReviewQAScreen({ onToast }) {
     }
   }, [expanded])
 
-  async function setStatusFor(id, next) {
-    setBusyId(id)
-    try {
-      await setSubmissionStatus(id, next)
-      onToast?.(
-        next === 'confirmed' ? 'Confirmed ✓ — included in analytics' : `Marked ${next}`,
-        'ok',
-      )
-      await load()
-    } catch (e) {
-      onToast?.(e.message, 'error')
-    } finally {
-      setBusyId(null)
-    }
-  }
+  const setStatusFor = useCallback(
+    async (id, next) => {
+      setBusyId(id)
+      try {
+        await setSubmissionStatus(id, next)
+        onToast?.(
+          next === 'confirmed' ? 'Confirmed ✓ — included in analytics' : `Marked ${next}`,
+          'ok',
+        )
+        await load()
+      } catch (e) {
+        onToast?.(e.message, 'error')
+      } finally {
+        setBusyId(null)
+      }
+    },
+    [load, onToast],
+  )
 
   async function bulkConfirm() {
-    if (!confirm('Confirm ALL pending surveys in the last batch? They will enter the analytics report.')) {
+    if (
+      !confirm(
+        'Confirm ALL pending surveys in the last batch? They will enter the analytics report.',
+      )
+    ) {
       return
     }
     setLoading(true)
@@ -120,17 +137,69 @@ export default function ReviewQAScreen({ onToast }) {
     }
   }
 
+  // Keyboard shortcuts when not typing in inputs
+  useEffect(() => {
+    function onKey(e) {
+      const tag = (e.target?.tagName || '').toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) {
+        return
+      }
+      if (!items.length) return
+      const item = items[focusIdx]
+      if (!item) return
+
+      if (e.key === 'j' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        setFocusIdx((i) => Math.min(items.length - 1, i + 1))
+      } else if (e.key === 'k' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setFocusIdx((i) => Math.max(0, i - 1))
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        setExpanded((ex) => (ex === item.id ? null : item.id))
+        setEditingId(null)
+      } else if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault()
+        if (item.status !== 'confirmed' && busyId !== item.id) {
+          void setStatusFor(item.id, 'confirmed')
+        }
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault()
+        if (item.status !== 'rejected' && busyId !== item.id) {
+          void setStatusFor(item.id, 'rejected')
+        }
+      } else if (e.key === 'e' || e.key === 'E') {
+        e.preventDefault()
+        setExpanded(item.id)
+        setEditingId((id) => (id === item.id ? null : item.id))
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [items, focusIdx, busyId, setStatusFor])
+
+  // Scroll focused row into view
+  useEffect(() => {
+    const el = listRef.current?.querySelector(`[data-review-idx="${focusIdx}"]`)
+    el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [focusIdx])
+
   return (
     <div className="screen">
       <header className="screen-head">
         <h2>Client Admin · Review</h2>
-        <p>Review · edit answers · confirm → report analytics</p>
+        <p>Review · media · confirm → report analytics</p>
       </header>
+
+      <p className="review-kb-hint">
+        Keys: <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>Enter</kbd> expand · <kbd>c</kbd> confirm ·{' '}
+        <kbd>r</kbd> reject · <kbd>e</kbd> edit
+      </p>
 
       <div className="card" style={{ marginBottom: 12 }}>
         <p className="muted" style={{ margin: '0 0 10px', fontSize: 13 }}>
-          Pipeline: <strong>Users</strong> → collect survey → <strong>Review</strong> →{' '}
-          <strong>Confirm</strong> → <strong>Dashboard analytics</strong>
+          Pipeline: <strong>Users</strong> → collect → <strong>Review</strong> →{' '}
+          <strong>Confirm</strong> → <strong>Report</strong>
         </p>
         <div className="chip-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {['pending', 'confirmed', 'rejected', 'all'].map((s) => (
@@ -169,19 +238,21 @@ export default function ReviewQAScreen({ onToast }) {
       </div>
 
       {loading ? (
-        <p className="muted">Loading…</p>
+        <PortalSkeleton rows={6} label="Loading review queue…" />
+      ) : error ? (
+        <PortalError title="Could not load reviews" message={error} onRetry={load} />
       ) : !items.length ? (
-        <div className="card">
-          <p className="muted">
-            No {status === 'all' ? '' : status} surveys.
-            {status === 'pending' && ' New submits appear here until confirmed.'}
-          </p>
-        </div>
+        <PortalEmpty title={`No ${status === 'all' ? '' : status + ' '}surveys`}>
+          {status === 'pending'
+            ? 'New submits appear here until confirmed. Pull data from the field app first.'
+            : 'Try another status filter or survey.'}
+        </PortalEmpty>
       ) : (
-        <ul className="user-list review-list">
-          {items.map((item) => {
+        <ul className="user-list review-list" ref={listRef}>
+          {items.map((item, idx) => {
             const a = item.answers || {}
             const open = expanded === item.id
+            const focused = focusIdx === idx
             const qa = item.qa?.length
               ? item.qa
               : Object.entries(a)
@@ -191,12 +262,29 @@ export default function ReviewQAScreen({ onToast }) {
                     q: k,
                     a: Array.isArray(v) ? v.join(', ') : String(v),
                   }))
+            const photo =
+              (mediaById[item.id] || []).find((m) => m.kind === 'photo') || null
+            const audio =
+              (mediaById[item.id] || []).find((m) => m.kind === 'audio') || null
+            const photoSrc = photo?.playUrl || photo?.url || item.photo_url
+            const audioSrc = audio?.playUrl || audio?.url || item.audio_url
+
             return (
-              <li key={item.id} className="review-item card" style={{ marginBottom: 10 }}>
+              <li
+                key={item.id}
+                data-review-idx={idx}
+                className={`review-item card${focused ? ' is-focus' : ''}`}
+                style={{ marginBottom: 10 }}
+                onClick={() => setFocusIdx(idx)}
+              >
                 <button
                   type="button"
                   className="review-head"
-                  onClick={() => setExpanded(open ? null : item.id)}
+                  onClick={() => {
+                    setFocusIdx(idx)
+                    setExpanded(open ? null : item.id)
+                    setEditingId(null)
+                  }}
                   style={{
                     width: '100%',
                     textAlign: 'left',
@@ -216,106 +304,109 @@ export default function ReviewQAScreen({ onToast }) {
                     {item.legacy ? ' · legacy (no GPS/camera)' : ''}
                     {item.submitted_by ? ` · ${item.submitted_by}` : ''}
                     {a.district ? ` · ${a.district}` : ''}
+                    {item.has_photo || photoSrc ? ' · 📷' : ''}
+                    {item.has_voice || audioSrc ? ' · 🎤' : ''}
                   </span>
                   <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                    {open ? 'Hide Q/A ▲' : 'Show Q/A ▼'}
+                    {open ? 'Hide Q/A ▲' : 'Show Q/A + media ▼'}
                   </div>
                 </button>
 
+                {/* Always-visible mini media strip when open */}
                 {open && editingId !== item.id && (
                   <div className="qa-block" style={{ marginTop: 10 }}>
-                    {(item.photo_url ||
-                      item.audio_url ||
-                      (mediaById[item.id] || []).length > 0) && (
-                      <div className="card" style={{ marginBottom: 10, padding: 10 }}>
-                        <strong style={{ fontSize: 13 }}>
-                          Media (free · Neon · no card)
-                        </strong>
-                        <div
-                          style={{
-                            marginTop: 8,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 8,
-                          }}
-                        >
-                          {(() => {
-                            const photo =
-                              (mediaById[item.id] || []).find((m) => m.kind === 'photo') ||
-                              null
-                            const src = photo?.playUrl || photo?.url || item.photo_url
-                            const rawUrl = photo?.url || item.photo_url || src
-                            if (!src) return null
-                            return (
-                              <div>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                  <span className="muted" style={{ fontSize: 12 }}>
-                                    Photo
-                                    {photo?.storage ? ` · ${photo.storage}` : ''}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    className="btn small"
-                                    style={{ fontSize: 11, padding: '2px 8px' }}
-                                    onClick={() => downloadMediaFile(rawUrl, `photo-${item.id}.jpg`)}
-                                  >
-                                    ⬇ Download Photo
-                                  </button>
-                                </div>
-                                <img
-                                  src={src}
-                                  alt="survey photo"
-                                  style={{
-                                    display: 'block',
-                                    maxWidth: '100%',
-                                    marginTop: 6,
-                                    borderRadius: 8,
-                                  }}
-                                />
-                              </div>
-                            )
-                          })()}
-                          {(() => {
-                            const audio =
-                              (mediaById[item.id] || []).find((m) => m.kind === 'audio') ||
-                              null
-                            const src = audio?.playUrl || audio?.url || item.audio_url
-                            const rawUrl = audio?.url || item.audio_url || src
-                            if (!src) return null
-                            return (
-                              <div>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                                  <span className="muted" style={{ fontSize: 12 }}>
-                                    Audio
-                                    {audio?.storage ? ` · ${audio.storage}` : ''}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    className="btn small primary"
-                                    style={{ fontSize: 11, padding: '2px 8px' }}
-                                    onClick={() => downloadMediaFile(rawUrl, `audio-${item.id}.mp3`)}
-                                  >
-                                    ⬇ Download Audio
-                                  </button>
-                                </div>
-                                <audio
-                                  controls
-                                  src={src}
-                                  style={{ width: '100%', marginTop: 2 }}
-                                />
-                              </div>
-                            )
-                          })()}
-                          {!item.photo_url &&
-                            !item.audio_url &&
-                            !(mediaById[item.id] || []).length && (
-                              <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-                                Loading media or none synced yet…
-                              </p>
-                            )}
-                        </div>
+                    <div className="card" style={{ marginBottom: 10, padding: 10 }}>
+                      <strong style={{ fontSize: 13 }}>Media</strong>
+                      <div
+                        style={{
+                          marginTop: 8,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 8,
+                        }}
+                      >
+                        {photoSrc ? (
+                          <div>
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                              }}
+                            >
+                              <span className="muted" style={{ fontSize: 12 }}>
+                                Photo
+                                {photo?.storage ? ` · ${photo.storage}` : ''}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn small"
+                                style={{ fontSize: 11, padding: '2px 8px' }}
+                                onClick={() =>
+                                  downloadMediaFile(
+                                    photo?.url || item.photo_url || photoSrc,
+                                    `photo-${item.id}.jpg`,
+                                  )
+                                }
+                              >
+                                ⬇ Download
+                              </button>
+                            </div>
+                            <img
+                              src={photoSrc}
+                              alt="survey photo"
+                              style={{
+                                display: 'block',
+                                maxWidth: '100%',
+                                maxHeight: 280,
+                                objectFit: 'contain',
+                                marginTop: 6,
+                                borderRadius: 8,
+                                background: '#0a0f14',
+                              }}
+                            />
+                          </div>
+                        ) : null}
+                        {audioSrc ? (
+                          <div>
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                marginBottom: 4,
+                              }}
+                            >
+                              <span className="muted" style={{ fontSize: 12 }}>
+                                Audio
+                                {audio?.storage ? ` · ${audio.storage}` : ''}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn small primary"
+                                style={{ fontSize: 11, padding: '2px 8px' }}
+                                onClick={() =>
+                                  downloadMediaFile(
+                                    audio?.url || item.audio_url || audioSrc,
+                                    `audio-${item.id}.webm`,
+                                  )
+                                }
+                              >
+                                ⬇ Download
+                              </button>
+                            </div>
+                            <audio controls src={audioSrc} style={{ width: '100%' }} />
+                          </div>
+                        ) : null}
+                        {!photoSrc && !audioSrc && (
+                          <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                            {mediaById[item.id]
+                              ? 'No photo/audio on this record.'
+                              : 'Loading media…'}
+                          </p>
+                        )}
                       </div>
-                    )}
+                    </div>
                     {qa.map((row) => (
                       <div key={row.q} className="kv" style={{ marginBottom: 6 }}>
                         <span className="muted">{row.q}</span>
@@ -341,17 +432,18 @@ export default function ReviewQAScreen({ onToast }) {
                   />
                 )}
 
-                <div className="user-actions" style={{ marginTop: 10 }}>
+                <div className="review-actions-bar user-actions">
                   <button
                     type="button"
                     className="btn small primary"
                     disabled={busyId === item.id}
                     onClick={() => {
+                      setFocusIdx(idx)
                       setExpanded(item.id)
                       setEditingId(editingId === item.id ? null : item.id)
                     }}
                   >
-                    {editingId === item.id ? 'Close edit' : 'Edit data'}
+                    {editingId === item.id ? 'Close edit' : 'Edit (e)'}
                   </button>
                   {item.status !== 'confirmed' && (
                     <button
@@ -360,7 +452,7 @@ export default function ReviewQAScreen({ onToast }) {
                       disabled={busyId === item.id}
                       onClick={() => setStatusFor(item.id, 'confirmed')}
                     >
-                      Confirm done
+                      Confirm (c)
                     </button>
                   )}
                   {item.status !== 'rejected' && (
@@ -370,7 +462,7 @@ export default function ReviewQAScreen({ onToast }) {
                       disabled={busyId === item.id}
                       onClick={() => setStatusFor(item.id, 'rejected')}
                     >
-                      Reject
+                      Reject (r)
                     </button>
                   )}
                   {item.status !== 'pending' && (

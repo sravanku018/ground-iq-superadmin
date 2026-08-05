@@ -329,7 +329,6 @@ export default function AdminSurveysScreen({ onToast }) {
 
   // create mode
   const [newTitle, setNewTitle] = useState('')
-  const [questions, setQuestions] = useState([])
   const [saving, setSaving] = useState(false)
   const [exists, setExists] = useState(null) // existing survey with same name
 

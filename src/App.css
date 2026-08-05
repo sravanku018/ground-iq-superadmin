@@ -668,12 +668,16 @@
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   margin-top: 4px;
+  max-width: 100%;
+  border-radius: 8px;
 }
 
 .data-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  min-width: 420px;
+  table-layout: auto;
 }
 
 .data-table th,
@@ -682,6 +686,7 @@
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .data-table th {
@@ -827,6 +832,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  width: 100%;
+  min-width: 0;
 }
 
 .chart-card {
@@ -834,7 +841,10 @@
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 12px 10px 8px;
-  overflow: hidden;
+  /* visible so Recharts tooltips/legends are not clipped (was causing layout jumps) */
+  overflow: visible;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .chart-head {
@@ -844,6 +854,7 @@
 .chart-head h3 {
   margin: 0;
   font-size: 14px;
+  overflow-wrap: anywhere;
 }
 
 .chart-head p {
@@ -854,10 +865,142 @@
 
 .chart-body {
   min-height: 180px;
+  width: 100%;
+  min-width: 0;
+  position: relative;
+}
+
+.chart-body .recharts-responsive-container {
+  width: 100% !important;
+  min-width: 0;
 }
 
 .chart-card.tall .chart-body {
   min-height: 220px;
+}
+
+/* Step filters on Report / Analyze */
+.filter-step {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 10px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.filter-step-title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-h);
+}
+
+.filter-step-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 10px;
+}
+
+/* Surveyor rows with Filter button aligned */
+.user-list.user-list-actions li {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.user-list-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.user-list-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Report records — no nested card double-border */
+.user-list.review-list {
+  gap: 8px;
+}
+
+.user-list.review-list li,
+.user-list.review-list .review-item {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 12px;
+  margin: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.review-item-toggle {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.review-item-title {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.review-item-body {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  min-width: 0;
+}
+
+/* Long table cells — clip instead of blowing layout */
+.data-table td.cell-clip,
+.data-table .cell-clip {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-row.stat-row-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.stat-row.stat-row-6 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.stat-row.is-loading .stat strong {
+  opacity: 0.55;
+}
+
+@media (min-width: 700px) {
+  .stat-row.stat-row-6 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1100px) {
+  .stat-row.stat-row-6 {
+    grid-template-columns: repeat(6, 1fr);
+  }
 }
 
 .chart-empty {
@@ -1209,6 +1352,8 @@
   grid-template-columns: repeat(2, 1fr);
   gap: 10px;
   margin-bottom: 14px;
+  width: 100%;
+  min-width: 0;
 }
 
 .stat {
@@ -1216,6 +1361,7 @@
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 14px;
+  min-width: 0;
 }
 
 .stat strong {
@@ -1223,6 +1369,9 @@
   font-size: 22px;
   color: var(--text-h);
   letter-spacing: -0.3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stat span {

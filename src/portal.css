@@ -471,7 +471,31 @@
 }
 
 .portal-main .dashboard-screen .chart-grid {
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.portal-main .dashboard-screen .chart-card,
+.portal-main .dashboard-screen .map-span {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.portal-main .data-table-wrap {
+  max-width: 100%;
+}
+
+.portal-main .stat-row {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.portal-main .screen {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 @media (max-width: 900px) {
@@ -544,6 +568,6 @@
   }
 
   .portal-main .dashboard-screen .chart-grid {
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
   }
 }

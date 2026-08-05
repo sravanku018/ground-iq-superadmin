@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   getAdminAnalyze,
   getAnalytics,
@@ -45,90 +45,121 @@ export default function AdminAnalyzeScreen({ onToast }) {
       .catch(() => {})
   }, [])
 
-  const scopeParams = useMemo(() => {
-    const p = {
-      period,
-      user: user || undefined,
-      district: district || undefined,
-      constituency: constituency || undefined,
-    }
-    if (period === 'day') p.day = day
-    if (period === 'month') p.month = month
-    if (period === 'today') {
-      /* server expands */
-    }
-    return p
-  }, [period, day, month, user, district, constituency])
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [analyze, list, charts] = await Promise.all([
-        getAdminAnalyze({
-          ...scopeParams,
-          survey,
-          district: district || undefined,
-          constituency: constituency || undefined,
-          completeness: completeness === 'all' ? undefined : completeness,
-          ...Object.fromEntries(Object.entries(qFilters).filter(([, v]) => v)),
-        }),
-        listSubmissions(300, 'all', {
-          period: scopeParams.period,
-          day: scopeParams.day,
-          month: scopeParams.month,
-          user: user,
-          survey,
-          district: district || undefined,
-          constituency: constituency || undefined,
-          completeness: completeness === 'all' ? '' : completeness,
-          ...Object.fromEntries(Object.entries(qFilters).filter(([, v]) => v)),
-          // expand day/month for submissions list if needed
-          date_from:
-            period === 'day'
-              ? day
-              : period === 'today'
-                ? todayStr()
-                : period === 'month'
-                  ? `${month}-01`
-                  : '',
-          date_to:
-            period === 'day'
-              ? day
-              : period === 'today'
-                ? todayStr()
-                : period === 'month'
-                  ? `${month}-31`
-                  : '',
-        }),
-        getAnalytics({
-          status: 'all',
-          period: scopeParams.period,
-          day: scopeParams.day,
-          month: scopeParams.month,
+  const load = useCallback(
+    async (overrides = {}) => {
+      setLoading(true)
+      try {
+        const p = {
+          period,
+          day,
+          month,
           user,
           survey,
-          district: district || undefined,
-          constituency: constituency || undefined,
-          completeness: completeness === 'all' ? 'all' : completeness,
-          ...Object.fromEntries(
-            Object.entries(qFilters).filter(([, v]) => v),
-          ),
-        }).catch(() => null),
-      ])
-      setBoard(analyze)
-      setItems(list.items || [])
-      setSummary(list.summary || analyze.totals)
-      setAnalytics(charts)
-      onToast?.(
-        `Loaded ${list.total ?? analyze.totals?.records ?? 0} · ${period}${user ? ` · ${user}` : ''}${district ? ` · ${district}` : ''}`,
-        'ok',
-      )
-    } catch (e) {
-      onToast?.(e.message, 'error')
-    } finally {
-      setLoading(false)
-    }
-  }, [scopeParams, completeness, user, survey, district, constituency, qFilters, period, day, month, onToast])
+          district,
+          constituency,
+          completeness,
+          ...overrides,
+        }
+        const periodVal = p.period || 'total'
+        const dayVal = p.day || day
+        const monthVal = p.month || month
+        const userVal = p.user ?? user
+        const surveyVal = p.survey ?? survey
+        const districtVal = p.district ?? district
+        const constituencyVal = p.constituency ?? constituency
+        const completenessVal = p.completeness ?? completeness
+
+        const baseScope = {
+          period: periodVal,
+          user: userVal || undefined,
+          district: districtVal || undefined,
+          constituency: constituencyVal || undefined,
+        }
+        if (periodVal === 'day') baseScope.day = dayVal
+        if (periodVal === 'month') baseScope.month = monthVal
+
+        const qParams = Object.fromEntries(Object.entries(qFilters).filter(([, v]) => v))
+
+        const [analyze, list, charts] = await Promise.all([
+          getAdminAnalyze({
+            ...baseScope,
+            survey: surveyVal,
+            completeness: completenessVal === 'all' ? undefined : completenessVal,
+            ...qParams,
+          }),
+          listSubmissions(300, 'all', {
+            period: periodVal,
+            day: periodVal === 'day' ? dayVal : undefined,
+            month: periodVal === 'month' ? monthVal : undefined,
+            user: userVal,
+            survey: surveyVal,
+            district: districtVal || undefined,
+            constituency: constituencyVal || undefined,
+            completeness: completenessVal === 'all' ? '' : completenessVal,
+            ...qParams,
+            date_from:
+              periodVal === 'day'
+                ? dayVal
+                : periodVal === 'today'
+                  ? todayStr()
+                  : periodVal === 'month'
+                    ? `${monthVal}-01`
+                    : '',
+            date_to:
+              periodVal === 'day'
+                ? dayVal
+                : periodVal === 'today'
+                  ? todayStr()
+                  : periodVal === 'month'
+                    ? `${monthVal}-31`
+                    : '',
+          }),
+          getAnalytics({
+            status: 'all',
+            period: periodVal,
+            day: periodVal === 'day' ? dayVal : undefined,
+            month: periodVal === 'month' ? monthVal : undefined,
+            user: userVal,
+            survey: surveyVal,
+            district: districtVal || undefined,
+            constituency: constituencyVal || undefined,
+            completeness: completenessVal === 'all' ? 'all' : completenessVal,
+            ...qParams,
+          }).catch(() => null),
+        ])
+        setBoard(analyze)
+        setItems(list.items || [])
+        setSummary(list.summary || analyze.totals)
+        setAnalytics(charts)
+        onToast?.(
+          `Loaded ${list.total ?? analyze.totals?.records ?? 0} · ${periodVal}${userVal ? ` · ${userVal}` : ''}${districtVal ? ` · ${districtVal}` : ''}`,
+          'ok',
+        )
+      } catch (e) {
+        onToast?.(e.message, 'error')
+      } finally {
+        setLoading(false)
+      }
+    },
+    [
+      period,
+      day,
+      month,
+      user,
+      survey,
+      district,
+      constituency,
+      completeness,
+      qFilters,
+      onToast,
+    ],
+  )
+
+  // Auto-load report boards on first open
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
+  }, [])
 
   async function confirmOne(id, force = false) {
     setBusyId(id)
@@ -173,21 +204,15 @@ export default function AdminAnalyzeScreen({ onToast }) {
         </p>
 
         {/* Step 1 · Survey name */}
-        <div
-          style={{
-            border: '1px solid #243041',
-            borderRadius: 10,
-            padding: 10,
-            marginBottom: 10,
-          }}
-        >
-          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>1 · Survey name</p>
+        <div className="filter-step">
+          <p className="filter-step-title">1 · Survey name</p>
           <label className="field">
             <span>By survey</span>
             <select
               value={survey}
               onChange={(e) => {
                 setSurvey(e.target.value)
+                setUser('')
                 setQFilters({})
               }}
             >
@@ -202,15 +227,8 @@ export default function AdminAnalyzeScreen({ onToast }) {
         </div>
 
         {/* Step 2 · Surveyor name */}
-        <div
-          style={{
-            border: '1px solid #243041',
-            borderRadius: 10,
-            padding: 10,
-            marginBottom: 10,
-          }}
-        >
-          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>2 · Surveyor name</p>
+        <div className="filter-step">
+          <p className="filter-step-title">2 · Surveyor name</p>
           <label className="field">
             <span>By surveyor</span>
             <select value={user} onChange={(e) => setUser(e.target.value)}>
@@ -219,7 +237,8 @@ export default function AdminAnalyzeScreen({ onToast }) {
               </option>
               {(board?.by_user || []).map((u) => (
                 <option key={u.user} value={u.user}>
-                  {u.user} ({u.complete}/{u.total} complete)
+                  {u.user} ({u.completed ?? u.confirmed ?? 0} completed ·{' '}
+                  {u.pending ?? 0} pending)
                 </option>
               ))}
             </select>
@@ -232,16 +251,9 @@ export default function AdminAnalyzeScreen({ onToast }) {
         </div>
 
         {/* Step 3 · Geolocation */}
-        <div
-          style={{
-            border: '1px solid #243041',
-            borderRadius: 10,
-            padding: 10,
-            marginBottom: 10,
-          }}
-        >
-          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>3 · Geolocation</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+        <div className="filter-step">
+          <p className="filter-step-title">3 · Geolocation</p>
+          <div className="filter-step-grid">
             <label className="field">
               <span>District</span>
               <select value={district} onChange={(e) => setDistrict(e.target.value)}>
@@ -266,15 +278,8 @@ export default function AdminAnalyzeScreen({ onToast }) {
         </div>
 
         {/* Step 4 · Day / Month */}
-        <div
-          style={{
-            border: '1px solid #243041',
-            borderRadius: 10,
-            padding: 10,
-            marginBottom: 10,
-          }}
-        >
-          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>4 · Day / Month</p>
+        <div className="filter-step">
+          <p className="filter-step-title">4 · Day / Month</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
             {[
               { id: 'total', label: 'Total data' },
@@ -307,17 +312,8 @@ export default function AdminAnalyzeScreen({ onToast }) {
         </div>
 
         {/* Step 5 · Rest (Question filters & status) */}
-        <div
-          style={{
-            border: '1px solid #243041',
-            borderRadius: 10,
-            padding: 10,
-            marginBottom: 10,
-          }}
-        >
-          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
-            5 · Rest (Question filters & status)
-          </p>
+        <div className="filter-step">
+          <p className="filter-step-title">5 · Rest (Question filters & status)</p>
           {analytics?.dataFilters?.questions?.map((q) => (
             <label className="field" key={q.id}>
               <span>{q.label}</span>
@@ -350,9 +346,9 @@ export default function AdminAnalyzeScreen({ onToast }) {
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
           {[
-            { id: 'all', label: 'All status' },
-            { id: 'complete', label: 'Complete' },
-            { id: 'incomplete', label: 'Incomplete' },
+            { id: 'all', label: 'All media' },
+            { id: 'complete', label: 'Media complete' },
+            { id: 'incomplete', label: 'Media incomplete' },
           ].map((c) => (
             <button
               key={c.id}
@@ -368,43 +364,59 @@ export default function AdminAnalyzeScreen({ onToast }) {
           {loading ? 'Loading…' : 'Load data & analyze'}
         </button>
         <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>
-          Strict: geo + voice + photo + Q/A = complete. Report charts use confirmed only.
+          Media complete = geo + voice + photo + Q/A. Pending ≠ media incomplete (pending still
+          needs Client Admin confirm).
         </p>
       </div>
 
-      <div className="stat-row">
+      <div className={`stat-row stat-row-6 ${loading ? 'is-loading' : ''}`}>
         <div className="stat">
-          <strong>{totals.records ?? totals.total ?? '—'}</strong>
+          <strong>{loading && totals.records == null ? '…' : (totals.records ?? totals.total ?? '—')}</strong>
           <span>Records</span>
         </div>
         <div className="stat">
-          <strong>{totals.complete ?? '—'}</strong>
-          <span>Complete</span>
+          <strong>
+            {loading && totals.completed == null && totals.confirmed == null
+              ? '…'
+              : (totals.completed ?? totals.confirmed ?? summary?.completed ?? summary?.confirmed ?? '—')}
+          </strong>
+          <span>Completed</span>
         </div>
         <div className="stat">
-          <strong>{totals.incomplete ?? '—'}</strong>
-          <span>Incomplete</span>
+          <strong>
+            {loading && totals.pending == null && summary?.pending == null
+              ? '…'
+              : (totals.pending ?? summary?.pending ?? '—')}
+          </strong>
+          <span>Pending</span>
         </div>
         <div className="stat">
-          <strong>{totals.voice_fail ?? summary?.voice_fail ?? '—'}</strong>
-          <span>Voice fail</span>
+          <strong>{loading && totals.complete == null ? '…' : (totals.complete ?? '—')}</strong>
+          <span>Media OK</span>
         </div>
         <div className="stat">
-          <strong>{totals.geo_fail ?? summary?.geo_fail ?? '—'}</strong>
-          <span>Geo fail</span>
+          <strong>{loading && totals.incomplete == null ? '…' : (totals.incomplete ?? '—')}</strong>
+          <span>Media fail</span>
         </div>
         <div className="stat">
-          <strong>{totals.confirmed ?? summary?.confirmed ?? '—'}</strong>
-          <span>Confirmed</span>
+          <strong>
+            {loading && totals.draft == null ? '…' : (totals.draft ?? summary?.draft ?? 0)}
+          </strong>
+          <span>Drafts (in pending)</span>
         </div>
       </div>
+      <p className="muted" style={{ fontSize: 12, margin: '-6px 0 12px' }}>
+        <strong>Completed</strong> = confirmed final surveys (not drafts) ·{' '}
+        <strong>Pending</strong> = waiting confirm <em>or</em> still draft ·{' '}
+        <strong>Media OK/fail</strong> = geo + voice + photo + Q/A.
+      </p>
 
       {/* Daily data */}
       {(board?.by_day || board?.by_date)?.length > 0 && (
         <div className="card" style={{ marginBottom: 12 }}>
           <h3>Daily data</h3>
           <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-            Totals per calendar day
+            Totals per calendar day · media complete/incomplete + confirmed/pending
           </p>
           <div className="data-table-wrap">
             <table className="data-table">
@@ -412,9 +424,10 @@ export default function AdminAnalyzeScreen({ onToast }) {
                 <tr>
                   <th>Date</th>
                   <th>Total</th>
-                  <th>Complete</th>
-                  <th>Incomplete</th>
-                  <th>Confirmed</th>
+                  <th>Completed</th>
+                  <th>Pending</th>
+                  <th>Media OK</th>
+                  <th>Media fail</th>
                   <th></th>
                 </tr>
               </thead>
@@ -425,9 +438,10 @@ export default function AdminAnalyzeScreen({ onToast }) {
                       <strong>{d.date}</strong>
                     </td>
                     <td>{d.total}</td>
-                    <td>{d.complete}</td>
-                    <td>{d.incomplete}</td>
-                    <td>{d.confirmed}</td>
+                    <td>{d.completed ?? d.confirmed ?? 0}</td>
+                    <td>{d.pending ?? 0}</td>
+                    <td>{d.complete ?? 0}</td>
+                    <td>{d.incomplete ?? Math.max(0, (d.total || 0) - (d.complete || 0))}</td>
                     <td>
                       <button
                         type="button"
@@ -435,7 +449,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
                         onClick={() => {
                           setPeriod('day')
                           setDay(d.date)
-                          setTimeout(load, 50)
+                          load({ period: 'day', day: d.date })
                         }}
                       >
                         Open
@@ -454,7 +468,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
         <div className="card" style={{ marginBottom: 12 }}>
           <h3>Monthly data</h3>
           <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-            Totals per month
+            Totals per month · media complete/incomplete + confirmed/pending
           </p>
           <div className="data-table-wrap">
             <table className="data-table">
@@ -462,9 +476,10 @@ export default function AdminAnalyzeScreen({ onToast }) {
                 <tr>
                   <th>Month</th>
                   <th>Total</th>
-                  <th>Complete</th>
-                  <th>Incomplete</th>
-                  <th>Confirmed</th>
+                  <th>Completed</th>
+                  <th>Pending</th>
+                  <th>Media OK</th>
+                  <th>Media fail</th>
                   <th></th>
                 </tr>
               </thead>
@@ -475,9 +490,10 @@ export default function AdminAnalyzeScreen({ onToast }) {
                       <strong>{m.month}</strong>
                     </td>
                     <td>{m.total}</td>
-                    <td>{m.complete}</td>
-                    <td>{m.incomplete}</td>
-                    <td>{m.confirmed}</td>
+                    <td>{m.completed ?? m.confirmed ?? 0}</td>
+                    <td>{m.pending ?? 0}</td>
+                    <td>{m.complete ?? 0}</td>
+                    <td>{m.incomplete ?? Math.max(0, (m.total || 0) - (m.complete || 0))}</td>
                     <td>
                       <button
                         type="button"
@@ -485,7 +501,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
                         onClick={() => {
                           setPeriod('month')
                           setMonth(m.month)
-                          setTimeout(load, 50)
+                          load({ period: 'month', month: m.month })
                         }}
                       >
                         Open
@@ -504,7 +520,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
         <div className="card" style={{ marginBottom: 12 }}>
           <h3>Surveyor daily data</h3>
           <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-            Each surveyor · each day
+            Each surveyor · each day · media OK/fail + confirmed/pending
           </p>
           {board?.by_surveyor_day?.length > 0 ? (
             <div className="data-table-wrap">
@@ -514,21 +530,28 @@ export default function AdminAnalyzeScreen({ onToast }) {
                     <th>Surveyor</th>
                     <th>Day</th>
                     <th>Total</th>
-                    <th>Complete</th>
-                    <th>Confirmed</th>
+                    <th>Completed</th>
+                    <th>Pending</th>
+                    <th>Media OK</th>
+                    <th>Media fail</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {board.by_surveyor_day.slice(0, 80).map((r) => (
                     <tr key={`${r.surveyor}-${r.day}`}>
-                      <td>
+                      <td className="cell-clip" title={r.surveyor}>
                         <strong>{r.surveyor}</strong>
                       </td>
                       <td>{r.day}</td>
                       <td>{r.total}</td>
-                      <td>{r.complete}</td>
-                      <td>{r.confirmed}</td>
+                      <td>{r.completed ?? r.confirmed ?? 0}</td>
+                      <td>{r.pending ?? 0}</td>
+                      <td>{r.complete ?? 0}</td>
+                      <td>
+                        {r.incomplete ??
+                          Math.max(0, (r.total || 0) - (r.complete || 0))}
+                      </td>
                       <td>
                         <button
                           type="button"
@@ -537,7 +560,11 @@ export default function AdminAnalyzeScreen({ onToast }) {
                             setUser(r.surveyor)
                             setPeriod('day')
                             setDay(r.day)
-                            setTimeout(load, 50)
+                            load({
+                              user: r.surveyor,
+                              period: 'day',
+                              day: r.day,
+                            })
                           }}
                         >
                           Open
@@ -556,28 +583,35 @@ export default function AdminAnalyzeScreen({ onToast }) {
           {board?.by_user?.length > 0 && (
             <>
               <h4 style={{ margin: '12px 0 6px' }}>By surveyor (total)</h4>
-              <ul className="user-list">
-                {board.by_user.map((u) => (
-                  <li key={u.user}>
-                    <div>
-                      <strong>{u.user}</strong>
-                      <span className="meta">
-                        {' '}
-                        {u.complete}/{u.total} complete · confirmed {u.confirmed}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn small"
-                      onClick={() => {
-                        setUser(u.user)
-                        setTimeout(load, 50)
-                      }}
-                    >
-                      Filter
-                    </button>
-                  </li>
-                ))}
+              <ul className="user-list user-list-actions">
+                {board.by_user.map((u) => {
+                  const mediaFail =
+                    u.incomplete ?? Math.max(0, (u.total || 0) - (u.complete || 0))
+                  const done = u.completed ?? u.confirmed ?? 0
+                  return (
+                    <li key={u.user}>
+                      <div className="user-list-main">
+                        <strong>{u.user}</strong>
+                        <span className="meta">
+                          {u.total} total · completed {done} · pending {u.pending ?? 0}
+                          {u.draft ? ` · drafts ${u.draft}` : ''}
+                          {' · '}
+                          media OK {u.complete ?? 0} / fail {mediaFail}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn small"
+                        onClick={() => {
+                          setUser(u.user)
+                          load({ user: u.user })
+                        }}
+                      >
+                        Filter
+                      </button>
+                    </li>
+                  )
+                })}
               </ul>
             </>
           )}
@@ -589,7 +623,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
         <div className="card" style={{ marginBottom: 12 }}>
           <h3>Surveyor monthly data</h3>
           <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-            Each surveyor · each month
+            Each surveyor · each month · media OK/fail + confirmed/pending
           </p>
           <div className="data-table-wrap">
             <table className="data-table">
@@ -598,21 +632,28 @@ export default function AdminAnalyzeScreen({ onToast }) {
                   <th>Surveyor</th>
                   <th>Month</th>
                   <th>Total</th>
-                  <th>Complete</th>
-                  <th>Confirmed</th>
+                  <th>Completed</th>
+                  <th>Pending</th>
+                  <th>Media OK</th>
+                  <th>Media fail</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {board.by_surveyor_month.slice(0, 80).map((r) => (
                   <tr key={`${r.surveyor}-${r.month}`}>
-                    <td>
+                    <td className="cell-clip" title={r.surveyor}>
                       <strong>{r.surveyor}</strong>
                     </td>
                     <td>{r.month}</td>
                     <td>{r.total}</td>
-                    <td>{r.complete}</td>
-                    <td>{r.confirmed}</td>
+                    <td>{r.completed ?? r.confirmed ?? 0}</td>
+                    <td>{r.pending ?? 0}</td>
+                    <td>{r.complete ?? 0}</td>
+                    <td>
+                      {r.incomplete ??
+                        Math.max(0, (r.total || 0) - (r.complete || 0))}
+                    </td>
                     <td>
                       <button
                         type="button"
@@ -621,7 +662,11 @@ export default function AdminAnalyzeScreen({ onToast }) {
                           setUser(r.surveyor)
                           setPeriod('month')
                           setMonth(r.month)
-                          setTimeout(load, 50)
+                          load({
+                            user: r.surveyor,
+                            period: 'month',
+                            month: r.month,
+                          })
                         }}
                       >
                         Open
@@ -690,7 +735,13 @@ export default function AdminAnalyzeScreen({ onToast }) {
 
       <div className="card">
         <h3>Records ({items.length})</h3>
-        {!items.length ? (
+        {loading && !items.length ? (
+          <div className="portal-skeleton-rows" style={{ marginTop: 8 }}>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="portal-skeleton-row" style={{ width: `${92 - i * 8}%` }} />
+            ))}
+          </div>
+        ) : !items.length ? (
           <p className="muted">No rows for this filter. Adjust date/user or collect more.</p>
         ) : (
           <ul className="user-list review-list">
@@ -698,27 +749,38 @@ export default function AdminAnalyzeScreen({ onToast }) {
               const open = expanded === it.id
               const v = it.verification || {}
               return (
-                <li key={it.id} className="card" style={{ marginBottom: 10 }}>
+                <li key={it.id} className="review-item">
                   <button
                     type="button"
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      background: 'none',
-                      border: 0,
-                      color: 'inherit',
-                      padding: 0,
-                      cursor: 'pointer',
-                    }}
+                    className="review-item-toggle"
                     onClick={() => setExpanded(open ? null : it.id)}
                   >
-                    <strong>
+                    <strong className="review-item-title">
                       #{it.id} · {it.submitted_by || '—'} · {it.date}
                     </strong>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                    <div className="pill-row">
+                      <span
+                        className={`pill ${
+                          (it.work || it.status) === 'completed' ||
+                          (it.status === 'confirmed' && !it.draft)
+                            ? 'ok'
+                            : it.status === 'rejected'
+                              ? 'bad'
+                              : 'warn'
+                        }`}
+                      >
+                        <span className="dot" />
+                        {it.draft
+                          ? 'draft / pending'
+                          : it.work === 'completed' || it.status === 'confirmed'
+                            ? 'completed'
+                            : it.status === 'pending'
+                              ? 'pending'
+                              : it.status}
+                      </span>
                       <span className={`pill ${it.completeness === 'complete' ? 'ok' : 'bad'}`}>
                         <span className="dot" />
-                        {it.completeness}
+                        media {it.completeness}
                       </span>
                       <span className={`pill ${it.has_geo ? 'ok' : 'bad'}`}>
                         <span className="dot" />
@@ -732,11 +794,10 @@ export default function AdminAnalyzeScreen({ onToast }) {
                         <span className="dot" />
                         photo {it.has_photo ? 'OK' : '—'}
                       </span>
-                      <span className="pill">{it.status}</span>
                     </div>
                   </button>
                   {open && (
-                    <div style={{ marginTop: 10 }}>
+                    <div className="review-item-body">
                       {editingId === it.id ? (
                         <SubmissionEditor
                           item={it}

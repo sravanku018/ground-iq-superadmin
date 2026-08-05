@@ -792,6 +792,70 @@ function payloadStatus(payload: Record<string, unknown>): string {
   return "pending";
 }
 
+/** Keys that are locks/geo metadata, not real survey answers */
+function isMetaAnswerKey(k: string): boolean {
+  const s = String(k || "").toLowerCase();
+  if (!s || s.startsWith("_")) return true;
+  if (s.startsWith("geo_") || s.startsWith("location_")) return true;
+  return (
+    s === "lat" ||
+    s === "lng" ||
+    s === "latitude" ||
+    s === "longitude" ||
+    s === "accuracy" ||
+    s === "data_collector" ||
+    s === "client_package_id" ||
+    s === "surveyor" ||
+    s === "agent"
+  );
+}
+
+/**
+ * Resolve surveyor display name from payload + answers (never invent from respondent).
+ */
+function surveyorNameOf(payload: Record<string, unknown>): string {
+  const a = (payload?.answers || {}) as Record<string, unknown>;
+  const name = String(
+    payload?.submitted_by ||
+      a.data_collector ||
+      a.surveyor ||
+      a.agent ||
+      "",
+  ).trim();
+  return name || "unknown";
+}
+
+/**
+ * Field drafts are not finished work. Even if status was wrongly set to
+ * confirmed, keep them out of "completed" and count under pending.
+ * Example Anumula1: 3 status=pending + 1 confirmed-with-_draft → 4 pending, 6 completed.
+ */
+function isDraftSubmission(payload: Record<string, unknown>): boolean {
+  const a = (payload?.answers || {}) as Record<string, unknown>;
+  return (
+    payload?.draft === true ||
+    a._draft === true ||
+    a.draft === true ||
+    String(payload?.content_type || "").toLowerCase() === "draft"
+  );
+}
+
+/**
+ * Surveyor work status for Report boards:
+ * - completed = Client Admin confirmed AND not a draft
+ * - pending   = still open (status pending/rejected OR still tagged draft)
+ */
+function workStatusOf(
+  payload: Record<string, unknown>,
+): "completed" | "pending" | "rejected" {
+  const status = payloadStatus(payload);
+  const draft = isDraftSubmission(payload);
+  if (draft) return "pending";
+  if (status === "confirmed") return "completed";
+  if (status === "rejected") return "rejected";
+  return "pending";
+}
+
 /**
  * Strict verification: geo tagging + voice (audio) required for COMPLETE.
  * Incomplete cannot enter confirmed analytics without override.
@@ -805,11 +869,30 @@ function verifySubmission(
   payload: Record<string, unknown>,
   mediaKinds: string[] = [],
 ) {
-  const geo = (payload?.geo || null) as Record<string, unknown> | null;
-  const lat = geo != null ? Number(geo.lat ?? geo.latitude) : NaN;
-  const lng = geo != null ? Number(geo.lng ?? geo.longitude) : NaN;
-  const accuracy =
-    geo != null && geo.accuracy != null ? Number(geo.accuracy) : null;
+  const answers = (payload?.answers || {}) as Record<string, unknown>;
+  const geoPayload = (payload?.geo || null) as Record<string, unknown> | null;
+  // Fallback: some clients store coords only under answers.geo_lat / geo_lng
+  const lat = Number(
+    geoPayload != null
+      ? (geoPayload.lat ?? geoPayload.latitude)
+      : (answers.geo_lat ?? answers.latitude ?? answers.lat ?? NaN),
+  );
+  const lng = Number(
+    geoPayload != null
+      ? (geoPayload.lng ?? geoPayload.longitude)
+      : (answers.geo_lng ?? answers.longitude ?? answers.lng ?? NaN),
+  );
+  const accuracyRaw =
+    geoPayload != null && geoPayload.accuracy != null
+      ? Number(geoPayload.accuracy)
+      : answers.geo_accuracy != null
+      ? Number(answers.geo_accuracy)
+      : null;
+  const accuracy = accuracyRaw != null && Number.isFinite(accuracyRaw)
+    ? accuracyRaw
+    : null;
+  const hasGeoObject = geoPayload != null ||
+    (Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0));
 
   const geo_ok =
     Number.isFinite(lat) &&
@@ -818,27 +901,49 @@ function verifySubmission(
     Math.abs(lng) <= 180 &&
     !(lat === 0 && lng === 0);
 
-  // Legacy = pre GPS/camera data: no geo ever attached AND no media/flags.
+  const kinds = (mediaKinds || []).map((k) => String(k || "").toLowerCase());
+
+  // URL / media-id on payload also count (R2 or free Neon links may not re-set flags)
+  const hasPhotoUrl = Boolean(
+    payload?.photo_url ||
+      payload?.photo_media_id ||
+      payload?.photoUrl ||
+      payload?.photoMediaId,
+  );
+  const hasAudioUrl = Boolean(
+    payload?.audio_url ||
+      payload?.audio_media_id ||
+      payload?.audioUrl ||
+      payload?.audioMediaId,
+  );
+
+  // Legacy = pre GPS/camera data: no geo ever attached AND no media/flags/urls.
   // (New submissions always carry geo — the server requires it on POST.)
   const legacy =
-    geo == null &&
-    mediaKinds.length === 0 &&
+    !hasGeoObject &&
+    kinds.length === 0 &&
     payload?.has_photo !== true &&
-    payload?.has_audio !== true;
+    payload?.has_audio !== true &&
+    !hasPhotoUrl &&
+    !hasAudioUrl;
 
   // Voice: session audio stored separately or flagged on payload
   const hasAudioFlag = payload?.has_audio === true;
-  const hasAudioMedia = mediaKinds.includes("audio");
-  const voice_ok = legacy || hasAudioFlag || hasAudioMedia;
+  const hasAudioMedia = kinds.includes("audio");
+  const voice_ok = legacy || hasAudioFlag || hasAudioMedia || hasAudioUrl;
 
   const hasPhotoFlag = payload?.has_photo === true;
-  const hasPhotoMedia = mediaKinds.includes("photo");
-  const photo_ok = legacy || hasPhotoFlag || hasPhotoMedia;
+  const hasPhotoMedia = kinds.includes("photo");
+  const photo_ok = legacy || hasPhotoFlag || hasPhotoMedia || hasPhotoUrl;
 
-  const answers = (payload?.answers || {}) as Record<string, unknown>;
-  const answerKeys = Object.keys(answers).filter(
-    (k) => answers[k] != null && String(answers[k]).trim() !== "",
-  );
+  // Real Q/A only — ignore lock flags / geo metadata stuffed into answers
+  const answerKeys = Object.keys(answers).filter((k) => {
+    if (isMetaAnswerKey(k)) return false;
+    const v = answers[k];
+    if (v == null) return false;
+    if (Array.isArray(v)) return v.length > 0;
+    return String(v).trim() !== "";
+  });
   const qa_ok = answerKeys.length >= 1;
 
   const failures: string[] = [];
@@ -849,7 +954,7 @@ function verifySubmission(
   }
   if (!qa_ok) failures.push("qa_empty");
 
-  // Strict complete = geo + voice + photo + at least one answer.
+  // Strict complete = geo + voice + photo + at least one real answer.
   // Legacy rows only need answers (no GPS/camera available back then).
   const completeness: "complete" | "incomplete" = legacy
     ? qa_ok
@@ -867,9 +972,14 @@ function verifySubmission(
     photo_ok,
     qa_ok,
     geo: geo_ok
-      ? { lat, lng, accuracy, at: geo?.at || null }
-      : geo
-      ? { lat: geo.lat, lng: geo.lng, invalid: true }
+      ? {
+          lat,
+          lng,
+          accuracy,
+          at: geoPayload?.at || answers.geo_at || null,
+        }
+      : geoPayload
+      ? { lat: geoPayload.lat, lng: geoPayload.lng, invalid: true }
       : null,
     failures,
     checks: legacy
@@ -886,6 +996,38 @@ function verifySubmission(
           qa: qa_ok ? "pass" : "fail",
         },
   };
+}
+
+/** Load submission_id → media kinds from survey_media (always Number keys). */
+async function loadMediaKindsMap(
+  sqlFn: NonNullable<typeof sql>,
+): Promise<Map<number, string[]>> {
+  const mediaMap = new Map<number, string[]>();
+  const mediaRows = await sqlFn`
+    SELECT submission_id, kind FROM survey_media
+  `.catch(() => []);
+  for (const m of mediaRows as { submission_id: number; kind: string }[]) {
+    const sid = Number(m.submission_id);
+    if (!Number.isFinite(sid)) continue;
+    const kind = String(m.kind || "").toLowerCase();
+    if (!kind) continue;
+    const arr = mediaMap.get(sid) || [];
+    arr.push(kind);
+    mediaMap.set(sid, arr);
+  }
+  return mediaMap;
+}
+
+/** Apply media kinds onto payload flags then verify (single source of truth). */
+function verifyWithMedia(
+  payload: Record<string, unknown>,
+  mediaMap: Map<number, string[]>,
+  id: number | string,
+) {
+  const kinds = mediaMap.get(Number(id)) || [];
+  if (kinds.includes("audio")) payload.has_audio = true;
+  if (kinds.includes("photo")) payload.has_photo = true;
+  return verifySubmission(payload, kinds);
 }
 
 /** Telugu place names → English (district etc.), applied when confirming */
@@ -1550,6 +1692,9 @@ async function loadAnalyticsRows(
     LIMIT ${limit}
   `;
 
+  // Must load media — empty kinds made field surveys with only survey_media look incomplete
+  const mediaMap = await loadMediaKindsMap(sqlFn);
+
   const allRows: Row[] = (raw as Record<string, unknown>[]).map((row) => {
     let payload = row.payload as Record<string, unknown>;
     if (typeof payload === "string") {
@@ -1586,15 +1731,24 @@ async function loadAnalyticsRows(
     if (!Array.isArray(issues)) issues = [];
 
     const status = payloadStatus(payload);
-    const verify = verifySubmission(payload, []);
+    const verify = verifyWithMedia(payload, mediaMap, Number(row.id));
+    const surveyor = surveyorNameOf(payload);
     return {
       id: row.id as string | number,
       created_at: isoStamp(row.created_at),
       district: dist || "Unknown",
       constituency: ac || "Unknown",
       mandal: mandal || "",
-      lat: String(a.latitude || a.lat || payload.latitude || payload.lat || ""),
-      lng: String(a.longitude || a.lng || payload.longitude || payload.lng || ""),
+      lat: String(
+        a.latitude || a.lat || a.geo_lat ||
+          (payload.geo as Record<string, unknown> | undefined)?.lat ||
+          payload.latitude || payload.lat || "",
+      ),
+      lng: String(
+        a.longitude || a.lng || a.geo_lng ||
+          (payload.geo as Record<string, unknown> | undefined)?.lng ||
+          payload.longitude || payload.lng || "",
+      ),
       party: normParty(String(a.winning_party || a.winningParty || "")),
       gender: normGender(String(a.gender || "")),
       caste: normCaste(String(a.caste || "")),
@@ -1611,9 +1765,7 @@ async function loadAnalyticsRows(
       completeness: verify.completeness,
       geo_ok: verify.geo_ok,
       voice_ok: verify.voice_ok,
-      submitted_by: String(
-        payload.submitted_by || a.data_collector || "",
-      ),
+      submitted_by: surveyor === "unknown" ? "" : surveyor,
       respondent: respondent || String(a.respondent_name || ""),
       formKey: String(payload.form_key || payload.formKey || "default"),
       answers: a,
@@ -3118,25 +3270,16 @@ Deno.serve(async (req) => {
         ORDER BY created_at DESC LIMIT ${fetchRows}
       `;
       // media kinds for strict voice/photo checks
-      const mediaRows = await sql`
-        SELECT submission_id, kind FROM survey_media
-      `.catch(() => []);
-      const mediaMap = new Map<number, string[]>();
-      for (const m of mediaRows as { submission_id: number; kind: string }[]) {
-        const arr = mediaMap.get(Number(m.submission_id)) || [];
-        arr.push(m.kind);
-        mediaMap.set(Number(m.submission_id), arr);
-      }
+      const mediaMap = await loadMediaKindsMap(sql);
 
       let items = (rows as Record<string, unknown>[]).map((r) => {
         const payload = parsePayload(r.payload);
         const answers = (payload?.answers || payload) as Record<string, unknown>;
         const status = payloadStatus(payload);
-        const kinds = mediaMap.get(Number(r.id)) || [];
-        const verify = verifySubmission(payload, kinds);
-        // keep payload flags in sync for analytics path
-        if (kinds.includes("audio")) payload.has_audio = true;
-        if (kinds.includes("photo")) payload.has_photo = true;
+        const verify = verifyWithMedia(payload, mediaMap, Number(r.id));
+        const submittedBy = surveyorNameOf(payload);
+        const draft = isDraftSubmission(payload);
+        const work = workStatusOf(payload);
         return {
           id: r.id,
           source: (payload?.source as string) || "app",
@@ -3145,12 +3288,12 @@ Deno.serve(async (req) => {
           created_at: r.created_at,
           date: dayKey(isoStamp(r.created_at)),
           status,
+          work,
+          draft,
           completeness: verify.completeness,
           verification: verify,
           legacy: !!verify.legacy,
-          submitted_by: String(
-            payload?.submitted_by || answers?.data_collector || "",
-          ),
+          submitted_by: submittedBy === "unknown" ? "" : submittedBy,
           user_id: payload?.user_id ?? null,
           confirmed_at: payload?.confirmed_at || null,
           confirmed_by: payload?.confirmed_by || null,
@@ -3223,26 +3366,86 @@ Deno.serve(async (req) => {
         total: items.length,
         complete: items.filter((x) => x.completeness === "complete").length,
         incomplete: items.filter((x) => x.completeness === "incomplete").length,
-        pending: items.filter((x) => x.status === "pending").length,
-        confirmed: items.filter((x) => x.status === "confirmed").length,
+        // Work: drafts count as pending, not completed
+        completed: items.filter((x) => x.work === "completed").length,
+        pending: items.filter((x) => x.work === "pending").length,
+        confirmed: items.filter((x) => x.work === "completed").length,
+        rejected: items.filter((x) => x.work === "rejected").length,
+        draft: items.filter((x) => x.draft).length,
+        status_confirmed: items.filter((x) => x.status === "confirmed").length,
+        status_pending: items.filter((x) => x.status === "pending").length,
         geo_fail: items.filter((x) => !x.has_geo).length,
         voice_fail: items.filter((x) => !x.has_voice).length,
-        by_user: {} as Record<string, { total: number; complete: number; incomplete: number }>,
-        by_date: {} as Record<string, { total: number; complete: number; incomplete: number }>,
+        by_user: {} as Record<
+          string,
+          {
+            total: number;
+            complete: number;
+            incomplete: number;
+            completed: number;
+            confirmed: number;
+            pending: number;
+            draft: number;
+          }
+        >,
+        by_date: {} as Record<
+          string,
+          {
+            total: number;
+            complete: number;
+            incomplete: number;
+            completed: number;
+            confirmed: number;
+            pending: number;
+            draft: number;
+          }
+        >,
       };
       for (const it of items) {
         const u = it.submitted_by || "unknown";
         if (!summary.by_user[u]) {
-          summary.by_user[u] = { total: 0, complete: 0, incomplete: 0 };
+          summary.by_user[u] = {
+            total: 0,
+            complete: 0,
+            incomplete: 0,
+            completed: 0,
+            confirmed: 0,
+            pending: 0,
+            draft: 0,
+          };
         }
         summary.by_user[u].total += 1;
-        summary.by_user[u][it.completeness] += 1;
+        if (it.completeness === "complete") summary.by_user[u].complete += 1;
+        else summary.by_user[u].incomplete += 1;
+        if (it.work === "completed") {
+          summary.by_user[u].completed += 1;
+          summary.by_user[u].confirmed += 1;
+        } else if (it.work === "pending") {
+          summary.by_user[u].pending += 1;
+        }
+        if (it.draft) summary.by_user[u].draft += 1;
         const d = it.date || "unknown";
         if (!summary.by_date[d]) {
-          summary.by_date[d] = { total: 0, complete: 0, incomplete: 0 };
+          summary.by_date[d] = {
+            total: 0,
+            complete: 0,
+            incomplete: 0,
+            completed: 0,
+            confirmed: 0,
+            pending: 0,
+            draft: 0,
+          };
         }
         summary.by_date[d].total += 1;
-        summary.by_date[d][it.completeness] += 1;
+        if (it.completeness === "complete") summary.by_date[d].complete += 1;
+        else summary.by_date[d].incomplete += 1;
+        if (it.work === "completed") {
+          summary.by_date[d].completed += 1;
+          summary.by_date[d].confirmed += 1;
+        } else if (it.work === "pending") {
+          summary.by_date[d].pending += 1;
+        }
+        if (it.draft) summary.by_date[d].draft += 1;
       }
 
       return json({
@@ -3279,6 +3482,7 @@ Deno.serve(async (req) => {
       const period = (url.searchParams.get("period") || "total").trim().toLowerCase();
       const dayParam = (url.searchParams.get("day") || "").trim();
       const monthParam = (url.searchParams.get("month") || "").trim();
+      const completenessQ = (url.searchParams.get("completeness") || "").trim().toLowerCase();
       // Dynamic question filters (q_<questionId> → value) — from Client Admin question naming
       const qFilters: [string, string][] = [];
       for (const [k, v] of url.searchParams) {
@@ -3317,15 +3521,7 @@ Deno.serve(async (req) => {
           }
         }
       }
-      const mediaRows = await sql`
-        SELECT submission_id, kind FROM survey_media
-      `.catch(() => []);
-      const mediaMap = new Map<number, string[]>();
-      for (const m of mediaRows as { submission_id: number; kind: string }[]) {
-        const arr = mediaMap.get(m.submission_id) || [];
-        arr.push(m.kind);
-        mediaMap.set(m.submission_id, arr);
-      }
+      const mediaMap = await loadMediaKindsMap(sql);
 
       type RowA = {
         id: number;
@@ -3333,6 +3529,9 @@ Deno.serve(async (req) => {
         month: string;
         user: string;
         status: string;
+        /** Work status for surveyor boards: completed | pending | rejected */
+        work: "completed" | "pending" | "rejected";
+        draft: boolean;
         completeness: string;
         geo_ok: boolean;
         voice_ok: boolean;
@@ -3340,15 +3539,65 @@ Deno.serve(async (req) => {
         district: string;
         party: string;
       };
+      type Bucket = {
+        total: number;
+        /** Media OK (geo+voice+photo+Q/A) */
+        complete: number;
+        /** Media fail */
+        incomplete: number;
+        /** Confirmed + not draft = finished for surveyor */
+        completed: number;
+        /** Alias of completed (UI uses confirmed column for completed work) */
+        confirmed: number;
+        /** Status pending OR draft (still open) */
+        pending: number;
+        rejected: number;
+        draft: number;
+        geo_fail: number;
+        voice_fail: number;
+        photo_fail: number;
+      };
+      const emptyBucket = (): Bucket => ({
+        total: 0,
+        complete: 0,
+        incomplete: 0,
+        completed: 0,
+        confirmed: 0,
+        pending: 0,
+        rejected: 0,
+        draft: 0,
+        geo_fail: 0,
+        voice_fail: 0,
+        photo_fail: 0,
+      });
+      const bump = (b: Bucket, row: RowA) => {
+        b.total += 1;
+        // Media completeness
+        if (row.completeness === "complete") b.complete += 1;
+        else b.incomplete += 1;
+        // Work progress (what Client Admin expects: completed vs pending)
+        if (row.work === "completed") {
+          b.completed += 1;
+          b.confirmed += 1; // confirmed column = completed work
+        } else if (row.work === "rejected") {
+          b.rejected += 1;
+        } else {
+          b.pending += 1;
+        }
+        if (row.draft) b.draft += 1;
+        if (!row.geo_ok) b.geo_fail += 1;
+        if (!row.voice_ok) b.voice_fail += 1;
+        if (!row.photo_ok) b.photo_fail += 1;
+      };
+
       let list: RowA[] = [];
       for (const r of rows as { id: number; payload: unknown; created_at: string }[]) {
         const payload = parsePayload(r.payload);
         const a = (payload.answers || {}) as Record<string, unknown>;
-        const kinds = mediaMap.get(r.id) || [];
-        if (kinds.includes("audio")) payload.has_audio = true;
-        if (kinds.includes("photo")) payload.has_photo = true;
-        const v = verifySubmission(payload, kinds);
-        const user = String(payload.submitted_by || a.data_collector || "unknown");
+        const v = verifyWithMedia(payload, mediaMap, Number(r.id));
+        const user = surveyorNameOf(payload);
+        const draft = isDraftSubmission(payload);
+        const work = workStatusOf(payload);
         const date = dayKey(isoStamp(r.created_at));
         const month = date.slice(0, 7);
         if (dateFrom && date < dateFrom) continue;
@@ -3371,12 +3620,21 @@ Deno.serve(async (req) => {
           }
         }
         if (qSkip) continue;
+        // Media completeness filter (Complete / Incomplete chips)
+        if (
+          (completenessQ === "complete" || completenessQ === "incomplete") &&
+          v.completeness !== completenessQ
+        ) {
+          continue;
+        }
         list.push({
-          id: r.id,
+          id: Number(r.id),
           date,
           month,
           user,
           status: payloadStatus(payload),
+          work,
+          draft,
           completeness: v.completeness,
           geo_ok: v.geo_ok,
           voice_ok: v.voice_ok,
@@ -3386,110 +3644,35 @@ Deno.serve(async (req) => {
         });
       }
 
-      const byDate: Record<string, unknown> = {};
-      const byMonth: Record<string, unknown> = {};
-      const byUser: Record<string, unknown> = {};
-      const bySurveyorDay: Record<string, unknown> = {};
-      const bySurveyorMonth: Record<string, unknown> = {};
+      const byDate: Record<string, Bucket & { date: string }> = {};
+      const byMonth: Record<string, Bucket & { month: string }> = {};
+      const byUser: Record<string, Bucket & { user: string }> = {};
+      const bySurveyorDay: Record<string, Bucket & { surveyor: string; day: string }> = {};
+      const bySurveyorMonth: Record<string, Bucket & { surveyor: string; month: string }> = {};
       for (const row of list) {
-        if (!byDate[row.date]) {
-          byDate[row.date] = {
-            date: row.date,
-            total: 0,
-            complete: 0,
-            incomplete: 0,
-            geo_fail: 0,
-            voice_fail: 0,
-            confirmed: 0,
-          };
-        }
-        const d = byDate[row.date] as Record<string, number>;
-        d.total += 1;
-        d[row.completeness] += 1;
-        if (!row.geo_ok) d.geo_fail += 1;
-        if (!row.voice_ok) d.voice_fail += 1;
-        if (row.status === "confirmed") d.confirmed += 1;
+        if (!byDate[row.date]) byDate[row.date] = { date: row.date, ...emptyBucket() };
+        bump(byDate[row.date], row);
 
         const mk = row.month || row.date.slice(0, 7);
-        if (!byMonth[mk]) {
-          byMonth[mk] = {
-            month: mk,
-            total: 0,
-            complete: 0,
-            incomplete: 0,
-            geo_fail: 0,
-            voice_fail: 0,
-            confirmed: 0,
-          };
-        }
-        const mo = byMonth[mk] as Record<string, number>;
-        mo.total += 1;
-        mo[row.completeness] += 1;
-        if (!row.geo_ok) mo.geo_fail += 1;
-        if (!row.voice_ok) mo.voice_fail += 1;
-        if (row.status === "confirmed") mo.confirmed += 1;
+        if (!byMonth[mk]) byMonth[mk] = { month: mk, ...emptyBucket() };
+        bump(byMonth[mk], row);
 
-        if (!byUser[row.user]) {
-          byUser[row.user] = {
-            user: row.user,
-            total: 0,
-            complete: 0,
-            incomplete: 0,
-            geo_fail: 0,
-            voice_fail: 0,
-            confirmed: 0,
-            pending: 0,
-          };
-        }
-        const u = byUser[row.user] as Record<string, number>;
-        u.total += 1;
-        u[row.completeness] += 1;
-        if (!row.geo_ok) u.geo_fail += 1;
-        if (!row.voice_ok) u.voice_fail += 1;
-        if (row.status === "confirmed") u.confirmed += 1;
-        if (row.status === "pending") u.pending += 1;
+        if (!byUser[row.user]) byUser[row.user] = { user: row.user, ...emptyBucket() };
+        bump(byUser[row.user], row);
 
         // Surveyor daily
         const sdk = `${row.user}::${row.date}`;
         if (!bySurveyorDay[sdk]) {
-          bySurveyorDay[sdk] = {
-            surveyor: row.user,
-            day: row.date,
-            total: 0,
-            complete: 0,
-            incomplete: 0,
-            confirmed: 0,
-            geo_fail: 0,
-            voice_fail: 0,
-          };
+          bySurveyorDay[sdk] = { surveyor: row.user, day: row.date, ...emptyBucket() };
         }
-        const sd = bySurveyorDay[sdk] as Record<string, number>;
-        sd.total += 1;
-        sd[row.completeness] += 1;
-        if (row.status === "confirmed") sd.confirmed += 1;
-        if (!row.geo_ok) sd.geo_fail += 1;
-        if (!row.voice_ok) sd.voice_fail += 1;
+        bump(bySurveyorDay[sdk], row);
 
         // Surveyor monthly
         const smk = `${row.user}::${mk}`;
         if (!bySurveyorMonth[smk]) {
-          bySurveyorMonth[smk] = {
-            surveyor: row.user,
-            month: mk,
-            total: 0,
-            complete: 0,
-            incomplete: 0,
-            confirmed: 0,
-            geo_fail: 0,
-            voice_fail: 0,
-          };
+          bySurveyorMonth[smk] = { surveyor: row.user, month: mk, ...emptyBucket() };
         }
-        const sm = bySurveyorMonth[smk] as Record<string, number>;
-        sm.total += 1;
-        sm[row.completeness] += 1;
-        if (row.status === "confirmed") sm.confirmed += 1;
-        if (!row.geo_ok) sm.geo_fail += 1;
-        if (!row.voice_ok) sm.voice_fail += 1;
+        bump(bySurveyorMonth[smk], row);
       }
 
       return json({
@@ -3500,14 +3683,25 @@ Deno.serve(async (req) => {
           period,
           day: dayParam || null,
           month: monthParam || null,
+          completeness: completenessQ || "all",
         },
         totals: {
           records: list.length,
+          // Media
           complete: list.filter((x) => x.completeness === "complete").length,
           incomplete: list.filter((x) => x.completeness === "incomplete").length,
           geo_fail: list.filter((x) => !x.geo_ok).length,
           voice_fail: list.filter((x) => !x.voice_ok).length,
-          confirmed: list.filter((x) => x.status === "confirmed").length,
+          photo_fail: list.filter((x) => !x.photo_ok).length,
+          // Work: completed vs pending (draft never counts completed)
+          completed: list.filter((x) => x.work === "completed").length,
+          confirmed: list.filter((x) => x.work === "completed").length,
+          pending: list.filter((x) => x.work === "pending").length,
+          rejected: list.filter((x) => x.work === "rejected").length,
+          draft: list.filter((x) => x.draft).length,
+          // Raw status (debug / advanced)
+          status_confirmed: list.filter((x) => x.status === "confirmed").length,
+          status_pending: list.filter((x) => x.status === "pending").length,
         },
         by_user: Object.values(byUser).sort(
           (a, b) =>
@@ -3566,10 +3760,11 @@ Deno.serve(async (req) => {
       const answers = (payload.answers || {}) as Record<string, unknown>;
       const mediaKinds = (
         await sql`SELECT kind FROM survey_media WHERE submission_id = ${id}`.catch(() => [])
-      ).map((m) => m.kind);
+      ).map((m) => String((m as { kind?: string }).kind || "").toLowerCase());
       if (mediaKinds.includes("audio")) payload.has_audio = true;
       if (mediaKinds.includes("photo")) payload.has_photo = true;
       const verify = verifySubmission(payload, mediaKinds);
+      const surveyor = surveyorNameOf(payload);
       return json({
         id: r.id,
         created_at: r.created_at,
@@ -3577,15 +3772,13 @@ Deno.serve(async (req) => {
         completeness: verify.completeness,
         verification: verify,
         legacy: !!verify.legacy,
-        submitted_by: String(
-          payload.submitted_by || answers.data_collector || "",
-        ),
+        submitted_by: surveyor === "unknown" ? "" : surveyor,
         user_id: payload.user_id ?? null,
         source: payload.source || "app",
         form_id: payload.form_id || "",
-        geo: payload.geo || null,
-        has_audio: !!payload.has_audio,
-        has_photo: !!payload.has_photo,
+        geo: payload.geo || verify.geo || null,
+        has_audio: verify.voice_ok && !verify.legacy ? true : !!payload.has_audio,
+        has_photo: verify.photo_ok && !verify.legacy ? true : !!payload.has_photo,
         answers,
         qa: qaFromAnswers(answers),
         edit_history: Array.isArray(payload.edit_history)
@@ -3677,7 +3870,7 @@ Deno.serve(async (req) => {
 
       const mediaKinds = (
         await sql`SELECT kind FROM survey_media WHERE submission_id = ${id}`.catch(() => [])
-      ).map((m) => m.kind);
+      ).map((m) => String((m as { kind?: string }).kind || "").toLowerCase());
       if (mediaKinds.includes("audio")) payload.has_audio = true;
       if (mediaKinds.includes("photo")) payload.has_photo = true;
 
@@ -3781,7 +3974,7 @@ Deno.serve(async (req) => {
       let payload = parsePayload(rows[0].payload);
       const mediaKinds = (
         await sql`SELECT kind FROM survey_media WHERE submission_id = ${id}`.catch(() => [])
-      ).map((m) => m.kind);
+      ).map((m) => String((m as { kind?: string }).kind || "").toLowerCase());
       if (mediaKinds.includes("audio")) payload.has_audio = true;
       if (mediaKinds.includes("photo")) payload.has_photo = true;
       const verify = verifySubmission(payload, mediaKinds);
@@ -3797,11 +3990,22 @@ Deno.serve(async (req) => {
 
       if (next === "confirmed") payload = translateGeoEnglish(payload);
 
+      // Confirming a final survey clears draft tags so it counts as completed work
+      if (next === "confirmed") {
+        payload.draft = false;
+        const ans = { ...((payload.answers || {}) as Record<string, unknown>) };
+        delete ans._draft;
+        delete ans.draft;
+        payload.answers = ans;
+      }
+
       payload = {
         ...payload,
         status: next,
         completeness: verify.completeness,
         verification: verify,
+        has_audio: verify.voice_ok ? true : payload.has_audio,
+        has_photo: verify.photo_ok ? true : payload.has_photo,
         confirmed_at: next === "pending" ? null : new Date().toISOString(),
         confirmed_by: next === "pending" ? null : me.name || me.username,
         confirm_note: body.note || null,

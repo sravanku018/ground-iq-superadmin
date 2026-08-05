@@ -1,24 +1,27 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import {
   getStats,
   getStoredUser,
   getToken,
   listSubmissions,
+  listSurveys,
   logout,
   me,
 } from './api'
 import AdminLogin from './AdminLogin'
-import AdminUsersScreen from './AdminUsers'
-import AdminSurveysScreen from './AdminSurveys'
-import AdminQuestionsScreen from './AdminQuestions'
-import AdminAnalyzeScreen from './AdminAnalyze'
-import ReviewQAScreen from './ReviewQA'
-import DashboardScreen from './Dashboard'
-import AdminDataScreen from './AdminData'
 import { PortalEmpty, PortalSkeleton } from './PortalUI'
 import { versionLabel } from './version'
 import './App.css'
 import './portal.css'
+
+// Lazy-load heavy admin screens — only fetch/parse when that tab is opened
+const AdminUsersScreen = lazy(() => import('./AdminUsers'))
+const AdminSurveysScreen = lazy(() => import('./AdminSurveys'))
+const AdminQuestionsScreen = lazy(() => import('./AdminQuestions'))
+const AdminAnalyzeScreen = lazy(() => import('./AdminAnalyze'))
+const ReviewQAScreen = lazy(() => import('./ReviewQA'))
+const DashboardScreen = lazy(() => import('./Dashboard'))
+const AdminDataScreen = lazy(() => import('./AdminData'))
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: '◈', pages: ['overview', 'report', 'analyze'] },
@@ -205,14 +208,6 @@ export default function AdminPortal() {
     setNavOpen(false)
   }, [])
 
-  useEffect(() => {
-    import('./api').then(({ listSurveys }) =>
-      listSurveys()
-        .then((d) => setSurveys(d.items || []))
-        .catch(() => {}),
-    )
-  }, [])
-
   const notify = useCallback((message, type = 'ok') => {
     setToast({ message, type })
     setTimeout(() => setToast(null), 3200)
@@ -223,10 +218,22 @@ export default function AdminPortal() {
     setUser(null)
     setStats(null)
     setItems([])
+    setSurveys([])
     setPage('overview')
     notify('Logged out', 'ok')
   }, [notify])
 
+  /** Lightweight overview KPIs only — not full submissions */
+  const loadStats = useCallback(async () => {
+    if (!getToken()) return
+    try {
+      setStats(await getStats())
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  /** Raw data tab only */
   const refreshData = useCallback(async () => {
     if (!getToken()) return
     setLoadingData(true)
@@ -244,15 +251,27 @@ export default function AdminPortal() {
     }
   }, [notify, handleLogout, surveyFilter])
 
+  /** Manual refresh: stats always; raw rows only if on Data tab */
   const loadPortal = useCallback(async () => {
     if (!getToken()) return
+    setLoadingData(true)
     try {
-      setStats(await getStats())
-    } catch {
-      /* ignore */
+      await loadStats()
+      if (page === 'data') {
+        const data = await listSubmissions(150, '', { survey: surveyFilter })
+        setItems(data.items || [])
+      }
+      notify('Portal data refreshed ✓', 'ok')
+    } catch (e) {
+      if (e.status === 401) {
+        await handleLogout()
+        return
+      }
+      notify(e.message || 'Refresh failed', 'error')
+    } finally {
+      setLoadingData(false)
     }
-    await refreshData()
-  }, [refreshData])
+  }, [loadStats, page, surveyFilter, notify, handleLogout])
 
   useEffect(() => {
     let cancelled = false
@@ -302,9 +321,29 @@ export default function AdminPortal() {
     }
   }, [])
 
+  // Overview: stats only (cheap)
   useEffect(() => {
-    if (user && authReady) loadPortal()
-  }, [user, authReady, loadPortal])
+    if (user && authReady && (page === 'overview' || !stats)) {
+      void loadStats()
+    }
+  }, [user, authReady, page, loadStats]) // eslint-disable-line react-hooks/exhaustive-deps -- load stats on login + overview
+
+  // Data tab: submissions only when open
+  useEffect(() => {
+    if (user && authReady && page === 'data') {
+      void refreshData()
+    }
+  }, [user, authReady, page, surveyFilter, refreshData])
+
+  // Surveys list only when a page needs the dropdown
+  useEffect(() => {
+    if (!user || !authReady) return
+    if (!['data', 'upload', 'review'].includes(page)) return
+    if (surveys.length) return
+    listSurveys()
+      .then((d) => setSurveys(d.items || []))
+      .catch(() => {})
+  }, [user, authReady, page, surveys.length])
 
   if (!authReady) {
     return (
@@ -367,10 +406,7 @@ export default function AdminPortal() {
           type="button"
           className="btn small"
           disabled={loadingData}
-          onClick={() => {
-            loadPortal()
-            notify('Portal data refreshed ✓', 'ok')
-          }}
+          onClick={() => void loadPortal()}
         >
           {loadingData ? '…' : '↻'}
         </button>
@@ -427,10 +463,7 @@ export default function AdminPortal() {
               justifyContent: 'center',
               gap: 6,
             }}
-            onClick={() => {
-              loadPortal()
-              notify('Portal data refreshed ✓', 'ok')
-            }}
+            onClick={() => void loadPortal()}
             disabled={loadingData}
           >
             {loadingData ? 'Refreshing…' : '🔄 Refresh Data'}
@@ -466,24 +499,26 @@ export default function AdminPortal() {
             ))}
           </div>
         ))}
-        {page === 'overview' && <Overview user={user} stats={stats} onNav={goPage} />}
-        {page === 'users' && <AdminUsersScreen onToast={notify} />}
-        {page === 'surveys' && <AdminSurveysScreen onToast={notify} />}
-        {page === 'questions' && <AdminQuestionsScreen onToast={notify} />}
-        {page === 'analyze' && <AdminAnalyzeScreen onToast={notify} />}
-        {page === 'review' && <ReviewQAScreen onToast={notify} />}
-        {page === 'report' && <DashboardScreen onToast={notify} />}
-        {page === 'upload' && <AdminDataScreen onToast={notify} />}
-        {page === 'data' && (
-          <DataList
-            items={items}
-            loading={loadingData}
-            onRefresh={refreshData}
-            surveys={surveys}
-            surveyFilter={surveyFilter}
-            onSurveyChange={(v) => setSurveyFilter(v)}
-          />
-        )}
+        <Suspense fallback={<PortalSkeleton rows={6} label="Loading screen…" />}>
+          {page === 'overview' && <Overview user={user} stats={stats} onNav={goPage} />}
+          {page === 'users' && <AdminUsersScreen onToast={notify} />}
+          {page === 'surveys' && <AdminSurveysScreen onToast={notify} />}
+          {page === 'questions' && <AdminQuestionsScreen onToast={notify} />}
+          {page === 'analyze' && <AdminAnalyzeScreen onToast={notify} />}
+          {page === 'review' && <ReviewQAScreen onToast={notify} />}
+          {page === 'report' && <DashboardScreen onToast={notify} />}
+          {page === 'upload' && <AdminDataScreen onToast={notify} />}
+          {page === 'data' && (
+            <DataList
+              items={items}
+              loading={loadingData}
+              onRefresh={refreshData}
+              surveys={surveys}
+              surveyFilter={surveyFilter}
+              onSurveyChange={(v) => setSurveyFilter(v)}
+            />
+          )}
+        </Suspense>
       </main>
     </div>
   )

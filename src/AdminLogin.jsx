@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { clearSession, login } from './api'
 import { versionLabel } from './version'
 
-/** Client Admin web portal login */
+/** Client Admin web portal login — clean form, no demo credentials */
 export default function AdminLogin({ onSuccess, onToast }) {
-  const [username, setUsername] = useState('admin')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -17,11 +17,10 @@ export default function AdminLogin({ onSuccess, onToast }) {
     setLoading(true)
     try {
       clearSession()
-      // Server enforces expected_role=admin — surveyor field logins rejected here
       const data = await login(username.trim(), password, 'admin')
       if (data.user?.role !== 'admin') {
         clearSession()
-        throw new Error('Client Admin portal only. Surveyors use the field app.')
+        throw new Error('Client Admin portal only.')
       }
       onToast?.(`Welcome ${data.user.name}`, 'ok')
       onSuccess?.(data.user)
@@ -39,12 +38,10 @@ export default function AdminLogin({ onSuccess, onToast }) {
           <span className="portal-logo">◆</span>
           <div>
             <p className="eyebrow">Ground IQ</p>
-            <h1>Client Admin Portal</h1>
+            <h1>Client Admin</h1>
           </div>
         </div>
-        <p className="login-sub">
-          Create surveyor logins here — they sign in only on the field app (not this portal).
-        </p>
+        <p className="login-sub">Sign in to manage surveys and surveyors.</p>
         <form onSubmit={handleLogin} className="login-form">
           <label className="field">
             <span>Username</span>
@@ -54,6 +51,7 @@ export default function AdminLogin({ onSuccess, onToast }) {
               onChange={(e) => setUsername(e.target.value)}
               autoCapitalize="none"
               autoFocus
+              placeholder="Username"
             />
           </label>
           <label className="field">
@@ -63,21 +61,13 @@ export default function AdminLogin({ onSuccess, onToast }) {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
             />
           </label>
           <button type="submit" className="btn primary" disabled={loading}>
-            {loading ? 'Signing in…' : 'Open portal'}
+            {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-        <div className="role-hint single">
-          <div>
-            <strong>Demo</strong>
-            <code>admin / admin123</code>
-          </div>
-        </div>
-        <p className="portal-foot">
-          Surveyor field app → <a href="/">open field app</a>
-        </p>
         <p className="app-version-foot" aria-label="App version">
           {versionLabel()}
         </p>

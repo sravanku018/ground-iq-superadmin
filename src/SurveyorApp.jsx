@@ -25,6 +25,7 @@ import PullToRefresh from './PullToRefresh'
 import { deleteDraft, draftCount, listDrafts, listPendingPackages, pushDraft } from './localStore'
 import { clearSession, getSurveyForm } from './api'
 import { APP_VERSION, versionLabel } from './version'
+import VerifiedBadge from './VerifiedBadge'
 import './App.css'
 
 /** Surveyor-only field app (mobile / APK) */
@@ -56,38 +57,6 @@ function networkPillClass(quality) {
   if (quality === QUALITY.STRONG || quality === QUALITY.OK) return 'ok'
   if (quality === QUALITY.WEAK) return 'warn'
   return 'bad'
-}
-
-/** X / Twitter–style verified badge (blue check after name) */
-function VerifiedBadge({ size = 20, title = 'Verified' }) {
-  return (
-    <span
-      title={title}
-      aria-label={title}
-      className="x-verified-badge"
-      style={{
-        display: 'inline-flex',
-        width: size,
-        height: size,
-        flexShrink: 0,
-        verticalAlign: 'middle',
-        lineHeight: 0,
-      }}
-    >
-      <svg
-        viewBox="0 0 22 22"
-        width={size}
-        height={size}
-        aria-hidden="true"
-        focusable="false"
-      >
-        <path
-          fill="#1D9BF0"
-          d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.892-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.971.854-1.245 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.878 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z"
-        />
-      </svg>
-    </span>
-  )
 }
 
 function HomeScreen({
@@ -444,7 +413,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
               fontWeight: 'bold',
               boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
             }}
-            title={user?.verified ? 'Photo locked after Admin Verification' : 'Upload photo'}
+            title={user?.verified ? 'Photo locked' : 'Upload photo'}
           >
             {user?.verified ? '🔒' : '📷'}
             {!user?.verified && (
@@ -495,16 +464,14 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <h3 style={{ margin: 0, fontSize: 15, color: '#f8fafc' }}>📞 Surveyor Mobile Number</h3>
-          {user?.verified && (
-            <span style={{ fontSize: 11, background: '#059669', color: '#ffffff', fontWeight: 'bold', padding: '2px 10px', borderRadius: 12 }}>
-              🔒 Locked
+          {user?.verified ? (
+            <span aria-label="Locked" title="Locked" style={{ fontSize: 14 }}>
+              🔒
             </span>
-          )}
+          ) : null}
         </div>
         <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
-          {user?.verified
-            ? 'Phone verified. Locked on this device.'
-            : 'Registered phone number for contact.'}
+          {user?.verified ? 'Phone cannot be changed.' : 'Registered phone number for contact.'}
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <input
@@ -528,27 +495,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
               cursor: user?.verified ? 'not-allowed' : 'text',
             }}
           />
-          {user?.verified ? (
-            <button
-              type="button"
-              className="btn"
-              disabled={true}
-              style={{
-                width: '100%',
-                padding: '12px',
-                fontSize: 13,
-                fontWeight: 'bold',
-                minHeight: 48,
-                borderRadius: 12,
-                background: '#1e293b',
-                border: '1px solid #334155',
-                color: '#94a3b8',
-                cursor: 'not-allowed',
-              }}
-            >
-              🔒 Phone locked
-            </button>
-          ) : (
+          {!user?.verified && (
             <button
               type="button"
               className="btn primary"
@@ -575,16 +522,16 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <h3 style={{ margin: 0 }}>🪪 Aadhaar Identity Verification</h3>
-          {user?.verified && (
-            <span style={{ fontSize: 11, background: '#059669', color: '#fff', fontWeight: 'bold', padding: '2px 10px', borderRadius: 12 }}>
-              🔒 Locked
+          {user?.verified ? (
+            <span aria-label="Locked" title="Locked" style={{ fontSize: 14 }}>
+              🔒
             </span>
-          )}
+          ) : null}
         </div>
         <p className="muted" style={{ fontSize: 12, margin: '0 0 12px' }}>
           {user?.verified
-            ? 'Aadhaar documents locked.'
-            : 'Upload front & back images of your Aadhaar card for verification.'}
+            ? 'Documents cannot be changed.'
+            : 'Upload front & back images of your Aadhaar card.'}
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -606,7 +553,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
               className="btn small"
               style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', cursor: user?.verified ? 'not-allowed' : 'pointer', background: user?.verified ? '#1e293b' : undefined, color: user?.verified ? '#64748b' : undefined, border: user?.verified ? '1px solid #334155' : undefined }}
             >
-              {uploading.front ? 'Uploading…' : user?.verified ? '🔒 Locked' : user?.aadhaar_front ? 'Change Front' : 'Upload Front'}
+              {uploading.front ? 'Uploading…' : user?.verified ? '🔒' : user?.aadhaar_front ? 'Change Front' : 'Upload Front'}
               {!user?.verified && (
                 <input
                   type="file"
@@ -636,7 +583,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
               className="btn small"
               style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', cursor: user?.verified ? 'not-allowed' : 'pointer', background: user?.verified ? '#1e293b' : undefined, color: user?.verified ? '#64748b' : undefined, border: user?.verified ? '1px solid #334155' : undefined }}
             >
-              {uploading.back ? 'Uploading…' : user?.verified ? '🔒 Locked' : user?.aadhaar_back ? 'Change Back' : 'Upload Back'}
+              {uploading.back ? 'Uploading…' : user?.verified ? '🔒' : user?.aadhaar_back ? 'Change Back' : 'Upload Back'}
               {!user?.verified && (
                 <input
                   type="file"
@@ -874,12 +821,7 @@ export default function SurveyorApp() {
 
       if (tab === 'profile') {
         // Profile tab: just user refresh + feedback
-        notify(
-          meRes?.user?.verified
-            ? 'Profile refreshed · ✓ Verified'
-            : 'Profile refreshed',
-          'ok',
-        )
+        notify('Profile refreshed', 'ok')
         return
       }
 

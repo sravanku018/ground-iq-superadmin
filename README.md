@@ -38,7 +38,7 @@ npm run build:apk:release
 #   android/app/build/outputs/apk/release/app-release.apk
 # Install latest APK (always rebuild after code changes):
 #   npm run build:apk:release
-#   Install: ElectionSurvey-v1.6.3.apk  (or latest ElectionSurvey-release.apk)
+#   Install: ElectionSurvey-v1.8.0.apk  (or latest ElectionSurvey-release.apk)
 #   or ElectionSurvey-surveyor-app.apk in project root
 ```
 

@@ -41,3 +41,4 @@ android/app/*.keystore
 KEYSTORE_INFO.txt
 android/*.apk
 *.apk
+deno-deploy/REDEPLOY.md

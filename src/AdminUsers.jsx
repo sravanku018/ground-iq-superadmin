@@ -13,6 +13,7 @@ import {
   setSurveySurveyors,
   updateUser,
 } from './api'
+import VerifiedBadge from './VerifiedBadge'
 
 /** Compress profile/Aadhaar image file before upload (max 1200px, 0.75 quality) */
 function compressImageFile(file, maxDimension = 1200, quality = 0.75) {
@@ -982,12 +983,26 @@ export default function AdminUsersScreen({ onToast }) {
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                     <div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          marginBottom: 2,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <strong style={{ fontSize: 16, color: 'var(--text-h)' }}>
+                          {u.name || loginUser}
+                        </strong>
+                        {u.verified ? <VerifiedBadge size={18} /> : null}
+                      </div>
                       <div style={{ fontSize: 11, color: 'var(--text)', marginBottom: 2 }}>
                         Username (app login)
                       </div>
                       <strong
                         style={{
-                          fontSize: 17,
+                          fontSize: 15,
                           fontFamily: 'ui-monospace, monospace',
                           letterSpacing: '0.02em',
                         }}
@@ -995,7 +1010,6 @@ export default function AdminUsersScreen({ onToast }) {
                         {loginUser}
                       </strong>
                       <span className="meta">
-                        {u.name && u.name !== loginUser ? `${u.name} · ` : ''}
                         {u.role || 'surveyor'} ·{' '}
                         {u.progress_label || `${done}/${target || '—'}`}
                         {u.active === false ? ' · DISABLED' : ' · app login OK'}
@@ -1012,11 +1026,6 @@ export default function AdminUsersScreen({ onToast }) {
                         </span>
                       )}
                     </div>
-                    {u.verified && (
-                      <span className="pill ok" style={{ background: '#059669', color: '#fff', marginLeft: 6, fontWeight: 'bold' }}>
-                        Verified ✓
-                      </span>
-                    )}
                     <span className={`pill ${statusColor(status)}`}>
                       <span className="dot" />
                       {justCreated ? 'new' : status}
@@ -1358,17 +1367,15 @@ export default function AdminUsersScreen({ onToast }) {
                     </div>
                   )}
                   <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       <h4 style={{ margin: 0, fontSize: 18, color: '#ffffff' }}>
                         {profileUser.display_name || profileUser.name || profileUser.username}
                       </h4>
                       {profileUser.verified ? (
-                        <span style={{ background: '#059669', color: '#fff', fontSize: 11, fontWeight: 'bold', padding: '2px 8px', borderRadius: 12 }}>
-                          Verified ✓
-                        </span>
+                        <VerifiedBadge size={20} />
                       ) : (
                         <span style={{ background: '#d97706', color: '#fff', fontSize: 11, fontWeight: 'bold', padding: '2px 8px', borderRadius: 12 }}>
-                          Verification Pending ⏳
+                          Pending
                         </span>
                       )}
                     </div>
@@ -1449,8 +1456,23 @@ export default function AdminUsersScreen({ onToast }) {
                 <div style={{ background: '#1e293b', padding: 14, borderRadius: 10, border: '1px solid #334155', marginBottom: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                     <h5 style={{ margin: 0, fontSize: 14, color: '#38bdf8', fontWeight: 'bold' }}>🪪 Aadhaar Identity Verification</h5>
-                    <span style={{ fontSize: 11, color: profileUser.verified ? '#00e599' : '#f59e0b', fontWeight: 'bold' }}>
-                      {profileUser.verified ? '✓ Identity Verified' : '⏳ Verification Pending'}
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: profileUser.verified ? '#1D9BF0' : '#f59e0b',
+                        fontWeight: 'bold',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      {profileUser.verified ? (
+                        <>
+                          <VerifiedBadge size={14} /> Verified
+                        </>
+                      ) : (
+                        'Pending'
+                      )}
                     </span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

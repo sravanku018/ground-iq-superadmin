@@ -161,8 +161,8 @@ export default function AdminAnalyzeScreen({ onToast }) {
   return (
     <div className="screen">
       <header className="screen-head">
-        <h2>Client Admin · Analyze</h2>
-        <p>Survey → surveyor → geolocation → day / month → rest</p>
+        <h2>Client Admin · Report</h2>
+        <p>Survey → surveyor → geolocation → day / month · tables &amp; confirm</p>
       </header>
 
       <div className="card" style={{ marginBottom: 12 }}>

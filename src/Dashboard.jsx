@@ -422,14 +422,14 @@ export default function DashboardScreen({ onToast }) {
     <div className="screen dashboard-screen">
       <header className="screen-head row">
         <div>
-          <h2>Report analytics</h2>
+          <h2>Analyze</h2>
           <p>
             {loading && !data
               ? 'Loading…'
               : reportLocked
                 ? 'Locked until Client Admin confirms'
                 : data
-                  ? `${data.filtered.toLocaleString()} confirmed · daily / monthly / surveyor boards`
+                  ? `${data.filtered.toLocaleString()} confirmed · charts & maps`
                   : 'Confirmed data only'}
           </p>
         </div>

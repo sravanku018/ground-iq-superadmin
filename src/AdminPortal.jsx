@@ -101,7 +101,7 @@ function Overview({ user, stats, onNav }) {
         <button type="button" className="portal-action" onClick={() => onNav('analyze')}>
           <span className="portal-action-n">3</span>
           <strong>Analyze</strong>
-          <span>By user, day, month · geo + voice checks</span>
+          <span>Charts, maps &amp; filters (confirmed data)</span>
         </button>
         <button type="button" className="portal-action" onClick={() => onNav('review')}>
           <span className="portal-action-n">4</span>
@@ -110,8 +110,8 @@ function Overview({ user, stats, onNav }) {
         </button>
         <button type="button" className="portal-action primary" onClick={() => onNav('report')}>
           <span className="portal-action-n">5</span>
-          <strong>Report dashboard</strong>
-          <span>Charts form after confirm only</span>
+          <strong>Report</strong>
+          <span>Daily / monthly / surveyor tables · geo + voice boards</span>
         </button>
         <button type="button" className="portal-action" onClick={() => onNav('upload')}>
           <span className="portal-action-n">↑</span>
@@ -504,9 +504,10 @@ export default function AdminPortal() {
           {page === 'users' && <AdminUsersScreen onToast={notify} />}
           {page === 'surveys' && <AdminSurveysScreen onToast={notify} />}
           {page === 'questions' && <AdminQuestionsScreen onToast={notify} />}
-          {page === 'analyze' && <AdminAnalyzeScreen onToast={notify} />}
+          {/* Report = tables/boards (AdminAnalyze); Analyze = charts/maps (Dashboard) */}
+          {page === 'report' && <AdminAnalyzeScreen onToast={notify} />}
+          {page === 'analyze' && <DashboardScreen onToast={notify} />}
           {page === 'review' && <ReviewQAScreen onToast={notify} />}
-          {page === 'report' && <DashboardScreen onToast={notify} />}
           {page === 'upload' && <AdminDataScreen onToast={notify} />}
           {page === 'data' && (
             <DataList

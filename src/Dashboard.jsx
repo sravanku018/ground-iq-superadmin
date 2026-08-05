@@ -206,7 +206,7 @@ function HBar({ data, onBarClick, activeName, colorKey }) {
   )
 }
 
-function StackedParty({ matrix, onRowClick, activeName }) {
+function StackedParty({ matrix, onRowClick }) {
   if (!matrix?.rows?.length) return <EmptyChart />
   const cols = (matrix.columns || []).filter((c) => c)
   const data = matrix.rows.slice(0, 10)
@@ -281,7 +281,7 @@ function Timeline({ data }) {
   )
 }
 
-function RadialIssues({ data, onClick, activeName }) {
+function RadialIssues({ data, onClick }) {
   if (!data?.length) return <EmptyChart />
   const chartData = data.slice(0, 7).map((d, i) => ({
     ...d,
@@ -335,7 +335,6 @@ export default function DashboardScreen({ onToast }) {
   })
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
   const [surveys, setSurveys] = useState([])
   const [boardTab, setBoardTab] = useState('day') // day | month | surveyor | geo
 
@@ -349,7 +348,6 @@ export default function DashboardScreen({ onToast }) {
 
   const load = useCallback(async () => {
     setLoading(true)
-    setError('')
     try {
       const params = {
         district: filters.district,
@@ -377,7 +375,6 @@ export default function DashboardScreen({ onToast }) {
       })
       setData(res)
     } catch (e) {
-      setError(e.message)
       onToast?.(e.message, 'error')
     } finally {
       setLoading(false)
@@ -1216,7 +1213,6 @@ export default function DashboardScreen({ onToast }) {
             <ChartCard title="Party × District" subtitle="Stacked share" tall>
               <StackedParty
                 matrix={charts.partyByDistrict}
-                activeName={filters.district}
                 onRowClick={(name) =>
                   setFilters((f) => ({
                     ...f,

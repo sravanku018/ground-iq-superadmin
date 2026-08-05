@@ -139,7 +139,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
     const d = draft.qa || draft
     const init = {}
     for (const q of questions) init[q.id] = ''
-    setAnswers({ ...init, ...(d.answers || {}) })
+    setAnswers({ ...init, ...d.answers })
     const g = d.geo
     if (g && Number.isFinite(Number(g.lat))) {
       setGeo({ lat: Number(g.lat), lng: Number(g.lng), accuracy: g.accuracy ?? 0, at: g.at ?? '', locked: true })
@@ -761,7 +761,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         draft?.recordIndex != null
           ? draft.recordIndex
           : Math.max(progress?.next_record || 0, localDoneCount) + 1
-      const id = await savePackageLocal(
+      await savePackageLocal(
         {
           form_key: formMeta?.form_key || 'default',
           form_id: `field-${user?.username || 's'}-${Date.now()}`,

@@ -63,16 +63,13 @@ export default function AdminAnalyzeScreen({ onToast }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const base = {
-        ...scopeParams,
-        completeness: completeness === 'all' ? undefined : completeness,
-      }
       const [analyze, list, charts] = await Promise.all([
         getAdminAnalyze({
           ...scopeParams,
           survey,
           district: district || undefined,
           constituency: constituency || undefined,
+          completeness: completeness === 'all' ? undefined : completeness,
           ...Object.fromEntries(Object.entries(qFilters).filter(([, v]) => v)),
         }),
         listSubmissions(300, 'all', {

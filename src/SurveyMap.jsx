@@ -172,7 +172,6 @@ export default function SurveyMap({
     const nameProp = layerCfg.nameProp
     const isDistrict = layerId === 'district'
     const isAssembly = layerId === 'assembly'
-    const isPc = layerId === 'parliament'
 
     const counts = isDistrict
       ? dataMaps.districtCounts

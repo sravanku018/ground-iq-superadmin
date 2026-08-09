@@ -273,6 +273,11 @@ export function confirmAllPending(limit = 500, note = '') {
   })
 }
 
+/** Client Admin: re-run fact materialization for a failed record (FR-PRC-04) */
+export function retryFact(id) {
+  return request(`/api/submissions/${id}/retry-fact`, { method: 'POST' })
+}
+
 export function getAnalytics(filters = {}) {
   const params = new URLSearchParams()
   Object.entries(filters).forEach(([k, v]) => {

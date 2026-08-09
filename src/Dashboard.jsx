@@ -418,6 +418,11 @@ export default function DashboardScreen({ onToast }) {
     !data.isFiltered &&
     !(opts?.districts?.length > 0)
 
+  // Freshness (09-ANALYTICS-SPEC §8): stale when no new confirmation in 2+ days
+  const stale =
+    !!data?.data_as_of &&
+    Date.now() - new Date(data.data_as_of).getTime() > 2 * 24 * 60 * 60 * 1000
+
   return (
     <div className="screen dashboard-screen">
       <header className="screen-head row">
@@ -450,6 +455,31 @@ export default function DashboardScreen({ onToast }) {
             Confirmed <strong>{data.statusCounts.confirmed}</strong>
             {' · '}
             In this report <strong>{data.totalAll ?? 0}</strong>
+          </p>
+        )}
+        {(data?.data_as_of || data?.degraded) && (
+          <p
+            style={{
+              margin: '6px 0 0',
+              fontSize: 12,
+              display: 'flex',
+              gap: 8,
+              flexWrap: 'wrap',
+            }}
+          >
+            {data.data_as_of && (
+              <span className={stale ? 'pill bad' : 'pill ok'} style={{ margin: 0 }}>
+                <span className="dot" />
+                Data as of {new Date(data.data_as_of).toLocaleString()}
+                {stale ? ' · stale (no new confirmations in 2+ days)' : ''}
+              </span>
+            )}
+            {data.degraded && (
+              <span className="pill bad" style={{ margin: 0 }} title={data.degraded_reason || ''}>
+                <span className="dot" />
+                Degraded — facts pending retry
+              </span>
+            )}
           </p>
         )}
       </div>

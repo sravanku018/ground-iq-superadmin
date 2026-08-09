@@ -6,6 +6,7 @@ import {
   listSubmissionMedia,
   listSubmissions,
   listSurveys,
+  retryFact,
   setSubmissionStatus,
 } from './api'
 import { PortalEmpty, PortalError, PortalSkeleton } from './PortalUI'
@@ -109,6 +110,27 @@ export default function ReviewQAScreen({ onToast }) {
         await load()
       } catch (e) {
         onToast?.(e.message, 'error')
+      } finally {
+        setBusyId(null)
+      }
+    },
+    [load, onToast],
+  )
+
+  const retryFactFor = useCallback(
+    async (id) => {
+      setBusyId(id)
+      try {
+        const res = await retryFact(id)
+        onToast?.(
+          res?.already_existed
+            ? 'Fact already materialized ✓'
+            : 'Fact re-materialized ✓ — now eligible for dashboards',
+          'ok',
+        )
+        await load()
+      } catch (e) {
+        onToast?.(e.message || 'Fact retry failed', 'error')
       } finally {
         setBusyId(null)
       }
@@ -306,6 +328,9 @@ export default function ReviewQAScreen({ onToast }) {
                     {a.district ? ` · ${a.district}` : ''}
                     {item.has_photo || photoSrc ? ' · 📷' : ''}
                     {item.has_voice || audioSrc ? ' · 🎤' : ''}
+                    {item.status === 'confirmed' && item.fact_status === 'failed'
+                      ? ' · ⚠ fact failed'
+                      : ''}
                   </span>
                   <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
                     {open ? 'Hide Q/A ▲' : 'Show Q/A + media ▼'}
@@ -453,6 +478,17 @@ export default function ReviewQAScreen({ onToast }) {
                       onClick={() => setStatusFor(item.id, 'confirmed')}
                     >
                       Confirm (c)
+                    </button>
+                  )}
+                  {item.status === 'confirmed' && item.fact_status === 'failed' && (
+                    <button
+                      type="button"
+                      className="btn small"
+                      disabled={busyId === item.id}
+                      title={item.fact_error || 'Fact materialization failed — retry to include on dashboards'}
+                      onClick={() => retryFactFor(item.id)}
+                    >
+                      Retry fact (processing)
                     </button>
                   )}
                   {item.status !== 'rejected' && (

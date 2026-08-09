@@ -520,6 +520,32 @@ async function ensureSchema() {
     console.warn("legacy migration", e);
   }
 
+  // ── Fact layer (analytics read path — 09-ANALYTICS-SPEC / 17-PROCESSING-SEQUENCE) ──
+  // One narrow row per confirmed record; dashboards read facts, never raw records.
+  await sql`
+    CREATE TABLE IF NOT EXISTS record_facts (
+      submission_id BIGINT PRIMARY KEY REFERENCES submissions(id) ON DELETE CASCADE,
+      survey_key TEXT NOT NULL DEFAULT 'default',
+      submitted_by TEXT,
+      district TEXT,
+      constituency TEXT,
+      filterable_answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+      geo JSONB,
+      confirmed_at TIMESTAMPTZ NOT NULL,
+      fact_status TEXT NOT NULL DEFAULT 'materialized',
+      fact_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_record_facts_confirmed_at ON record_facts (confirmed_at DESC)`.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_record_facts_district ON record_facts (district)`.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_record_facts_status ON record_facts (fact_status)`.catch(() => null);
+  // fact pipeline status on the record itself (surfaces in Review queue)
+  await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS fact_status TEXT`.catch(() => null);
+  await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS fact_error TEXT`.catch(() => null);
+  // Backfill facts for already-confirmed rows (idempotent — no-ops once caught up)
+  await backfillFacts(sql).catch((e) => console.warn("fact backfill", e));
+
   // Allow surveyor role (Client Admin creates field collectors)
   await sql`ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_role_check`.catch(() => null);
   await sql`
@@ -1487,6 +1513,111 @@ function qaFromAnswers(a: Record<string, unknown>) {
 }
 
 /** Load + resolve all submissions into analytics rows (AC → district resolution, mandal fallback, party/gender/caste normalisation). Shared by analytics + export. */
+// ── Fact materialization (Processing — 17-ANALYTICS-PROCESSING-SEQUENCE.md §1.2/§3) ──
+
+/** Answer keys that are internal bookkeeping, never analytics facts. */
+const FACT_META_KEYS = new Set([
+  "_draft", "draft", "_startedAt", "_lastQuestion", "_answeredCount", "_syncedAt",
+  "_recordIndex", "recordIndex", "data_collector", "submitted_by", "notes",
+  // geo-ish / media-ish keys are bookkeeping — geo lives on record_facts.geo instead
+  "latitude", "longitude", "lat", "lng", "geo_lat", "geo_lng", "gps_lat", "gps_lng",
+]);
+
+/** Normalize an answer value into its fact-safe form (09-ANALYTICS-SPEC §2.1). */
+function normalizeFactValue(v: unknown): unknown {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (Array.isArray(v)) return [...new Set(v.map((x) => String(x).trim()).filter(Boolean))].sort();
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  if (s === "true") return true;
+  if (s === "false") return false;
+  if (Number.isFinite(Number(s)) && /^-?\d+(\.\d+)?$/.test(s)) return Number(s);
+  return s;
+}
+
+/** Narrow fact payload: only real answer keys (metadata/media excluded) — keeps the table lean. */
+function buildFilterableAnswers(payload: Record<string, unknown>): Record<string, unknown> {
+  const answers = ((payload.answers as Record<string, unknown>) || payload) as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(answers)) {
+    if (FACT_META_KEYS.has(k)) continue;
+    if (typeof v === "object" && v !== null && !Array.isArray(v)) continue; // no nested blobs in facts
+    const norm = normalizeFactValue(v);
+    if (norm !== null && norm !== undefined && !(Array.isArray(norm) && norm.length === 0)) {
+      out[k] = norm;
+    }
+  }
+  return out;
+}
+
+/**
+ * Insert one record_facts row for a confirmed submission. Idempotent
+ * (ON CONFLICT DO NOTHING). On unexpected error the record is flagged
+ * fact_status='failed' for manual retry — the confirm decision is never lost.
+ */
+async function materializeFact(
+  sqlFn: NonNullable<typeof sql>,
+  submissionId: number,
+): Promise<{ inserted: boolean; already_existed: boolean }> {
+  const rows = await sqlFn`SELECT id, payload FROM submissions WHERE id = ${submissionId}`;
+  if (!rows.length) throw new Error("submission not found");
+  const payload = parsePayload((rows[0] as { payload: unknown }).payload);
+  if (payloadStatus(payload) !== "confirmed") {
+    throw new Error("record is not confirmed — facts are only materialized for confirmed records");
+  }
+  const answers = ((payload.answers as Record<string, unknown>) || payload) as Record<string, unknown>;
+  const surveyKey = String(payload.form_key || payload.formKey || "default");
+  const confirmedAt = String(payload.confirmed_at || new Date().toISOString());
+  const geo = (payload.geo as Record<string, unknown> | undefined) || null;
+  const filterable = buildFilterableAnswers(payload);
+
+  const inserted = await sqlFn`
+    INSERT INTO record_facts (
+      submission_id, survey_key, submitted_by, district, constituency,
+      filterable_answers, geo, confirmed_at, fact_status
+    ) VALUES (
+      ${submissionId}, ${surveyKey}, ${surveyorNameOf(payload)},
+      ${String(answers.district || "").trim()}, ${String(answers.constituency || "").trim()},
+      ${JSON.stringify(filterable)}::jsonb, ${geo ? JSON.stringify(geo) : null}::jsonb,
+      ${confirmedAt}::timestamptz, 'materialized'
+    )
+    ON CONFLICT (submission_id) DO NOTHING
+    RETURNING submission_id
+  `;
+  await sqlFn`
+    UPDATE submissions SET fact_status = 'materialized', fact_error = NULL WHERE id = ${submissionId}
+  `.catch(() => null);
+  return {
+    inserted: inserted.length > 0,
+    already_existed: inserted.length === 0,
+  };
+}
+
+/** Flag a record so Review surfaces it and retry-fact can re-run materialization. */
+async function markFactFailed(sqlFn: NonNullable<typeof sql>, id: number, err: unknown) {
+  const msg = String((err as Error)?.message || err || "unknown error").slice(0, 500);
+  await sqlFn`UPDATE submissions SET fact_status = 'failed', fact_error = ${msg} WHERE id = ${id}`.catch(() => null);
+}
+
+/** Idempotent boot backfill: confirmed submissions without a fact row (legacy + pre-facts). */
+async function backfillFacts(sqlFn: NonNullable<typeof sql>) {
+  const missing = await sqlFn`
+    SELECT s.id FROM submissions s
+    WHERE s.payload->>'status' = 'confirmed'
+      AND NOT EXISTS (SELECT 1 FROM record_facts f WHERE f.submission_id = s.id)
+    LIMIT 5000
+  `.catch(() => []);
+  for (const r of missing as { id: number }[]) {
+    try {
+      await materializeFact(sqlFn, Number(r.id));
+    } catch (e) {
+      await markFactFailed(sqlFn, Number(r.id), e);
+    }
+  }
+}
+
 async function loadAnalyticsRows(
   sqlFn: NonNullable<typeof sql>,
   limit = 10000,
@@ -3266,7 +3397,7 @@ Deno.serve(async (req) => {
         Boolean((url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim());
       const fetchRows = hasSliceFilter ? 5000 : limit;
       const rows = await sql`
-        SELECT id, payload, created_at FROM submissions
+        SELECT id, payload, fact_status, fact_error, created_at FROM submissions
         ORDER BY created_at DESC LIMIT ${fetchRows}
       `;
       // media kinds for strict voice/photo checks
@@ -3288,6 +3419,8 @@ Deno.serve(async (req) => {
           created_at: r.created_at,
           date: dayKey(isoStamp(r.created_at)),
           status,
+          fact_status: r.fact_status ?? null,
+          fact_error: r.fact_error ?? null,
           work,
           draft,
           completeness: verify.completeness,
@@ -3925,6 +4058,22 @@ Deno.serve(async (req) => {
         WHERE id = ${id}
       `;
 
+      // Fact layer: keep facts in sync when status is edited from the edit screen
+      // (guard mirrors the status-change block above — empty status must not touch facts)
+      if (body.status != null && String(body.status).trim()) {
+        const s2 = String(body.status).toLowerCase().trim();
+        if (s2 === "confirmed") {
+          try {
+            await materializeFact(sql, id);
+          } catch (e) {
+            await markFactFailed(sql, id, e);
+          }
+        } else {
+          await sql`DELETE FROM record_facts WHERE submission_id = ${id}`.catch(() => null);
+          await sql`UPDATE submissions SET fact_status = NULL, fact_error = NULL WHERE id = ${id}`.catch(() => null);
+        }
+      }
+
       const answers = (payload.answers || {}) as Record<string, unknown>;
       return json({
         ok: true,
@@ -4016,6 +4165,19 @@ Deno.serve(async (req) => {
         SET payload = ${JSON.stringify(payload)}::jsonb
         WHERE id = ${id}
       `;
+
+      // Fact layer: confirmed → materialize (idempotent); pending/rejected → never in analytics
+      if (next === "confirmed") {
+        try {
+          await materializeFact(sql, id);
+        } catch (e) {
+          await markFactFailed(sql, id, e);
+        }
+      } else {
+        await sql`DELETE FROM record_facts WHERE submission_id = ${id}`.catch(() => null);
+        await sql`UPDATE submissions SET fact_status = NULL, fact_error = NULL WHERE id = ${id}`.catch(() => null);
+      }
+
       return json({
         ok: true,
         id,
@@ -4060,9 +4222,32 @@ Deno.serve(async (req) => {
         await sql`
           UPDATE submissions SET payload = ${JSON.stringify(payload)}::jsonb WHERE id = ${r.id}
         `;
+        try {
+          await materializeFact(sql, r.id);
+        } catch (e) {
+          await markFactFailed(sql, r.id, e);
+        }
         n += 1;
       }
       return json({ ok: true, confirmed: n });
+    }
+
+    // Client Admin: retry fact materialization for a failed record (FR-PRC-04)
+    if (path.match(/^\/api\/submissions\/\d+\/retry-fact$/) && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      const id = Number(path.split("/")[3]);
+      try {
+        const res = await materializeFact(sql, id);
+        return json({ ok: true, ...res, status: "materialized" });
+      } catch (e) {
+        await markFactFailed(sql, id, e);
+        return json({
+          ok: false,
+          error: "Fact materialization failed",
+          detail: String((e as Error)?.message || e),
+        }, 422);
+      }
     }
 
     // ── Surveys (multi-survey: name + own questions + team + respondents) ────
@@ -4893,7 +5078,43 @@ Deno.serve(async (req) => {
     // Dashboard + filters — full super-set / sub-set analytics
     if (path === "/api/analytics" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      return json(await buildAnalytics(sql, url));
+      const result = await buildAnalytics(sql, url);
+      // Envelope: data_as_of watermark + fact health (09-ANALYTICS-SPEC §5/§8, ADR-014/016)
+      const [w] = await sql`
+        SELECT MAX(confirmed_at) AS as_of FROM record_facts
+      `.catch(() => [{ as_of: null }]);
+      let dataAsOf: string | null = (w as { as_of?: unknown } | undefined)?.as_of
+        ? String((w as { as_of?: unknown }).as_of)
+        : null;
+      if (!dataAsOf) {
+        // transient window before backfill — fall back to freshest confirmed stamp
+        const [f] = await sql`
+          SELECT MAX((payload->>'confirmed_at')::timestamptz) AS as_of
+          FROM submissions WHERE payload->>'status' = 'confirmed'
+        `.catch(() => [{ as_of: null }]);
+        dataAsOf = (f as { as_of?: unknown } | undefined)?.as_of
+          ? String((f as { as_of?: unknown }).as_of)
+          : null;
+      }
+      const [fc] = await sql`SELECT COUNT(*)::int AS n FROM record_facts`.catch(() => [{ n: 0 }]);
+      const [failedN] = await sql`
+        SELECT COUNT(*)::int AS n FROM submissions WHERE fact_status = 'failed'
+      `.catch(() => [{ n: 0 }]);
+      const failed = Number((failedN as { n?: number } | undefined)?.n ?? 0);
+      const confirmedTotal = Number(result?.statusCounts?.confirmed ?? 0);
+      return json({
+        ...result,
+        data_as_of: dataAsOf,
+        empty: confirmedTotal === 0,
+        degraded: failed > 0,
+        degraded_reason: failed > 0
+          ? `${failed} confirmed record${failed === 1 ? "" : "s"} with failed fact materialization — retry in Review`
+          : null,
+        facts: {
+          materialized: Number((fc as { n?: number } | undefined)?.n ?? 0),
+          failed,
+        },
+      });
     }
 
     // Admin geo summary (for Upload tab)

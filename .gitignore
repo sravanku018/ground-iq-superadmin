@@ -42,3 +42,6 @@ KEYSTORE_INFO.txt
 android/*.apk
 *.apk
 deno-deploy/REDEPLOY.md
+
+# Local docs folder — kept out of the app repo
+smart-survey-x-docs/

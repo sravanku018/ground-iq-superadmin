@@ -543,9 +543,6 @@ async function ensureSchema() {
   // fact pipeline status on the record itself (surfaces in Review queue)
   await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS fact_status TEXT`.catch(() => null);
   await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS fact_error TEXT`.catch(() => null);
-  // Backfill facts for already-confirmed rows (idempotent — no-ops once caught up)
-  await backfillFacts(sql).catch((e) => console.warn("fact backfill", e));
-
   // Allow surveyor role (Client Admin creates field collectors)
   await sql`ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_role_check`.catch(() => null);
   await sql`
@@ -605,10 +602,18 @@ async function ensureSchema() {
 let schemaReady: Promise<void> | null = null;
 function ready() {
   if (!schemaReady) {
-    schemaReady = ensureSchema().catch((e) => {
-      console.error(e);
-      schemaReady = null;
-    });
+    schemaReady = ensureSchema()
+      .catch((e) => {
+        console.error(e);
+        schemaReady = null;
+      })
+      .then(() => {
+        // Legacy fact catch-up runs AFTER the request path is served, so even a
+        // large backfill can never stall boot or the deploy health check.
+        if (sql) {
+          void backfillFacts(sql).catch((e) => console.warn("fact backfill", e));
+        }
+      });
   }
   return schemaReady;
 }
@@ -1601,21 +1606,83 @@ async function markFactFailed(sqlFn: NonNullable<typeof sql>, id: number, err: u
   await sqlFn`UPDATE submissions SET fact_status = 'failed', fact_error = ${msg} WHERE id = ${id}`.catch(() => null);
 }
 
-/** Idempotent boot backfill: confirmed submissions without a fact row (legacy + pre-facts). */
-async function backfillFacts(sqlFn: NonNullable<typeof sql>) {
-  const missing = await sqlFn`
-    SELECT s.id FROM submissions s
+/**
+ * Idempotent fact catch-up for confirmed submissions without a fact row.
+ * Batched multi-row INSERTs — never one query per row — so even thousands of
+ * legacy rows complete in a handful of round trips (boot/first-request safe).
+ */
+async function backfillFacts(
+  sqlFn: NonNullable<typeof sql>,
+  opts: { limit?: number } = {},
+): Promise<{ materialized: number; failed: number }> {
+  const limit = opts.limit ?? 10000;
+  const rows = await sqlFn`
+    SELECT s.id, s.payload FROM submissions s
     WHERE s.payload->>'status' = 'confirmed'
       AND NOT EXISTS (SELECT 1 FROM record_facts f WHERE f.submission_id = s.id)
-    LIMIT 5000
+    ORDER BY s.id
+    LIMIT ${limit}
   `.catch(() => []);
-  for (const r of missing as { id: number }[]) {
+  if (!rows.length) return { materialized: 0, failed: 0 };
+
+  const rawSql = sqlFn as unknown as (text: string, params: unknown[]) => Promise<unknown[]>;
+  const BATCH = 200;
+  const COLS = 9; // submission_id, survey_key, submitted_by, district, constituency, filterable_answers, geo, confirmed_at, fact_status
+  let materialized = 0;
+  const failedIds: number[] = [];
+
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const chunk = (rows as { id: number; payload: unknown }[]).slice(i, i + BATCH);
+    const valueRows: unknown[][] = [];
+    for (const r of chunk) {
+      try {
+        const payload = parsePayload(r.payload);
+        if (payloadStatus(payload) !== "confirmed") continue;
+        const answers = ((payload.answers as Record<string, unknown>) || payload) as Record<string, unknown>;
+        // Guard against malformed confirmed_at poisoning the whole batch
+        const confirmedAt = (() => {
+          const ts = String(payload.confirmed_at || "");
+          return ts && !Number.isNaN(Date.parse(ts)) ? ts : new Date().toISOString();
+        })();
+        valueRows.push([
+          Number(r.id),
+          String(payload.form_key || payload.formKey || "default"),
+          surveyorNameOf(payload),
+          String(answers.district || "").trim(),
+          String(answers.constituency || "").trim(),
+          JSON.stringify(buildFilterableAnswers(payload)),
+          payload.geo ? JSON.stringify(payload.geo) : null,
+          confirmedAt,
+          "materialized",
+        ]);
+      } catch {
+        failedIds.push(Number(r.id));
+      }
+    }
+    if (!valueRows.length) continue;
+    const placeholders = valueRows
+      .map((_, r) =>
+        `(${Array.from({ length: COLS }, (_, c) => `$${r * COLS + c + 1}`).join(", ")})`,
+      )
+      .join(", ");
     try {
-      await materializeFact(sqlFn, Number(r.id));
-    } catch (e) {
-      await markFactFailed(sqlFn, Number(r.id), e);
+      await rawSql(
+        `INSERT INTO record_facts (submission_id, survey_key, submitted_by, district, constituency, filterable_answers, geo, confirmed_at, fact_status)
+         VALUES ${placeholders}
+         ON CONFLICT (submission_id) DO NOTHING`,
+        valueRows.flat(),
+      );
+      materialized += valueRows.length;
+      await sqlFn`UPDATE submissions SET fact_status = 'materialized', fact_error = NULL WHERE id = ANY(${valueRows.map((v) => v[0])})`.catch(() => null);
+    } catch {
+      for (const r of chunk) failedIds.push(Number(r.id));
     }
   }
+
+  for (const id of failedIds) {
+    await markFactFailed(sqlFn, id, new Error("fact backfill failed"));
+  }
+  return { materialized, failed: failedIds.length };
 }
 
 async function loadAnalyticsRows(

@@ -168,6 +168,15 @@ export function createSuperAdmin(body) {
   })
 }
 
+/** Reset the ONLY existing Super Admin's password (bootstrap escape hatch) — portal admin */
+export function resetSuperAdminPassword(password) {
+  return request('/api/super-admin/reset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  })
+}
+
 export function deleteUser(id) {
   return request(`/api/users/${id}`, {
     method: 'DELETE',

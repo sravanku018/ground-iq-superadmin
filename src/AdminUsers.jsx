@@ -10,6 +10,7 @@ import {
   getStoredUser,
   listSurveys,
   listUsers,
+  resetSuperAdminPassword,
   revokeUserSessions,
   setProgressQuota,
   setSurveySurveyors,
@@ -157,6 +158,9 @@ export default function AdminUsersScreen({ onToast }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saBusy, setSaBusy] = useState(false)
+  const [saUsername, setSaUsername] = useState('')
+  const [saPassword, setSaPassword] = useState('')
+  const [saResetPassword, setSaResetPassword] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [edit, setEdit] = useState({
     username: '',
@@ -663,12 +667,30 @@ export default function AdminUsersScreen({ onToast }) {
   const me = getStoredUser()
   const admins = users.filter((u) => u.role === 'admin' || u.role === 'super_admin')
 
-  /** Create an additional Super Admin (max 3 platform-wide) — Super Admin only */
+  /** Reset the password of the only existing Super Admin (bootstrap escape hatch) */
+  const resetSuperAdminAcct = async () => {
+    if (!saResetPassword || saResetPassword.length < 8) {
+      onToast?.('Enter a new password (min 8 characters)', 'error')
+      return
+    }
+    setSaBusy(true)
+    try {
+      await resetSuperAdminPassword(saResetPassword)
+      onToast?.('Super Admin password reset ✓ — sign in with the new password', 'ok')
+      setSaResetPassword('')
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setSaBusy(false)
+    }
+  }
+
+  /** Create a Super Admin (max 3 platform-wide). First-setup form uses inline inputs;
+   *  the Super Admin panel falls back to prompts. */
   const createSuperAdminAcct = async () => {
-    const username = window.prompt('Super Admin username (unique, lowercase):', '')
-    if (!username) return
-    const password = window.prompt('Super Admin password (min 8 characters):', '')
-    if (!password) return
+    const username = saUsername.trim() || window.prompt('Super Admin username (unique, lowercase):', '')
+    const password = saPassword || window.prompt('Super Admin password (min 8 characters):', '')
+    if (!username || !password) return
     setSaBusy(true)
     try {
       await createSuperAdmin({
@@ -677,6 +699,8 @@ export default function AdminUsersScreen({ onToast }) {
         name: 'Super Admin',
       })
       onToast?.('Super Admin created ✓', 'ok')
+      setSaUsername('')
+      setSaPassword('')
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -750,7 +774,7 @@ export default function AdminUsersScreen({ onToast }) {
             Refresh
           </button>
         </div>
-      </div>      {me?.role === 'super_admin' && (
+      </div>      {(me?.role === 'super_admin' || (me?.role === 'admin' && superAdmins.length === 0)) && (
         <div className="card" style={{ marginBottom: 14, border: '1px solid rgba(245,158,11,0.45)' }}>
           <div
             style={{
@@ -764,22 +788,27 @@ export default function AdminUsersScreen({ onToast }) {
             <div>
               <h3 style={{ margin: '0 0 4px' }}>★ Platform Super Admins</h3>
               <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-                {superAdmins.length} of 3 seats used · Super Admins have full platform access
-                (01-PRD.md)
+                {me?.role === 'super_admin'
+                  ? `${superAdmins.length} of 3 seats used · Super Admins have full platform access (01-PRD.md)`
+                  : superAdmins.length === 0
+                    ? 'No Super Admin exists yet — create the first platform account now (only possible while none exist).'
+                    : 'One Super Admin exists — if its password is unknown, reset it here (only possible while exactly one exists).'}
               </p>
             </div>
-            <button
-              type="button"
-              className="btn small"
-              disabled={saBusy || superAdmins.length >= 3}
-              onClick={createSuperAdminAcct}
-            >
-              {saBusy
-                ? 'Creating…'
-                : superAdmins.length >= 3
-                  ? 'Cap reached (3 of 3)'
-                  : '＋ Create Super Admin'}
-            </button>
+            {me?.role === 'super_admin' && (
+              <button
+                type="button"
+                className="btn small"
+                disabled={saBusy || superAdmins.length >= 3}
+                onClick={createSuperAdminAcct}
+              >
+                {saBusy
+                  ? 'Creating…'
+                  : superAdmins.length >= 3
+                    ? 'Cap reached (3 of 3)'
+                    : '＋ Create Super Admin'}
+              </button>
+            )}
           </div>
           {superAdmins.length > 0 && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
@@ -796,6 +825,72 @@ export default function AdminUsersScreen({ onToast }) {
                 </span>
               ))}
             </div>
+          )}
+          {me?.role === 'admin' && superAdmins.length === 0 && (
+            <form
+              style={{
+                display: 'flex',
+                gap: 8,
+                flexWrap: 'wrap',
+                marginTop: 10,
+                alignItems: 'flex-end',
+              }}
+              onSubmit={(e) => {
+                e.preventDefault()
+                void createSuperAdminAcct()
+              }}
+            >
+              <label className="field compact" style={{ flex: 1, minWidth: 140 }}>
+                <span>Username</span>
+                <input
+                  value={saUsername}
+                  onChange={(e) => setSaUsername(e.target.value)}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  placeholder="superadmin"
+                />
+              </label>
+              <label className="field compact" style={{ flex: 1, minWidth: 140 }}>
+                <span>Password (min 8)</span>
+                <input
+                  type="password"
+                  value={saPassword}
+                  onChange={(e) => setSaPassword(e.target.value)}
+                  placeholder="••••••••"
+                />
+              </label>
+              <button type="submit" className="btn small primary" disabled={saBusy}>
+                {saBusy ? 'Creating…' : 'Create first Super Admin'}
+              </button>
+            </form>
+          )}
+          {me?.role === 'admin' && superAdmins.length === 1 && (
+            <form
+              style={{
+                display: 'flex',
+                gap: 8,
+                flexWrap: 'wrap',
+                marginTop: 10,
+                alignItems: 'flex-end',
+              }}
+              onSubmit={(e) => {
+                e.preventDefault()
+                void resetSuperAdminAcct()
+              }}
+            >
+              <label className="field compact" style={{ flex: 1, minWidth: 180 }}>
+                <span>New password for the only Super Admin (min 8)</span>
+                <input
+                  type="password"
+                  value={saResetPassword}
+                  onChange={(e) => setSaResetPassword(e.target.value)}
+                  placeholder="••••••••"
+                />
+              </label>
+              <button type="submit" className="btn small" disabled={saBusy}>
+                {saBusy ? 'Resetting…' : 'Reset Super Admin password'}
+              </button>
+            </form>
           )}
         </div>
       )}

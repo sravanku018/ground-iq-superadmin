@@ -54,7 +54,7 @@ function formatDate(v) {
   }
 }
 
-function Overview({ user, stats, onNav }) {
+function Overview({ user, stats, onNav, superAdminOnly = false }) {
   return (
     <div className="portal-page">
       <header className="portal-page-head">
@@ -515,7 +515,14 @@ export default function AdminPortal({ superAdminOnly = false }) {
           </div>
         ))}
         <Suspense fallback={<PortalSkeleton rows={6} label="Loading screen…" />}>
-          {page === 'overview' && <Overview user={user} stats={stats} onNav={goPage} />}
+          {page === 'overview' && (
+            <Overview
+              user={user}
+              stats={stats}
+              onNav={goPage}
+              superAdminOnly={superAdminOnly}
+            />
+          )}
           {page === 'users' && <AdminUsersScreen onToast={notify} />}
           {page === 'surveys' && <AdminSurveysScreen onToast={notify} />}
           {page === 'questions' && <AdminQuestionsScreen onToast={notify} />}

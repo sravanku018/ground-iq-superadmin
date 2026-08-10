@@ -1521,6 +1521,30 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                             />
                           </label>
                         )}
+                        {q.type === 'choice' && (
+                          <label className="field" style={{ marginTop: 12 }}>
+                            <span>Or type your own answer (not listed above)</span>
+                            <input
+                              type="text"
+                              value={
+                                (() => {
+                                  const v = answers[q.id]
+                                  const opts = Array.isArray(q.options) ? q.options : []
+                                  return v != null && String(v).trim() !== '' && !opts.includes(String(v))
+                                    ? String(v)
+                                    : ''
+                                })()
+                              }
+                              onChange={(e) =>
+                                setAnswers((a) => ({
+                                  ...a,
+                                  [q.id]: e.target.value.trim() || '',
+                                }))
+                              }
+                              placeholder="Type a custom answer…"
+                            />
+                          </label>
+                        )}
                       </div>
                     ) : (
                       <label className="field" style={{ marginTop: 10 }}>

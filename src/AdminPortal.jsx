@@ -33,7 +33,7 @@ const AdminClientAdminsScreen = lazy(() => import('./AdminClientAdmins'))
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: '◈', pages: ['overview', 'report', 'analyze'] },
   { id: 'surveyors', label: 'Surveyors', icon: '👤', pages: ['users'] },
-  { id: 'surveys', label: 'Surveys', icon: '▤', pages: ['surveys'] },
+  { id: 'surveys', label: 'Projects', icon: '▤', pages: ['surveys'] },
   { id: 'data', label: 'Data collection', icon: '☰', pages: ['questions', 'bank', 'review', 'upload', 'data'] },
 ]
 
@@ -53,12 +53,21 @@ const CLIENT_ADMINS_NAV = {
   pages: ['admins'],
 }
 
+// A dedicated Super Admin entry: projects are created here and then assigned
+// to one or more Client Admin profiles (shown with their company name).
+const PROJECTS_NAV = {
+  id: 'projects',
+  label: 'Projects',
+  icon: '▤',
+  pages: ['surveys'],
+}
+
 const PAGE_LABELS = {
   overview: 'Overview',
   report: 'Report',
   analyze: 'Analyze',
   users: 'Users & targets',
-  surveys: 'Surveys',
+  surveys: 'Projects',
   questions: 'Questions',
   review: 'Review',
   upload: 'Upload',
@@ -452,11 +461,12 @@ export default function AdminPortal({ superAdminOnly = false }) {
   const baseNav = superAdminOnly
     ? [
         CLIENT_ADMINS_NAV,
+        PROJECTS_NAV,
         PLATFORM_NAV,
         // console keeps Question Bank under Platform only — avoid duplicate subtabs
-        ...NAV.map((n) =>
-          n.id === 'data' ? { ...n, pages: n.pages.filter((p) => p !== 'bank') } : n
-        ),
+        ...NAV
+          .filter((n) => n.id !== 'surveys')
+          .map((n) => (n.id === 'data' ? { ...n, pages: n.pages.filter((p) => p !== 'bank') } : n)),
       ]
     : NAV
   const nav = baseNav

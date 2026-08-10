@@ -21,7 +21,7 @@ const POWER_DEFS = [
   { key: 'can_validate_proof', label: 'Proof validation', icon: '📞', hint: 'Phone + Aadhaar format checks' },
 ]
 
-const EMPTY_FORM = { username: '', name: '', password: '' }
+const EMPTY_FORM = { username: '', name: '', company_name: '', password: '' }
 
 function initialsOf(name) {
   return String(name || '?')
@@ -79,7 +79,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
 
   const toggleProfile = (u) => {
     setProfileId(profileId === u.id ? null : u.id)
-    setEdit({ username: u.username || '', name: u.name || u.display_name || '', password: '' })
+    setEdit({ username: u.username || '', name: u.name || u.display_name || '', company_name: u.company_name || '', password: '' })
   }
 
   const togglePower = async (u, key, label) => {
@@ -119,6 +119,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
       if (typedName && typedName !== String(u.name || u.display_name || '')) {
         body.name = typedName
       }
+      if (edit.company_name.trim() !== String(u.company_name || '')) body.company_name = edit.company_name.trim()
       if (typedPassword) body.password = typedPassword
 
       const res = await updateUser(u.id, body)
@@ -136,7 +137,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
       setMaxQInputs((m) => ({ ...m, [u.id]: undefined }))
       setMaxSvInputs((m) => ({ ...m, [u.id]: undefined }))
       setMaxSrInputs((m) => ({ ...m, [u.id]: undefined }))
-      setEdit({ username: '', name: '', password: '' })
+      setEdit(EMPTY_FORM)
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -162,6 +163,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
         username: typedUser,
         password: form.password,
         name: (form.name || typedUser).trim(),
+        company_name: form.company_name.trim(),
         role: 'admin',
         target_quota: 0,
       })
@@ -291,6 +293,15 @@ export default function AdminClientAdminsScreen({ onToast }) {
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="Display name (optional)"
               autoComplete="off"
+            />
+          </label>
+          <label className="field compact">
+            <span>Company name</span>
+            <input
+              value={form.company_name}
+              onChange={(e) => setForm({ ...form, company_name: e.target.value })}
+              placeholder="e.g. Acme Research"
+              autoComplete="organization"
             />
           </label>
           <label className="field compact">
@@ -548,6 +559,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       or edits surveys.
                     </p>
 
+                    {/* Surveyor assignments are intentionally not shown or managed in Super Admin. */}
+                    {false && (<>
                     {/* Surveys & surveyors mapping */}
                     <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🗺 Surveys & Surveyors</h4>
                     {Array.isArray(u.survey_team) && u.survey_team.length > 0 ? (
@@ -573,6 +586,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       across admins. Map surveyors to surveys from the admin's Surveys / Surveyors screens.
                     </p>
 
+                    </>)}
                     {/* Connected projects shared by Super Admin */}
                     <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🔗 Connected projects (shared)</h4>
                     {Array.isArray(u.granted_surveys) && u.granted_surveys.length > 0 ? (
@@ -581,14 +595,14 @@ export default function AdminClientAdminsScreen({ onToast }) {
                           <li key={s.id} style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '8px 10px' }}>
                             <div style={{ fontWeight: 600, fontSize: 13, color: '#5b21b6' }}>🔗 {s.title}</div>
                             <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                              Shared by Super Admin — this admin can open, edit & map their surveyors
+                              {u.company_name ? `${u.company_name} · ` : ''}Connected by Super Admin — this Client Admin can open this project.
                             </div>
                           </li>
                         ))}
                       </ul>
                     ) : (
                       <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-                        No surveys shared yet — share from the Surveys tab (Super Admin → Surveys → open a
+                        No projects connected yet — connect from the Projects tab (Super Admin → Projects → open a
                         survey → "Share with client admins…").
                       </p>
                     )}
@@ -622,6 +636,15 @@ export default function AdminClientAdminsScreen({ onToast }) {
                         <input
                           value={edit.name}
                           onChange={(e) => setEdit({ ...edit, name: e.target.value })}
+                          style={{ minWidth: 140 }}
+                        />
+                      </label>
+                      <label className="field compact" style={{ margin: 0 }}>
+                        <span>Company name</span>
+                        <input
+                          value={edit.company_name}
+                          onChange={(e) => setEdit({ ...edit, company_name: e.target.value })}
+                          placeholder="Company / organisation"
                           style={{ minWidth: 140 }}
                         />
                       </label>

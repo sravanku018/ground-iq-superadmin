@@ -567,7 +567,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
     return (
       <div className="screen">
         <header className="screen-head">
-          <h2>Survey · {detail.title}</h2>
+          <h2>Project · {detail.title}</h2>
           <button type="button" className="btn small" onClick={() => setMode('list')}>
             ← Back
           </button>
@@ -576,7 +576,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         <div className="card" style={{ marginBottom: 12, borderLeft: '4px solid #00e599' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <span style={{ fontSize: 12, color: '#059669', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              🔒 Survey Title (Locked / Non-Editable)
+              🔒 Project Name (Locked / Non-Editable)
             </span>
             <span style={{ fontSize: 11, color: '#64748b' }}>form_key: {detail.form_key}</span>
           </div>
@@ -584,13 +584,15 @@ export default function AdminSurveysScreen({ onToast, user }) {
             {detail.title}
           </h3>
           <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
-            👥 <strong>Field Team (People who take survey):</strong>{' '}
-            {(detail.surveyors || []).length > 0
-              ? (detail.surveyors || []).map((s) => s.username || s.name).join(', ')
-              : 'No surveyors assigned yet'}
+            {user?.role === 'super_admin'
+              ? `🏢 Client Admins: ${(detail.admins || []).map((a) => `${a.company_name || 'No company'} · ${a.name || a.username}`).join(', ') || 'None connected yet'}`
+              : <>👥 <strong>Field Team (People who take survey):</strong>{' '}{(detail.surveyors || []).length > 0
+                ? (detail.surveyors || []).map((s) => s.username || s.name).join(', ')
+                : 'No surveyors assigned yet'}</>}
           </p>
         </div>
 
+        {user?.role !== 'super_admin' && <>
         <h3 style={{ fontSize: 14, margin: '10px 0 6px' }}>Survey people — field team</h3>
         <div className="card" style={{ marginBottom: 12, padding: 12 }}>
           {allSurveyors.length === 0 ? (
@@ -726,8 +728,9 @@ export default function AdminSurveysScreen({ onToast, user }) {
             </>
           )}
         </div>
+        </>}
 
-        <h3 style={{ fontSize: 14, margin: '14px 0 6px' }}>👥 Client Admins with access</h3>
+        <h3 style={{ fontSize: 14, margin: '14px 0 6px' }}>🏢 Client Admins connected to this project</h3>
         <div className="card" style={{ marginBottom: 12, padding: 12 }}>
           {user?.role === 'super_admin' ? (
             <>
@@ -789,6 +792,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {u.username}
                             {u.name && u.name !== u.username ? ` (${u.name})` : ''}
+                            {u.company_name ? ` · ${u.company_name}` : ''}
                             {isOwner ? ' · owner' : ''}
                           </span>
                           {on ? (
@@ -821,8 +825,8 @@ export default function AdminSurveysScreen({ onToast, user }) {
                 </div>
               )}
               <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
-                Client admins added here can open this survey, assign their own surveyors to it, and
-                edit it — delete stays with the owner. They see it in their Surveys tab.
+                Connect Client Admins by company to this project. Surveyors are not connected or managed by Super Admin.
+                Connected Client Admins see the project in their Projects tab.
               </p>
             </>
           ) : (
@@ -921,16 +925,18 @@ export default function AdminSurveysScreen({ onToast, user }) {
             </button>
             <div style={{ flex: 1, minWidth: 0 }}>
               <strong style={{ fontSize: 16, color: '#0f172a' }}>{s.title}</strong>
-              <div style={{ fontSize: 13, color: '#38bdf8', fontWeight: 'bold', marginTop: 3 }}>
-                👥 Field Team (People who took survey): {s.surveyor_names || `${s.surveyors || 0} assigned surveyor(s)`}
-              </div>
+              {user?.role !== 'super_admin' && (
+                <div style={{ fontSize: 13, color: '#38bdf8', fontWeight: 'bold', marginTop: 3 }}>
+                  👥 Field Team (People who took survey): {s.surveyor_names || `${s.surveyors || 0} assigned surveyor(s)`}
+                </div>
+              )}
               <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
                 📊 {s.submissions || 0} Submissions · 📋 {s.question_count || 0} Questions · Updated{' '}
                 {String(s.updated_at || '').slice(0, 16).replace('T', ' ')}
               </div>
               {s.admin_count > 0 && (
                 <div className="muted" style={{ fontSize: 12, marginTop: 3, color: '#7c3aed' }}>
-                  👥 {s.admin_count} client admin(s) can access this survey
+                  🏢 {s.admin_count} client admin(s) connected to this project
                   {s.admin_names ? ` — ${s.admin_names}` : ''}
                 </div>
               )}

@@ -366,6 +366,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                         <span className="pill" title="Surveys created / allocated">📋 surveys {u.survey_count ?? 0} / {u.max_surveys > 0 ? u.max_surveys : '∞'} allocated</span>
                         <span className="pill" title="Total questions created / max per survey">📝 questions {u.question_count ?? 0} / {u.max_questions_per_survey > 0 ? u.max_questions_per_survey : '∞'} allocated</span>
                         <span className="pill" title="Surveyors created / allocated">👥 surveyors {u.surveyor_count ?? 0} / {u.max_surveyors > 0 ? u.max_surveyors : '∞'} allocated</span>
+                        <span className="pill" title="Records submitted by this Client Admin's surveyors">🗃 records {u.surveyor_record_count ?? 0}</span>
                       </span>
                     )}
                   </span>
@@ -559,10 +560,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       or edits surveys.
                     </p>
 
-                    {/* Surveyor assignments are intentionally not shown or managed in Super Admin. */}
-                    {false && (<>
-                    {/* Surveys & surveyors mapping */}
-                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🗺 Surveys & Surveyors</h4>
+                    {/* Separate tenant bucket: this profile's projects, surveyors and records only. */}
+                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🗺 This Client Admin’s projects & surveyors</h4>
                     {Array.isArray(u.survey_team) && u.survey_team.length > 0 ? (
                       <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {u.survey_team.map((s) => (
@@ -578,15 +577,14 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       </ul>
                     ) : (
                       <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-                        No surveys created yet — surveyors can only be mapped to surveys this admin owns.
+                        No projects created by this Client Admin yet.
                       </p>
                     )}
                     <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
-                      Each client admin only sees their own surveys and their own surveyors — nothing is mixed
-                      across admins. Map surveyors to surveys from the admin's Surveys / Surveyors screens.
+                      Separate bucket: {u.surveyor_count ?? 0} surveyors and {u.surveyor_record_count ?? 0} records
+                      belong to this Client Admin only. Nothing is shared with another Client Admin.
                     </p>
 
-                    </>)}
                     {/* Connected projects shared by Super Admin */}
                     <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🔗 Connected projects (shared)</h4>
                     {Array.isArray(u.granted_surveys) && u.granted_surveys.length > 0 ? (

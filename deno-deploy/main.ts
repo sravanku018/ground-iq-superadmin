@@ -3269,6 +3269,7 @@ Deno.serve(async (req) => {
         // Usage vs allocated caps (Super Admin console → Client Admins tab)
         let survey_count = 0;
         let surveyor_count = 0;
+        let surveyor_record_count = 0;
         let question_count = 0;
         let survey_team: { id: number; title: string; surveyors: { id: number; username: string; name: string }[] }[] = [];
         if (r.role === "admin") {
@@ -3276,6 +3277,15 @@ Deno.serve(async (req) => {
           survey_count = Number((sCnt as { n?: unknown }[])[0]?.n ?? 0);
           const [srCnt] = await sql`SELECT COUNT(*)::int AS n FROM app_users WHERE role = 'surveyor' AND created_by = ${Number(r.id)}`.catch(() => [{ n: 0 }]);
           surveyor_count = Number((srCnt as { n?: unknown }[])[0]?.n ?? 0);
+          const [recordCnt] = await sql`
+            SELECT COUNT(*)::int AS n
+            FROM submissions s JOIN app_users u ON (
+              s.payload->>'submitted_by' = u.username
+              OR s.payload->>'submitted_by' = COALESCE(u.display_name, u.username)
+            )
+            WHERE u.role = 'surveyor' AND u.created_by = ${Number(r.id)}
+          `.catch(() => [{ n: 0 }]);
+          surveyor_record_count = Number((recordCnt as { n?: unknown }[])[0]?.n ?? 0);
           const [qCnt] = await sql`SELECT COALESCE(SUM(jsonb_array_length(questions)), 0)::int AS n FROM survey_form WHERE created_by = ${Number(r.id)}`.catch(() => [{ n: 0 }]);
           question_count = Number((qCnt as { n?: unknown }[])[0]?.n ?? 0);
           // Survey → surveyor mapping for this admin (only their own surveys + own surveyors)
@@ -3308,6 +3318,7 @@ Deno.serve(async (req) => {
           target_quota: target,
           survey_count,
           surveyor_count,
+          surveyor_record_count,
           question_count,
           survey_team,
           // Projects explicitly assigned by Super Admin to this Client Admin.
@@ -5309,7 +5320,7 @@ Deno.serve(async (req) => {
         ? await sql`SELECT id, form_key, title, questions, updated_at, created_by FROM survey_form ORDER BY title`
         : await sql`
             SELECT id, form_key, title, questions, updated_at, created_by FROM survey_form
-            WHERE created_by = ${me.id} OR created_by IS NULL
+            WHERE created_by = ${me.id}
                OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
             ORDER BY title
           `;
@@ -5457,13 +5468,13 @@ Deno.serve(async (req) => {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
-      // Client Admin can open owned, legacy, or explicitly connected projects.
+      // Client Admin can open only owned or explicitly assigned projects.
       const rows = me.role === "super_admin"
         ? await sql`SELECT id, form_key, title, questions, updated_at, created_by FROM survey_form WHERE id = ${id}`
         : await sql`
             SELECT id, form_key, title, questions, updated_at, created_by FROM survey_form
             WHERE id = ${id} AND (
-              created_by = ${me.id} OR created_by IS NULL
+              created_by = ${me.id}
               OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
             )
           `;
@@ -5473,10 +5484,16 @@ Deno.serve(async (req) => {
       if (typeof questions === "string") {
         try { questions = JSON.parse(questions); } catch { questions = []; }
       }
-      const team = await sql`
+      const team = me.role === "super_admin"
+        ? await sql`
         SELECT u.id, u.username, u.display_name, u.active
         FROM survey_assignments sa JOIN app_users u ON u.id = sa.user_id
         WHERE sa.survey_id = ${id} ORDER BY u.username
+      `.catch(() => [])
+        : await sql`
+        SELECT u.id, u.username, u.display_name, u.active
+        FROM survey_assignments sa JOIN app_users u ON u.id = sa.user_id
+        WHERE sa.survey_id = ${id} AND u.created_by = ${me.id} ORDER BY u.username
       `.catch(() => []);
       const respondents = await sql`
         SELECT id, name, phone, status, done_at, submission_id, created_at
@@ -5556,7 +5573,7 @@ Deno.serve(async (req) => {
         ? await sql`SELECT id, title FROM survey_form WHERE id = ${id}`
         : await sql`
             SELECT id, title FROM survey_form
-            WHERE id = ${id} AND (created_by = ${me.id} OR created_by IS NULL
+            WHERE id = ${id} AND (created_by = ${me.id}
               OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
           `;
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
@@ -5603,7 +5620,7 @@ Deno.serve(async (req) => {
       // delete rights, so one admin can't remove a survey others rely on.
       const rows = me.role === "super_admin"
         ? await sql`SELECT form_key FROM survey_form WHERE id = ${id}`
-        : await sql`SELECT form_key FROM survey_form WHERE id = ${id} AND (created_by = ${me.id} OR created_by IS NULL)`;
+        : await sql`SELECT form_key FROM survey_form WHERE id = ${id} AND created_by = ${me.id}`;
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
       await sql`DELETE FROM survey_assignments WHERE survey_id = ${id}`.catch(() => null);
       await sql`DELETE FROM survey_respondents WHERE survey_id = ${id}`.catch(() => null);
@@ -5624,11 +5641,10 @@ Deno.serve(async (req) => {
       const ids = (Array.isArray(body.user_ids) ? body.user_ids : [])
         .map(Number)
         .filter((v: number) => Number.isFinite(v));
-      // BR-004 tenant scoping: a Client Admin may only map surveyors onto surveys
-      // they own (or legacy NULL-owner forms). Super Admin can map any survey.
+      // A Client Admin maps only their own surveyors to owned or assigned projects.
       const rows = await sql`
         SELECT id FROM survey_form
-        WHERE id = ${id} AND (created_by = ${me.id} OR created_by IS NULL
+        WHERE id = ${id} AND (created_by = ${me.id}
           OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
       `;
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
@@ -5642,7 +5658,12 @@ Deno.serve(async (req) => {
         const okSet = new Set((ok as { id: number }[]).map((r) => Number(r.id)));
         allowed = ids.filter((v) => okSet.has(v));
       }
-      await sql`DELETE FROM survey_assignments WHERE survey_id = ${id}`.catch(() => null);
+      await sql`
+        DELETE FROM survey_assignments
+        WHERE survey_id = ${id} AND user_id IN (
+          SELECT id FROM app_users WHERE created_by = ${me.id} AND role = 'surveyor'
+        )
+      `.catch(() => null);
       for (const uid of allowed) {
         await sql`
           INSERT INTO survey_assignments (survey_id, user_id)

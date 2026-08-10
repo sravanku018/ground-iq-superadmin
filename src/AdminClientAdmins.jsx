@@ -44,6 +44,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
   const [created, setCreated] = useState(null)
   const [maxQInputs, setMaxQInputs] = useState({})
   const [maxSvInputs, setMaxSvInputs] = useState({})
+  const [maxSrInputs, setMaxSrInputs] = useState({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -126,6 +127,26 @@ export default function AdminClientAdminsScreen({ onToast }) {
         'ok',
       )
       setMaxSvInputs((m) => ({ ...m, [u.id]: undefined }))
+      await load()
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveMaxSurveyors = async (u) => {
+    const next = maxSrInputs[u.id] != null ? Number(maxSrInputs[u.id]) : (u.max_surveyors ?? 0)
+    setSaving(true)
+    try {
+      await updateUser(u.id, { max_surveyors: Math.max(0, next) })
+      onToast?.(
+        next > 0
+          ? `Cap set · @${u.username} max ${next} surveyors`
+          : `Cap cleared · @${u.username} unlimited surveyors`,
+        'ok',
+      )
+      setMaxSrInputs((m) => ({ ...m, [u.id]: undefined }))
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -364,6 +385,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                           : '🔒 no powers granted'}
                         {u.max_surveys > 0 ? ` · surveys ≤ ${u.max_surveys}` : ''}
                         {u.max_questions_per_survey > 0 ? ` · Q/survey ≤ ${u.max_questions_per_survey}` : ''}
+                        {u.max_surveyors > 0 ? ` · surveyors ≤ ${u.max_surveyors}` : ''}
                       </>
                     )}
                   </span>
@@ -533,9 +555,40 @@ export default function AdminClientAdminsScreen({ onToast }) {
                           </button>
                         </div>
                       </label>
+                      <label className="field compact" style={{ margin: 0 }}>
+                        <span>Max surveyors (0 = unlimited)</span>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100000"
+                            value={
+                              maxSrInputs[u.id] != null
+                                ? maxSrInputs[u.id]
+                                : (u.max_surveyors ?? 0)
+                            }
+                            onChange={(e) =>
+                              setMaxSrInputs((m) => ({
+                                ...m,
+                                [u.id]: Math.max(0, Number(e.target.value) || 0),
+                              }))
+                            }
+                            style={{ width: 90, padding: '6px 8px' }}
+                          />
+                          <button
+                            type="button"
+                            className="btn small primary"
+                            disabled={saving}
+                            onClick={() => void saveMaxSurveyors(u)}
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </label>
                     </div>
                     <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
-                      Caps are enforced server-side when this admin creates or edits surveys.
+                      Caps are enforced server-side when this admin creates surveyors, surveys,
+                      or edits surveys.
                     </p>
 
                     {/* Verification */}

@@ -1,74 +1,12 @@
-# Election Survey App
+# Ground IQ — Super Admin Console
 
-Mobile app for Telangana election field surveys.
+Separate GitHub Pages site for the **Super Admin** role (max 3 accounts).
 
-- **API:** Deno Deploy → Neon PostgreSQL  
-- **UI:** React + Capacitor Android  
-
-API is fixed in the app (no URL settings):
-
-```
-https://jazzy-crocodile-7790.sravanku018.deno.net
-```
-
-## Install APK
-
-```
-/home/sravan/Downloads/ElectionSurvey-release.apk
-```
-
-1. Uninstall any old build  
-2. Install the APK  
-3. Login  
-
-## Who uses what
-
-| Who | Access | How |
-|-----|--------|-----|
-| **Surveyor** | **Android app only** (no browser needed) | Install APK below |
-| **Client Admin** | **Web portal only** | Browser → `/admin` |
-
-Surveyors do **not** use the website. The React field UI is packaged into the APK with Capacitor.
-
-### Surveyor Android app
-
-```bash
-npm run build:apk:release
-# APK:
-#   android/app/build/outputs/apk/release/app-release.apk
-# Install latest APK (always rebuild after code changes):
-#   npm run build:apk:release
-#   Install: ElectionSurvey-v1.8.0.apk  (or latest ElectionSurvey-release.apk)
-#   or ElectionSurvey-surveyor-app.apk in project root
-```
-
-| Username | Password |
-|----------|----------|
-| `s001` | `survey123` |
-
-(Accounts created in Client Admin portal → app login only.)
-
-Collect: GPS → photo → Q/A + audio → offline queue → sync. Pull to refresh questions.
-
-### Client Admin (web portal — desktop browser)
-
-| Username | Password |
-|----------|----------|
-| `admin` | `admin123` |
-
-http://localhost:5173/admin — users, questions, analyze, review/confirm, report, upload.
-
-## Rebuild APK
-
-```bash
-npm run build:apk:release
-```
-
-## Local web (optional)
-
-```bash
-npm install
-npm run dev
-```
-
-Uses the same Deno API by default.
+- URL: `https://sravanku018.github.io/ground-iq-superadmin/`
+- Login is **server-enforced**: only accounts with role `super_admin` can sign in here
+  (`expected_role=super_admin` → 403 for everyone else). Client Admins use the main
+  portal at `https://sravanku018.github.io/ground-iq-web/`.
+- The build is a variant of the main `ground-iq-web` repo (`VITE_SUPER_ADMIN=1`),
+  checked out fresh on every run — deploy it by re-running this workflow
+  (Actions → Deploy Super Admin console → Run workflow), it always builds the
+  latest `main`.

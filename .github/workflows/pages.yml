@@ -1,4 +1,4 @@
-name: Deploy web portal to GitHub Pages
+name: Deploy Super Admin console to GitHub Pages
 
 on:
   push:
@@ -19,6 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          repository: sravanku018/ground-iq-web
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -26,8 +29,9 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          VITE_BASE: /ground-iq-web/
+          VITE_BASE: /ground-iq-superadmin/
           VITE_FIELD_APP: 0
+          VITE_SUPER_ADMIN: 1
       - run: cp dist/index.html dist/404.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v5

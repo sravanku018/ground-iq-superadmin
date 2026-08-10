@@ -3660,11 +3660,18 @@ Deno.serve(async (req) => {
               ? body[k] === true
               : cur;
       }
-      // Surveyor verification power gate: changing verified requires the CALLER's granted power
-      if (body.verified !== undefined && !hasPower(me, "can_verify_surveyors")) {
-        return json({
-          error: "Super Admin has not granted your account surveyor-verification rights",
-        }, 403);
+      // Verification gate: surveyors need the granted verify power; client admin accounts
+      // can only be verified by the Super Admin (client admins never verify each other)
+      if (body.verified !== undefined) {
+        const targetRole = String((ex as Record<string, unknown>).role || "");
+        const isAdminTarget = targetRole === "admin" || targetRole === "super_admin";
+        if (isAdminTarget ? me.role !== "super_admin" : !hasPower(me, "can_verify_surveyors")) {
+          return json({
+            error: isAdminTarget
+              ? "Only Super Admin can verify client admin accounts"
+              : "Super Admin has not granted your account surveyor-verification rights",
+          }, 403);
+        }
       }
 
       let rows;

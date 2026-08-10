@@ -1520,7 +1520,10 @@ export default function AdminUsersScreen({ onToast }) {
               {admins.map((u) => (
                 <li key={u.id}>
                   <div>
-                    <strong>{u.name || u.username}</strong>
+                    <strong>
+                      {u.name || u.username}{' '}
+                      {u.verified ? <VerifiedBadge size={16} title="Verified client admin" /> : null}
+                    </strong>
                     <span className="meta">
                       @{u.username} ·{' '}
                       {u.role === 'super_admin' ? '★ super admin' : 'admin'}
@@ -1542,6 +1545,15 @@ export default function AdminUsersScreen({ onToast }) {
                       </span>
                     ) : (
                       <>
+                        {me?.role === 'super_admin' && (
+                          <button
+                            type="button"
+                            className={`btn small ${u.verified ? 'ok' : 'primary'}`}
+                            onClick={() => handleToggleVerify(u)}
+                          >
+                            {u.verified ? 'Verified ✓' : 'Verify admin'}
+                          </button>
+                        )}
                         <button type="button" className="btn small" onClick={() => openEdit(u)}>
                           Edit
                         </button>

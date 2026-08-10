@@ -9,6 +9,7 @@ import {
   me,
 } from './api'
 import AdminLogin from './AdminLogin'
+import VerifiedBadge from './VerifiedBadge'
 import { PortalEmpty, PortalSkeleton } from './PortalUI'
 import { versionLabel } from './version'
 import './App.css'
@@ -505,7 +506,8 @@ export default function AdminPortal({ superAdminOnly = false }) {
           </button>
           <div className="portal-user">
             <strong>
-              {user.name || user.username}
+              {user.name || user.username}{' '}
+              {user.verified ? <VerifiedBadge size={16} title="Verified" /> : null}
               {user.role === 'super_admin' ? ' ★' : ''}
             </strong>
             <span>

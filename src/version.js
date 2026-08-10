@@ -25,7 +25,15 @@ export function versionFullLabel() {
   return `v${APP_VERSION}${code} · build ${APP_BUILD}`
 }
 
-/** Persist running version so we can detect upgrades */
+const RELOAD_KEY = 'esurvey_reloaded_after_upgrade'
+
+/**
+ * Persist running version so we can detect upgrades.
+ * upgraded=true when the stored bundle differs from the one running now —
+ * i.e. a new build was deployed. The SPA shell calls reloadOnceIfUpgraded() on
+ * mount so a stale cached index.html (which references now-removed hashed
+ * chunks) self-heals instead of failing to lazy-load screens.
+ */
 export function storeAppVersion() {
   const meta = {
     version: APP_VERSION,
@@ -35,12 +43,45 @@ export function storeAppVersion() {
   }
   try {
     const prev = localStorage.getItem(STORE_KEY)
+    const prevMetaRaw = localStorage.getItem(STORE_META_KEY)
+    let prevBuild = null
+    try {
+      prevBuild = prevMetaRaw ? JSON.parse(prevMetaRaw).build : null
+    } catch {
+      /* ignore corrupt meta */
+    }
     localStorage.setItem(STORE_KEY, APP_VERSION)
     localStorage.setItem(STORE_META_KEY, JSON.stringify(meta))
-    return { prev, current: APP_VERSION, upgraded: prev != null && prev !== APP_VERSION }
+    const upgraded =
+      prev != null && (prev !== APP_VERSION || (prevBuild != null && prevBuild !== APP_BUILD))
+    return { prev, current: APP_VERSION, build: APP_BUILD, upgraded }
   } catch {
-    return { prev: null, current: APP_VERSION, upgraded: false }
+    return { prev: null, current: APP_VERSION, build: APP_BUILD, upgraded: false }
   }
+}
+
+/**
+ * Detect upgrade and persist the running build in one step.
+ * When a newer build was deployed, hard-reloads once (stale-bundle self-heal)
+ * so the fresh index.html → new hashed chunks are served.
+ * Cooldown: skips the auto-reload if one already happened in the last 30s,
+ * which is exactly the window before the fresh bundle takes over (upgraded=false).
+ * Returns the upgrade info so callers can log/title without re-detecting.
+ */
+export function reloadOnceIfUpgraded() {
+  const info = storeAppVersion()
+  if (info.upgraded) {
+    try {
+      const last = Number(localStorage.getItem(RELOAD_KEY) || 0)
+      if (Date.now() - last >= 30_000) {
+        localStorage.setItem(RELOAD_KEY, Date.now().toString())
+        window.location.reload()
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return info
 }
 
 export function getStoredAppVersion() {

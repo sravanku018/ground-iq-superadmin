@@ -6,7 +6,7 @@
 import { useEffect } from 'react'
 import AdminPortal from './AdminPortal'
 import SurveyorApp from './SurveyorApp'
-import { storeAppVersion, versionLabel } from './version'
+import { reloadOnceIfUpgraded, versionLabel } from './version'
 
 function isAdminPath() {
   if (typeof window === 'undefined') return false
@@ -25,9 +25,9 @@ const FIELD_APP_ENABLED = (import.meta.env.VITE_FIELD_APP ?? '1') !== '0'
 const SUPER_ADMIN_CONSOLE = (import.meta.env.VITE_SUPER_ADMIN ?? '0') === '1'
 
 export default function App() {
-  // Store running build version in localStorage; show in document title
+  // Store running build version; self-heal stale cached bundles; set document title
   useEffect(() => {
-    const info = storeAppVersion()
+    const info = reloadOnceIfUpgraded()
     if (typeof document !== 'undefined') {
       document.title = `Ground IQ ${versionLabel()}`
     }

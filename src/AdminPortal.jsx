@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { Component, lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import {
   getStats,
   getStoredUser,
@@ -80,6 +80,66 @@ const PAGE_POWER = {
   review: 'can_review_data',
   upload: 'can_validate_proof',
   data: 'can_validate_proof',
+}
+
+/**
+ * Catches lazy chunk load failures (stale cached bundle → removed hashed chunk
+ * returns 404). Auto-recovers by reloading once so the fresh index.html is
+ * served; a cooldown prevents reload loops if the chunk keeps failing.
+ */
+class ChunkErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { failed: false, reloading: false }
+  }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  componentDidCatch(error) {
+    const isChunk =
+      String(error?.message || '').includes('dynamically imported module') ||
+      String(error?.message || '').includes('Loading chunk') ||
+      String(error?.name || '').includes('ChunkLoadError')
+    if (!isChunk || this.state.reloading) return
+    let last = 0
+    try {
+      last = Number(localStorage.getItem('esurvey_chunk_reload') || 0)
+    } catch {
+      /* ignore */
+    }
+    if (Date.now() - last < 30_000) return // recently tried — show the manual card instead
+    this.setState({ reloading: true })
+    try {
+      localStorage.setItem('esurvey_chunk_reload', Date.now().toString())
+    } catch {
+      /* ignore */
+    }
+    setTimeout(() => window.location.reload(), 350)
+  }
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="portal-page">
+          <div className="card" style={{ padding: 24, textAlign: 'center' }}>
+            <h3>{this.state.reloading ? 'Reloading…' : 'This screen could not be loaded'}</h3>
+            {!this.state.reloading && (
+              <p className="muted">A new version may have been deployed. Reload to continue.</p>
+            )}
+            {!this.state.reloading && (
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => window.location.reload()}
+              >
+                Reload now
+              </button>
+            )}
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
 }
 
 function formatDate(v) {
@@ -599,6 +659,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           </div>
         ))}
         <Suspense fallback={<PortalSkeleton rows={6} label="Loading screen…" />}>
+          <ChunkErrorBoundary>
           {(page === 'overview' || !canPage(page)) && (
             <Overview
               user={user}
@@ -630,6 +691,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
               onSurveyChange={(v) => setSurveyFilter(v)}
             />
           )}
+          </ChunkErrorBoundary>
         </Suspense>
       </main>
     </div>

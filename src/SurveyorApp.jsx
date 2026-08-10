@@ -720,6 +720,15 @@ function DraftsScreen({ user, onToast, onEdit }) {
               {d.audioDataUrl ? '✓' : '✗'}
             </span>
 
+            {isDraft && (
+              <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                Status: {typeof d.step === 'number' ? `step ${d.step + 1}/4` : 'draft'}
+                {d.total != null
+                  ? ` · ${d.answered ?? 0}/${d.total} questions answered`
+                  : ''}
+              </span>
+            )}
+
             {isFailed && (
               <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
                 Sync failed{d.lastError ? `: ${d.lastError}` : ''} — tap “Sync now” to retry.

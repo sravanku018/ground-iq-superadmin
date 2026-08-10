@@ -88,6 +88,9 @@ export async function savePackageLocal({
   audioMime,
   recordIndex,
   locks,
+  step,
+  answered,
+  total,
 }, opts = {}) {
   // Hard reject incomplete packages (client-side lock) — drafts may skip locks
   const draft = !!opts.draft
@@ -111,6 +114,10 @@ export async function savePackageLocal({
     lastError: null,
     serverSubmissionId: null,
     recordIndex: recordIndex ?? null,
+    // Collection status saved with the draft (step + answered-question progress)
+    step: Number.isInteger(step) ? step : null,
+    answered: Number.isInteger(answered) ? answered : null,
+    total: Number.isInteger(total) ? total : null,
     locks: locks || {
       geo: true,
       photo: true,

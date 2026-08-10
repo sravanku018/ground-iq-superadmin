@@ -15,6 +15,19 @@ const MAX_ACCURACY_M = 120 // meters — reject coarse GPS
 const MIN_AUDIO_BYTES = 2500 // ~tiny silence rejection
 const MIN_PHOTO_CHARS = 800 // base64 length floor
 
+// Auto-lock/meta keys written into answers — excluded from answered-question count
+const META_ANSWER_KEYS = [
+  '_draft',
+  'geo_lat',
+  'geo_lng',
+  'geo_accuracy',
+  'geo_at',
+  'location_display',
+  'location_district',
+  'location_mandal',
+  'location_state',
+]
+
 // Auto colors for option buttons (choice / A·B·C·D / Yes-No)
 const OPTION_COLORS = [
   '#00e599',
@@ -158,7 +171,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         /* ignore */
       }
     }
-    setStep(2)
+    setStep(typeof draft.step === 'number' ? Math.min(draft.step, 2) : 2)
   }, [draft, questions])
 
   const geoLocked = isGeoValid(geo)
@@ -173,6 +186,17 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
     voice: voiceLocked,
   }
   const allHardLocks = geoLocked && photoLocked && voiceLocked && locationLocked
+
+  // Survey status saved with the draft: answered questions out of total (meta keys excluded)
+  const answeredCount = useMemo(() => {
+    const meta = new Set(META_ANSWER_KEYS)
+    let n = 0
+    for (const [k, v] of Object.entries(answers || {})) {
+      if (meta.has(k)) continue
+      if (v !== undefined && v !== null && String(v).trim() !== '') n += 1
+    }
+    return n
+  }, [answers])
 
   const refreshProgress = useCallback(async () => {
     try {
@@ -759,6 +783,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
       audioDataUrl = await blobToBase64(blob)
       audioMime = blob.type || 'audio/webm'
 
+      // Keep meta keys in sync with META_ANSWER_KEYS (excluded from the answered count)
       const lockedAnswers = {
         ...answers,
         _draft: true,
@@ -791,6 +816,9 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
           audioMime,
           recordIndex: localSeq,
           locks: { geo: true, location: !!locationDetails, photo: true, voice: !!audioDataUrl },
+          step,
+          answered: answeredCount,
+          total: questions.length,
         },
         { draft: true },
       )

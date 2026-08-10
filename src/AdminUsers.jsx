@@ -307,14 +307,16 @@ export default function AdminUsersScreen({ onToast }) {
     const typedPass = form.password
     const typedName = (form.name || form.username).trim()
     const typedQuota = form.target_quota
-    const typedRole = form.role === 'admin' ? 'admin' : 'surveyor'
+    // Client Admin surveyor creation is always a surveyor — admin accounts are created
+    // exclusively by Super Admin in the Super Admin console (Client Admins tab).
+    const typedRole = 'surveyor'
     try {
       const body = {
         username: typedUser,
         password: typedPass,
         name: typedName || typedUser,
         role: typedRole,
-        target_quota: typedRole === 'admin' ? 0 : typedQuota,
+        target_quota: typedQuota,
       }
       const res = await createUser(body)
       const created = res?.user || {}
@@ -1145,41 +1147,27 @@ export default function AdminUsersScreen({ onToast }) {
         <form className="card" onSubmit={handleCreate} style={{ marginBottom: 14 }}>
           <h3>Add one surveyor</h3>
           <label className="field">
-            <span>Role</span>
-            <select
-              value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value })}
-            >
-              <option value="surveyor">Surveyor (field app)</option>
-              <option value="admin">Admin (portal)</option>
-            </select>
+            <span>Target records</span>
+            <input
+              type="number"
+              min={0}
+              value={form.target_quota}
+              onChange={(e) =>
+                setForm({ ...form, target_quota: Number(e.target.value) || 0 })
+              }
+            />
           </label>
-          {form.role === 'surveyor' && (
-            <label className="field">
-              <span>Target records</span>
-              <input
-                type="number"
-                min={0}
-                value={form.target_quota}
-                onChange={(e) =>
-                  setForm({ ...form, target_quota: Number(e.target.value) || 0 })
-                }
-              />
-            </label>
-          )}
-          {form.role === 'surveyor' && (
-            <div className="field">
-              <span>Assign surveys (multiple, optional)</span>
-              <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
-                None selected = surveyor uses the default Field Survey form on the app.
-              </p>
-              <SurveySelect
-                value={form.surveys}
-                onChange={(ids) => setForm((f) => ({ ...f, surveys: ids }))}
-                all={allSurveys}
-              />
-            </div>
-          )}
+          <div className="field">
+            <span>Assign surveys (multiple, optional)</span>
+            <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
+              None selected = surveyor uses the default Field Survey form on the app.
+            </p>
+            <SurveySelect
+              value={form.surveys}
+              onChange={(ids) => setForm((f) => ({ ...f, surveys: ids }))}
+              all={allSurveys}
+            />
+          </div>
           <label className="field">
             <span>Username * (field app login — stored lowercase)</span>
             <input

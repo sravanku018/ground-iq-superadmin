@@ -18,8 +18,11 @@ function isAdminPath() {
 /**
  * Website = Client Admin portal only. The Android APK keeps the surveyor
  * field app (built with VITE_FIELD_APP=1).
+ * VITE_SUPER_ADMIN=1 → separate Super Admin console on its own GitHub page
+ * (login server-gated to role super_admin).
  */
 const FIELD_APP_ENABLED = (import.meta.env.VITE_FIELD_APP ?? '1') !== '0'
+const SUPER_ADMIN_CONSOLE = (import.meta.env.VITE_SUPER_ADMIN ?? '0') === '1'
 
 export default function App() {
   // Store running build version in localStorage; show in document title
@@ -33,6 +36,9 @@ export default function App() {
     }
   }, [])
 
+  if (SUPER_ADMIN_CONSOLE) {
+    return <AdminPortal superAdminOnly />
+  }
   if (!FIELD_APP_ENABLED || isAdminPath()) {
     return <AdminPortal />
   }

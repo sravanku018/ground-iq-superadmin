@@ -188,10 +188,15 @@ function DataList({ items, loading, onRefresh, surveys, surveyFilter, onSurveyCh
   )
 }
 
-export default function AdminPortal() {
+export default function AdminPortal({ superAdminOnly = false }) {
   const [user, setUser] = useState(() => {
     const u = getStoredUser()
-    return u?.role === 'admin' || u?.role === 'super_admin' ? u : null
+    return u &&
+      (superAdminOnly
+        ? u.role === 'super_admin'
+        : u.role === 'admin' || u.role === 'super_admin')
+      ? u
+      : null
   })
   const [authReady, setAuthReady] = useState(false)
   const [page, setPage] = useState('overview')
@@ -293,7 +298,10 @@ export default function AdminPortal() {
       }
       try {
         const data = await me()
-        if (data.user?.role !== 'admin' && data.user?.role !== 'super_admin') {
+        const okRole = superAdminOnly
+          ? data.user?.role === 'super_admin'
+          : data.user?.role === 'admin' || data.user?.role === 'super_admin'
+        if (!okRole) {
           await logout()
           if (!cancelled) {
             setUser(null)
@@ -367,6 +375,7 @@ export default function AdminPortal() {
           </div>
         )}
         <AdminLogin
+          superAdminOnly={superAdminOnly}
           onToast={notify}
           onSuccess={(u) => {
             setUser(u)

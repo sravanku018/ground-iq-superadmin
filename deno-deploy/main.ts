@@ -2704,6 +2704,14 @@ Deno.serve(async (req) => {
           }, 403);
         }
       }
+      // Super Admin console (separate GitHub page) — server-enforced super_admin only
+      if (expectedRole === "super_admin") {
+        if (user.role !== "super_admin") {
+          return json({
+            error: "Super Admin console only. Client Admin uses the main portal.",
+          }, 403);
+        }
+      }
       const ok = await verifyPassword(password, user.password_hash);
       if (!ok) {
         return json({

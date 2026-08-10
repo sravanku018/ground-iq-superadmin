@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { clearSession, login } from './api'
 import { versionLabel } from './version'
 
-/** Client Admin web portal login — clean form, no demo credentials */
-export default function AdminLogin({ onSuccess, onToast }) {
+/** Client Admin web portal login — clean form, no demo credentials.
+ * superAdminOnly → separate Super Admin console (server-enforced expected_role=super_admin). */
+export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -17,10 +18,19 @@ export default function AdminLogin({ onSuccess, onToast }) {
     setLoading(true)
     try {
       clearSession()
-      const data = await login(username.trim(), password, 'admin')
-      if (data.user?.role !== 'admin' && data.user?.role !== 'super_admin') {
+      const data = await login(
+        username.trim(),
+        password,
+        superAdminOnly ? 'super_admin' : 'admin',
+      )
+      const okRole = superAdminOnly
+        ? data.user?.role === 'super_admin'
+        : data.user?.role === 'admin' || data.user?.role === 'super_admin'
+      if (!okRole) {
         clearSession()
-        throw new Error('Client Admin portal only.')
+        throw new Error(
+          superAdminOnly ? 'Super Admin console only.' : 'Client Admin portal only.',
+        )
       }
       onToast?.(`Welcome ${data.user.name}`, 'ok')
       onSuccess?.(data.user)

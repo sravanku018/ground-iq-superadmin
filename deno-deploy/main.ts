@@ -3179,34 +3179,64 @@ Deno.serve(async (req) => {
       // BR-004 tenant scoping: a Client Admin only sees themselves + surveyors they
       // created (created_by = me.id). Super Admin sees every account. This stops
       // survey names/surveyors from being mixed across client admins.
-      const userScope = me.role === "super_admin" ? sql`` : sql`WHERE id = ${me.id} OR created_by = ${me.id}`;
-      const rows = await sql`
-        SELECT id, username, display_name, role, active, created_at,
-               COALESCE(target_quota, 0) AS target_quota,
-               key_id, phone, photo, aadhaar_front, aadhaar_back,
-               COALESCE(verified, FALSE) AS verified,
-               COALESCE(can_manage_questions, FALSE) AS can_manage_questions,
-               COALESCE(can_edit_surveys, FALSE) AS can_edit_surveys,
-               COALESCE(can_review_data, FALSE) AS can_review_data,
-               COALESCE(can_verify_surveyors, FALSE) AS can_verify_surveyors,
-               COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
-               COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
-               COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
-               COALESCE(max_surveys, 0) AS max_surveys,
-               COALESCE(max_surveyors, 0) AS max_surveyors
-        FROM app_users
-        ${userScope}
-        ORDER BY id
-      `.catch(async () =>
-        await sql`
-          SELECT id, username, display_name, role, active, created_at,
-                 FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
-                 FALSE AS can_review_data, FALSE AS can_verify_surveyors,
-                 FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof,
-                 0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors
-          FROM app_users ${userScope} ORDER BY id
-        `
-      );
+      // NOTE: two explicit queries — the Deno-deployed neon driver rejects nested
+      // composed ${...} sql fragments with 'syntax error at or near $1'.
+      const rows = me.role === "super_admin"
+        ? await sql`
+            SELECT id, username, display_name, role, active, created_at,
+                   COALESCE(target_quota, 0) AS target_quota,
+                   key_id, phone, photo, aadhaar_front, aadhaar_back,
+                   COALESCE(verified, FALSE) AS verified,
+                   COALESCE(can_manage_questions, FALSE) AS can_manage_questions,
+                   COALESCE(can_edit_surveys, FALSE) AS can_edit_surveys,
+                   COALESCE(can_review_data, FALSE) AS can_review_data,
+                   COALESCE(can_verify_surveyors, FALSE) AS can_verify_surveyors,
+                   COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
+                   COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
+                   COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
+                   COALESCE(max_surveys, 0) AS max_surveys,
+                   COALESCE(max_surveyors, 0) AS max_surveyors
+            FROM app_users
+            ORDER BY id
+          `.catch(async () =>
+            await sql`
+              SELECT id, username, display_name, role, active, created_at,
+                     FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
+                     FALSE AS can_review_data, FALSE AS can_verify_surveyors,
+                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof,
+                     0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors
+              FROM app_users ORDER BY id
+            `
+          )
+        : await sql`
+            SELECT id, username, display_name, role, active, created_at,
+                   COALESCE(target_quota, 0) AS target_quota,
+                   key_id, phone, photo, aadhaar_front, aadhaar_back,
+                   COALESCE(verified, FALSE) AS verified,
+                   COALESCE(can_manage_questions, FALSE) AS can_manage_questions,
+                   COALESCE(can_edit_surveys, FALSE) AS can_edit_surveys,
+                   COALESCE(can_review_data, FALSE) AS can_review_data,
+                   COALESCE(can_verify_surveyors, FALSE) AS can_verify_surveyors,
+                   COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
+                   COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
+                   COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
+                   COALESCE(max_surveys, 0) AS max_surveys,
+                   COALESCE(max_surveyors, 0) AS max_surveyors
+            FROM app_users
+            WHERE (id = ${me.id} OR created_by = ${me.id})
+            ORDER BY id
+          `.catch(async () =>
+            await sql`
+              SELECT id, username, display_name, role, active, created_at,
+                     FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
+                     FALSE AS can_review_data, FALSE AS can_verify_surveyors,
+                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof,
+                     0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors
+              FROM app_users
+              WHERE (id = ${me.id} OR created_by = ${me.id})
+              ORDER BY id
+            `
+          );
       const users = [];
       for (const r of rows as Record<string, unknown>[]) {
         let done = 0;

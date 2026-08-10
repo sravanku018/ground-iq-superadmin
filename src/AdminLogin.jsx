@@ -48,10 +48,14 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
           <span className="portal-logo">◆</span>
           <div>
             <p className="eyebrow">Ground IQ</p>
-            <h1>Client Admin</h1>
+            <h1>{superAdminOnly ? 'Super Admin Console' : 'Client Admin'}</h1>
           </div>
         </div>
-        <p className="login-sub">Sign in to manage surveys and surveyors.</p>
+        <p className="login-sub">
+          {superAdminOnly
+            ? 'Sign in to manage the platform, all tenants and teams.'
+            : 'Sign in to manage surveys and surveyors.'}
+        </p>
         <form onSubmit={handleLogin} className="login-form">
           <label className="field">
             <span>Username</span>

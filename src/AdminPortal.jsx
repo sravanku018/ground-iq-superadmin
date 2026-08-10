@@ -59,7 +59,7 @@ function Overview({ user, stats, onNav }) {
     <div className="portal-page">
       <header className="portal-page-head">
         <div>
-          <p className="eyebrow">Client Admin</p>
+          <p className="eyebrow">{superAdminOnly ? 'Super Admin Console' : 'Client Admin'}</p>
           <h1>Overview</h1>
           <p className="portal-lead">
             Welcome, {user?.name || user?.username}. Pipeline: Surveyors → Surveys → Data
@@ -125,7 +125,8 @@ function Overview({ user, stats, onNav }) {
         <p>
           Users you create here are for the <strong>mobile/field app only</strong> — they do not
           use this web portal. Give them username/password for the APK (or field app URL). They
-          collect offline; you verify and confirm here in Client Admin.
+          collect offline; you verify and confirm here in
+          {superAdminOnly ? ' Super Admin.' : ' Client Admin.'}
         </p>
       </div>
     </div>
@@ -358,7 +359,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
       <div className="portal-shell">
         <div className="portal-login">
           <div className="portal-login-card" style={{ textAlign: 'center' }}>
-            <p className="eyebrow">Client Admin</p>
+            <p className="eyebrow">{superAdminOnly ? 'Super Admin Console' : 'Client Admin'}</p>
             <h1 style={{ fontSize: 22 }}>Starting…</h1>
           </div>
         </div>
@@ -435,7 +436,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           <span className="portal-logo">◆</span>
           <div>
             <strong>Ground IQ</strong>
-            <span>Client Admin</span>
+            <span>{superAdminOnly ? 'Super Admin' : 'Client Admin'}</span>
           </div>
         </div>
         <nav className="portal-nav">

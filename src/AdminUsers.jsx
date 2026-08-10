@@ -720,7 +720,7 @@ export default function AdminUsersScreen({ onToast }) {
   return (
     <div className="screen">
       <header className="screen-head">
-        <h2>Client Admin · Surveyors</h2>
+        <h2>{me?.role === 'super_admin' ? 'Super Admin' : 'Client Admin'} · Surveyors</h2>
         <p>
           Create surveyor logins · bulk create with surveys · per-surveyor profile with
           day / month / geo filters

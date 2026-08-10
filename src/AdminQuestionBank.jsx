@@ -50,6 +50,7 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
   const [questions, setQuestions] = useState([])
   const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState(null)
+  const [useCounts, setUseCounts] = useState({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -173,7 +174,14 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
   async function useTemplate(t) {
     setBusyId(t.id)
     try {
-      const d = await copyQuestionBank(t.id)
+      const qs = Array.isArray(t.questions) ? t.questions : []
+      const questionCount = useCounts[t.id]
+      const d = await copyQuestionBank(t.id, {
+        question_count:
+          questionCount && questionCount > 0 && questionCount < qs.length
+            ? questionCount
+            : undefined,
+      })
       onToast?.(`Survey "${d.survey?.title || 'created'}" created from template — edit it under Surveys`, 'ok')
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -345,7 +353,8 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
         <h2>{isSuper ? 'Super Admin · Global Question Bank' : 'Question Bank'}</h2>
         <p>
           FR-QB-02: reusable question templates. {isSuper ? '★ templates are global (all tenants); ' : 'Your private templates plus ★ global ones. '}
-          “Use template” creates a live survey you can assign to surveyors.
+          “Use template” creates a live survey (needs CRUD questionnaire or Survey questions power).
+          Use the <strong>− +</strong> picker to select how many questions to include (default all).
         </p>
       </header>
 
@@ -415,9 +424,54 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
                 )}
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button type="button" className="btn small primary" disabled={busyId === t.id} onClick={() => useTemplate(t)}>
-                  {busyId === t.id ? '…' : 'Use template → survey'}
-                </button>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {qs.length > 1 && (
+                    <label className="field compact" style={{ margin: 0, width: 110 }}>
+                      <span style={{ fontSize: 10 }}>Questions</span>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          className="btn small"
+                          style={{ fontSize: 11, padding: '2px 8px', minWidth: 0 }}
+                          onClick={() =>
+                            setUseCounts((c) => ({
+                              ...c,
+                              [t.id]: Math.max(1, (c[t.id] ?? qs.length) - 1),
+                            }))
+                          }
+                          disabled={busyId === t.id}
+                        >
+                          −
+                        </button>
+                        <span style={{ fontSize: 12, whiteSpace: 'nowrap', fontWeight: 'bold' }}>
+                          {useCounts[t.id] ?? qs.length} / {qs.length}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn small"
+                          style={{ fontSize: 11, padding: '2px 8px', minWidth: 0 }}
+                          onClick={() =>
+                            setUseCounts((c) => ({
+                              ...c,
+                              [t.id]: Math.min(qs.length, (c[t.id] ?? qs.length) + 1),
+                            }))
+                          }
+                          disabled={busyId === t.id}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </label>
+                  )}
+                  <button
+                    type="button"
+                    className="btn small primary"
+                    disabled={busyId === t.id}
+                    onClick={() => useTemplate(t)}
+                  >
+                    {busyId === t.id ? '…' : 'Use template → survey'}
+                  </button>
+                </div>
                 {canCrud && !(t.is_global && !isSuper) && (
                   <>
                     <button type="button" className="btn small" onClick={() => startEdit(t)}>

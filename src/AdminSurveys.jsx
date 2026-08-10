@@ -323,7 +323,7 @@ function cleanQuestions(questions) {
 
 export default function AdminSurveysScreen({ onToast, user }) {
   // Survey-editing power — Super Admin grants it (least privilege)
-  const canEdit = user?.role === 'super_admin' || !!user?.can_edit_surveys
+  const canEdit = user?.role === 'super_admin' || !!user?.can_edit_surveys || !!user?.can_crud_questionnaire
   const [mode, setMode] = useState('list') // list | create | detail
   const [surveys, setSurveys] = useState([])
   const [search, setSearch] = useState('')
@@ -496,8 +496,9 @@ export default function AdminSurveysScreen({ onToast, user }) {
             }}
           >
             🔒 <strong>Surveys are read-only for you.</strong> Creating or editing surveys is locked
-            until the Super Admin grants your account <strong>Survey questions</strong> power
-            (Surveyors → your profile). You can still open surveys and view their teams.
+            until the Super Admin grants your account <strong>CRUD questionnaire</strong> or
+            <strong>Survey questions</strong> power (Super Admin → Client Admins tab).
+            You can still open surveys and view their teams.
           </div>
         )}
         <div className="card" style={{ marginBottom: 12 }}>

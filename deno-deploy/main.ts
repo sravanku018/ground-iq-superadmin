@@ -151,7 +151,8 @@ async function getUser(token: string | null) {
            COALESCE(u.can_manage_questions, FALSE) AS can_manage_questions,
            COALESCE(u.can_edit_surveys, FALSE) AS can_edit_surveys,
            COALESCE(u.can_review_data, FALSE) AS can_review_data,
-           COALESCE(u.can_verify_surveyors, FALSE) AS can_verify_surveyors
+           COALESCE(u.can_verify_surveyors, FALSE) AS can_verify_surveyors,
+           COALESCE(u.can_crud_questionnaire, FALSE) AS can_crud_questionnaire
     FROM app_sessions s
     JOIN app_users u ON u.id = s.user_id
     WHERE s.token = ${token}
@@ -164,7 +165,7 @@ async function getUser(token: string | null) {
       SELECT u.id, u.username, u.display_name, u.role, u.active, u.created_at,
              NULL AS key_id, NULL AS phone, NULL AS photo, NULL AS aadhaar_front, NULL AS aadhaar_back,
              FALSE AS verified, FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
-             FALSE AS can_review_data, FALSE AS can_verify_surveyors
+             FALSE AS can_review_data, FALSE AS can_verify_surveyors, FALSE AS can_crud_questionnaire
       FROM app_sessions s
       JOIN app_users u ON u.id = s.user_id
       WHERE s.token = ${token}
@@ -193,6 +194,7 @@ async function getUser(token: string | null) {
     can_edit_surveys: (u as Record<string, unknown>).can_edit_surveys === true,
     can_review_data: (u as Record<string, unknown>).can_review_data === true,
     can_verify_surveyors: (u as Record<string, unknown>).can_verify_surveyors === true,
+    can_crud_questionnaire: (u as Record<string, unknown>).can_crud_questionnaire === true,
   };
 }
 
@@ -447,6 +449,7 @@ async function ensureSchema() {
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_edit_surveys BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_review_data BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_verify_surveyors BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_crud_questionnaire BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   // Unique key ID backfill for existing users (idempotent — different key per row)
   const noKey = await sql`
     SELECT id FROM app_users WHERE key_id IS NULL OR key_id = ''
@@ -3156,14 +3159,16 @@ Deno.serve(async (req) => {
                COALESCE(can_manage_questions, FALSE) AS can_manage_questions,
                COALESCE(can_edit_surveys, FALSE) AS can_edit_surveys,
                COALESCE(can_review_data, FALSE) AS can_review_data,
-               COALESCE(can_verify_surveyors, FALSE) AS can_verify_surveyors
+               COALESCE(can_verify_surveyors, FALSE) AS can_verify_surveyors,
+               COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire
         FROM app_users
         ORDER BY id
       `.catch(async () =>
         await sql`
           SELECT id, username, display_name, role, active, created_at,
                  FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
-                 FALSE AS can_review_data, FALSE AS can_verify_surveyors
+                 FALSE AS can_review_data, FALSE AS can_verify_surveyors,
+                 FALSE AS can_crud_questionnaire
           FROM app_users ORDER BY id
         `
       );
@@ -3198,6 +3203,7 @@ Deno.serve(async (req) => {
           can_edit_surveys: r.can_edit_surveys === true,
           can_review_data: r.can_review_data === true,
           can_verify_surveyors: r.can_verify_surveyors === true,
+          can_crud_questionnaire: r.can_crud_questionnaire === true,
           surveys: assignedMap.get(Number(r.id)) || [],
           status: isCollector ? progressStatus(done, target) : "admin",
           progress_label: isCollector
@@ -3258,10 +3264,11 @@ Deno.serve(async (req) => {
         const canEditSurveys = canSuper && body.can_edit_surveys === true;
         const canReviewData = canSuper && body.can_review_data === true;
         const canVerifySurveyors = canSuper && body.can_verify_surveyors === true;
+        const canCrudQuestionnaire = canSuper && body.can_crud_questionnaire === true;
         const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors)
-          VALUES (${username}, ${password_hash}, ${name}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors})
-          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors
+          INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire)
+          VALUES (${username}, ${password_hash}, ${name}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canCrudQuestionnaire})
+          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire
         `;
         const u = inserted[0] as Record<string, unknown>;
         logAudit(me, "user_create", "user", u.id, {
@@ -3272,6 +3279,7 @@ Deno.serve(async (req) => {
           can_edit_surveys: canEditSurveys,
           can_review_data: canReviewData,
           can_verify_surveyors: canVerifySurveyors,
+          can_crud_questionnaire: canCrudQuestionnaire,
         });
         return json({
           user: {
@@ -3649,6 +3657,7 @@ Deno.serve(async (req) => {
         "can_edit_surveys",
         "can_review_data",
         "can_verify_surveyors",
+        "can_crud_questionnaire",
       ] as const;
       const nextPowers: Record<string, boolean> = {};
       for (const k of POWER_KEYS) {
@@ -3692,9 +3701,10 @@ Deno.serve(async (req) => {
               can_manage_questions = ${nextPowers.can_manage_questions},
               can_edit_surveys = ${nextPowers.can_edit_surveys},
               can_review_data = ${nextPowers.can_review_data},
-              can_verify_surveyors = ${nextPowers.can_verify_surveyors}
+              can_verify_surveyors = ${nextPowers.can_verify_surveyors},
+              can_crud_questionnaire = ${nextPowers.can_crud_questionnaire}
           WHERE id = ${id}
-          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors
+          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire
         `;
       } catch (e) {
         const msg = (e as Error).message || "";
@@ -3922,17 +3932,24 @@ Deno.serve(async (req) => {
     if (path.match(/^\/api\/question-bank\/\d+\/copy$/) && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      // Copying a template creates a survey — needs the survey-editing power
-      if (!hasPower(me, "can_edit_surveys")) {
+      // Copying a template creates a survey — needs questionnaire CRUD or survey-editing power
+      if (!hasPower(me, "can_crud_questionnaire") && !hasPower(me, "can_edit_surveys")) {
         return json({
-          error: "Super Admin has not granted your account survey-editing rights",
+          error: "Super Admin has not granted your account questionnaire-editing rights",
         }, 403);
       }
+      const body = await readBody(req);
       const id = Number(path.split("/")[3]);
-      const rows = await sql`SELECT id, name, questions FROM question_bank WHERE id = ${id}`.catch(() => []);
+      // Enforce client-scoped visibility: only global templates or the client's own
+      const rows = await sql`SELECT id, name, questions FROM question_bank WHERE id = ${id} AND (is_global = TRUE OR created_by = ${me.id} OR ${me.role} = 'super_admin')`.catch(() => []);
       const t = rows[0] as Record<string, unknown> | undefined;
       if (!t) return json({ error: "Not found" }, 404);
-      const questions = Array.isArray(t.questions) ? t.questions : [];
+      let questions = Array.isArray(t.questions) ? t.questions : [];
+      // Select number of questions — subset by question_count (default all)
+      if (body.question_count) {
+        const limit = Math.max(1, Math.min(Number(body.question_count), questions.length));
+        questions = questions.slice(0, limit);
+      }
       const title = `${String(t.name || "Template").trim()} Survey`;
       const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "survey";
       let formKey = base;
@@ -5019,9 +5036,9 @@ Deno.serve(async (req) => {
     if (path === "/api/surveys" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      if (!hasPower(me, "can_edit_surveys")) {
+      if (!hasPower(me, "can_crud_questionnaire") && !hasPower(me, "can_edit_surveys")) {
         return json({
-          error: "Super Admin has not granted your account survey-editing rights",
+          error: "Super Admin has not granted your account questionnaire-editing rights",
         }, 403);
       }
       const body = await readBody(req);
@@ -5099,9 +5116,9 @@ Deno.serve(async (req) => {
     if (path.match(/^\/api\/surveys\/\d+$/) && method === "PUT") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      if (!hasPower(me, "can_edit_surveys")) {
+      if (!hasPower(me, "can_crud_questionnaire") && !hasPower(me, "can_edit_surveys")) {
         return json({
-          error: "Super Admin has not granted your account survey-editing rights",
+          error: "Super Admin has not granted your account questionnaire-editing rights",
         }, 403);
       }
       const id = Number(path.split("/")[3]);
@@ -5134,9 +5151,9 @@ Deno.serve(async (req) => {
     if (path.match(/^\/api\/surveys\/\d+$/) && method === "DELETE") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      if (!hasPower(me, "can_edit_surveys")) {
+      if (!hasPower(me, "can_crud_questionnaire") && !hasPower(me, "can_edit_surveys")) {
         return json({
-          error: "Super Admin has not granted your account survey-editing rights",
+          error: "Super Admin has not granted your account questionnaire-editing rights",
         }, 403);
       }
       const id = Number(path.split("/")[3]);

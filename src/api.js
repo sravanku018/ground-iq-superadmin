@@ -213,10 +213,11 @@ export function deleteQuestionBank(id) {
   return request(`/api/question-bank/${id}`, { method: 'DELETE' })
 }
 
-export function copyQuestionBank(id) {
+export function copyQuestionBank(id, opts = {}) {
   return request(`/api/question-bank/${id}/copy`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question_count: opts.question_count }),
   })
 }
 

@@ -984,6 +984,16 @@ export default function SurveyorApp() {
           }
           return
         }
+        // Defensive: never auto-login a disabled account
+        if (data.user?.active === false) {
+          await logout()
+          if (!cancelled) {
+            setUser(null)
+            setAuthReady(true)
+            notify('Account disabled — contact Client Admin', 'error')
+          }
+          return
+        }
         if (!cancelled) {
           setUser(data.user)
           setAuthReady(true)
@@ -1003,6 +1013,51 @@ export default function SurveyorApp() {
       clearTimeout(timeout)
     }
   }, [notify])
+
+  // Account revalidation — a disabled/inactive user must never stay logged in or auto-login:
+  // re-check every 5 min and whenever the app returns to foreground. 401/disabled → force
+  // logout (clears the stored session). Transient network errors keep the session so a
+  // surveyor in the field is never logged out by a bad connection.
+  useEffect(() => {
+    if (!user || !authReady) return undefined
+    let dead = false
+    const check = async () => {
+      try {
+        const res = await me()
+        if (!res?.user || res.user.active === false || res.user.role !== 'surveyor') {
+          const err = new Error('Account no longer active')
+          err.status = 401
+          err.disabled = true
+          throw err
+        }
+        // Only re-set when something actually changed (avoids effect churn on identical objects)
+        if (!dead && res.user.verified !== user.verified) setUser(res.user)
+      } catch (e) {
+        if (dead) return
+        if (e?.status === 401 || e?.disabled) {
+          stopSyncEngine()
+          await logout().catch(() => {})
+          setUser(null)
+          setMyProgress(null)
+          notify(
+            e?.disabled ? 'Account disabled — logged out' : 'Session expired — sign in again',
+            'error',
+          )
+        }
+        // else: transient network error — keep session, retry next tick
+      }
+    }
+    const iv = setInterval(check, 5 * 60 * 1000)
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void check()
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      dead = true
+      clearInterval(iv)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [user, authReady, notify])
 
   useEffect(() => {
     if (user && authReady) loadAppData()

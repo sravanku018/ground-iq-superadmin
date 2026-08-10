@@ -113,6 +113,7 @@ function QuestionEditor({ questions, onChange }) {
                 <option value="choice">🔘 Choice / Custom Options (Multi-Pill)</option>
                 <option value="abc">🔤 A · B · C · D Choice Buttons</option>
                 <option value="sentiment">⭐ Sentiment Rating Scale (Positive/Neutral/Negative)</option>
+                <option value="meter">🎚️ Sentiment Meter (tap-o-meter 1–100%)</option>
                 <option value="text">✏️ Open Text Input</option>
                 <option value="age">🔢 Age / Numeric Field</option>
               </select>
@@ -256,6 +257,21 @@ function QuestionEditor({ questions, onChange }) {
                       {letter}
                     </span>
                   ))}
+                </div>
+              ) : type === 'meter' ? (
+                <div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="100"
+                    readOnly
+                    style={{ width: '100%', accentColor: '#059669' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                    <span>1% · Negative</span>
+                    <span>50% · Neutral</span>
+                    <span>100% · Positive</span>
+                  </div>
                 </div>
               ) : hasOptions ? (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

@@ -153,7 +153,8 @@ async function getUser(token: string | null) {
            COALESCE(u.can_review_data, FALSE) AS can_review_data,
            COALESCE(u.can_verify_surveyors, FALSE) AS can_verify_surveyors,
            COALESCE(u.can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
-           COALESCE(u.can_validate_proof, FALSE) AS can_validate_proof
+           COALESCE(u.can_validate_proof, FALSE) AS can_validate_proof,
+           COALESCE(u.max_questions_per_survey, 0) AS max_questions_per_survey
     FROM app_sessions s
     JOIN app_users u ON u.id = s.user_id
     WHERE s.token = ${token}
@@ -167,7 +168,7 @@ async function getUser(token: string | null) {
              NULL AS key_id, NULL AS phone, NULL AS photo, NULL AS aadhaar_front, NULL AS aadhaar_back,
              FALSE AS verified, FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
              FALSE AS can_review_data, FALSE AS can_verify_surveyors, FALSE AS can_crud_questionnaire,
-             FALSE AS can_validate_proof
+             FALSE AS can_validate_proof, 0 AS max_questions_per_survey
       FROM app_sessions s
       JOIN app_users u ON u.id = s.user_id
       WHERE s.token = ${token}
@@ -198,6 +199,7 @@ async function getUser(token: string | null) {
     can_verify_surveyors: (u as Record<string, unknown>).can_verify_surveyors === true,
     can_crud_questionnaire: (u as Record<string, unknown>).can_crud_questionnaire === true,
     can_validate_proof: (u as Record<string, unknown>).can_validate_proof === true,
+    max_questions_per_survey: Number((u as Record<string, unknown>).max_questions_per_survey) || 0,
   };
 }
 
@@ -454,6 +456,8 @@ async function ensureSchema() {
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_verify_surveyors BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_crud_questionnaire BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_validate_proof BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
+  // Super-Admin-set cap on how many questions a Client Admin may put into one survey (0 = unlimited)
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_questions_per_survey INT NOT NULL DEFAULT 0`.catch(() => null);
   // Unique key ID backfill for existing users (idempotent — different key per row)
   const noKey = await sql`
     SELECT id FROM app_users WHERE key_id IS NULL OR key_id = ''
@@ -2880,6 +2884,7 @@ Deno.serve(async (req) => {
           can_verify_surveyors: (user as Record<string, unknown>).can_verify_surveyors === true,
           can_crud_questionnaire: (user as Record<string, unknown>).can_crud_questionnaire === true,
           can_validate_proof: (user as Record<string, unknown>).can_validate_proof === true,
+          max_questions_per_survey: Number((user as Record<string, unknown>).max_questions_per_survey) || 0,
         },
         expires_at: expires.toISOString(),
         access:
@@ -3167,7 +3172,8 @@ Deno.serve(async (req) => {
                COALESCE(can_review_data, FALSE) AS can_review_data,
                COALESCE(can_verify_surveyors, FALSE) AS can_verify_surveyors,
                COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
-               COALESCE(can_validate_proof, FALSE) AS can_validate_proof
+               COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
+               COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey
         FROM app_users
         ORDER BY id
       `.catch(async () =>
@@ -3175,7 +3181,8 @@ Deno.serve(async (req) => {
           SELECT id, username, display_name, role, active, created_at,
                  FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
                  FALSE AS can_review_data, FALSE AS can_verify_surveyors,
-                 FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof
+                 FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof,
+                 0 AS max_questions_per_survey
           FROM app_users ORDER BY id
         `
       );
@@ -3212,6 +3219,7 @@ Deno.serve(async (req) => {
           can_verify_surveyors: r.can_verify_surveyors === true,
           can_crud_questionnaire: r.can_crud_questionnaire === true,
           can_validate_proof: r.can_validate_proof === true,
+          max_questions_per_survey: Number(r.max_questions_per_survey) || 0,
           surveys: assignedMap.get(Number(r.id)) || [],
           status: isCollector ? progressStatus(done, target) : "admin",
           progress_label: isCollector
@@ -3274,10 +3282,13 @@ Deno.serve(async (req) => {
         const canVerifySurveyors = canSuper && body.can_verify_surveyors === true;
         const canCrudQuestionnaire = canSuper && body.can_crud_questionnaire === true;
         const canValidateProof = canSuper && body.can_validate_proof === true;
+        const maxQuestionsPerSurvey = canSuper
+          ? Math.max(0, Math.min(Number(body.max_questions_per_survey) || 0, 100000))
+          : 0;
         const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof)
-          VALUES (${username}, ${password_hash}, ${name}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canCrudQuestionnaire}, ${canValidateProof})
-          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof
+          INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey)
+          VALUES (${username}, ${password_hash}, ${name}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${maxQuestionsPerSurvey})
+          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey
         `;
         const u = inserted[0] as Record<string, unknown>;
         logAudit(me, "user_create", "user", u.id, {
@@ -3290,6 +3301,7 @@ Deno.serve(async (req) => {
           can_verify_surveyors: canVerifySurveyors,
           can_crud_questionnaire: canCrudQuestionnaire,
           can_validate_proof: canValidateProof,
+          max_questions_per_survey: maxQuestionsPerSurvey,
         });
         return json({
           user: {
@@ -3661,6 +3673,10 @@ Deno.serve(async (req) => {
         body.target_quota != null
           ? Math.max(0, Math.min(Number(body.target_quota) || 0, 100000))
           : Number(ex.target_quota) || 0;
+      const nextMaxQuestionsPerSurvey =
+        body.max_questions_per_survey !== undefined && me.role === "super_admin"
+          ? Math.max(0, Math.min(Number(body.max_questions_per_survey) || 0, 100000))
+          : Number((ex as Record<string, unknown>).max_questions_per_survey) || 0;
       // Grant-based powers — only Super Admin grants/revokes them (least privilege)
       const POWER_KEYS = [
         "can_manage_questions",
@@ -3714,9 +3730,10 @@ Deno.serve(async (req) => {
               can_review_data = ${nextPowers.can_review_data},
               can_verify_surveyors = ${nextPowers.can_verify_surveyors},
               can_crud_questionnaire = ${nextPowers.can_crud_questionnaire},
-              can_validate_proof = ${nextPowers.can_validate_proof}
+              can_validate_proof = ${nextPowers.can_validate_proof},
+              max_questions_per_survey = ${nextMaxQuestionsPerSurvey}
           WHERE id = ${id}
-          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof
+          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey
         `;
       } catch (e) {
         const msg = (e as Error).message || "";
@@ -3746,6 +3763,7 @@ Deno.serve(async (req) => {
         body.role !== undefined ||
         body.target_quota !== undefined ||
         body.verified !== undefined ||
+        body.max_questions_per_survey !== undefined ||
         POWER_KEYS.some((k) => body[k] !== undefined);
       if (adminChanged && isAdmin) {
         logAudit(me, "user_update", "user", id, {
@@ -3957,10 +3975,15 @@ Deno.serve(async (req) => {
       const t = rows[0] as Record<string, unknown> | undefined;
       if (!t) return json({ error: "Not found" }, 404);
       let questions = Array.isArray(t.questions) ? t.questions : [];
-      // Select number of questions — subset by question_count (default all)
+      // Select number of questions — subset by question_count (default all), capped by the
+      // Super-Admin-set per-survey question cap for this Client Admin (0 = unlimited)
+      const maxQs = Number((me as Record<string, unknown>).max_questions_per_survey) || 0;
+      const cap = maxQs > 0 ? Math.min(maxQs, questions.length) : questions.length;
       if (body.question_count) {
-        const limit = Math.max(1, Math.min(Number(body.question_count), questions.length));
+        const limit = Math.max(1, Math.min(Number(body.question_count), cap));
         questions = questions.slice(0, limit);
+      } else if (maxQs > 0 && questions.length > maxQs) {
+        questions = questions.slice(0, maxQs);
       }
       const title = `${String(t.name || "Template").trim()} Survey`;
       const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "survey";
@@ -5141,6 +5164,13 @@ Deno.serve(async (req) => {
       const title = String(body.title || "").trim();
       if (!title) return json({ error: "Survey name required" }, 400);
       const questions = Array.isArray(body.questions) ? body.questions : [];
+      // Super-Admin-set per-survey question cap for this Client Admin (0 = unlimited)
+      const maxQsCreate = Number((me as Record<string, unknown>).max_questions_per_survey) || 0;
+      if (maxQsCreate > 0 && questions.length > maxQsCreate) {
+        return json({
+          error: `Survey question cap exceeded — maximum ${maxQsCreate} questions per survey (set by Super Admin)`,
+        }, 422);
+      }
       const dup = await sql`
         SELECT id, form_key FROM survey_form WHERE LOWER(title) = LOWER(${title}) LIMIT 1
       `.catch(() => []);
@@ -5221,6 +5251,13 @@ Deno.serve(async (req) => {
       const body = await readBody(req);
       const rows = await sql`SELECT id, title FROM survey_form WHERE id = ${id}`;
       if (!rows.length) return json({ error: "Not found" }, 404);
+      // Super-Admin-set per-survey question cap for this Client Admin (0 = unlimited)
+      const maxQsPut = Number((me as Record<string, unknown>).max_questions_per_survey) || 0;
+      if (maxQsPut > 0 && Array.isArray(body.questions) && body.questions.length > maxQsPut) {
+        return json({
+          error: `Survey question cap exceeded — maximum ${maxQsPut} questions per survey (set by Super Admin)`,
+        }, 422);
+      }
       const title = String(body.title || "").trim();
       if (title) {
         const dup = await sql`

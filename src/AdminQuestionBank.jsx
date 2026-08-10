@@ -33,6 +33,7 @@ const TYPE_OPTIONS = [
   ['choice', '🔘 Choice / Custom Options'],
   ['abc', '🔤 A · B · C · D Choice Buttons'],
   ['sentiment', '⭐ Sentiment Rating Scale'],
+  ['meter', '🎚️ Sentiment Meter (tap-o-meter 1–100%)'],
   ['text', '✏️ Open Text Input'],
   ['age', '🔢 Age / Numeric Field'],
 ]
@@ -51,6 +52,9 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
   const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState(null)
   const [useCounts, setUseCounts] = useState({})
+  // Super-Admin-set per-survey question cap for this Client Admin (0 = unlimited)
+  const maxQsPerSurvey = Number(user?.max_questions_per_survey || me?.max_questions_per_survey) || 0
+  const capFor = (qs) => (maxQsPerSurvey > 0 ? Math.min(maxQsPerSurvey, qs.length) : qs.length)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -175,12 +179,11 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
     setBusyId(t.id)
     try {
       const qs = Array.isArray(t.questions) ? t.questions : []
-      const questionCount = useCounts[t.id]
+      const cap = maxQsPerSurvey > 0 ? Math.min(maxQsPerSurvey, qs.length) : qs.length
+      const rawCount = useCounts[t.id]
+      const questionCount = rawCount ? Math.min(rawCount, cap) : undefined
       const d = await copyQuestionBank(t.id, {
-        question_count:
-          questionCount && questionCount > 0 && questionCount < qs.length
-            ? questionCount
-            : undefined,
+        question_count: questionCount && questionCount < cap ? questionCount : undefined,
       })
       onToast?.(`Survey "${d.survey?.title || 'created'}" created from template — edit it under Surveys`, 'ok')
     } catch (e) {
@@ -391,6 +394,7 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
       ) : (
         templates.map((t) => {
           const qs = Array.isArray(t.questions) ? t.questions : []
+          const cap = capFor(qs)
           return (
             <div
               key={t.id}
@@ -427,7 +431,9 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   {qs.length > 1 && (
                     <label className="field compact" style={{ margin: 0, width: 110 }}>
-                      <span style={{ fontSize: 10 }}>Questions</span>
+                      <span style={{ fontSize: 10 }}>
+                        Questions{maxQsPerSurvey > 0 ? ` (max ${maxQsPerSurvey})` : ''}
+                      </span>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                         <button
                           type="button"
@@ -436,7 +442,7 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
                           onClick={() =>
                             setUseCounts((c) => ({
                               ...c,
-                              [t.id]: Math.max(1, (c[t.id] ?? qs.length) - 1),
+                              [t.id]: Math.max(1, (c[t.id] ?? cap) - 1),
                             }))
                           }
                           disabled={busyId === t.id}
@@ -444,7 +450,7 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
                           −
                         </button>
                         <span style={{ fontSize: 12, whiteSpace: 'nowrap', fontWeight: 'bold' }}>
-                          {useCounts[t.id] ?? qs.length} / {qs.length}
+                          {Math.min(useCounts[t.id] ?? cap, cap)} / {cap}
                         </span>
                         <button
                           type="button"
@@ -453,7 +459,7 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
                           onClick={() =>
                             setUseCounts((c) => ({
                               ...c,
-                              [t.id]: Math.min(qs.length, (c[t.id] ?? qs.length) + 1),
+                              [t.id]: Math.min(cap, (c[t.id] ?? cap) + 1),
                             }))
                           }
                           disabled={busyId === t.id}

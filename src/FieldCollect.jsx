@@ -1364,6 +1364,97 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                           })}
                         </div>
                       </div>
+                    ) : q.type === 'meter' ? (
+                      <div style={{ marginTop: 10 }}>
+                        <label className="field" style={{ marginBottom: 4 }}>
+                          <span>Sentiment Meter — tap the bar (1–100%)</span>
+                        </label>
+                        <input
+                          type="range"
+                          min="1"
+                          max="100"
+                          step="1"
+                          value={
+                            (() => {
+                              const raw = String(answers[q.id] || '').replace('%', '').trim()
+                              const n = Number(raw)
+                              return n >= 1 && n <= 100 ? n : 50
+                            })()
+                          }
+                          onChange={(e) =>
+                            setAnswers((a) => ({ ...a, [q.id]: `${Number(e.target.value)}%` }))
+                          }
+                          style={{ width: '100%', accentColor: '#059669', height: 34 }}
+                        />
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            fontSize: 11,
+                            color: '#94a3b8',
+                          }}
+                        >
+                          <span>1% · Very negative</span>
+                          <span>50% · Neutral</span>
+                          <span>100% · Very positive</span>
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 8,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 24,
+                              fontWeight: 800,
+                              color: '#059669',
+                              minWidth: 72,
+                            }}
+                          >
+                            {(() => {
+                              const raw = String(answers[q.id] || '').replace('%', '').trim()
+                              const n = Number(raw)
+                              return n >= 1 && n <= 100 ? `${n}%` : '—'
+                            })()}
+                          </span>
+                          {(() => {
+                            const raw = String(answers[q.id] || '').replace('%', '').trim()
+                            const n = Number(raw)
+                            if (!(n >= 1 && n <= 100)) return null
+                            const mood =
+                              n <= 33 ? '🙁 Negative' : n <= 66 ? '😐 Neutral' : '😀 Positive'
+                            return (
+                              <span
+                                className="pill"
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: 'bold',
+                                  background:
+                                    n <= 33
+                                      ? 'rgba(220,38,38,0.15)'
+                                      : n <= 66
+                                        ? 'rgba(217,119,6,0.15)'
+                                        : 'rgba(5,150,105,0.15)',
+                                  border:
+                                    n <= 33
+                                      ? '1px solid rgba(220,38,38,0.5)'
+                                      : n <= 66
+                                        ? '1px solid rgba(217,119,6,0.5)'
+                                        : '1px solid rgba(5,150,105,0.5)',
+                                  color:
+                                    n <= 33 ? '#dc2626' : n <= 66 ? '#d97706' : '#059669',
+                                }}
+                              >
+                                {mood}
+                              </span>
+                            )
+                          })()}
+                        </div>
+                      </div>
                     ) : (Array.isArray(q.options) && q.options.length > 0) || (q.type === 'range' || q.type === 'numeric_range' || q.type === 'age') ? (
                       <div>
                         <div

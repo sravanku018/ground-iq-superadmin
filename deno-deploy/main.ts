@@ -148,7 +148,10 @@ async function getUser(token: string | null) {
     SELECT u.id, u.username, u.display_name, u.role, u.active, u.created_at,
            u.key_id, u.phone, u.photo, u.aadhaar_front, u.aadhaar_back,
            COALESCE(u.verified, FALSE) AS verified,
-           COALESCE(u.can_manage_questions, FALSE) AS can_manage_questions
+           COALESCE(u.can_manage_questions, FALSE) AS can_manage_questions,
+           COALESCE(u.can_edit_surveys, FALSE) AS can_edit_surveys,
+           COALESCE(u.can_review_data, FALSE) AS can_review_data,
+           COALESCE(u.can_verify_surveyors, FALSE) AS can_verify_surveyors
     FROM app_sessions s
     JOIN app_users u ON u.id = s.user_id
     WHERE s.token = ${token}
@@ -160,7 +163,8 @@ async function getUser(token: string | null) {
     await sql`
       SELECT u.id, u.username, u.display_name, u.role, u.active, u.created_at,
              NULL AS key_id, NULL AS phone, NULL AS photo, NULL AS aadhaar_front, NULL AS aadhaar_back,
-             FALSE AS verified, FALSE AS can_manage_questions
+             FALSE AS verified, FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
+             FALSE AS can_review_data, FALSE AS can_verify_surveyors
       FROM app_sessions s
       JOIN app_users u ON u.id = s.user_id
       WHERE s.token = ${token}
@@ -186,12 +190,23 @@ async function getUser(token: string | null) {
     aadhaar_back: u.aadhaar_back || null,
     verified: u.verified === true,
     can_manage_questions: (u as Record<string, unknown>).can_manage_questions === true,
+    can_edit_surveys: (u as Record<string, unknown>).can_edit_surveys === true,
+    can_review_data: (u as Record<string, unknown>).can_review_data === true,
+    can_verify_surveyors: (u as Record<string, unknown>).can_verify_surveyors === true,
   };
 }
 
 /** Portal roles: Client Admin + platform Super Admin (01-PRD.md §2). Super Admin has all admin powers. */
 function isPortalAdmin(role: unknown): boolean {
   return role === "admin" || role === "super_admin";
+}
+
+/** Grant-based power check — Super Admin always has every power; Client Admins need the grant. */
+function hasPower(
+  me: { role: unknown } & Record<string, unknown> | null,
+  key: string,
+): boolean {
+  return !!me && (me.role === "super_admin" || me[key] === true);
 }
 
 /**
@@ -425,8 +440,13 @@ async function ensureSchema() {
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS aadhaar_front TEXT`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS aadhaar_back TEXT`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS verified BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
-  // FR-QB-02 governance: Super-Admin-granted Question Bank CRUD power for Client Admins (least privilege)
+  // Grant-based powers for Client Admins (FR-QB-02 governance, least privilege):
+  // question-bank CRUD, survey-question editing, data review/verification, surveyor verification.
+  // Super Admin always has all powers; each is granted/revoked per account by Super Admin only.
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_manage_questions BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_edit_surveys BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_review_data BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_verify_surveyors BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   // Unique key ID backfill for existing users (idempotent — different key per row)
   const noKey = await sql`
     SELECT id FROM app_users WHERE key_id IS NULL OR key_id = ''
@@ -2848,6 +2868,9 @@ Deno.serve(async (req) => {
           aadhaar_back: (user as Record<string, unknown>).aadhaar_back || null,
           verified: (user as Record<string, unknown>).verified === true,
           can_manage_questions: (user as Record<string, unknown>).can_manage_questions === true,
+          can_edit_surveys: (user as Record<string, unknown>).can_edit_surveys === true,
+          can_review_data: (user as Record<string, unknown>).can_review_data === true,
+          can_verify_surveyors: (user as Record<string, unknown>).can_verify_surveyors === true,
         },
         expires_at: expires.toISOString(),
         access:
@@ -3130,13 +3153,17 @@ Deno.serve(async (req) => {
                COALESCE(target_quota, 0) AS target_quota,
                key_id, phone, photo, aadhaar_front, aadhaar_back,
                COALESCE(verified, FALSE) AS verified,
-               COALESCE(can_manage_questions, FALSE) AS can_manage_questions
+               COALESCE(can_manage_questions, FALSE) AS can_manage_questions,
+               COALESCE(can_edit_surveys, FALSE) AS can_edit_surveys,
+               COALESCE(can_review_data, FALSE) AS can_review_data,
+               COALESCE(can_verify_surveyors, FALSE) AS can_verify_surveyors
         FROM app_users
         ORDER BY id
       `.catch(async () =>
         await sql`
           SELECT id, username, display_name, role, active, created_at,
-                 FALSE AS can_manage_questions
+                 FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
+                 FALSE AS can_review_data, FALSE AS can_verify_surveyors
           FROM app_users ORDER BY id
         `
       );
@@ -3168,6 +3195,9 @@ Deno.serve(async (req) => {
           aadhaar_back: r.aadhaar_back || null,
           verified: r.verified === true,
           can_manage_questions: r.can_manage_questions === true,
+          can_edit_surveys: r.can_edit_surveys === true,
+          can_review_data: r.can_review_data === true,
+          can_verify_surveyors: r.can_verify_surveyors === true,
           surveys: assignedMap.get(Number(r.id)) || [],
           status: isCollector ? progressStatus(done, target) : "admin",
           progress_label: isCollector
@@ -3222,13 +3252,16 @@ Deno.serve(async (req) => {
       try {
         const password_hash = await hashPasswordAsync(password);
         const key_id = await uniqueUserKeyId();
-        // Question-bank CRUD power can be set at admin creation by the Super Admin (FR-QB-02)
-        const canManageQuestions =
-          role === "admin" && me.role === "super_admin" && body.can_manage_questions === true;
+        // Grant-based powers can be set at admin creation by the Super Admin (least privilege)
+        const canSuper = role === "admin" && me.role === "super_admin";
+        const canManageQuestions = canSuper && body.can_manage_questions === true;
+        const canEditSurveys = canSuper && body.can_edit_surveys === true;
+        const canReviewData = canSuper && body.can_review_data === true;
+        const canVerifySurveyors = canSuper && body.can_verify_surveyors === true;
         const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active, key_id, phone, can_manage_questions)
-          VALUES (${username}, ${password_hash}, ${name}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions})
-          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, can_manage_questions
+          INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors)
+          VALUES (${username}, ${password_hash}, ${name}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors})
+          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors
         `;
         const u = inserted[0] as Record<string, unknown>;
         logAudit(me, "user_create", "user", u.id, {
@@ -3236,6 +3269,9 @@ Deno.serve(async (req) => {
           role,
           target_quota,
           can_manage_questions: canManageQuestions,
+          can_edit_surveys: canEditSurveys,
+          can_review_data: canReviewData,
+          can_verify_surveyors: canVerifySurveyors,
         });
         return json({
           user: {
@@ -3249,6 +3285,9 @@ Deno.serve(async (req) => {
             key_id: u.key_id || key_id,
             phone: u.phone || null,
             can_manage_questions: u.can_manage_questions === true,
+            can_edit_surveys: u.can_edit_surveys === true,
+            can_review_data: u.can_review_data === true,
+            can_verify_surveyors: u.can_verify_surveyors === true,
           },
           field_app_access: role === "surveyor",
           field_app_login: role === "surveyor"
@@ -3604,13 +3643,29 @@ Deno.serve(async (req) => {
         body.target_quota != null
           ? Math.max(0, Math.min(Number(body.target_quota) || 0, 100000))
           : Number(ex.target_quota) || 0;
-      // Question-bank CRUD power — only Super Admin grants/revokes it (FR-QB-02)
-      const nextCanManageQuestions =
-        body.can_manage_questions === undefined
-          ? (ex as Record<string, unknown>).can_manage_questions === true
-          : me.role === "super_admin"
-            ? body.can_manage_questions === true
-            : (ex as Record<string, unknown>).can_manage_questions === true;
+      // Grant-based powers — only Super Admin grants/revokes them (least privilege)
+      const POWER_KEYS = [
+        "can_manage_questions",
+        "can_edit_surveys",
+        "can_review_data",
+        "can_verify_surveyors",
+      ] as const;
+      const nextPowers: Record<string, boolean> = {};
+      for (const k of POWER_KEYS) {
+        const cur = (ex as Record<string, unknown>)[k] === true;
+        nextPowers[k] =
+          body[k] === undefined
+            ? cur
+            : me.role === "super_admin"
+              ? body[k] === true
+              : cur;
+      }
+      // Surveyor verification power gate: changing verified requires the CALLER's granted power
+      if (body.verified !== undefined && !hasPower(me, "can_verify_surveyors")) {
+        return json({
+          error: "Super Admin has not granted your account surveyor-verification rights",
+        }, 403);
+      }
 
       let rows;
       try {
@@ -3627,9 +3682,12 @@ Deno.serve(async (req) => {
               aadhaar_front = ${nextAadhaarFront},
               aadhaar_back = ${nextAadhaarBack},
               verified = ${nextVerified},
-              can_manage_questions = ${nextCanManageQuestions}
+              can_manage_questions = ${nextPowers.can_manage_questions},
+              can_edit_surveys = ${nextPowers.can_edit_surveys},
+              can_review_data = ${nextPowers.can_review_data},
+              can_verify_surveyors = ${nextPowers.can_verify_surveyors}
           WHERE id = ${id}
-          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions
+          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors
         `;
       } catch (e) {
         const msg = (e as Error).message || "";
@@ -3659,7 +3717,7 @@ Deno.serve(async (req) => {
         body.role !== undefined ||
         body.target_quota !== undefined ||
         body.verified !== undefined ||
-        body.can_manage_questions !== undefined;
+        POWER_KEYS.some((k) => body[k] !== undefined);
       if (adminChanged && isAdmin) {
         logAudit(me, "user_update", "user", id, {
           username: ex.username,
@@ -3668,7 +3726,7 @@ Deno.serve(async (req) => {
           role_changed: body.role !== undefined,
           quota_changed: body.target_quota !== undefined,
           verified_changed: body.verified !== undefined,
-          qb_crud_changed: body.can_manage_questions !== undefined,
+          powers_changed: POWER_KEYS.filter((k) => body[k] !== undefined),
         });
       }
 
@@ -3690,6 +3748,9 @@ Deno.serve(async (req) => {
           aadhaar_back: u.aadhaar_back || nextAadhaarBack || null,
           verified: u.verified === true,
           can_manage_questions: u.can_manage_questions === true,
+          can_edit_surveys: u.can_edit_surveys === true,
+          can_review_data: u.can_review_data === true,
+          can_verify_surveyors: u.can_verify_surveyors === true,
         },
         password_changed: passwordChanged,
         username_changed: nextUsername !== ex.username,
@@ -3854,6 +3915,12 @@ Deno.serve(async (req) => {
     if (path.match(/^\/api\/question-bank\/\d+\/copy$/) && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      // Copying a template creates a survey — needs the survey-editing power
+      if (!hasPower(me, "can_edit_surveys")) {
+        return json({
+          error: "Super Admin has not granted your account survey-editing rights",
+        }, 403);
+      }
       const id = Number(path.split("/")[3]);
       const rows = await sql`SELECT id, name, questions FROM question_bank WHERE id = ${id}`.catch(() => []);
       const t = rows[0] as Record<string, unknown> | undefined;
@@ -4540,6 +4607,11 @@ Deno.serve(async (req) => {
     if (path.match(/^\/api\/submissions\/\d+$/) && method === "PATCH") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!hasPower(me, "can_review_data")) {
+        return json({
+          error: "Super Admin has not granted your account data-verification rights",
+        }, 403);
+      }
       const id = Number(path.split("/")[3]);
       const body = await readBody(req);
       const rows = await sql`SELECT id, payload FROM submissions WHERE id = ${id}`;
@@ -4708,6 +4780,11 @@ Deno.serve(async (req) => {
     if (path.match(/^\/api\/submissions\/\d+$/) && method === "DELETE") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!hasPower(me, "can_review_data")) {
+        return json({
+          error: "Super Admin has not granted your account data-verification rights",
+        }, 403);
+      }
       const id = Number(path.split("/")[3]);
       const rows = await sql`SELECT id FROM submissions WHERE id = ${id}`;
       if (!rows.length) return json({ error: "Not found" }, 404);
@@ -4725,6 +4802,11 @@ Deno.serve(async (req) => {
     if (path.match(/^\/api\/submissions\/\d+\/status$/) && method === "PATCH") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!hasPower(me, "can_review_data")) {
+        return json({
+          error: "Super Admin has not granted your account data-verification rights",
+        }, 403);
+      }
       const id = Number(path.split("/")[3]);
       const body = await readBody(req);
       const next = String(body.status || "").toLowerCase();
@@ -4808,6 +4890,11 @@ Deno.serve(async (req) => {
     if (path === "/api/submissions/confirm-pending" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!hasPower(me, "can_review_data")) {
+        return json({
+          error: "Super Admin has not granted your account data-verification rights",
+        }, 403);
+      }
       const body = await readBody(req);
       const max = Math.min(Number(body.limit) || 500, 2000);
       const rows = await sql`
@@ -4925,6 +5012,11 @@ Deno.serve(async (req) => {
     if (path === "/api/surveys" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!hasPower(me, "can_edit_surveys")) {
+        return json({
+          error: "Super Admin has not granted your account survey-editing rights",
+        }, 403);
+      }
       const body = await readBody(req);
       const title = String(body.title || "").trim();
       if (!title) return json({ error: "Survey name required" }, 400);
@@ -5000,6 +5092,11 @@ Deno.serve(async (req) => {
     if (path.match(/^\/api\/surveys\/\d+$/) && method === "PUT") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!hasPower(me, "can_edit_surveys")) {
+        return json({
+          error: "Super Admin has not granted your account survey-editing rights",
+        }, 403);
+      }
       const id = Number(path.split("/")[3]);
       const body = await readBody(req);
       const rows = await sql`SELECT id, title FROM survey_form WHERE id = ${id}`;
@@ -5030,6 +5127,11 @@ Deno.serve(async (req) => {
     if (path.match(/^\/api\/surveys\/\d+$/) && method === "DELETE") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!hasPower(me, "can_edit_surveys")) {
+        return json({
+          error: "Super Admin has not granted your account survey-editing rights",
+        }, 403);
+      }
       const id = Number(path.split("/")[3]);
       const rows = await sql`SELECT form_key FROM survey_form WHERE id = ${id}`;
       if (!rows.length) return json({ error: "Not found" }, 404);
@@ -5195,6 +5297,11 @@ Deno.serve(async (req) => {
     if (path === "/api/admin/questions" && method === "PUT") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!hasPower(me, "can_edit_surveys")) {
+        return json({
+          error: "Super Admin has not granted your account survey-editing rights",
+        }, 403);
+      }
       const body = await readBody(req);
       const title = String(body.title || "Field Survey");
       const questions = Array.isArray(body.questions) ? body.questions : DEFAULT_QUESTIONS;

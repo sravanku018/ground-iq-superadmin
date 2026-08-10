@@ -16,7 +16,9 @@ import SubmissionEditor from './SubmissionEditor'
  * Q/A review → confirm / reject.
  * Keyboard: j/k move · Enter expand · c confirm · r reject · e edit
  */
-export default function ReviewQAScreen({ onToast }) {
+export default function ReviewQAScreen({ onToast, user }) {
+  // Data verification power — Super Admin grants it (least privilege)
+  const canReview = user?.role === 'super_admin' || !!user?.can_review_data
   const [status, setStatus] = useState('pending')
   const [survey, setSurvey] = useState('')
   const [surveys, setSurveys] = useState([])
@@ -100,6 +102,10 @@ export default function ReviewQAScreen({ onToast }) {
 
   const setStatusFor = useCallback(
     async (id, next) => {
+      if (!canReview) {
+        onToast?.('Super Admin has not granted your account data-verification rights', 'error')
+        return
+      }
       setBusyId(id)
       try {
         await setSubmissionStatus(id, next)
@@ -139,6 +145,10 @@ export default function ReviewQAScreen({ onToast }) {
   )
 
   async function bulkConfirm() {
+    if (!canReview) {
+      onToast?.('Super Admin has not granted your account data-verification rights', 'error')
+      return
+    }
     if (
       !confirm(
         'Confirm ALL pending surveys in the last batch? They will enter the analytics report.',
@@ -246,7 +256,7 @@ export default function ReviewQAScreen({ onToast }) {
             ))}
           </select>
         </label>
-        {status === 'pending' && (
+        {status === 'pending' && canReview && (
           <button
             type="button"
             className="btn primary"
@@ -256,6 +266,12 @@ export default function ReviewQAScreen({ onToast }) {
           >
             Confirm all pending (batch)
           </button>
+        )}
+        {status === 'pending' && !canReview && (
+          <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>
+            🔒 Data verification is locked — Super Admin must grant your account{' '}
+            <strong>Data review</strong> power (Surveyors → your profile).
+          </p>
         )}
       </div>
 
@@ -470,7 +486,7 @@ export default function ReviewQAScreen({ onToast }) {
                   >
                     {editingId === item.id ? 'Close edit' : 'Edit (e)'}
                   </button>
-                  {item.status !== 'confirmed' && (
+                  {canReview && item.status !== 'confirmed' && (
                     <button
                       type="button"
                       className="btn small primary"
@@ -491,7 +507,7 @@ export default function ReviewQAScreen({ onToast }) {
                       Retry fact (processing)
                     </button>
                   )}
-                  {item.status !== 'rejected' && (
+                  {canReview && item.status !== 'rejected' && (
                     <button
                       type="button"
                       className="btn small danger"
@@ -501,7 +517,7 @@ export default function ReviewQAScreen({ onToast }) {
                       Reject (r)
                     </button>
                   )}
-                  {item.status !== 'pending' && (
+                  {canReview && item.status !== 'pending' && (
                     <button
                       type="button"
                       className="btn small"

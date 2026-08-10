@@ -585,6 +585,10 @@ export default function AdminUsersScreen({ onToast }) {
   }
 
   async function handleToggleVerify(user) {
+    if (!canVerify) {
+      onToast?.('Super Admin has not granted your account surveyor-verification rights', 'error')
+      return
+    }
     try {
       const next = !user.verified
       await updateUser(user.id, { verified: next })
@@ -741,15 +745,22 @@ export default function AdminUsersScreen({ onToast }) {
   const currentAdmins = seatData?.current_admins ?? 0
   const approvedLimit = seatData?.limits?.approved_limit != null ? Number(seatData.limits.approved_limit) : 5
 
-  // FR-QB-02: Super Admin grants/revokes a Client Admin's Question Bank CRUD power
-  const toggleQbCrud = async (u) => {
+  // Grant-based powers (least privilege): Super Admin grants/revokes each per Client Admin.
+  // Super Admin always has every power; the server enforces these on every relevant endpoint.
+  const POWER_DEFS = [
+    { key: 'can_manage_questions', label: 'Q-Bank', icon: '📚' },
+    { key: 'can_edit_surveys', label: 'Survey questions', icon: '▤' },
+    { key: 'can_review_data', label: 'Data review', icon: '✓' },
+    { key: 'can_verify_surveyors', label: 'Verify surveyors', icon: '🛡' },
+  ]
+  const powersOf = (u) => (u.role === 'admin' ? POWER_DEFS.filter((p) => u[p.key]) : [])
+  const canVerify = me?.role === 'super_admin' || !!me?.can_verify_surveyors
+  const togglePower = async (u, key, label) => {
     setSaving(true)
     try {
-      await updateUser(u.id, { can_manage_questions: !u.can_manage_questions })
-      onToast?.(
-        `Question Bank CRUD ${u.can_manage_questions ? 'revoked' : 'granted'} for ${u.name || u.username}`,
-        'ok'
-      )
+      const next = !u[key]
+      await updateUser(u.id, { [key]: next })
+      onToast?.(`${label} ${next ? 'granted' : 'revoked'} for ${u.name || u.username}`, 'ok')
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -1433,13 +1444,19 @@ export default function AdminUsersScreen({ onToast }) {
                     >
                       Profile
                     </button>
-                    <button
-                      type="button"
-                      className={`btn small ${u.verified ? 'ok' : 'primary'}`}
-                      onClick={() => handleToggleVerify(u)}
-                    >
-                      {u.verified ? 'Verified ✓' : 'Verify Identity'}
-                    </button>
+                    {canVerify ? (
+                      <button
+                        type="button"
+                        className={`btn small ${u.verified ? 'ok' : 'primary'}`}
+                        onClick={() => handleToggleVerify(u)}
+                      >
+                        {u.verified ? 'Verified ✓' : 'Verify Identity'}
+                      </button>
+                    ) : (
+                      <span className="meta" style={{ fontSize: 11, alignSelf: 'center' }}>
+                        {u.verified ? 'Verified ✓' : '🔒 verify locked'}
+                      </span>
+                    )}
                     <input
                       type="number"
                       min={0}
@@ -1507,8 +1524,14 @@ export default function AdminUsersScreen({ onToast }) {
                     <span className="meta">
                       @{u.username} ·{' '}
                       {u.role === 'super_admin' ? '★ super admin' : 'admin'}
-                      {u.role === 'admin' && u.can_manage_questions ? ' · 📚 question bank: CRUD on' : ''}
-                      {u.role === 'admin' && !u.can_manage_questions ? ' · 📚 question bank: read-only' : ''}
+                      {u.role === 'admin' && u.active !== false && (
+                        <>
+                          {' · '}
+                          {powersOf(u).length > 0
+                            ? `powers: ${powersOf(u).map((p) => `${p.icon} ${p.label}`).join(', ')}`
+                            : '🔒 no powers granted'}
+                        </>
+                      )}
                       {u.active === false ? ' · disabled' : ''}
                     </span>
                   </div>
@@ -1519,17 +1542,6 @@ export default function AdminUsersScreen({ onToast }) {
                       </span>
                     ) : (
                       <>
-                        {me?.role === 'super_admin' && (
-                          <button
-                            type="button"
-                            className={`btn small ${u.can_manage_questions ? 'primary' : ''}`}
-                            disabled={saving}
-                            onClick={() => void toggleQbCrud(u)}
-                            title="Grant or revoke Question Bank CRUD (FR-QB-02)"
-                          >
-                            {u.can_manage_questions ? '📚 Q-Bank ON' : '📚 Q-Bank OFF'}
-                          </button>
-                        )}
                         <button type="button" className="btn small" onClick={() => openEdit(u)}>
                           Edit
                         </button>
@@ -1553,6 +1565,34 @@ export default function AdminUsersScreen({ onToast }) {
                       </>
                     )}
                   </div>
+                  {me?.role === 'super_admin' && u.role === 'admin' && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 6,
+                        flexWrap: 'wrap',
+                        marginTop: 8,
+                        maxWidth: 560,
+                      }}
+                    >
+                      {POWER_DEFS.map((p) => (
+                        <button
+                          key={p.key}
+                          type="button"
+                          className={`btn small ${u[p.key] ? 'primary' : ''}`}
+                          disabled={saving}
+                          onClick={() => void togglePower(u, p.key, p.label)}
+                          title={`Grant or revoke ${p.label} (Super Admin only)`}
+                          style={{ fontSize: 11, padding: '3px 9px' }}
+                        >
+                          {p.icon} {p.label}
+                        </button>
+                      ))}
+                      <span className="meta" style={{ fontSize: 11, alignSelf: 'center' }}>
+                        click to toggle
+                      </span>
+                    </div>
+                  )}
                   {editingId === u.id && (
                     <div className="user-edit-panel" style={{ marginTop: 10, width: '100%' }}>
                       <label className="field compact">
@@ -1730,21 +1770,23 @@ export default function AdminUsersScreen({ onToast }) {
                       </button>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    className="btn small"
-                    style={{
-                      background: profileUser.verified ? '#dc2626' : '#059669',
-                      color: '#ffffff',
-                      fontWeight: 'bold',
-                      padding: '8px 16px',
-                      fontSize: 12,
-                      border: 0,
-                    }}
-                    onClick={() => handleToggleVerify(profileUser)}
-                  >
-                    {profileUser.verified ? 'Unverify' : 'Verify Identity ✓'}
-                  </button>
+                  {canVerify && (
+                    <button
+                      type="button"
+                      className="btn small"
+                      style={{
+                        background: profileUser.verified ? '#dc2626' : '#059669',
+                        color: '#ffffff',
+                        fontWeight: 'bold',
+                        padding: '8px 16px',
+                        fontSize: 12,
+                        border: 0,
+                      }}
+                      onClick={() => handleToggleVerify(profileUser)}
+                    >
+                      {profileUser.verified ? 'Unverify' : 'Verify Identity ✓'}
+                    </button>
+                  )}
                 </div>
 
                 {/* Metrics: Surveys Done / Approved / Pending */}

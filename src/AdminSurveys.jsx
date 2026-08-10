@@ -321,7 +321,9 @@ function cleanQuestions(questions) {
   })
 }
 
-export default function AdminSurveysScreen({ onToast }) {
+export default function AdminSurveysScreen({ onToast, user }) {
+  // Survey-editing power — Super Admin grants it (least privilege)
+  const canEdit = user?.role === 'super_admin' || !!user?.can_edit_surveys
   const [mode, setMode] = useState('list') // list | create | detail
   const [surveys, setSurveys] = useState([])
   const [search, setSearch] = useState('')
@@ -387,6 +389,10 @@ export default function AdminSurveysScreen({ onToast }) {
   }
 
   async function saveNew() {
+    if (!canEdit) {
+      onToast?.('Super Admin has not granted your account survey-editing rights', 'error')
+      return
+    }
     const title = newTitle.trim()
     if (!title) {
       onToast?.('Survey name required', 'error')
@@ -449,6 +455,10 @@ export default function AdminSurveysScreen({ onToast }) {
   }
 
   async function removeSurvey() {
+    if (!canEdit) {
+      onToast?.('Super Admin has not granted your account survey-editing rights', 'error')
+      return
+    }
     if (!detail || !window.confirm(`Delete survey "${detail.title}"? Team assignments are removed too.`)) return
     setBusy(true)
     try {
@@ -474,6 +484,22 @@ export default function AdminSurveysScreen({ onToast }) {
           </button>
         </header>
 
+        {!canEdit && (
+          <div
+            className="card"
+            style={{
+              marginBottom: 12,
+              border: '1px solid rgba(217,119,6,0.5)',
+              background: 'rgba(217,119,6,0.08)',
+              padding: '12px 14px',
+              fontSize: 13,
+            }}
+          >
+            🔒 <strong>Surveys are read-only for you.</strong> Creating or editing surveys is locked
+            until the Super Admin grants your account <strong>Survey questions</strong> power
+            (Surveyors → your profile). You can still open surveys and view their teams.
+          </div>
+        )}
         <div className="card" style={{ marginBottom: 12 }}>
           <label className="field">
             <span>Survey name</span>
@@ -482,6 +508,7 @@ export default function AdminSurveysScreen({ onToast }) {
               onChange={(e) => setNewTitle(e.target.value)}
               placeholder="e.g. Assembly Survey 2026"
               autoFocus
+              disabled={!canEdit}
             />
           </label>
           <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
@@ -526,7 +553,7 @@ export default function AdminSurveysScreen({ onToast }) {
           type="button"
           className="btn primary"
           onClick={saveNew}
-          disabled={saving || !newTitle.trim()}
+          disabled={saving || !newTitle.trim() || !canEdit}
         >
           {saving ? 'Creating…' : 'Create survey'}
         </button>

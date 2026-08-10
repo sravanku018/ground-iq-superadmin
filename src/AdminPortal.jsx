@@ -549,12 +549,12 @@ export default function AdminPortal({ superAdminOnly = false }) {
             />
           )}
           {page === 'users' && <AdminUsersScreen onToast={notify} />}
-          {page === 'surveys' && <AdminSurveysScreen onToast={notify} />}
-          {page === 'questions' && <AdminQuestionsScreen onToast={notify} />}
+          {page === 'surveys' && <AdminSurveysScreen onToast={notify} user={user} />}
+          {page === 'questions' && <AdminQuestionsScreen onToast={notify} user={user} />}
           {/* Report = tables/boards (AdminAnalyze); Analyze = charts/maps (Dashboard) */}
           {page === 'report' && <AdminAnalyzeScreen onToast={notify} />}
           {page === 'analyze' && <DashboardScreen onToast={notify} />}
-          {page === 'review' && <ReviewQAScreen onToast={notify} />}
+          {page === 'review' && <ReviewQAScreen onToast={notify} user={user} />}
           {page === 'upload' && <AdminDataScreen onToast={notify} />}
           {page === 'audit' && <AdminAuditScreen onToast={notify} />}
           {page === 'bank' && <AdminQuestionBankScreen onToast={notify} user={user} />}

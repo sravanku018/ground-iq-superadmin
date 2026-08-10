@@ -19,7 +19,9 @@ const defaultOptionsForType = (t) => {
   return []
 }
 
-export default function AdminQuestionsScreen({ onToast }) {
+export default function AdminQuestionsScreen({ onToast, user }) {
+  // Survey-question editing power — Super Admin grants it (least privilege)
+  const canEdit = user?.role === 'super_admin' || !!user?.can_edit_surveys
   const [title, setTitle] = useState('Field Survey')
   const [questions, setQuestions] = useState([])
   const [loading, setLoading] = useState(true)
@@ -86,6 +88,10 @@ export default function AdminQuestionsScreen({ onToast }) {
   }
 
   async function save() {
+    if (!canEdit) {
+      onToast?.('Super Admin has not granted your account survey-editing rights', 'error')
+      return
+    }
     setSaving(true)
     try {
       const cleaned = questions.map((q) => {
@@ -147,6 +153,23 @@ export default function AdminQuestionsScreen({ onToast }) {
         <p>Pick a survey · edit here · surveyor app loads automatically after unlock</p>
       </header>
 
+      {!canEdit && (
+        <div
+          className="card"
+          style={{
+            marginBottom: 12,
+            border: '1px solid rgba(217,119,6,0.5)',
+            background: 'rgba(217,119,6,0.08)',
+            padding: '12px 14px',
+            fontSize: 13,
+          }}
+        >
+          🔒 <strong>Survey questions are read-only for you.</strong> Editing is locked until the
+          Super Admin grants your account <strong>Survey questions</strong> power (Surveyors → your
+          profile).
+        </div>
+      )}
+
       <div className="card" style={{ marginBottom: 12 }}>
         <label className="field">
           <span>Survey</span>
@@ -183,7 +206,7 @@ export default function AdminQuestionsScreen({ onToast }) {
               <span className="pill ok" style={{ fontSize: 11, fontWeight: 'bold' }}>
                 Q{i + 1} · {type.toUpperCase().replace('_', ' ')}
               </span>
-              <button type="button" className="btn small danger" onClick={() => removeQ(i)}>
+              <button type="button" className="btn small danger" onClick={() => removeQ(i)} disabled={!canEdit}>
                 Delete Q{i + 1}
               </button>
             </div>
@@ -388,10 +411,10 @@ export default function AdminQuestionsScreen({ onToast }) {
         )
       })}
 
-      <button type="button" className="btn primary" onClick={addQ} style={{ marginBottom: 12 }}>
+      <button type="button" className="btn primary" onClick={addQ} disabled={!canEdit} style={{ marginBottom: 12 }}>
         + Add Question
       </button>
-      <button type="button" className="btn primary" onClick={save} disabled={saving} style={{ marginLeft: 8 }}>
+      <button type="button" className="btn primary" onClick={save} disabled={saving || !canEdit} style={{ marginLeft: 8 }}>
         {saving ? 'Saving & Pushing…' : 'Save & Push to Mobile App ✓'}
       </button>
     </div>

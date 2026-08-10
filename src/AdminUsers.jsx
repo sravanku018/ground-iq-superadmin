@@ -741,6 +741,23 @@ export default function AdminUsersScreen({ onToast }) {
   const currentAdmins = seatData?.current_admins ?? 0
   const approvedLimit = seatData?.limits?.approved_limit != null ? Number(seatData.limits.approved_limit) : 5
 
+  // FR-QB-02: Super Admin grants/revokes a Client Admin's Question Bank CRUD power
+  const toggleQbCrud = async (u) => {
+    setSaving(true)
+    try {
+      await updateUser(u.id, { can_manage_questions: !u.can_manage_questions })
+      onToast?.(
+        `Question Bank CRUD ${u.can_manage_questions ? 'revoked' : 'granted'} for ${u.name || u.username}`,
+        'ok'
+      )
+      await load()
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const statusColor = (s) => {
     if (s === 'completed') return 'ok'
     if (s === 'in_progress') return 'warn'
@@ -1490,6 +1507,8 @@ export default function AdminUsersScreen({ onToast }) {
                     <span className="meta">
                       @{u.username} ·{' '}
                       {u.role === 'super_admin' ? '★ super admin' : 'admin'}
+                      {u.role === 'admin' && u.can_manage_questions ? ' · 📚 question bank: CRUD on' : ''}
+                      {u.role === 'admin' && !u.can_manage_questions ? ' · 📚 question bank: read-only' : ''}
                       {u.active === false ? ' · disabled' : ''}
                     </span>
                   </div>
@@ -1500,6 +1519,17 @@ export default function AdminUsersScreen({ onToast }) {
                       </span>
                     ) : (
                       <>
+                        {me?.role === 'super_admin' && (
+                          <button
+                            type="button"
+                            className={`btn small ${u.can_manage_questions ? 'primary' : ''}`}
+                            disabled={saving}
+                            onClick={() => void toggleQbCrud(u)}
+                            title="Grant or revoke Question Bank CRUD (FR-QB-02)"
+                          >
+                            {u.can_manage_questions ? '📚 Q-Bank ON' : '📚 Q-Bank OFF'}
+                          </button>
+                        )}
                         <button type="button" className="btn small" onClick={() => openEdit(u)}>
                           Edit
                         </button>

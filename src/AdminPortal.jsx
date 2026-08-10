@@ -557,7 +557,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           {page === 'review' && <ReviewQAScreen onToast={notify} />}
           {page === 'upload' && <AdminDataScreen onToast={notify} />}
           {page === 'audit' && <AdminAuditScreen onToast={notify} />}
-          {page === 'bank' && <AdminQuestionBankScreen onToast={notify} />}
+          {page === 'bank' && <AdminQuestionBankScreen onToast={notify} user={user} />}
           {page === 'seats' && <AdminSeatsScreen onToast={notify} />}
           {page === 'data' && (
             <DataList

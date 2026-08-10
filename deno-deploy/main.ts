@@ -147,7 +147,8 @@ async function getUser(token: string | null) {
   const rows = await sql`
     SELECT u.id, u.username, u.display_name, u.role, u.active, u.created_at,
            u.key_id, u.phone, u.photo, u.aadhaar_front, u.aadhaar_back,
-           COALESCE(u.verified, FALSE) AS verified
+           COALESCE(u.verified, FALSE) AS verified,
+           COALESCE(u.can_manage_questions, FALSE) AS can_manage_questions
     FROM app_sessions s
     JOIN app_users u ON u.id = s.user_id
     WHERE s.token = ${token}
@@ -159,7 +160,7 @@ async function getUser(token: string | null) {
     await sql`
       SELECT u.id, u.username, u.display_name, u.role, u.active, u.created_at,
              NULL AS key_id, NULL AS phone, NULL AS photo, NULL AS aadhaar_front, NULL AS aadhaar_back,
-             FALSE AS verified
+             FALSE AS verified, FALSE AS can_manage_questions
       FROM app_sessions s
       JOIN app_users u ON u.id = s.user_id
       WHERE s.token = ${token}
@@ -184,6 +185,7 @@ async function getUser(token: string | null) {
     aadhaar_front: u.aadhaar_front || null,
     aadhaar_back: u.aadhaar_back || null,
     verified: u.verified === true,
+    can_manage_questions: (u as Record<string, unknown>).can_manage_questions === true,
   };
 }
 
@@ -423,6 +425,8 @@ async function ensureSchema() {
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS aadhaar_front TEXT`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS aadhaar_back TEXT`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS verified BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
+  // FR-QB-02 governance: Super-Admin-granted Question Bank CRUD power for Client Admins (least privilege)
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_manage_questions BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   // Unique key ID backfill for existing users (idempotent — different key per row)
   const noKey = await sql`
     SELECT id FROM app_users WHERE key_id IS NULL OR key_id = ''
@@ -2843,6 +2847,7 @@ Deno.serve(async (req) => {
           aadhaar_front: (user as Record<string, unknown>).aadhaar_front || null,
           aadhaar_back: (user as Record<string, unknown>).aadhaar_back || null,
           verified: (user as Record<string, unknown>).verified === true,
+          can_manage_questions: (user as Record<string, unknown>).can_manage_questions === true,
         },
         expires_at: expires.toISOString(),
         access:
@@ -3124,12 +3129,14 @@ Deno.serve(async (req) => {
         SELECT id, username, display_name, role, active, created_at,
                COALESCE(target_quota, 0) AS target_quota,
                key_id, phone, photo, aadhaar_front, aadhaar_back,
-               COALESCE(verified, FALSE) AS verified
+               COALESCE(verified, FALSE) AS verified,
+               COALESCE(can_manage_questions, FALSE) AS can_manage_questions
         FROM app_users
         ORDER BY id
       `.catch(async () =>
         await sql`
-          SELECT id, username, display_name, role, active, created_at
+          SELECT id, username, display_name, role, active, created_at,
+                 FALSE AS can_manage_questions
           FROM app_users ORDER BY id
         `
       );
@@ -3160,6 +3167,7 @@ Deno.serve(async (req) => {
           aadhaar_front: r.aadhaar_front || null,
           aadhaar_back: r.aadhaar_back || null,
           verified: r.verified === true,
+          can_manage_questions: r.can_manage_questions === true,
           surveys: assignedMap.get(Number(r.id)) || [],
           status: isCollector ? progressStatus(done, target) : "admin",
           progress_label: isCollector
@@ -3214,13 +3222,21 @@ Deno.serve(async (req) => {
       try {
         const password_hash = await hashPasswordAsync(password);
         const key_id = await uniqueUserKeyId();
+        // Question-bank CRUD power can be set at admin creation by the Super Admin (FR-QB-02)
+        const canManageQuestions =
+          role === "admin" && me.role === "super_admin" && body.can_manage_questions === true;
         const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active, key_id, phone)
-          VALUES (${username}, ${password_hash}, ${name}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null})
-          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone
+          INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active, key_id, phone, can_manage_questions)
+          VALUES (${username}, ${password_hash}, ${name}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions})
+          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, can_manage_questions
         `;
         const u = inserted[0] as Record<string, unknown>;
-        logAudit(me, "user_create", "user", u.id, { username: u.username, role, target_quota });
+        logAudit(me, "user_create", "user", u.id, {
+          username: u.username,
+          role,
+          target_quota,
+          can_manage_questions: canManageQuestions,
+        });
         return json({
           user: {
             id: u.id,
@@ -3232,6 +3248,7 @@ Deno.serve(async (req) => {
             target_quota: u.target_quota ?? target_quota,
             key_id: u.key_id || key_id,
             phone: u.phone || null,
+            can_manage_questions: u.can_manage_questions === true,
           },
           field_app_access: role === "surveyor",
           field_app_login: role === "surveyor"
@@ -3587,6 +3604,13 @@ Deno.serve(async (req) => {
         body.target_quota != null
           ? Math.max(0, Math.min(Number(body.target_quota) || 0, 100000))
           : Number(ex.target_quota) || 0;
+      // Question-bank CRUD power — only Super Admin grants/revokes it (FR-QB-02)
+      const nextCanManageQuestions =
+        body.can_manage_questions === undefined
+          ? (ex as Record<string, unknown>).can_manage_questions === true
+          : me.role === "super_admin"
+            ? body.can_manage_questions === true
+            : (ex as Record<string, unknown>).can_manage_questions === true;
 
       let rows;
       try {
@@ -3602,9 +3626,10 @@ Deno.serve(async (req) => {
               photo = ${nextPhoto},
               aadhaar_front = ${nextAadhaarFront},
               aadhaar_back = ${nextAadhaarBack},
-              verified = ${nextVerified}
+              verified = ${nextVerified},
+              can_manage_questions = ${nextCanManageQuestions}
           WHERE id = ${id}
-          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified
+          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions
         `;
       } catch (e) {
         const msg = (e as Error).message || "";
@@ -3633,7 +3658,8 @@ Deno.serve(async (req) => {
         nextUsername !== ex.username ||
         body.role !== undefined ||
         body.target_quota !== undefined ||
-        body.verified !== undefined;
+        body.verified !== undefined ||
+        body.can_manage_questions !== undefined;
       if (adminChanged && isAdmin) {
         logAudit(me, "user_update", "user", id, {
           username: ex.username,
@@ -3642,6 +3668,7 @@ Deno.serve(async (req) => {
           role_changed: body.role !== undefined,
           quota_changed: body.target_quota !== undefined,
           verified_changed: body.verified !== undefined,
+          qb_crud_changed: body.can_manage_questions !== undefined,
         });
       }
 
@@ -3662,6 +3689,7 @@ Deno.serve(async (req) => {
           aadhaar_front: u.aadhaar_front || nextAadhaarFront || null,
           aadhaar_back: u.aadhaar_back || nextAadhaarBack || null,
           verified: u.verified === true,
+          can_manage_questions: u.can_manage_questions === true,
         },
         password_changed: passwordChanged,
         username_changed: nextUsername !== ex.username,
@@ -3732,6 +3760,12 @@ Deno.serve(async (req) => {
     if (path === "/api/question-bank" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      // FR-QB-02: bank CRUD needs the Super-Admin-granted power (least privilege)
+      if (me.role !== "super_admin" && me.can_manage_questions !== true) {
+        return json({
+          error: "Super Admin has not granted your account Question Bank edit rights",
+        }, 403);
+      }
       const body = await readBody(req);
       const name = String(body.name || "").trim();
       const questions = Array.isArray(body.questions) ? body.questions : [];
@@ -3756,6 +3790,12 @@ Deno.serve(async (req) => {
     if (path.startsWith("/api/question-bank/") && method === "PUT") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      // FR-QB-02: bank CRUD needs the Super-Admin-granted power (least privilege)
+      if (me.role !== "super_admin" && me.can_manage_questions !== true) {
+        return json({
+          error: "Super Admin has not granted your account Question Bank edit rights",
+        }, 403);
+      }
       const id = Number(path.split("/")[3]);
       const body = await readBody(req);
       const rows = await sql`SELECT * FROM question_bank WHERE id = ${id}`.catch(() => []);
@@ -3787,6 +3827,12 @@ Deno.serve(async (req) => {
     if (path.startsWith("/api/question-bank/") && method === "DELETE") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      // FR-QB-02: bank CRUD needs the Super-Admin-granted power (least privilege)
+      if (me.role !== "super_admin" && me.can_manage_questions !== true) {
+        return json({
+          error: "Super Admin has not granted your account Question Bank edit rights",
+        }, 403);
+      }
       const id = Number(path.split("/")[3]);
       const rows = await sql`SELECT id, name, created_by, is_global FROM question_bank WHERE id = ${id}`.catch(() => []);
       const t = rows[0] as Record<string, unknown> | undefined;

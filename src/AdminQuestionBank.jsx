@@ -37,9 +37,11 @@ const TYPE_OPTIONS = [
   ['age', '🔢 Age / Numeric Field'],
 ]
 
-export default function AdminQuestionBankScreen({ onToast }) {
+export default function AdminQuestionBankScreen({ onToast, user }) {
   const me = getStoredUser()
   const isSuper = me?.role === 'super_admin'
+  // FR-QB-02: CRUD requires the Super-Admin-granted power; viewing/using ★ global templates is open
+  const canCrud = isSuper || !!user?.can_manage_questions || !!me?.can_manage_questions
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null) // template object being edited, null = list view
@@ -347,9 +349,27 @@ export default function AdminQuestionBankScreen({ onToast }) {
         </p>
       </header>
 
-      <button type="button" className="btn small primary" onClick={startCreate} style={{ marginBottom: 12 }}>
-        ＋ New Template
-      </button>
+      {!canCrud && (
+        <div
+          className="card"
+          style={{
+            marginBottom: 12,
+            border: '1px solid rgba(217,119,6,0.5)',
+            background: 'rgba(217,119,6,0.08)',
+            padding: '12px 14px',
+            fontSize: 13,
+          }}
+        >
+          🔒 <strong>Question Bank is read-only for you.</strong> You can view and use the ★
+          global templates, but creating or editing templates is locked until the Super Admin
+          grants your account <strong>Question Bank CRUD</strong> (Surveyors page → your profile).
+        </div>
+      )}
+      {canCrud && (
+        <button type="button" className="btn small primary" onClick={startCreate} style={{ marginBottom: 12 }}>
+          ＋ New Template
+        </button>
+      )}
 
       {loading ? (
         <p className="muted">Loading question bank…</p>
@@ -398,12 +418,16 @@ export default function AdminQuestionBankScreen({ onToast }) {
                 <button type="button" className="btn small primary" disabled={busyId === t.id} onClick={() => useTemplate(t)}>
                   {busyId === t.id ? '…' : 'Use template → survey'}
                 </button>
-                <button type="button" className="btn small" onClick={() => startEdit(t)}>
-                  Edit
-                </button>
-                <button type="button" className="btn small danger" disabled={busyId === t.id} onClick={() => void remove(t)}>
-                  Delete
-                </button>
+                {canCrud && !(t.is_global && !isSuper) && (
+                  <>
+                    <button type="button" className="btn small" onClick={() => startEdit(t)}>
+                      Edit
+                    </button>
+                    <button type="button" className="btn small danger" disabled={busyId === t.id} onClick={() => void remove(t)}>
+                      Delete
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           )

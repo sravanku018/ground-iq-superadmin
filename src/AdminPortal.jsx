@@ -26,6 +26,7 @@ const AdminDataScreen = lazy(() => import('./AdminData'))
 const AdminAuditScreen = lazy(() => import('./AdminAudit'))
 const AdminQuestionBankScreen = lazy(() => import('./AdminQuestionBank'))
 const AdminSeatsScreen = lazy(() => import('./AdminSeats'))
+const AdminClientAdminsScreen = lazy(() => import('./AdminClientAdmins'))
 
 // Client Admin nav — Question Bank (FR-QB-02) sits under Data collection
 const NAV = [
@@ -43,6 +44,14 @@ const PLATFORM_NAV = {
   pages: ['audit', 'bank', 'seats'],
 }
 
+// Super Admin console only: dedicated Client Admin account management
+const CLIENT_ADMINS_NAV = {
+  id: 'admins',
+  label: 'Client Admins',
+  icon: '🛡',
+  pages: ['admins'],
+}
+
 const PAGE_LABELS = {
   overview: 'Overview',
   report: 'Report',
@@ -56,6 +65,7 @@ const PAGE_LABELS = {
   audit: 'Audit Log',
   bank: 'Question Bank',
   seats: 'Seat Requests',
+  admins: 'Client Admins',
 }
 
 function formatDate(v) {
@@ -227,6 +237,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
 
   const nav = superAdminOnly
     ? [
+        CLIENT_ADMINS_NAV,
         PLATFORM_NAV,
         // console keeps Question Bank under Platform only — avoid duplicate subtabs
         ...NAV.map((n) =>
@@ -561,6 +572,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           {page === 'audit' && <AdminAuditScreen onToast={notify} />}
           {page === 'bank' && <AdminQuestionBankScreen onToast={notify} user={user} />}
           {page === 'seats' && <AdminSeatsScreen onToast={notify} />}
+          {page === 'admins' && <AdminClientAdminsScreen onToast={notify} />}
           {page === 'data' && (
             <DataList
               items={items}

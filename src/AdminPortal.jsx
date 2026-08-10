@@ -5,6 +5,7 @@ import {
   getToken,
   listSubmissions,
   listSurveys,
+  listUsers,
   logout,
   me,
 } from './api'
@@ -156,6 +157,100 @@ function formatDate(v) {
   }
 }
 
+/**
+ * Client Admin allocation card — shows the logged-in admin's own usage vs the
+ * caps Super Admin set (surveys/questions/surveyors created / allocated) plus
+ * their survey → surveyor mapping. Data comes from GET /api/users which is
+ * tenant-scoped, so only this admin's own surveys & surveyors appear.
+ */
+function AllocationCard({ user }) {
+  const [self, setSelf] = useState(null)
+  const [err, setErr] = useState('')
+  const [resolved, setResolved] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setResolved(false)
+    listUsers()
+      .then((d) => {
+        if (cancelled) return
+        const row = (d.users || []).find((u) => Number(u.id) === Number(user?.id))
+        setSelf(row || null)
+        setResolved(true)
+      })
+      .catch((e) => {
+        if (!cancelled) setErr(e.message || 'Failed to load allocation')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
+
+  if (err) {
+    return (
+      <div className="card" style={{ marginTop: 14 }}>
+        <h3 style={{ marginTop: 0 }}>📊 My allocation</h3>
+        <p className="muted" style={{ margin: 0 }}>{err}</p>
+      </div>
+    )
+  }
+  if (!self) {
+    return (
+      <div className="card" style={{ marginTop: 14 }}>
+        <h3 style={{ marginTop: 0 }}>📊 My allocation</h3>
+        <p className="muted" style={{ margin: 0 }}>
+          {resolved ? 'Allocation data not available yet — refresh the page.' : 'Loading…'}
+        </p>
+      </div>
+    )
+  }
+
+  const fmt = (used, cap) => `${used ?? 0} / ${cap > 0 ? cap : '∞'}`
+  const team = Array.isArray(self.survey_team) ? self.survey_team : []
+  return (
+    <div className="card" style={{ marginTop: 14 }}>
+      <h3 style={{ marginTop: 0 }}>📊 My allocation (created / allocated)</h3>
+      <div className="stat-row" style={{ marginBottom: 10 }}>
+        <div className="stat">
+          <strong>{fmt(self.survey_count, self.max_surveys)}</strong>
+          <span>Surveys</span>
+        </div>
+        <div className="stat">
+          <strong>{fmt(self.surveyor_count, self.max_surveyors)}</strong>
+          <span>Surveyors</span>
+        </div>
+        <div className="stat">
+          <strong>{fmt(self.question_count, self.max_questions_per_survey)}</strong>
+          <span>Questions / survey</span>
+        </div>
+      </div>
+      <h4 style={{ fontSize: 13, margin: '8px 0 8px' }}>🗺 Survey → Surveyor mapping</h4>
+      {team.length > 0 ? (
+        <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {team.map((s) => (
+            <li key={s.id} style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px' }}>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>📋 {s.title}</div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                {Array.isArray(s.surveyors) && s.surveyors.length > 0
+                  ? `👥 ${s.surveyors.map((x) => x.name || x.username).join(', ')}`
+                  : '👥 No surveyors mapped yet'}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+          No surveys yet — create surveys first, then map surveyors to them.
+        </p>
+      )}
+      <p className="muted" style={{ fontSize: 11, margin: '8px 0 0' }}>
+        Caps are set by Super Admin. Only your own surveys and surveyors are shown — nothing is mixed
+        with other client admins.
+      </p>
+    </div>
+  )
+}
+
 function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => true }) {
   const gated = (p) => {
     // Super Admin (or console mode) always sees every feature
@@ -238,6 +333,8 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           </button>
         )}
       </div>
+
+      {!superAdminOnly && user?.role !== 'super_admin' && <AllocationCard user={user} />}
 
       <div className="portal-note card">
         <strong>Surveyors = app access only</strong>

@@ -13,15 +13,24 @@ import VerifiedBadge from './VerifiedBadge'
 
 /** Grant-based powers (least privilege): Super Admin grants/revokes each per Client Admin. */
 const POWER_DEFS = [
-  { key: 'can_manage_questions', label: 'Q-Bank', icon: '📚' },
-  { key: 'can_edit_surveys', label: 'Survey questions', icon: '▤' },
-  { key: 'can_review_data', label: 'Data review', icon: '✓' },
-  { key: 'can_verify_surveyors', label: 'Verify surveyors', icon: '🛡' },
-  { key: 'can_crud_questionnaire', label: 'CRUD questionnaire', icon: '🗂' },
-  { key: 'can_validate_proof', label: 'Proof validation', icon: '📞' },
+  { key: 'can_manage_questions', label: 'Q-Bank', icon: '📚', hint: 'Question Bank template CRUD' },
+  { key: 'can_edit_surveys', label: 'Survey questions', icon: '▤', hint: 'Edit question content' },
+  { key: 'can_review_data', label: 'Data review', icon: '✓', hint: 'Confirm/reject records' },
+  { key: 'can_verify_surveyors', label: 'Verify surveyors', icon: '🛡', hint: 'Verify surveyor identity' },
+  { key: 'can_crud_questionnaire', label: 'CRUD questionnaire', icon: '🗂', hint: 'Create surveys + pick question count' },
+  { key: 'can_validate_proof', label: 'Proof validation', icon: '📞', hint: 'Phone + Aadhaar format checks' },
 ]
 
 const EMPTY_FORM = { username: '', name: '', password: '' }
+
+function initialsOf(name) {
+  return String(name || '?')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase())
+    .join('')
+}
 
 export default function AdminClientAdminsScreen({ onToast }) {
   const me = getStoredUser()
@@ -29,7 +38,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [seatData, setSeatData] = useState(null)
-  const [editingId, setEditingId] = useState(null)
+  const [profileId, setProfileId] = useState(null) // which admin's profile panel is open
   const [edit, setEdit] = useState(EMPTY_FORM)
   const [form, setForm] = useState(EMPTY_FORM)
   const [created, setCreated] = useState(null)
@@ -65,6 +74,11 @@ export default function AdminClientAdminsScreen({ onToast }) {
     : 5
   const currentAdmins = seatData?.current_admins ?? admins.length
   const seatPending = (seatData?.requests || []).filter((r) => r.status === 'pending')
+
+  const toggleProfile = (u) => {
+    setProfileId(profileId === u.id ? null : u.id)
+    setEdit({ username: u.username || '', name: u.name || u.display_name || '', password: '' })
+  }
 
   const togglePower = async (u, key, label) => {
     setSaving(true)
@@ -157,16 +171,6 @@ export default function AdminClientAdminsScreen({ onToast }) {
     }
   }
 
-  function openEdit(u) {
-    setEditingId(u.id)
-    setEdit({ username: u.username || '', name: u.name || u.display_name || '', password: '' })
-  }
-
-  function closeEdit() {
-    setEditingId(null)
-    setEdit(EMPTY_FORM)
-  }
-
   async function saveEdit(u) {
     setSaving(true)
     try {
@@ -187,7 +191,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
           name: res.user?.name || body.name,
         })
       }
-      closeEdit()
+      setEdit({ username: '', name: '', password: '' })
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -216,7 +220,6 @@ export default function AdminClientAdminsScreen({ onToast }) {
     try {
       await disableUser(u.id)
       onToast?.(`Disabled @${u.username} · access revoked`, 'ok')
-      if (editingId === u.id) closeEdit()
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -238,7 +241,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
     try {
       await deleteUser(u.id)
       onToast?.(`Deleted @${u.username}`, 'ok')
-      if (editingId === u.id) closeEdit()
+      if (profileId === u.id) setProfileId(null)
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -250,8 +253,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
       <header className="screen-head">
         <h2>✦ Client Admins</h2>
         <p>
-          Client Admin accounts for the main portal — grant powers, verify identity, manage
-          access (BR-006 / FR-USR-10).
+          Client Admin accounts for the main portal — open a profile to grant powers, set limits,
+          verify identity and manage access (BR-006 / FR-USR-10).
         </p>
       </header>
 
@@ -320,7 +323,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
         </form>
         <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
           New admins start with <strong>no powers</strong> (least privilege) and unverified —
-          grant powers below; only Super Admin can verify a Client Admin.
+          grant powers in the profile below; only Super Admin can verify a Client Admin.
         </p>
         {created && (
           <div className="card" id="created-credentials" style={{ marginTop: 12, borderColor: '#10b981' }}>
@@ -344,7 +347,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
         ) : (
           <ul className="user-list">
             {admins.map((u) => (
-              <li key={u.id}>
+              <li key={u.id} style={{ border: profileId === u.id ? '1px solid #059669' : undefined, borderRadius: 10 }}>
                 <div>
                   <strong>
                     {u.name || u.username}{' '}
@@ -359,6 +362,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
                         {powersOf(u).length > 0
                           ? `powers: ${powersOf(u).map((p) => `${p.icon} ${p.label}`).join(', ')}`
                           : '🔒 no powers granted'}
+                        {u.max_surveys > 0 ? ` · surveys ≤ ${u.max_surveys}` : ''}
+                        {u.max_questions_per_survey > 0 ? ` · Q/survey ≤ ${u.max_questions_per_survey}` : ''}
                       </>
                     )}
                   </span>
@@ -366,13 +371,17 @@ export default function AdminClientAdminsScreen({ onToast }) {
                 <div className="user-actions">
                   <button
                     type="button"
-                    className={`btn small ${u.verified ? 'ok' : 'primary'}`}
+                    className={`btn small ${profileId === u.id ? 'primary' : ''}`}
+                    onClick={() => toggleProfile(u)}
+                  >
+                    {profileId === u.id ? 'Close profile' : '👤 Profile'}
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn small ${u.verified ? 'ok' : ''}`}
                     onClick={() => handleToggleVerify(u)}
                   >
-                    {u.verified ? 'Verified ✓' : 'Verify admin'}
-                  </button>
-                  <button type="button" className="btn small" onClick={() => openEdit(u)}>
-                    Edit
+                    {u.verified ? 'Verified ✓' : 'Verify'}
                   </button>
                   {u.active !== false ? (
                     <button type="button" className="btn small danger" onClick={() => handleDisable(u)}>
@@ -387,162 +396,210 @@ export default function AdminClientAdminsScreen({ onToast }) {
                     Delete
                   </button>
                 </div>
-                {me?.role === 'super_admin' && (
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, maxWidth: 560 }}>
-                    {POWER_DEFS.map((p) => (
-                      <button
-                        key={p.key}
-                        type="button"
-                        className={`btn small ${u[p.key] ? 'primary' : ''}`}
-                        disabled={saving}
-                        onClick={() => void togglePower(u, p.key, p.label)}
-                        title={`Grant or revoke ${p.label} (Super Admin only)`}
-                        style={{ fontSize: 11, padding: '3px 9px' }}
-                      >
-                        {p.icon} {p.label}
-                      </button>
-                    ))}
-                    <span className="meta" style={{ fontSize: 11, alignSelf: 'center' }}>
-                      click to toggle
-                    </span>
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        marginLeft: 6,
-                      }}
-                    >
-                      <label
+
+                {profileId === u.id && (
+                  <div
+                    className="card"
+                    style={{
+                      marginTop: 12,
+                      width: '100%',
+                      borderLeft: '4px solid #059669',
+                      background: '#fbfdfe',
+                    }}
+                  >
+                    {/* Profile header */}
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div
                         style={{
-                          display: 'inline-flex',
+                          width: 44,
+                          height: 44,
+                          borderRadius: '50%',
+                          background: 'linear-gradient(135deg,#059669,#0d9488)',
+                          color: '#fff',
+                          fontWeight: 800,
+                          fontSize: 17,
+                          display: 'flex',
                           alignItems: 'center',
-                          gap: 6,
-                          fontSize: 11,
+                          justifyContent: 'center',
+                          flexShrink: 0,
                         }}
                       >
-                        <span className="muted">Max Q/survey:</span>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100000"
-                          value={
-                            maxQInputs[u.id] != null
-                              ? maxQInputs[u.id]
-                              : (u.max_questions_per_survey ?? 0)
-                          }
-                          onChange={(e) =>
-                            setMaxQInputs((m) => ({
-                              ...m,
-                              [u.id]: Math.max(0, Number(e.target.value) || 0),
-                            }))
-                          }
-                          style={{ width: 64, padding: '3px 6px', fontSize: 11 }}
-                          title="Cap on questions per survey for this Client Admin (0 = unlimited)"
-                        />
+                        {initialsOf(u.name || u.username)}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <strong style={{ fontSize: 15 }}>{u.name || u.username}</strong>
+                          {u.verified ? <VerifiedBadge size={16} title="Verified client admin" /> : null}
+                          {u.active === false ? (
+                            <span className="pill" style={{ background: 'rgba(220,38,38,0.12)', color: '#b91c1c', fontWeight: 'bold' }}>
+                              DISABLED
+                            </span>
+                          ) : (
+                            <span className="pill ok" style={{ fontWeight: 'bold' }}>ACTIVE</span>
+                          )}
+                        </div>
+                        <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                          @{u.username}
+                          {u.created_at ? ` · created ${String(u.created_at).slice(0, 10)}` : ''}
+                          {' · '}
+                          {powersOf(u).length > 0
+                            ? `${powersOf(u).length} of ${POWER_DEFS.length} powers`
+                            : '🔒 no powers'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Features (powers) */}
+                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🧩 Features (granted powers)</h4>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {POWER_DEFS.map((p) => (
+                        <button
+                          key={p.key}
+                          type="button"
+                          className={`btn small ${u[p.key] ? 'primary' : ''}`}
+                          disabled={saving}
+                          onClick={() => void togglePower(u, p.key, p.label)}
+                          title={p.hint}
+                          style={{ fontSize: 12, padding: '5px 12px' }}
+                        >
+                          {p.icon} {p.label} {u[p.key] ? '✓' : '＋'}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
+                      Click a feature to grant (✓) or revoke (＋). Super Admin only — every change is audit-logged.
+                    </p>
+
+                    {/* Limits */}
+                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>📏 Limits</h4>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                      <label className="field compact" style={{ margin: 0 }}>
+                        <span>Max questions per survey (0 = unlimited)</span>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100000"
+                            value={
+                              maxQInputs[u.id] != null
+                                ? maxQInputs[u.id]
+                                : (u.max_questions_per_survey ?? 0)
+                            }
+                            onChange={(e) =>
+                              setMaxQInputs((m) => ({
+                                ...m,
+                                [u.id]: Math.max(0, Number(e.target.value) || 0),
+                              }))
+                            }
+                            style={{ width: 90, padding: '6px 8px' }}
+                          />
+                          <button
+                            type="button"
+                            className="btn small primary"
+                            disabled={saving}
+                            onClick={() => void saveMaxQuestions(u)}
+                          >
+                            Save
+                          </button>
+                        </div>
                       </label>
-                      <button
-                        type="button"
-                        className="btn small primary"
-                        disabled={saving}
-                        onClick={() => void saveMaxQuestions(u)}
-                        style={{ fontSize: 11, padding: '3px 9px' }}
-                        title="Save question cap (Super Admin only)"
-                      >
-                        Save
-                      </button>
-                      {u.max_questions_per_survey > 0 && (
-                        <span className="pill" style={{ fontSize: 10 }}>
-                          cap {u.max_questions_per_survey}
-                        </span>
-                      )}
-                    </span>
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        marginLeft: 6,
-                      }}
+                      <label className="field compact" style={{ margin: 0 }}>
+                        <span>Max surveys (0 = unlimited)</span>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100000"
+                            value={
+                              maxSvInputs[u.id] != null
+                                ? maxSvInputs[u.id]
+                                : (u.max_surveys ?? 0)
+                            }
+                            onChange={(e) =>
+                              setMaxSvInputs((m) => ({
+                                ...m,
+                                [u.id]: Math.max(0, Number(e.target.value) || 0),
+                              }))
+                            }
+                            style={{ width: 90, padding: '6px 8px' }}
+                          />
+                          <button
+                            type="button"
+                            className="btn small primary"
+                            disabled={saving}
+                            onClick={() => void saveMaxSurveys(u)}
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </label>
+                    </div>
+                    <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
+                      Caps are enforced server-side when this admin creates or edits surveys.
+                    </p>
+
+                    {/* Verification */}
+                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🛡 Verification</h4>
+                    <button
+                      type="button"
+                      className={`btn small ${u.verified ? 'ok' : 'primary'}`}
+                      onClick={() => void handleToggleVerify(u)}
                     >
-                      <label
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          fontSize: 11,
-                        }}
-                      >
-                        <span className="muted">Max surveys:</span>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100000"
-                          value={
-                            maxSvInputs[u.id] != null
-                              ? maxSvInputs[u.id]
-                              : (u.max_surveys ?? 0)
-                          }
-                          onChange={(e) =>
-                            setMaxSvInputs((m) => ({
-                              ...m,
-                              [u.id]: Math.max(0, Number(e.target.value) || 0),
-                            }))
-                          }
-                          style={{ width: 64, padding: '3px 6px', fontSize: 11 }}
-                          title="Cap on total surveys this Client Admin can create (0 = unlimited)"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        className="btn small primary"
-                        disabled={saving}
-                        onClick={() => void saveMaxSurveys(u)}
-                        style={{ fontSize: 11, padding: '3px 9px' }}
-                        title="Save survey cap (Super Admin only)"
-                      >
-                        Save
-                      </button>
-                      {u.max_surveys > 0 && (
-                        <span className="pill" style={{ fontSize: 10 }}>
-                          cap {u.max_surveys}
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                )}
-                {editingId === u.id && (
-                  <div className="user-edit-panel" style={{ marginTop: 10, width: '100%' }}>
-                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                      <label className="field compact">
+                      {u.verified ? 'Verified ✓ — click to unverify' : 'Verify this Client Admin'}
+                    </button>
+                    <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
+                      Only Super Admin can verify a Client Admin. Verified admins show the ✓ badge in the portal sidebar.
+                    </p>
+
+                    {/* Account */}
+                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>👤 Account</h4>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                      <label className="field compact" style={{ margin: 0 }}>
                         <span>Username</span>
                         <input
                           value={edit.username}
                           onChange={(e) => setEdit({ ...edit, username: e.target.value })}
+                          style={{ minWidth: 140 }}
                         />
                       </label>
-                      <label className="field compact">
+                      <label className="field compact" style={{ margin: 0 }}>
                         <span>Name</span>
                         <input
                           value={edit.name}
                           onChange={(e) => setEdit({ ...edit, name: e.target.value })}
+                          style={{ minWidth: 140 }}
                         />
                       </label>
-                      <label className="field compact">
+                      <label className="field compact" style={{ margin: 0 }}>
                         <span>New password</span>
                         <input
                           value={edit.password}
                           onChange={(e) => setEdit({ ...edit, password: e.target.value })}
                           placeholder="Leave blank to keep"
+                          style={{ minWidth: 140 }}
                         />
                       </label>
-                    </div>
-                    <div className="user-actions" style={{ marginTop: 8 }}>
                       <button type="button" className="btn small primary" disabled={saving} onClick={() => saveEdit(u)}>
-                        Save
+                        Save account
                       </button>
-                      <button type="button" className="btn small" onClick={closeEdit}>
-                        Cancel
+                    </div>
+                    <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
+                      Changing username/password revokes all active sessions (forces re-login).
+                    </p>
+
+                    {/* Danger zone */}
+                    <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+                      {u.active !== false ? (
+                        <button type="button" className="btn small danger" onClick={() => handleDisable(u)}>
+                          Disable access
+                        </button>
+                      ) : (
+                        <button type="button" className="btn small" onClick={() => handleEnable(u)}>
+                          Enable access
+                        </button>
+                      )}
+                      <button type="button" className="btn small danger" onClick={() => handleDelete(u)}>
+                        Delete permanently
                       </button>
                     </div>
                   </div>

@@ -71,8 +71,10 @@ const PAGE_LABELS = {
 // Which Super-Admin-granted power unlocks each management page for a Client Admin.
 // Pages not listed (overview/report/analyze/audit/seats/admins) are never gated here:
 // analytics are viewable by any admin; console-only pages are Super Admin only.
+// Surveyors (users) is NOT gated here — creating/managing surveyors is core Client Admin
+// work (BR-004). The "Verify surveyors" power only gates the verify button inside the
+// screen (AdminUsers checks it internally), never the whole tab.
 const PAGE_POWER = {
-  users: 'can_verify_surveyors',
   // Surveys screen allows either power internally (AdminSurveys canEdit)
   surveys: ['can_crud_questionnaire', 'can_edit_surveys'],
   questions: 'can_edit_surveys',

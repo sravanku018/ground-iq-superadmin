@@ -612,6 +612,31 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       or edits surveys.
                     </p>
 
+                    {/* Surveys & surveyors mapping */}
+                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🗺 Surveys & Surveyors</h4>
+                    {Array.isArray(u.survey_team) && u.survey_team.length > 0 ? (
+                      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {u.survey_team.map((s) => (
+                          <li key={s.id} style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px' }}>
+                            <div style={{ fontWeight: 600, fontSize: 13 }}>📋 {s.title}</div>
+                            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                              {Array.isArray(s.surveyors) && s.surveyors.length > 0
+                                ? `👥 ${s.surveyors.map((x) => x.name || x.username).join(', ')}`
+                                : '👥 No surveyors mapped yet'}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                        No surveys created yet — surveyors can only be mapped to surveys this admin owns.
+                      </p>
+                    )}
+                    <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
+                      Each client admin only sees their own surveys and their own surveyors — nothing is mixed
+                      across admins. Map surveyors to surveys from the admin's Surveys / Surveyors screens.
+                    </p>
+
                     {/* Verification */}
                     <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🛡 Verification</h4>
                     <button

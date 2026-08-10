@@ -660,7 +660,7 @@ function DraftsScreen({ user, onToast, onEdit }) {
 
   return (
     <div className="screen home-screen">
-      <p className="ptr-hint">Done records stay on this phone until they reach the server</p>
+      <p className="ptr-hint">All records stay on this phone until you confirm & push them</p>
       <div className="hero-card">
         <p className="eyebrow">Phone pending</p>
         <h1>{user?.name || user?.username}</h1>
@@ -684,8 +684,8 @@ function DraftsScreen({ user, onToast, onEdit }) {
       {items && items.length === 0 && (
         <div className="card" style={{ marginTop: 12, padding: '14px' }}>
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-            Nothing pending — collected records are synced automatically. Use “Save draft only”
-            while collecting to keep records on this phone.
+            Nothing pending — records you collect stay on this phone as drafts. Review them here
+            and tap “Push to admin” to send them to Client Admin.
           </p>
         </div>
       )}

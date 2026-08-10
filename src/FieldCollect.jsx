@@ -634,9 +634,13 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
       const audioDataUrl = await blobToBase64(blob)
       const audioMime = blob.type || 'audio/webm'
 
-      // Locked location + geo stamped into answers (immutable client fields)
+      // Locked location + geo stamped into answers (immutable client fields).
+      // Draft markers are stripped — a confirmed record is finished work.
+      const cleanAnswers = { ...answers }
+      delete cleanAnswers._draft
+      delete cleanAnswers.draft
       const lockedAnswers = {
-        ...answers,
+        ...cleanAnswers,
         _geo_locked: true,
         _photo_locked: true,
         _voice_locked: true,
@@ -651,7 +655,11 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         location_state: locationDetails?.state || '',
       }
 
-      const localSeq = Math.max(progress?.next_record || 0, localDoneCount) + 1
+      // Keep the draft's record number when confirming it (draft-first flow)
+      const localSeq =
+        draft?.recordIndex != null
+          ? draft.recordIndex
+          : Math.max(progress?.next_record || 0, localDoneCount) + 1
       const packageId = await savePackageLocal({
         form_key: formMeta?.form_key || 'default',
         form_id: `field-${user?.username || 's'}-${Date.now()}`,
@@ -718,8 +726,12 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
     }
   }
 
-  /** Save to phone storage only — client admin sees it after the surveyor pushes */
-  async function saveDraft() {
+  /**
+   * Save to phone storage only (draft-first): nothing reaches the server until
+   * the surveyor explicitly confirms (Push to admin / Confirm & push).
+   * autoNext → stay on Collect and start the next record.
+   */
+  async function saveDraft({ autoNext = false } = {}) {
     if (!geoLocked) {
       onToast?.('Lock GPS first (step 1)', 'error')
       setStep(0)
@@ -739,10 +751,13 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         blob = new Blob(chunks.current, { type: 'audio/webm' })
         setAudioBlob(blob)
       }
-      if (blob && blob.size >= MIN_AUDIO_BYTES) {
-        audioDataUrl = await blobToBase64(blob)
-        audioMime = blob.type || 'audio/webm'
+      if (!blob || blob.size < MIN_AUDIO_BYTES) {
+        onToast?.('Voice recording required to save a draft — activate voice and record', 'error')
+        setStep(2)
+        return
       }
+      audioDataUrl = await blobToBase64(blob)
+      audioMime = blob.type || 'audio/webm'
 
       const lockedAnswers = {
         ...answers,
@@ -784,10 +799,33 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         await deleteDraft(draft.id).catch(() => {})
         draftLoaded.current = null
       }
-      onToast?.('Draft saved on this phone — verify & push from Drafts', 'ok')
-      onSavedDraft?.()
+      if (autoNext) {
+        resetForNextRecord()
+        onToast?.(`Saved as draft #${localSeq} — review & push from Pending`, 'ok')
+        onDone?.(null, null)
+      } else {
+        onToast?.('Draft saved on this phone — review & push from Pending', 'ok')
+        onSavedDraft?.()
+      }
     } catch (e) {
       onToast?.(e.message || 'Draft save failed', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /** Discard the draft being edited (drafts never reach the server on their own) */
+  async function removeCurrentDraft() {
+    if (!draft?.id) return
+    if (!confirm('Delete this draft from the phone? Its answers and media will be removed.')) return
+    setSaving(true)
+    try {
+      await deleteDraft(draft.id).catch(() => {})
+      draftLoaded.current = null
+      onToast?.('Draft deleted', 'ok')
+      onSavedDraft?.()
+    } catch (e) {
+      onToast?.(e.message || 'Delete failed', 'error')
     } finally {
       setSaving(false)
     }
@@ -825,7 +863,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
           <p>
             {user?.name || user?.username} · step {step + 1}/4 · {questions.length} Qs
           </p>
-          {(formMeta?.surveys || []).length > 1 && (
+          {(formMeta?.surveys || []).length > 1 && !editingDraft && (
             <label
               className="field compact"
               style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}
@@ -1140,7 +1178,12 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                 </p>
               ) : null}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-                {!recording ? (
+                {editingDraft && voiceLocked ? (
+                  <span className="pill ok">
+                    <span className="dot" />
+                    🔒 VOICE LOCKED — draft audio cannot be re-recorded
+                  </span>
+                ) : !recording ? (
                   <button
                     type="button"
                     className="btn primary"
@@ -1385,7 +1428,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                       )}
                     </div>
 
-                    <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
                       <button
                         type="button"
                         className="btn secondary"
@@ -1402,6 +1445,15 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                         >
                           Next
                         </button>
+                      ) : !editingDraft ? (
+                        <button
+                          type="button"
+                          className="btn primary"
+                          disabled={saving}
+                          onClick={() => saveDraft({ autoNext: true })}
+                        >
+                          {saving ? 'Saving…' : 'Finish · save as draft'}
+                        </button>
                       ) : (
                         <button
                           type="button"
@@ -1410,20 +1462,32 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                           onClick={finishUpload}
                         >
                           {saving
-                            ? 'Saving on device…'
+                            ? 'Saving…'
                             : allHardLocks
-                              ? 'Save & push to admin'
+                              ? 'Confirm & push to admin'
                               : 'Locks incomplete'}
                         </button>
                       )}
-                      <button
-                        type="button"
-                        className="btn secondary"
-                        disabled={saving}
-                        onClick={saveDraft}
-                      >
-                        {draft?.id ? 'Keep as draft' : 'Save draft only'}
-                      </button>
+                      {editingDraft && (
+                        <button
+                          type="button"
+                          className="btn secondary"
+                          disabled={saving}
+                          onClick={() => saveDraft({ autoNext: false })}
+                        >
+                          Keep as draft
+                        </button>
+                      )}
+                      {editingDraft && (
+                        <button
+                          type="button"
+                          className="btn secondary danger-cta"
+                          disabled={saving}
+                          onClick={removeCurrentDraft}
+                        >
+                          Delete draft
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

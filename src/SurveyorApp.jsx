@@ -148,7 +148,7 @@ function HomeScreen({
         <div
           style={{
             height: 10,
-            background: 'rgba(255,255,255,0.08)',
+            background: 'rgba(15,23,42,0.08)',
             borderRadius: 99,
             marginBottom: 14,
             overflow: 'hidden',
@@ -385,7 +385,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
                 width: 84,
                 height: 84,
                 borderRadius: '50%',
-                background: '#243041',
+                background: '#e2e8f0',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -401,8 +401,8 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
               position: 'absolute',
               bottom: 0,
               right: 0,
-              background: user?.verified ? '#334155' : '#00e599',
-              color: user?.verified ? '#64748b' : '#111',
+              background: user?.verified ? '#cbd5e1' : '#059669',
+              color: user?.verified ? '#334155' : '#111',
               borderRadius: '50%',
               width: 30,
               height: 30,
@@ -444,7 +444,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ background: 'rgba(0,229,153,0.12)', border: '1px solid rgba(0,229,153,0.3)', borderRadius: 20, padding: '4px 14px' }}>
-            <span style={{ fontSize: 12, color: '#00e599', fontWeight: 'bold' }}>
+            <span style={{ fontSize: 12, color: '#059669', fontWeight: 'bold' }}>
               Key ID: {user?.key_id || 'GROUND-KEY'}
             </span>
           </div>
@@ -489,9 +489,9 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
               padding: '12px 16px',
               minHeight: 52,
               borderRadius: 12,
-              border: user?.verified ? '1px solid #475569' : '2px solid #00e599',
-              background: user?.verified ? '#0f172a' : '#1a2332',
-              color: user?.verified ? '#00e599' : '#ffffff',
+              border: user?.verified ? '1px solid #cbd5e1' : '2px solid #059669',
+              background: user?.verified ? '#e2e8f0' : '#ffffff',
+              color: user?.verified ? '#94a3b8' : '#0f172a',
               cursor: user?.verified ? 'not-allowed' : 'text',
             }}
           />
@@ -506,8 +506,8 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
                 fontWeight: 'bold',
                 minHeight: 48,
                 borderRadius: 12,
-                background: '#00e599',
-                color: '#0f172a',
+                background: '#059669',
+                color: '#ffffff',
                 cursor: 'pointer',
               }}
               disabled={savingPhone || phone === (user?.phone || '')}
@@ -536,8 +536,8 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {/* Front */}
-          <div style={{ border: user?.verified ? '1px solid #1e293b' : '1px dashed #334155', borderRadius: 8, padding: 10, textAlign: 'center', background: user?.verified ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.15)' }}>
-            <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 'bold', color: user?.verified ? '#64748b' : '#f8fafc' }}>Aadhaar Front</p>
+          <div style={{ border: user?.verified ? '1px solid #cbd5e1' : '1px dashed #94a3b8', borderRadius: 8, padding: 10, textAlign: 'center', background: user?.verified ? 'rgba(15,23,42,0.05)' : 'rgba(15,23,42,0.03)' }}>
+            <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 'bold', color: user?.verified ? '#64748b' : '#0f172a' }}>Aadhaar Front</p>
             {user?.aadhaar_front ? (
               <img
                 src={user.aadhaar_front}
@@ -545,13 +545,13 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
                 style={{ width: '100%', height: 95, objectFit: 'cover', borderRadius: 6, marginBottom: 8, opacity: user?.verified ? 0.7 : 1 }}
               />
             ) : (
-              <div style={{ height: 95, background: 'rgba(255,255,255,0.03)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 8 }}>
+              <div style={{ height: 95, background: 'rgba(15,23,42,0.06)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 8 }}>
                 🪪
               </div>
             )}
             <label
               className="btn small"
-              style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', cursor: user?.verified ? 'not-allowed' : 'pointer', background: user?.verified ? '#1e293b' : undefined, color: user?.verified ? '#64748b' : undefined, border: user?.verified ? '1px solid #334155' : undefined }}
+              style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', cursor: user?.verified ? 'not-allowed' : 'pointer', background: user?.verified ? '#e2e8f0' : undefined, color: user?.verified ? '#94a3b8' : undefined, border: user?.verified ? '1px solid #cbd5e1' : undefined }}
             >
               {uploading.front ? 'Uploading…' : user?.verified ? '🔒' : user?.aadhaar_front ? 'Change Front' : 'Upload Front'}
               {!user?.verified && (
@@ -566,8 +566,8 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
           </div>
 
           {/* Back */}
-          <div style={{ border: user?.verified ? '1px solid #1e293b' : '1px dashed #334155', borderRadius: 8, padding: 10, textAlign: 'center', background: user?.verified ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.15)' }}>
-            <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 'bold', color: user?.verified ? '#64748b' : '#f8fafc' }}>Aadhaar Back</p>
+          <div style={{ border: user?.verified ? '1px solid #cbd5e1' : '1px dashed #94a3b8', borderRadius: 8, padding: 10, textAlign: 'center', background: user?.verified ? 'rgba(15,23,42,0.05)' : 'rgba(15,23,42,0.03)' }}>
+            <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 'bold', color: user?.verified ? '#64748b' : '#0f172a' }}>Aadhaar Back</p>
             {user?.aadhaar_back ? (
               <img
                 src={user.aadhaar_back}
@@ -575,13 +575,13 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
                 style={{ width: '100%', height: 95, objectFit: 'cover', borderRadius: 6, marginBottom: 8, opacity: user?.verified ? 0.7 : 1 }}
               />
             ) : (
-              <div style={{ height: 95, background: 'rgba(255,255,255,0.03)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 8 }}>
+              <div style={{ height: 95, background: 'rgba(15,23,42,0.06)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 8 }}>
                 🪪
               </div>
             )}
             <label
               className="btn small"
-              style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', cursor: user?.verified ? 'not-allowed' : 'pointer', background: user?.verified ? '#1e293b' : undefined, color: user?.verified ? '#64748b' : undefined, border: user?.verified ? '1px solid #334155' : undefined }}
+              style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', cursor: user?.verified ? 'not-allowed' : 'pointer', background: user?.verified ? '#e2e8f0' : undefined, color: user?.verified ? '#94a3b8' : undefined, border: user?.verified ? '1px solid #cbd5e1' : undefined }}
             >
               {uploading.back ? 'Uploading…' : user?.verified ? '🔒' : user?.aadhaar_back ? 'Change Back' : 'Upload Back'}
               {!user?.verified && (

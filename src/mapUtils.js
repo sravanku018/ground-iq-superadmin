@@ -115,7 +115,7 @@ export const PARTY_HEX = {
   BRS: '#ec4899',
   Others: '#94a3b8',
   Undecided: '#64748b',
-  Unknown: '#334155',
+  Unknown: '#94a3b8',
 }
 
 /** Choropleth green scale for counts — small districts stay visible */

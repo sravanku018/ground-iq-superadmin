@@ -247,7 +247,7 @@ export default function SurveyMap({
             pct,
             party: lead?.party,
           })
-          lyr.setStyle({ weight: 2, color: '#00e599' })
+          lyr.setStyle({ weight: 2, color: '#059669' })
         })
         lyr.on('mouseout', () => {
           setHover(null)

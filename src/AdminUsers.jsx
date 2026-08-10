@@ -1034,7 +1034,7 @@ export default function AdminUsersScreen({ onToast }) {
                   <div
                     style={{
                       height: 8,
-                      background: 'rgba(255,255,255,0.08)',
+                      background: 'rgba(15,23,42,0.08)',
                       borderRadius: 99,
                       marginTop: 8,
                       overflow: 'hidden',
@@ -1332,11 +1332,11 @@ export default function AdminUsersScreen({ onToast }) {
                   width: '100%',
                   maxWidth: 580,
                   height: '100%',
-                  background: '#0f172a',
-                  borderLeft: '1px solid #334155',
+                  background: '#ffffff',
+                  borderLeft: '1px solid #e2e8f0',
                   padding: 20,
                   overflowY: 'auto',
-                  boxShadow: '-10px 0 30px rgba(0,0,0,0.5)',
+                  boxShadow: '-10px 0 30px rgba(15,23,42,0.15)',
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -1354,7 +1354,7 @@ export default function AdminUsersScreen({ onToast }) {
                 </div>
 
                 {/* Profile Avatar, Key ID, Verified Badge & Action Button */}
-                <div style={{ display: 'flex', gap: 14, alignItems: 'center', background: '#1e293b', padding: 14, borderRadius: 12, border: '1px solid #334155', marginBottom: 14 }}>
+                <div style={{ display: 'flex', gap: 14, alignItems: 'center', background: '#f1f5f9', padding: 14, borderRadius: 12, border: '1px solid #e2e8f0', marginBottom: 14 }}>
                   {profileUser.photo ? (
                     <img
                       src={profileUser.photo}
@@ -1362,13 +1362,13 @@ export default function AdminUsersScreen({ onToast }) {
                       style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: '3px solid #00e599' }}
                     />
                   ) : (
-                    <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>
+                    <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>
                       👤
                     </div>
                   )}
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <h4 style={{ margin: 0, fontSize: 18, color: '#ffffff' }}>
+                      <h4 style={{ margin: 0, fontSize: 18, color: '#0f172a' }}>
                         {profileUser.display_name || profileUser.name || profileUser.username}
                       </h4>
                       {profileUser.verified ? (
@@ -1380,7 +1380,7 @@ export default function AdminUsersScreen({ onToast }) {
                       )}
                     </div>
                     <p style={{ margin: '4px 0 0', fontSize: 13, color: '#94a3b8' }}>
-                      @{profileUser.username} · Key ID: <strong style={{ color: '#00e599' }}>{profileUser.key_id || '—'}</strong>
+                      @{profileUser.username} · Key ID: <strong style={{ color: '#059669' }}>{profileUser.key_id || '—'}</strong>
                     </p>
                     <div style={{ margin: '5px 0 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 13, color: profileUser.phone ? '#38bdf8' : '#f59e0b', fontWeight: 'bold' }}>
@@ -1389,7 +1389,7 @@ export default function AdminUsersScreen({ onToast }) {
                       <button
                         type="button"
                         className="btn small"
-                        style={{ fontSize: 11, padding: '2px 8px', background: '#334155', border: '1px solid #475569', color: '#ffffff', borderRadius: 6 }}
+                        style={{ fontSize: 11, padding: '2px 8px', background: '#e2e8f0', border: '1px solid #cbd5e1', color: '#334155', borderRadius: 6 }}
                         onClick={() => {
                           const next = prompt('Edit Mobile Phone Number for @' + profileUser.username + ':', profileUser.phone || '')
                           if (next !== null) {
@@ -1426,15 +1426,15 @@ export default function AdminUsersScreen({ onToast }) {
 
                 {/* Metrics: Surveys Done / Approved / Pending */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
-                  <div style={{ background: '#1e293b', padding: '12px 10px', borderRadius: 10, textAlign: 'center', border: '1px solid #334155' }}>
-                    <span style={{ display: 'block', fontSize: 22, fontWeight: '800', color: '#00e599' }}>
+                  <div style={{ background: '#f1f5f9', padding: '12px 10px', borderRadius: 10, textAlign: 'center', border: '1px solid #e2e8f0' }}>
+                    <span style={{ display: 'block', fontSize: 22, fontWeight: '800', color: '#059669' }}>
                       {profileData?.geoSummary?.records ?? (profileUser.done_count || 0)}
                     </span>
                     <span style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>
                       Surveys Done
                     </span>
                   </div>
-                  <div style={{ background: '#1e293b', padding: '12px 10px', borderRadius: 10, textAlign: 'center', border: '1px solid #059669' }}>
+                  <div style={{ background: '#f1f5f9', padding: '12px 10px', borderRadius: 10, textAlign: 'center', border: '1px solid #059669' }}>
                     <span style={{ display: 'block', fontSize: 22, fontWeight: '800', color: '#10b981' }}>
                       {profileData?.geoSummary?.confirmed ?? (profileUser.confirmed_count || 0)}
                     </span>
@@ -1442,7 +1442,7 @@ export default function AdminUsersScreen({ onToast }) {
                       Approved ✓
                     </span>
                   </div>
-                  <div style={{ background: '#1e293b', padding: '12px 10px', borderRadius: 10, textAlign: 'center', border: '1px solid #d97706' }}>
+                  <div style={{ background: '#f1f5f9', padding: '12px 10px', borderRadius: 10, textAlign: 'center', border: '1px solid #d97706' }}>
                     <span style={{ display: 'block', fontSize: 22, fontWeight: '800', color: '#f59e0b' }}>
                       {profileData?.items ? profileData.items.filter((it) => it.status === 'pending').length : (profileUser.pending_count || 0)}
                     </span>
@@ -1453,7 +1453,7 @@ export default function AdminUsersScreen({ onToast }) {
                 </div>
 
                 {/* Aadhaar Cards */}
-                <div style={{ background: '#1e293b', padding: 14, borderRadius: 10, border: '1px solid #334155', marginBottom: 16 }}>
+                <div style={{ background: '#f1f5f9', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                     <h5 style={{ margin: 0, fontSize: 14, color: '#38bdf8', fontWeight: 'bold' }}>🪪 Aadhaar Identity Verification</h5>
                     <span
@@ -1483,7 +1483,7 @@ export default function AdminUsersScreen({ onToast }) {
                           <img src={profileUser.aadhaar_front} alt="Aadhaar Front" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, border: '2px solid #00e599', marginBottom: 6 }} />
                         </a>
                       ) : (
-                        <div style={{ height: 100, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px dashed #475569', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12, marginBottom: 6 }}>
+                        <div style={{ height: 100, background: 'rgba(15,23,42,0.04)', borderRadius: 8, border: '1px dashed #cbd5e1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12, marginBottom: 6 }}>
                           <span style={{ fontSize: 22, marginBottom: 2 }}>🪪</span>
                           <span>No Front Card Uploaded</span>
                         </div>
@@ -1505,7 +1505,7 @@ export default function AdminUsersScreen({ onToast }) {
                           <img src={profileUser.aadhaar_back} alt="Aadhaar Back" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, border: '2px solid #00e599', marginBottom: 6 }} />
                         </a>
                       ) : (
-                        <div style={{ height: 100, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px dashed #475569', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12, marginBottom: 6 }}>
+                        <div style={{ height: 100, background: 'rgba(15,23,42,0.04)', borderRadius: 8, border: '1px dashed #cbd5e1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12, marginBottom: 6 }}>
                           <span style={{ fontSize: 22, marginBottom: 2 }}>🪪</span>
                           <span>No Back Card Uploaded</span>
                         </div>
@@ -1628,7 +1628,7 @@ export default function AdminUsersScreen({ onToast }) {
                     ) : (
                       <ul className="user-list">
                         {profileData.items.map((it, i) => (
-                          <li key={it.id || i} style={{ padding: '10px 12px', background: '#1e293b', borderRadius: 8, marginBottom: 8 }}>
+                          <li key={it.id || i} style={{ padding: '10px 12px', background: '#f1f5f9', borderRadius: 8, marginBottom: 8 }}>
                             <div>
                               <strong>#{it.record_index ?? it.id ?? i + 1}</strong>
                               <span className="meta" style={{ marginLeft: 8 }}>

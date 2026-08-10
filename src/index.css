@@ -1,19 +1,20 @@
 :root {
-  --text: #8b95a5;
-  --text-h: #f1f5f9;
-  --bg: #0b0f14;
-  --card: #121820;
-  --border: #243041;
-  --accent: #00e599;
-  --accent-bg: rgba(0, 229, 153, 0.12);
-  --accent-border: rgba(0, 229, 153, 0.45);
+  /* Light theme (dark mode disabled) — basic accent colors enabled */
+  --text: #475569;
+  --text-h: #0f172a;
+  --bg: #f4f6f9;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --accent: #059669;
+  --accent-bg: rgba(5, 150, 105, 0.12);
+  --accent-border: rgba(5, 150, 105, 0.4);
 
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: 15px;
   line-height: 1.45;
   color: var(--text);
-  background: #05070a;
-  color-scheme: dark;
+  background: #f4f6f9;
+  color-scheme: light;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }

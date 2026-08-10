@@ -119,7 +119,7 @@ function QuestionEditor({ questions, onChange }) {
             </label>
 
             {hasOptions && (
-              <div style={{ marginTop: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid #334155', borderRadius: 8, padding: 12 }}>
+              <div style={{ marginTop: 10, background: 'rgba(15,23,42,0.05)', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 }}>
                 <label className="field" style={{ marginBottom: 8 }}>
                   <span>Answer Options / Range Pills (comma-separated list, e.g. 10-20, 21-30, 31-40, 50+)</span>
                   <input
@@ -143,9 +143,9 @@ function QuestionEditor({ questions, onChange }) {
                     <span
                       key={optIdx}
                       style={{
-                        background: '#243041',
-                        border: '1px solid #00e599',
-                        color: '#fff',
+                        background: '#eef2f7',
+                        border: '1px solid #059669',
+                        color: '#0f172a',
                         borderRadius: 16,
                         padding: '4px 12px',
                         fontSize: 13,
@@ -199,8 +199,8 @@ function QuestionEditor({ questions, onChange }) {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 10,
-                background: q.required ? 'rgba(0, 229, 153, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                border: q.required ? '1px solid #00e599' : '1px solid #334155',
+                background: q.required ? 'rgba(5, 150, 105, 0.12)' : 'rgba(15, 23, 42, 0.05)',
+                border: q.required ? '1px solid #059669' : '1px solid #e2e8f0',
                 borderRadius: 8,
                 padding: '10px 14px',
                 cursor: 'pointer',
@@ -219,7 +219,7 @@ function QuestionEditor({ questions, onChange }) {
             </label>
 
             {/* Live App Preview */}
-            <div style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid #334155', borderRadius: 8, padding: 10, marginTop: 8 }}>
+            <div style={{ background: 'rgba(15,23,42,0.05)', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, marginTop: 8 }}>
               <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 'bold', color: '#38bdf8' }}>
                 📱 Mobile App Preview for Surveyors:
               </p>
@@ -546,12 +546,12 @@ export default function AdminSurveysScreen({ onToast }) {
 
         <div className="card" style={{ marginBottom: 12, borderLeft: '4px solid #00e599' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-            <span style={{ fontSize: 12, color: '#00e599', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <span style={{ fontSize: 12, color: '#059669', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               🔒 Survey Title (Locked / Non-Editable)
             </span>
-            <span style={{ fontSize: 11, color: '#aaa' }}>form_key: {detail.form_key}</span>
+            <span style={{ fontSize: 11, color: '#64748b' }}>form_key: {detail.form_key}</span>
           </div>
-          <h3 style={{ margin: '4px 0 8px', fontSize: 20, color: '#ffffff', fontWeight: 'bold' }}>
+          <h3 style={{ margin: '4px 0 8px', fontSize: 20, color: '#0f172a', fontWeight: 'bold' }}>
             {detail.title}
           </h3>
           <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
@@ -781,7 +781,7 @@ export default function AdminSurveysScreen({ onToast }) {
               Open
             </button>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <strong style={{ fontSize: 16, color: '#ffffff' }}>{s.title}</strong>
+              <strong style={{ fontSize: 16, color: '#0f172a' }}>{s.title}</strong>
               <div style={{ fontSize: 13, color: '#38bdf8', fontWeight: 'bold', marginTop: 3 }}>
                 👥 Field Team (People who took survey): {s.surveyor_names || `${s.surveyors || 0} assigned surveyor(s)`}
               </div>

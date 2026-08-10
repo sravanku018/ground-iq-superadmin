@@ -176,7 +176,7 @@ function HBar({ data, onBarClick, activeName, colorKey }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16, top: 8, bottom: 8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#243041" horizontal={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
         <XAxis type="number" stroke="#64748b" fontSize={11} />
         <YAxis
           type="category"
@@ -214,7 +214,7 @@ function StackedParty({ matrix, onRowClick }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} layout="vertical" margin={{ left: 4, right: 12, top: 8, bottom: 8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#243041" horizontal={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
         <XAxis type="number" stroke="#64748b" fontSize={11} />
         <YAxis
           type="category"
@@ -258,7 +258,7 @@ function Timeline({ data }) {
             <stop offset="100%" stopColor="#00e599" stopOpacity={0.02} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="#243041" />
+        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
         <XAxis
           dataKey="date"
           stroke="#64748b"
@@ -515,7 +515,7 @@ export default function DashboardScreen({ onToast }) {
           {/* Step 1 · Survey name */}
           <div
             style={{
-              border: '1px solid #243041',
+              border: '1px solid #e2e8f0',
               borderRadius: 10,
               padding: 10,
               marginBottom: 10,
@@ -552,7 +552,7 @@ export default function DashboardScreen({ onToast }) {
           {/* Step 2 · Surveyor — options load per survey */}
           <div
             style={{
-              border: '1px solid #243041',
+              border: '1px solid #e2e8f0',
               borderRadius: 10,
               padding: 10,
               marginBottom: 10,
@@ -587,7 +587,7 @@ export default function DashboardScreen({ onToast }) {
           {/* Step 3 · Day / Month */}
           <div
             style={{
-              border: '1px solid #243041',
+              border: '1px solid #e2e8f0',
               borderRadius: 10,
               padding: 10,
               marginBottom: 10,
@@ -636,7 +636,7 @@ export default function DashboardScreen({ onToast }) {
           {/* Question filters — load per survey */}
           <div
             style={{
-              border: '1px solid #243041',
+              border: '1px solid #e2e8f0',
               borderRadius: 10,
               padding: 10,
               marginBottom: 10,

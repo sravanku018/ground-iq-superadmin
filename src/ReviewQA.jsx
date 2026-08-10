@@ -387,7 +387,7 @@ export default function ReviewQAScreen({ onToast }) {
                                 objectFit: 'contain',
                                 marginTop: 6,
                                 borderRadius: 8,
-                                background: '#0a0f14',
+                                background: '#eef2f7',
                               }}
                             />
                           </div>

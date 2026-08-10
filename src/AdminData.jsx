@@ -563,8 +563,8 @@ export default function AdminDataScreen({ onToast }) {
                 return (
                   <div
                     style={{
-                      background: '#1e293b',
-                      border: '1px solid #00e599',
+                      background: '#f1f5f9',
+                      border: '1px solid #059669',
                       borderRadius: 10,
                       padding: '12px 14px',
                       marginBottom: 12,
@@ -572,7 +572,7 @@ export default function AdminDataScreen({ onToast }) {
                   >
                     <div
                       style={{
-                        color: '#00e599',
+                        color: '#059669',
                         fontWeight: 'bold',
                         fontSize: 13,
                         display: 'flex',
@@ -582,7 +582,7 @@ export default function AdminDataScreen({ onToast }) {
                     >
                       <span>👥 Field team for &quot;{sel?.title || survey}&quot;:</span>
                     </div>
-                    <div style={{ color: '#ffffff', fontSize: 14, fontWeight: 'bold', marginTop: 4 }}>
+                    <div style={{ color: '#0f172a', fontSize: 14, fontWeight: 'bold', marginTop: 4 }}>
                       {teamDisplay}
                     </div>
                     <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>

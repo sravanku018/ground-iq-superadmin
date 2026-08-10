@@ -956,7 +956,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
             <div
               style={{
                 height: 10,
-                background: 'rgba(255,255,255,0.08)',
+                background: 'rgba(15,23,42,0.08)',
                 borderRadius: 99,
                 overflow: 'hidden',
               }}

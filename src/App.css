@@ -56,7 +56,7 @@
   overflow: hidden;
   transition: opacity 0.15s;
   z-index: 5;
-  background: linear-gradient(to bottom, var(--bg, #0b1220) 40%, transparent);
+  background: linear-gradient(to bottom, var(--bg, #eef2f7) 40%, transparent);
 }
 
 .ptr-indicator.ready {
@@ -126,7 +126,7 @@
 }
 
 .toast.ok {
-  background: #052e1c;
+  background: #d1fae5;
   color: #4ade80;
 }
 
@@ -161,7 +161,7 @@
   align-items: flex-start;
   justify-content: center;
   padding: 28px 16px calc(28px + env(safe-area-inset-bottom, 0px));
-  background: radial-gradient(ellipse at top, #12261c 0%, var(--bg) 55%);
+  background: radial-gradient(ellipse at top, #d1fae5 0%, var(--bg) 55%);
   overflow: auto;
 }
 
@@ -176,7 +176,7 @@
     max(20px, env(safe-area-inset-top))
     20px
     max(24px, env(safe-area-inset-bottom));
-  background: #070b10;
+  background: #eef2f7;
   overflow: auto;
 }
 
@@ -264,7 +264,7 @@
   gap: 8px;
   font-size: 13px;
   font-weight: 700;
-  color: #cbd5e1;
+  color: #64748b;
 }
 
 .fl-input {
@@ -272,9 +272,9 @@
   box-sizing: border-box;
   padding: 15px 16px;
   border-radius: 14px;
-  border: 1.5px solid #2a3544;
-  background: #0e141c;
-  color: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  background: #ffffff;
+  color: #0f172a;
   font-size: 16px;
   font-weight: 500;
 }
@@ -364,15 +364,15 @@
   margin-top: 16px;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid var(--border, #2a3648);
-  background: rgba(15, 23, 32, 0.55);
+  border: 1px solid var(--border, #e2e8f0);
+  background: rgba(255, 255, 255, 0.6);
   font-size: 13px;
   line-height: 1.45;
-  color: var(--text, #94a3b8);
+  color: var(--text, #64748b);
 }
 
 .fl-admin-hint strong {
-  color: var(--text-h, #e2e8f0);
+  color: var(--text-h, #0f172a);
 }
 
 .fl-admin-hint a {
@@ -1084,7 +1084,7 @@
   position: relative;
   height: min(52vh, 420px);
   min-height: 280px;
-  background: #0a0f16;
+  background: #e2e8f0;
 }
 
 .leaflet-host {
@@ -1100,7 +1100,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(8, 12, 18, 0.55);
+  background: rgba(255, 255, 255, 0.7);
   color: var(--text-h);
   font-size: 13px;
   font-weight: 600;
@@ -1121,7 +1121,7 @@
   gap: 2px;
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(15, 23, 32, 0.92);
+  background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--border);
   max-width: 70%;
   pointer-events: none;
@@ -1159,7 +1159,7 @@
   height: 12px;
   border-radius: 3px;
   display: inline-block;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .legend-hint {
@@ -1170,9 +1170,9 @@
 
 /* Leaflet tooltip skin */
 .survey-map-tooltip {
-  background: #0f1720 !important;
-  border: 1px solid #2a3648 !important;
-  color: #e2e8f0 !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
   border-radius: 8px !important;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
   padding: 0 !important;
@@ -1191,7 +1191,7 @@
 }
 
 .leaflet-container {
-  background: #0a0f16;
+  background: #e2e8f0;
   font: inherit;
 }
 
@@ -1276,7 +1276,7 @@
 }
 
 .hero-card {
-  background: linear-gradient(145deg, #0d1f17 0%, #12261c 50%, #0a1620 100%);
+  background: linear-gradient(145deg, #d1fae5 0%, #ecfdf5 50%, #e0f2fe 100%);
   border: 1px solid rgba(0, 229, 153, 0.25);
   border-radius: 20px;
   padding: 22px 18px;
@@ -1322,8 +1322,8 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .pill .dot {

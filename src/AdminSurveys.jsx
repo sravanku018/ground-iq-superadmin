@@ -6,6 +6,7 @@ import {
   getSurvey,
   listSurveys,
   listUsers,
+  setSurveyAdmins,
   setSurveySurveyors,
   updateSurvey,
 } from './api'
@@ -312,6 +313,9 @@ export default function AdminSurveysScreen({ onToast, user }) {
   const [checked, setChecked] = useState({})
   const [busy, setBusy] = useState(false)
   const [teamOpen, setTeamOpen] = useState(false)
+  // shared access: client admins granted access to this survey (super admin only)
+  const [allAdmins, setAllAdmins] = useState([])
+  const [adminsOpen, setAdminsOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -354,6 +358,9 @@ export default function AdminSurveysScreen({ onToast, user }) {
           .filter((u) => u.role === 'surveyor' || u.role === 'field')
         setAllSurveyors(collect)
         setChecked(Object.fromEntries(collect.map((u) => [String(u.id), team.has(Number(u.id))])))
+        const admins = (users.users || users.surveyors || users || []).filter((u) => u.role === 'admin')
+        setAllAdmins(admins)
+        setAdminsOpen(false)
         setMode('detail')
       })
       .catch((e) => onToast?.(e.message, 'error'))
@@ -405,6 +412,28 @@ export default function AdminSurveysScreen({ onToast, user }) {
       onToast?.(e.message, 'error')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function toggleAdmin(u) {
+    if (!detail || user?.role !== 'super_admin') return
+    setBusy(true)
+    try {
+      const ownerId = detail.owner_id != null ? Number(detail.owner_id) : null
+      const on = (detail.admins || []).some((a) => Number(a.id) === Number(u.id))
+      const next = on
+        ? (detail.admins || []).filter((a) => Number(a.id) !== Number(u.id))
+        : [...(detail.admins || []), { id: u.id, username: u.username, name: u.name || u.username }]
+      // owner keeps access regardless — only shared (granted) admins go in the PUT
+      const putIds = next.filter((a) => Number(a.id) !== ownerId).map((a) => Number(a.id))
+      await setSurveyAdmins(detail.id, putIds)
+      setDetail({ ...detail, admins: next, admin_count: next.length })
+      onToast?.(`${u.username} ${on ? 'removed from' : 'granted'} access to this survey`, 'ok')
+      setAdminsOpen(false)
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -698,6 +727,116 @@ export default function AdminSurveysScreen({ onToast, user }) {
           )}
         </div>
 
+        <h3 style={{ fontSize: 14, margin: '14px 0 6px' }}>👥 Client Admins with access</h3>
+        <div className="card" style={{ marginBottom: 12, padding: 12 }}>
+          {user?.role === 'super_admin' ? (
+            <>
+              <button
+                type="button"
+                className="btn small primary"
+                style={{ width: '100%', textAlign: 'left' }}
+                onClick={() => setAdminsOpen((o) => !o)}
+              >
+                {(detail.admins || []).length > 0
+                  ? `${detail.admins.length} client admin(s) have access — tap to edit`
+                  : 'Share with client admins…'}
+              </button>
+              {adminsOpen && (
+                <div
+                  style={{
+                    background: '#fff',
+                    color: '#111',
+                    border: '1px solid rgba(0,0,0,0.2)',
+                    borderRadius: 12,
+                    padding: 6,
+                    maxHeight: 240,
+                    overflowY: 'auto',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                  }}
+                >
+                  {allAdmins.length === 0 ? (
+                    <p className="muted" style={{ fontSize: 12, margin: 6 }}>
+                      No client admin accounts yet — create them in the Client Admins tab.
+                    </p>
+                  ) : (
+                    allAdmins.map((u) => {
+                      const isOwner = detail.owner_id != null && Number(u.id) === Number(detail.owner_id)
+                      const on = (detail.admins || []).some((a) => Number(a.id) === Number(u.id))
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          disabled={busy || isOwner}
+                          onClick={() => toggleAdmin(u)}
+                          style={{
+                            display: 'flex',
+                            width: '100%',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 8,
+                            padding: '10px 12px',
+                            border: 'none',
+                            borderRadius: 8,
+                            background: on ? '#ede9fe' : 'transparent',
+                            color: '#111',
+                            fontSize: 14,
+                            fontWeight: 600,
+                            cursor: isOwner ? 'default' : 'pointer',
+                            opacity: isOwner ? 0.65 : 1,
+                            textAlign: 'left',
+                          }}
+                        >
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {u.username}
+                            {u.name && u.name !== u.username ? ` (${u.name})` : ''}
+                            {isOwner ? ' · owner' : ''}
+                          </span>
+                          {on ? (
+                            <span style={{ color: '#7c3aed', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
+                              ✓
+                            </span>
+                          ) : null}
+                        </button>
+                      )
+                    })
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setAdminsOpen(false)}
+                    style={{
+                      width: '100%',
+                      marginTop: 4,
+                      padding: '8px',
+                      border: 'none',
+                      borderRadius: 8,
+                      background: 'rgba(0,0,0,0.06)',
+                      color: '#111',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Done
+                  </button>
+                </div>
+              )}
+              <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
+                Client admins added here can open this survey, assign their own surveyors to it, and
+                edit it — delete stays with the owner. They see it in their Surveys tab.
+              </p>
+            </>
+          ) : (
+            <p style={{ fontSize: 13, margin: 0 }}>
+              {(detail.admins || []).length > 0
+                ? `👥 ${detail.admins.length} client admin(s) can access this survey — ${detail.admins.map((a) => a.name || a.username).join(', ')}`
+                : '👥 No other client admins have access to this survey.'}
+              {detail.owner && (
+                <span className="muted"> · owner: {detail.owner}</span>
+              )}
+            </p>
+          )}
+        </div>
+
         <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
           Survey questions — add/edit here. Options support text, choice, Yes/No, A·B·C·D,
           sentiment (Positive/Neutral/Negative) and age (auto ranges in report).
@@ -789,6 +928,12 @@ export default function AdminSurveysScreen({ onToast, user }) {
                 📊 {s.submissions || 0} Submissions · 📋 {s.question_count || 0} Questions · Updated{' '}
                 {String(s.updated_at || '').slice(0, 16).replace('T', ' ')}
               </div>
+              {s.admin_count > 0 && (
+                <div className="muted" style={{ fontSize: 12, marginTop: 3, color: '#7c3aed' }}>
+                  👥 {s.admin_count} client admin(s) can access this survey
+                  {s.admin_names ? ` — ${s.admin_names}` : ''}
+                </div>
+              )}
             </div>
           </div>
         </div>

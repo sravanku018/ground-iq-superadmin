@@ -520,6 +520,15 @@ export function setSurveySurveyors(id, userIds) {
   })
 }
 
+/** Super Admin: replace which Client Admins have access to a survey (shared surveys) */
+export function setSurveyAdmins(id, adminIds) {
+  return request(`/api/surveys/${id}/admins`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ admin_ids: adminIds }),
+  })
+}
+
 /** Admin: add respondent to a survey */
 export function addRespondent(id, { name, phone }) {
   return request(`/api/surveys/${id}/respondents`, {

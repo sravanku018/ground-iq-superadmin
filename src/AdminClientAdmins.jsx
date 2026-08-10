@@ -573,6 +573,26 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       across admins. Map surveyors to surveys from the admin's Surveys / Surveyors screens.
                     </p>
 
+                    {/* Connected projects shared by Super Admin */}
+                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🔗 Connected projects (shared)</h4>
+                    {Array.isArray(u.granted_surveys) && u.granted_surveys.length > 0 ? (
+                      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {u.granted_surveys.map((s) => (
+                          <li key={s.id} style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '8px 10px' }}>
+                            <div style={{ fontWeight: 600, fontSize: 13, color: '#5b21b6' }}>🔗 {s.title}</div>
+                            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                              Shared by Super Admin — this admin can open, edit & map their surveyors
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                        No surveys shared yet — share from the Surveys tab (Super Admin → Surveys → open a
+                        survey → "Share with client admins…").
+                      </p>
+                    )}
+
                     {/* Verification */}
                     <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🛡 Verification</h4>
                     <button

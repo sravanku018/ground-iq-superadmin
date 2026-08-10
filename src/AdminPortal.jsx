@@ -243,6 +243,18 @@ function AllocationCard({ user }) {
           No surveys yet — create surveys first, then map surveyors to them.
         </p>
       )}
+      {(Array.isArray(self.granted_surveys) && self.granted_surveys.length > 0) && (
+        <>
+          <h4 style={{ fontSize: 13, margin: '14px 0 8px' }}>🔗 Connected projects (shared by Super Admin)</h4>
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {self.granted_surveys.map((s) => (
+              <li key={s.id} style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '8px 10px' }}>
+                <span style={{ fontWeight: 600, fontSize: 13, color: '#5b21b6' }}>🔗 {s.title}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <p className="muted" style={{ fontSize: 11, margin: '8px 0 0' }}>
         Caps are set by Super Admin. Only your own surveys and surveyors are shown — nothing is mixed
         with other client admins.

@@ -586,6 +586,20 @@ async function ensureSchema() {
   await sql`CREATE INDEX IF NOT EXISTS idx_survey_respondents_survey ON survey_respondents(survey_id)`.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_survey_assignments_survey ON survey_assignments(survey_id)`.catch(() => null);
 
+  // Shared surveys: Super Admin maps which Client Admins get access to a survey.
+  // The owner is survey_form.created_by; these rows grant additional admins access.
+  await sql`
+    CREATE TABLE IF NOT EXISTS survey_admin_access (
+      id SERIAL PRIMARY KEY,
+      survey_id INTEGER NOT NULL REFERENCES survey_form(id) ON DELETE CASCADE,
+      admin_id INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (survey_id, admin_id)
+    )
+  `.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_survey_admin_access_survey ON survey_admin_access(survey_id)`.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_survey_admin_access_admin ON survey_admin_access(admin_id)`.catch(() => null);
+
   // ── Platform governance (01-PRD.md Super Admin): audit log, global question bank, seat limits ──
   // FR-AUD-01/02: append-only platform audit trail, per actor account.
   await sql`
@@ -3280,6 +3294,19 @@ Deno.serve(async (req) => {
               : [],
           }));
         }
+        // Connected projects: surveys Super Admin shared with this admin
+        let granted_surveys: { id: number; title: string }[] = [];
+        if (r.role === "admin") {
+          const grantRows = await sql`
+            SELECT f.id, f.title
+            FROM survey_admin_access saa JOIN survey_form f ON f.id = saa.survey_id
+            WHERE saa.admin_id = ${Number(r.id)} ORDER BY f.title
+          `.catch(() => []);
+          granted_surveys = (grantRows as { id: number; title: string }[]).map((g) => ({
+            id: Number(g.id),
+            title: String(g.title),
+          }));
+        }
         users.push({
           id: r.id,
           username: r.username,
@@ -3292,6 +3319,7 @@ Deno.serve(async (req) => {
           surveyor_count,
           question_count,
           survey_team,
+          granted_surveys,
           done,
           key_id: r.key_id || null,
           phone: r.phone || null,
@@ -5268,15 +5296,42 @@ Deno.serve(async (req) => {
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const q = (url.searchParams.get("q") || "").trim().toLowerCase();
       // FR-USR-10 / BR-004: surveys are tenant-scoped — a Client Admin only sees
-      // surveys they created (created_by = me.id); legacy/seed forms (NULL owner)
-      // stay visible; Super Admin sees everything.
+      // surveys they created (created_by = me.id) OR surveys Super Admin shared
+      // with them (survey_admin_access); legacy/seed forms (NULL owner) stay
+      // visible; Super Admin sees everything.
       const rows = me.role === "super_admin"
-        ? await sql`SELECT id, form_key, title, questions, updated_at FROM survey_form ORDER BY title`
+        ? await sql`SELECT id, form_key, title, questions, updated_at, created_by FROM survey_form ORDER BY title`
         : await sql`
-            SELECT id, form_key, title, questions, updated_at FROM survey_form
+            SELECT id, form_key, title, questions, updated_at, created_by FROM survey_form
             WHERE created_by = ${me.id} OR created_by IS NULL
+               OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
             ORDER BY title
           `;
+      // Shared-access: which Client Admins can access each survey (Super Admin mapping)
+      const adminAccess = await sql`
+        SELECT saa.survey_id, u.id, u.username, COALESCE(u.display_name, u.username) AS name
+        FROM survey_admin_access saa JOIN app_users u ON u.id = saa.admin_id
+        ORDER BY u.username
+      `.catch(() => []);
+      const adminAccessMap = new Map<number, { id: number; username: string; name: string }[]>();
+      for (const a of adminAccess as {
+        survey_id: number;
+        id: number;
+        username: string;
+        name: string;
+      }[]) {
+        const arr = adminAccessMap.get(Number(a.survey_id)) || [];
+        arr.push({ id: Number(a.id), username: a.username, name: a.name });
+        adminAccessMap.set(Number(a.survey_id), arr);
+      }
+      // Owner names (role=admin) so the count reflects ALL client admins with access
+      const adminIds = await sql`
+        SELECT id, COALESCE(display_name, username) AS name FROM app_users WHERE role = 'admin'
+      `.catch(() => []);
+      const adminNameMap = new Map<number, string>();
+      for (const a of adminIds as { id: number; name: string }[]) {
+        adminNameMap.set(Number(a.id), String(a.name));
+      }
       const asg = await sql`
         SELECT a.survey_id, COUNT(*)::int AS n,
                ARRAY_AGG(DISTINCT COALESCE(u.name, u.username)) AS names
@@ -5307,6 +5362,12 @@ Deno.serve(async (req) => {
         }
         const asgData = asgMap.get(Number(r.id));
         const names = Array.isArray(asgData?.names) ? asgData.names.filter(Boolean) : [];
+        const accessList = adminAccessMap.get(Number(r.id)) || [];
+        const ownerId = r.created_by != null ? Number(r.created_by) : null;
+        const ownerName = ownerId != null ? adminNameMap.get(ownerId) : undefined;
+        const allAccess = ownerName && !accessList.some((a) => a.id === ownerId)
+          ? [...accessList, { id: ownerId, username: "", name: ownerName }]
+          : accessList;
         return {
           id: r.id,
           form_key: r.form_key,
@@ -5315,6 +5376,8 @@ Deno.serve(async (req) => {
           updated_at: r.updated_at,
           surveyors: asgData?.n || 0,
           surveyor_names: names.join(", ") || "",
+          admin_count: allAccess.length,
+          admin_names: allAccess.map((a) => a.name).join(", ") || "",
           respondents_total: rspMap.get(Number(r.id))?.total || 0,
           respondents_done: rspMap.get(Number(r.id))?.done || 0,
           submissions: subMap.get(String(r.form_key)) || 0,
@@ -5393,15 +5456,40 @@ Deno.serve(async (req) => {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
-      const rows = await sql`
-        SELECT id, form_key, title, questions, updated_at FROM survey_form WHERE id = ${id}
-      `;
-      if (!rows.length) return json({ error: "Not found" }, 404);
-      const r = rows[0] as { id: number; form_key: string; title: string; questions: unknown; updated_at: string };
+      // Tenant scoping: Client Admin can open their own, legacy (NULL owner), or
+      // Super-Admin-shared surveys. Super Admin opens everything.
+      const rows = me.role === "super_admin"
+        ? await sql`SELECT id, form_key, title, questions, updated_at, created_by FROM survey_form WHERE id = ${id}`
+        : await sql`
+            SELECT id, form_key, title, questions, updated_at, created_by FROM survey_form
+            WHERE id = ${id} AND (created_by = ${me.id} OR created_by IS NULL
+              OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
+          `;
+      if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
+      const r = rows[0] as { id: number; form_key: string; title: string; questions: unknown; updated_at: string; created_by: number | null };
       let questions = r.questions;
       if (typeof questions === "string") {
         try { questions = JSON.parse(questions); } catch { questions = []; }
       }
+      // Client Admins granted access to this survey (shared) + owner name
+      const admins = await sql`
+        SELECT u.id, u.username, COALESCE(u.display_name, u.username) AS name
+        FROM survey_admin_access saa JOIN app_users u ON u.id = saa.admin_id
+        WHERE saa.survey_id = ${id} ORDER BY u.username
+      `.catch(() => []);
+      const ownerRows = r.created_by != null
+        ? await sql`
+            SELECT u.id, u.username, COALESCE(u.display_name, u.username) AS name, u.role
+            FROM app_users u WHERE u.id = ${r.created_by}
+          `.catch(() => [])
+        : [];
+      const ownerRow = (ownerRows as { id: number; username: string; name: string; role: string }[])[0];
+      const adminList = admins as { id: number; username: string; name: string }[];
+      const ownerIncluded = ownerRow?.role === "admin" &&
+        !adminList.some((a) => Number(a.id) === Number(ownerRow.id));
+      const fullAdmins = ownerIncluded
+        ? [...adminList, { id: Number(ownerRow.id), username: ownerRow.username, name: ownerRow.name, is_owner: true }]
+        : adminList;
       const team = await sql`
         SELECT u.id, u.username, u.display_name, u.active
         FROM survey_assignments sa JOIN app_users u ON u.id = sa.user_id
@@ -5420,6 +5508,10 @@ Deno.serve(async (req) => {
           updated_at: r.updated_at,
           surveyors: team,
           respondents,
+          admins: fullAdmins,
+          admin_count: fullAdmins.length,
+          owner: ownerRow?.name || null,
+          owner_id: ownerRow?.id != null ? Number(ownerRow.id) : null,
         },
       });
     }
@@ -5434,8 +5526,16 @@ Deno.serve(async (req) => {
       }
       const id = Number(path.split("/")[3]);
       const body = await readBody(req);
-      const rows = await sql`SELECT id, title FROM survey_form WHERE id = ${id}`;
-      if (!rows.length) return json({ error: "Not found" }, 404);
+      // Tenant scoping: edit allowed for owner, legacy (NULL owner), or shared
+      // surveys. Super Admin edits everything.
+      const rows = me.role === "super_admin"
+        ? await sql`SELECT id, title FROM survey_form WHERE id = ${id}`
+        : await sql`
+            SELECT id, title FROM survey_form
+            WHERE id = ${id} AND (created_by = ${me.id} OR created_by IS NULL
+              OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
+          `;
+      if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
       // Super-Admin-set per-survey question cap for this Client Admin (0 = unlimited)
       const maxQsPut = Number((me as Record<string, unknown>).max_questions_per_survey) || 0;
       if (maxQsPut > 0 && Array.isArray(body.questions) && body.questions.length > maxQsPut) {
@@ -5475,8 +5575,12 @@ Deno.serve(async (req) => {
         }, 403);
       }
       const id = Number(path.split("/")[3]);
-      const rows = await sql`SELECT form_key FROM survey_form WHERE id = ${id}`;
-      if (!rows.length) return json({ error: "Not found" }, 404);
+      // Only the owner (or Super Admin) may delete — shared access does NOT grant
+      // delete rights, so one admin can't remove a survey others rely on.
+      const rows = me.role === "super_admin"
+        ? await sql`SELECT form_key FROM survey_form WHERE id = ${id}`
+        : await sql`SELECT form_key FROM survey_form WHERE id = ${id} AND (created_by = ${me.id} OR created_by IS NULL)`;
+      if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
       await sql`DELETE FROM survey_assignments WHERE survey_id = ${id}`.catch(() => null);
       await sql`DELETE FROM survey_respondents WHERE survey_id = ${id}`.catch(() => null);
       await sql`DELETE FROM survey_form WHERE id = ${id}`;
@@ -5497,7 +5601,11 @@ Deno.serve(async (req) => {
       // they own (or legacy NULL-owner forms). Super Admin can map any survey.
       const rows = me.role === "super_admin"
         ? await sql`SELECT id FROM survey_form WHERE id = ${id}`
-        : await sql`SELECT id FROM survey_form WHERE id = ${id} AND (created_by = ${me.id} OR created_by IS NULL)`;
+        : await sql`
+            SELECT id FROM survey_form
+            WHERE id = ${id} AND (created_by = ${me.id} OR created_by IS NULL
+              OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
+          `;
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
       // Only allow mapping surveyors this admin created (or admin/super_admin accounts)
       let allowed: number[] = ids;
@@ -5518,6 +5626,38 @@ Deno.serve(async (req) => {
         `.catch(() => null);
       }
       return json({ ok: true, assigned: allowed.length });
+    }
+
+    // Super Admin: map which Client Admins get access to a survey (shared surveys)
+    if (path.match(/^\/api\/surveys\/\d+\/admins$/) && method === "PUT") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+      const id = Number(path.split("/")[3]);
+      const body = await readBody(req);
+      const ids = (Array.isArray(body.admin_ids) ? body.admin_ids : [])
+        .map(Number)
+        .filter((v: number) => Number.isFinite(v));
+      const rows = await sql`SELECT id FROM survey_form WHERE id = ${id}`;
+      if (!rows.length) return json({ error: "Not found" }, 404);
+      // Only role=admin accounts can be granted access
+      let allowed: number[] = ids;
+      if (ids.length) {
+        const ok = await sql`
+          SELECT id FROM app_users WHERE id = ANY(${ids}) AND role = 'admin'
+        `.catch(() => []);
+        const okSet = new Set((ok as { id: number }[]).map((r) => Number(r.id)));
+        allowed = ids.filter((v) => okSet.has(v));
+      }
+      await sql`DELETE FROM survey_admin_access WHERE survey_id = ${id}`.catch(() => null);
+      for (const aid of allowed) {
+        await sql`
+          INSERT INTO survey_admin_access (survey_id, admin_id)
+          VALUES (${id}, ${aid})
+          ON CONFLICT (survey_id, admin_id) DO NOTHING
+        `.catch(() => null);
+      }
+      logAudit(me, "survey_share", "survey", id, { admins: allowed });
+      return json({ ok: true, admins: allowed.length });
     }
 
     // Surveyor view: surveys assigned to me (with their questions) — field app

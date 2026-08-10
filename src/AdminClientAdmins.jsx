@@ -34,6 +34,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
   const [form, setForm] = useState(EMPTY_FORM)
   const [created, setCreated] = useState(null)
   const [maxQInputs, setMaxQInputs] = useState({})
+  const [maxSvInputs, setMaxSvInputs] = useState({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -91,6 +92,26 @@ export default function AdminClientAdminsScreen({ onToast }) {
         'ok',
       )
       setMaxQInputs((m) => ({ ...m, [u.id]: undefined }))
+      await load()
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveMaxSurveys = async (u) => {
+    const next = maxSvInputs[u.id] != null ? Number(maxSvInputs[u.id]) : (u.max_surveys ?? 0)
+    setSaving(true)
+    try {
+      await updateUser(u.id, { max_surveys: Math.max(0, next) })
+      onToast?.(
+        next > 0
+          ? `Cap set · @${u.username} max ${next} surveys`
+          : `Cap cleared · @${u.username} unlimited surveys`,
+        'ok',
+      )
+      setMaxSvInputs((m) => ({ ...m, [u.id]: undefined }))
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -433,6 +454,58 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       {u.max_questions_per_survey > 0 && (
                         <span className="pill" style={{ fontSize: 10 }}>
                           cap {u.max_questions_per_survey}
+                        </span>
+                      )}
+                    </span>
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        marginLeft: 6,
+                      }}
+                    >
+                      <label
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: 11,
+                        }}
+                      >
+                        <span className="muted">Max surveys:</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100000"
+                          value={
+                            maxSvInputs[u.id] != null
+                              ? maxSvInputs[u.id]
+                              : (u.max_surveys ?? 0)
+                          }
+                          onChange={(e) =>
+                            setMaxSvInputs((m) => ({
+                              ...m,
+                              [u.id]: Math.max(0, Number(e.target.value) || 0),
+                            }))
+                          }
+                          style={{ width: 64, padding: '3px 6px', fontSize: 11 }}
+                          title="Cap on total surveys this Client Admin can create (0 = unlimited)"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="btn small primary"
+                        disabled={saving}
+                        onClick={() => void saveMaxSurveys(u)}
+                        style={{ fontSize: 11, padding: '3px 9px' }}
+                        title="Save survey cap (Super Admin only)"
+                      >
+                        Save
+                      </button>
+                      {u.max_surveys > 0 && (
+                        <span className="pill" style={{ fontSize: 10 }}>
+                          cap {u.max_surveys}
                         </span>
                       )}
                     </span>

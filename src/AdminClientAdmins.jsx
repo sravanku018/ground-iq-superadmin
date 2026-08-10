@@ -392,9 +392,9 @@ export default function AdminClientAdminsScreen({ onToast }) {
                     )}
                     {u.active !== false && (
                       <span className="meta" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                        <span className="pill">📋 surveys {u.survey_count ?? 0}/{u.max_surveys > 0 ? u.max_surveys : '∞'}</span>
-                        <span className="pill">📝 {u.question_count ?? 0} questions created</span>
-                        <span className="pill">👥 surveyors {u.surveyor_count ?? 0}/{u.max_surveyors > 0 ? u.max_surveyors : '∞'}</span>
+                        <span className="pill" title="Surveys created / allocated">📋 surveys {u.survey_count ?? 0} / {u.max_surveys > 0 ? u.max_surveys : '∞'} allocated</span>
+                        <span className="pill" title="Total questions created / max per survey">📝 questions {u.question_count ?? 0} / {u.max_questions_per_survey > 0 ? u.max_questions_per_survey : '∞'} allocated</span>
+                        <span className="pill" title="Surveyors created / allocated">👥 surveyors {u.surveyor_count ?? 0} / {u.max_surveyors > 0 ? u.max_surveyors : '∞'} allocated</span>
                       </span>
                     )}
                   </span>
@@ -507,7 +507,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>
                           Max questions per survey (0 = unlimited) ·{' '}
-                          <strong style={{ color: '#059669' }}>{u.question_count ?? 0}</strong> questions created
+                          <strong style={{ color: '#059669' }}>{u.question_count ?? 0}</strong> created /{' '}
+                          {u.max_questions_per_survey > 0 ? u.max_questions_per_survey : '∞'} allocated
                         </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input
@@ -540,7 +541,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>
                           Max surveys (0 = unlimited) ·{' '}
-                          <strong style={{ color: '#059669' }}>{u.survey_count ?? 0}</strong> used
+                          <strong style={{ color: '#059669' }}>{u.survey_count ?? 0}</strong> created /{' '}
+                          {u.max_surveys > 0 ? u.max_surveys : '∞'} allocated
                         </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input
@@ -573,7 +575,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>
                           Max surveyors (0 = unlimited) ·{' '}
-                          <strong style={{ color: '#059669' }}>{u.surveyor_count ?? 0}</strong> used
+                          <strong style={{ color: '#059669' }}>{u.surveyor_count ?? 0}</strong> created /{' '}
+                          {u.max_surveyors > 0 ? u.max_surveyors : '∞'} allocated
                         </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input

@@ -374,13 +374,13 @@ export default function AdminSurveysScreen({ onToast, user }) {
     }
     const title = newTitle.trim()
     if (!title) {
-      onToast?.('Survey name required', 'error')
+      onToast?.('Project name required', 'error')
       return
     }
     setSaving(true)
     try {
       const d = await createSurvey({ title, questions: [] })
-      onToast?.(`Survey "${title}" created`, 'ok')
+      onToast?.(`Project "${title}" created`, 'ok')
       setMode('list')
       setNewTitle('')
       setExists(null)
@@ -388,7 +388,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
       if (d?.survey?.id) openDetail(d.survey.id)
     } catch (e) {
       if (e.status === 409 && e.existing_id) {
-        onToast?.(`Survey "${title}" already exists — opening it`, 'warn')
+        onToast?.(`Project "${title}" already exists — opening it`, 'warn')
         openDetail(e.existing_id)
       } else {
         onToast?.(e.message, 'error')
@@ -406,7 +406,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         title: detail.title,
         questions: cleanQuestions(detail.questions),
       })
-      onToast?.('Survey name + questions saved', 'ok')
+      onToast?.('Project name + questions saved', 'ok')
       await openDetail(detail.id)
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -428,7 +428,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
       const putIds = next.filter((a) => Number(a.id) !== ownerId).map((a) => Number(a.id))
       await setSurveyAdmins(detail.id, putIds)
       setDetail({ ...detail, admins: next, admin_count: next.length })
-      onToast?.(`${u.username} ${on ? 'removed from' : 'granted'} access to this survey`, 'ok')
+      onToast?.(`${u.username} ${on ? 'removed from' : 'granted'} access to this project`, 'ok')
       setAdminsOpen(false)
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -460,11 +460,11 @@ export default function AdminSurveysScreen({ onToast, user }) {
       onToast?.('Super Admin has not granted your account survey-editing rights', 'error')
       return
     }
-    if (!detail || !window.confirm(`Delete survey "${detail.title}"? Team assignments are removed too.`)) return
+    if (!detail || !window.confirm(`Delete project "${detail.title}"? Team assignments are removed too.`)) return
     setBusy(true)
     try {
       await deleteSurvey(detail.id)
-      onToast?.('Survey deleted', 'ok')
+      onToast?.('Project deleted', 'ok')
       setDetail(null)
       setMode('list')
       await load()
@@ -479,7 +479,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
     return (
       <div className="screen">
         <header className="screen-head">
-          <h2>New survey</h2>
+          <h2>New project</h2>
           <button type="button" className="btn small" onClick={() => setMode('list')}>
             ← Back
           </button>
@@ -496,15 +496,15 @@ export default function AdminSurveysScreen({ onToast, user }) {
               fontSize: 13,
             }}
           >
-            🔒 <strong>Surveys are read-only for you.</strong> Creating or editing surveys is locked
-            until the Super Admin grants your account <strong>CRUD questionnaire</strong> or
+            🔒 <strong>Projects are read-only for you.</strong> Creating or editing projects is
+            locked until the Super Admin grants your account <strong>CRUD questionnaire</strong> or
             <strong>Survey questions</strong> power (Super Admin → Client Admins tab).
-            You can still open surveys and view their teams.
+            You can still open projects and view their teams.
           </div>
         )}
         <div className="card" style={{ marginBottom: 12 }}>
           <label className="field">
-            <span>Survey name</span>
+            <span>Project name</span>
             <input
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
@@ -514,7 +514,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
             />
           </label>
           <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-            Filter existing surveys by name to avoid duplicates or reuse.
+            Filter existing projects by name to avoid duplicates or reuse.
           </p>
           {exists && (
             <p className="toast warn" style={{ marginTop: 8 }}>
@@ -524,7 +524,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           {!exists && nameMatches.length > 0 && (
             <div style={{ marginTop: 8 }}>
               <span className="muted" style={{ fontSize: 12 }}>
-                Existing surveys matching "{newTitle}":
+                Existing projects matching "{newTitle}":
               </span>
               {nameMatches.map((s) => (
                 <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
@@ -548,7 +548,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         </div>
 
         <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
-          Questions are added after creating — open the survey to edit them (name, questions, team).
+          Questions are added after creating — open the project to edit them (name, questions, team).
         </p>
 
         <button
@@ -557,13 +557,17 @@ export default function AdminSurveysScreen({ onToast, user }) {
           onClick={saveNew}
           disabled={saving || !newTitle.trim() || !canEdit}
         >
-          {saving ? 'Creating…' : 'Create survey'}
+          {saving ? 'Creating…' : 'Create project'}
         </button>
       </div>
     )
   }
 
   if (mode === 'detail' && detail) {
+    // Projects are mapped under a company: the owning Client Admin's company.
+    const ownerCompany =
+      (detail.admins || []).find((a) => Number(a.id) === Number(detail.owner_id))?.company_name ||
+      null
     return (
       <div className="screen">
         <header className="screen-head">
@@ -585,7 +589,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           </h3>
           <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
             {user?.role === 'super_admin'
-              ? `🏢 Client Admins: ${(detail.admins || []).map((a) => `${a.company_name || 'No company'} · ${a.name || a.username}`).join(', ') || 'None connected yet'}`
+              ? `🏢 Home company: ${ownerCompany || 'No company'} · ${(detail.admins || []).length} client admin(s) — ${(detail.admins || []).map((a) => `${a.company_name || 'No company'} · ${a.name || a.username}`).join(', ') || 'none connected yet'}`
               : <>👥 <strong>Field Team (People who take survey):</strong>{' '}{(detail.surveyors || []).length > 0
                 ? (detail.surveyors || []).map((s) => s.username || s.name).join(', ')
                 : 'No surveyors assigned yet'}</>}
@@ -825,15 +829,17 @@ export default function AdminSurveysScreen({ onToast, user }) {
                 </div>
               )}
               <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
-                Connect Client Admins by company to this project. Surveyors are not connected or managed by Super Admin.
-                Connected Client Admins see the project in their Projects tab.
+                Projects are mapped under a company — this project's home company is{' '}
+                <strong>{ownerCompany || 'No company'}</strong>. Connect Client Admins by company to
+                share it; surveyors are never connected or managed by Super Admin. Connected Client
+                Admins see the project in their Projects tab.
               </p>
             </>
           ) : (
             <p style={{ fontSize: 13, margin: 0 }}>
               {(detail.admins || []).length > 0
-                ? `👥 ${detail.admins.length} client admin(s) can access this survey — ${detail.admins.map((a) => a.name || a.username).join(', ')}`
-                : '👥 No other client admins have access to this survey.'}
+                ? `👥 ${detail.admins.length} client admin(s) can access this project — ${detail.admins.map((a) => a.name || a.username).join(', ')}`
+                : '👥 No other client admins have access to this project.'}
               {detail.owner && (
                 <span className="muted"> · owner: {detail.owner}</span>
               )}
@@ -859,7 +865,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           onClick={saveDetailChanges}
           disabled={saving || busy}
         >
-          {saving ? 'Saving…' : 'Save survey (name + questions)'}
+          {saving ? 'Saving…' : 'Save project (name + questions)'}
         </button>
         <button
           type="button"
@@ -868,16 +874,56 @@ export default function AdminSurveysScreen({ onToast, user }) {
           disabled={busy}
           style={{ marginLeft: 8 }}
         >
-          Delete survey
+          Delete project
         </button>
       </div>
     )
   }
 
+  const renderCard = (s) => (
+    <div key={s.id} className="card" style={{ marginBottom: 10, padding: 14, borderLeft: '4px solid #00e599' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button
+          type="button"
+          className="btn small primary"
+          onClick={() => openDetail(s.id)}
+          disabled={busy}
+          style={{ fontWeight: 'bold', padding: '8px 16px' }}
+        >
+          Open
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <strong style={{ fontSize: 16, color: '#0f172a' }}>{s.title}</strong>
+          {user?.role === 'super_admin' && (
+            <div style={{ fontSize: 13, color: '#334155', fontWeight: 600, marginTop: 3 }}>
+              🏢 {s.owner_company || 'No company'}
+              {s.owner_name ? ` · owned by ${s.owner_name}` : ''}
+            </div>
+          )}
+          {user?.role !== 'super_admin' && (
+            <div style={{ fontSize: 13, color: '#38bdf8', fontWeight: 'bold', marginTop: 3 }}>
+              👥 Field Team (People who took survey): {s.surveyor_names || `${s.surveyors || 0} assigned surveyor(s)`}
+            </div>
+          )}
+          <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
+            📊 {s.submissions || 0} Submissions · 📋 {s.question_count || 0} Questions · Updated{' '}
+            {String(s.updated_at || '').slice(0, 16).replace('T', ' ')}
+          </div>
+          {s.admin_count > 0 && (
+            <div className="muted" style={{ fontSize: 12, marginTop: 3, color: '#7c3aed' }}>
+              🏢 {s.admin_count} client admin(s) connected to this project
+              {s.admin_names ? ` — ${s.admin_names}` : ''}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <div className="screen">
       <header className="screen-head">
-        <h2>Surveys</h2>
+        <h2>Projects</h2>
         <button
           type="button"
           className="btn"
@@ -888,62 +934,52 @@ export default function AdminSurveysScreen({ onToast, user }) {
           ⟳ Refresh
         </button>
         <button type="button" className="btn primary" onClick={() => setMode('create')}>
-          + New survey
+          + New project
         </button>
       </header>
 
       <div className="card" style={{ marginBottom: 12 }}>
         <label className="field">
-          <span>Filter by survey name</span>
+          <span>Filter by project name</span>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Type a survey name…"
+            placeholder="Type a project name…"
           />
         </label>
       </div>
 
-      {loading && <p className="muted">Loading surveys…</p>}
+      {loading && <p className="muted">Loading projects…</p>}
 
       {!loading && surveys.length === 0 && (
         <p className="muted">
-          {search ? 'No surveys match that name.' : 'No surveys yet — click "+ New survey".'}
+          {search ? 'No projects match that name.' : 'No projects yet — click "+ New project".'}
         </p>
       )}
 
-      {surveys.map((s) => (
-        <div key={s.id} className="card" style={{ marginBottom: 10, padding: 14, borderLeft: '4px solid #00e599' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button
-              type="button"
-              className="btn small primary"
-              onClick={() => openDetail(s.id)}
-              disabled={busy}
-              style={{ fontWeight: 'bold', padding: '8px 16px' }}
-            >
-              Open
-            </button>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <strong style={{ fontSize: 16, color: '#0f172a' }}>{s.title}</strong>
-              {user?.role !== 'super_admin' && (
-                <div style={{ fontSize: 13, color: '#38bdf8', fontWeight: 'bold', marginTop: 3 }}>
-                  👥 Field Team (People who took survey): {s.surveyor_names || `${s.surveyors || 0} assigned surveyor(s)`}
-                </div>
-              )}
-              <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
-                📊 {s.submissions || 0} Submissions · 📋 {s.question_count || 0} Questions · Updated{' '}
-                {String(s.updated_at || '').slice(0, 16).replace('T', ' ')}
-              </div>
-              {s.admin_count > 0 && (
-                <div className="muted" style={{ fontSize: 12, marginTop: 3, color: '#7c3aed' }}>
-                  🏢 {s.admin_count} client admin(s) connected to this project
-                  {s.admin_names ? ` — ${s.admin_names}` : ''}
-                </div>
-              )}
+      {user?.role === 'super_admin' && surveys.length > 0 ? (
+        <>
+          {Object.entries(
+            surveys.reduce((acc, s) => {
+              const c = s.owner_company || 'No company'
+              ;(acc[c] = acc[c] || []).push(s)
+              return acc
+            }, {})
+          ).map(([company, items]) => (
+            <div key={company}>
+              <h3 style={{ fontSize: 14, margin: '16px 0 8px', color: '#334155' }}>
+                🏢 {company}
+                <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>
+                  {' '}· {items.length} project{items.length === 1 ? '' : 's'}
+                </span>
+              </h3>
+              {items.map(renderCard)}
             </div>
-          </div>
-        </div>
-      ))}
+          ))}
+        </>
+      ) : (
+        surveys.map(renderCard)
+      )}
     </div>
   )
 }

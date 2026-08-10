@@ -443,6 +443,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                         </div>
                         <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                           @{u.username}
+                          {u.company_name ? ` · 🏢 ${u.company_name}` : ''}
                           {u.created_at ? ` · created ${String(u.created_at).slice(0, 10)}` : ''}
                           {' · '}
                           {powersOf(u).length > 0

@@ -1890,9 +1890,31 @@ async function backfillFacts(
   return { materialized, failed: failedIds.length };
 }
 
+/**
+ * BR-004 record-layer scope: the form_keys a Client Admin may read/write.
+ * Owned projects + Super-Admin-assigned projects (survey_admin_access) +
+ * the legacy & default forms, which stay visible to every portal admin so
+ * existing data never disappears. Super Admin and surveyors are unrestricted.
+ * Returns null = unrestricted, or the allowed form_key list.
+ */
+async function adminFormKeyScope(
+  sqlFn: NonNullable<typeof sql>,
+  me: { role: unknown; id: unknown } | null,
+): Promise<string[] | null> {
+  if (!me || me.role !== "admin") return null;
+  const rows = await sqlFn`
+    SELECT form_key FROM survey_form
+    WHERE created_by = ${me.id}
+       OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+       OR form_key IN ('legacy', 'default')
+  `.catch(() => []);
+  return [...new Set((rows as { form_key: string }[]).map((r) => String(r.form_key)))];
+}
+
 async function loadAnalyticsRows(
   sqlFn: NonNullable<typeof sql>,
   limit = 10000,
+  scopeKeys: string[] | null = null,
 ): Promise<Row[]> {
   // AC name → first covering district (excel often puts AC in respondent_name)
   const acRows = await sqlFn`
@@ -2088,12 +2110,21 @@ async function loadAnalyticsRows(
     if (k && d && !mandalLookup.has(k)) mandalLookup.set(k, d);
   }
 
-  const raw = await sqlFn`
-    SELECT id, payload, created_at
-    FROM submissions
-    ORDER BY created_at DESC
-    LIMIT ${limit}
-  `;
+  // BR-004: Client Admin scope = own/assigned projects' form_keys (null = unrestricted).
+  const raw = scopeKeys
+    ? await sqlFn`
+        SELECT id, payload, created_at
+        FROM submissions
+        WHERE payload->>'form_key' = ANY(${scopeKeys})
+        ORDER BY created_at DESC
+        LIMIT ${limit}
+      `
+    : await sqlFn`
+        SELECT id, payload, created_at
+        FROM submissions
+        ORDER BY created_at DESC
+        LIMIT ${limit}
+      `;
 
   // Must load media — empty kinds made field surveys with only survey_media look incomplete
   const mediaMap = await loadMediaKindsMap(sqlFn);
@@ -2177,7 +2208,11 @@ async function loadAnalyticsRows(
   return allRows;
 }
 
-async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
+async function buildAnalytics(
+  sqlFn: NonNullable<typeof sql>,
+  url: URL,
+  scopeKeys: string[] | null = null,
+) {
   const district = (url.searchParams.get("district") || "").trim();
   const party = (url.searchParams.get("party") || "").trim();
   const gender = (url.searchParams.get("gender") || "").trim();
@@ -2217,7 +2252,7 @@ async function buildAnalytics(sqlFn: NonNullable<typeof sql>, url: URL) {
   }
   // period=total → leave dateFrom/dateTo as provided (or empty = all time)
 
-  const allRows = await loadAnalyticsRows(sqlFn);
+  const allRows = await loadAnalyticsRows(sqlFn, 10000, scopeKeys);
 
   const statusCounts = {
     pending: allRows.filter((r) => r.status === "pending").length,
@@ -2957,7 +2992,10 @@ Deno.serve(async (req) => {
 
     if (path === "/api/stats" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      const [subs] = await sql`SELECT COUNT(*)::int AS n FROM submissions`;
+      const statsScope = await adminFormKeyScope(sql, me);
+      const [subs] = statsScope
+        ? await sql`SELECT COUNT(*)::int AS n FROM submissions WHERE payload->>'form_key' = ANY(${statsScope})`
+        : await sql`SELECT COUNT(*)::int AS n FROM submissions`;
       const [dists] = await sql`SELECT COUNT(*)::int AS n FROM districts`.catch(() => [{ n: 0 }]);
       const [mands] = await sql`SELECT COUNT(*)::int AS n FROM mandals`.catch(() => [{ n: 0 }]);
       const [acs] = await sql`SELECT COUNT(*)::int AS n FROM assembly_constituencies`.catch(() => [{ n: 0 }]);
@@ -2968,7 +3006,7 @@ Deno.serve(async (req) => {
       let surveyAcs = 0;
       try {
         const emptyUrl = new URL("http://local/api/analytics?status=all");
-        const analytics = await buildAnalytics(sql, emptyUrl);
+        const analytics = await buildAnalytics(sql, emptyUrl, statsScope);
         surveyDistricts = analytics.filterOptions?.districts?.length ?? 0;
         surveyAcs = analytics.filterOptions?.constituencies?.length ?? 0;
       } catch {
@@ -2980,9 +3018,15 @@ Deno.serve(async (req) => {
       let confirmed = 0;
       let rejected = 0;
       try {
-        const sample = await sql`
-          SELECT payload FROM submissions ORDER BY created_at DESC LIMIT 10000
-        `;
+        const sample = statsScope
+          ? await sql`
+              SELECT payload FROM submissions
+              WHERE payload->>'form_key' = ANY(${statsScope})
+              ORDER BY created_at DESC LIMIT 10000
+            `
+          : await sql`
+              SELECT payload FROM submissions ORDER BY created_at DESC LIMIT 10000
+            `;
         for (const r of sample as { payload: Record<string, unknown> }[]) {
           let p = r.payload;
           if (typeof p === "string") {
@@ -4350,10 +4394,17 @@ Deno.serve(async (req) => {
         qFilters.length > 0 ||
         Boolean((url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim());
       const fetchRows = hasSliceFilter ? 5000 : limit;
-      const rows = await sql`
-        SELECT id, payload, fact_status, fact_error, created_at FROM submissions
-        ORDER BY created_at DESC LIMIT ${fetchRows}
-      `;
+      const scopeKeys = await adminFormKeyScope(sql, me);
+      const rows = scopeKeys
+        ? await sql`
+            SELECT id, payload, fact_status, fact_error, created_at FROM submissions
+            WHERE payload->>'form_key' = ANY(${scopeKeys})
+            ORDER BY created_at DESC LIMIT ${fetchRows}
+          `
+        : await sql`
+            SELECT id, payload, fact_status, fact_error, created_at FROM submissions
+            ORDER BY created_at DESC LIMIT ${fetchRows}
+          `;
       // media kinds for strict voice/photo checks
       const mediaMap = await loadMediaKindsMap(sql);
 
@@ -4591,10 +4642,17 @@ Deno.serve(async (req) => {
           dateTo = `${monthParam}-${String(last).padStart(2, "0")}`;
         }
       }
-      const rows = await sql`
-        SELECT id, payload, created_at FROM submissions
-        ORDER BY created_at DESC LIMIT 5000
-      `;
+      const scopeKeys = await adminFormKeyScope(sql, me);
+      const rows = scopeKeys
+        ? await sql`
+            SELECT id, payload, created_at FROM submissions
+            WHERE payload->>'form_key' = ANY(${scopeKeys})
+            ORDER BY created_at DESC LIMIT 5000
+          `
+        : await sql`
+            SELECT id, payload, created_at FROM submissions
+            ORDER BY created_at DESC LIMIT 5000
+          `;
       // question id → type, so age-type q_ filters bucket-match ranges
       const qTypeMap = new Map<string, string>();
       {
@@ -4839,9 +4897,15 @@ Deno.serve(async (req) => {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
-      const rows = await sql`
-        SELECT id, payload, created_at FROM submissions WHERE id = ${id}
-      `;
+      const scopeKeys = await adminFormKeyScope(sql, me);
+      const rows = scopeKeys
+        ? await sql`
+            SELECT id, payload, created_at FROM submissions
+            WHERE id = ${id} AND payload->>'form_key' = ANY(${scopeKeys})
+          `
+        : await sql`
+            SELECT id, payload, created_at FROM submissions WHERE id = ${id}
+          `;
       if (!rows.length) return json({ error: "Not found" }, 404);
       const r = rows[0] as { id: number; payload: unknown; created_at: string };
       const payload = parsePayload(r.payload);
@@ -4889,7 +4953,10 @@ Deno.serve(async (req) => {
       }
       const id = Number(path.split("/")[3]);
       const body = await readBody(req);
-      const rows = await sql`SELECT id, payload FROM submissions WHERE id = ${id}`;
+      const scopeKeys = await adminFormKeyScope(sql, me);
+      const rows = scopeKeys
+        ? await sql`SELECT id, payload FROM submissions WHERE id = ${id} AND payload->>'form_key' = ANY(${scopeKeys})`
+        : await sql`SELECT id, payload FROM submissions WHERE id = ${id}`;
       if (!rows.length) return json({ error: "Not found" }, 404);
 
       let payload = parsePayload(rows[0].payload);
@@ -5061,7 +5128,10 @@ Deno.serve(async (req) => {
         }, 403);
       }
       const id = Number(path.split("/")[3]);
-      const rows = await sql`SELECT id FROM submissions WHERE id = ${id}`;
+      const scopeKeys = await adminFormKeyScope(sql, me);
+      const rows = scopeKeys
+        ? await sql`SELECT id FROM submissions WHERE id = ${id} AND payload->>'form_key' = ANY(${scopeKeys})`
+        : await sql`SELECT id FROM submissions WHERE id = ${id}`;
       if (!rows.length) return json({ error: "Not found" }, 404);
       await sql`DELETE FROM survey_media WHERE submission_id = ${id}`.catch(() => null);
       await sql`DELETE FROM submissions WHERE id = ${id}`;
@@ -5089,7 +5159,10 @@ Deno.serve(async (req) => {
       if (!["confirmed", "rejected", "pending"].includes(next)) {
         return json({ error: "status must be confirmed | rejected | pending" }, 400);
       }
-      const rows = await sql`SELECT id, payload FROM submissions WHERE id = ${id}`;
+      const scopeKeys = await adminFormKeyScope(sql, me);
+      const rows = scopeKeys
+        ? await sql`SELECT id, payload FROM submissions WHERE id = ${id} AND payload->>'form_key' = ANY(${scopeKeys})`
+        : await sql`SELECT id, payload FROM submissions WHERE id = ${id}`;
       if (!rows.length) return json({ error: "Not found" }, 404);
       let payload = parsePayload(rows[0].payload);
       const mediaKinds = (
@@ -5172,7 +5245,10 @@ Deno.serve(async (req) => {
       }
       const id = Number(path.split("/")[3]);
       const body = await readBody(req);
-      const rows = await sql`SELECT id, payload FROM submissions WHERE id = ${id}`;
+      const scopeKeys = await adminFormKeyScope(sql, me);
+      const rows = scopeKeys
+        ? await sql`SELECT id, payload FROM submissions WHERE id = ${id} AND payload->>'form_key' = ANY(${scopeKeys})`
+        : await sql`SELECT id, payload FROM submissions WHERE id = ${id}`;
       if (!rows.length) return json({ error: "Not found" }, 404);
       const payload = parsePayload(rows[0].payload);
       const answers = ((payload.answers || {}) as Record<string, unknown>);
@@ -5254,9 +5330,16 @@ Deno.serve(async (req) => {
       }
       const body = await readBody(req);
       const max = Math.min(Number(body.limit) || 500, 2000);
-      const rows = await sql`
-        SELECT id, payload FROM submissions ORDER BY created_at DESC LIMIT ${max}
-      `;
+      const scopeKeys = await adminFormKeyScope(sql, me);
+      const rows = scopeKeys
+        ? await sql`
+            SELECT id, payload FROM submissions
+            WHERE payload->>'form_key' = ANY(${scopeKeys})
+            ORDER BY created_at DESC LIMIT ${max}
+          `
+        : await sql`
+            SELECT id, payload FROM submissions ORDER BY created_at DESC LIMIT ${max}
+          `;
       let n = 0;
       const who = me.name || me.username;
       const when = new Date().toISOString();
@@ -5296,6 +5379,11 @@ Deno.serve(async (req) => {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
+      const scopeKeys = await adminFormKeyScope(sql, me);
+      const row = scopeKeys
+        ? await sql`SELECT id FROM submissions WHERE id = ${id} AND payload->>'form_key' = ANY(${scopeKeys})`
+        : await sql`SELECT id FROM submissions WHERE id = ${id}`;
+      if (!row.length) return json({ error: "Not found" }, 404);
       try {
         const res = await materializeFact(sql, id);
         return json({ ok: true, ...res, status: "materialized" });
@@ -5384,6 +5472,8 @@ Deno.serve(async (req) => {
           id: r.id,
           form_key: r.form_key,
           title: r.title,
+          owner_company: owner?.company_name ?? null,
+          owner_name: owner?.name ?? null,
           question_count: Array.isArray(qs) ? qs.length : 0,
           updated_at: r.updated_at,
           surveyors: asgData?.n || 0,
@@ -5926,6 +6016,34 @@ Deno.serve(async (req) => {
           ? Number(body.app_version_code)
           : null,
       };
+      // BR-004 write scope: records may only be written into projects the caller
+      // belongs to. Client Admins → own/assigned projects (plus the always-visible
+      // legacy/default forms); Surveyors → the surveys they are assigned to (or the
+      // shared default form, which the field app uses when no assignment exists).
+      if (me.role === "admin") {
+        const writeScope = await adminFormKeyScope(sql, me);
+        const fk = String(payload.form_key || "default");
+        if (writeScope && !writeScope.includes(fk)) {
+          return json({
+            error: `You can only submit records to your own projects (${writeScope.length ? writeScope.join(", ") : "none"})`,
+          }, 403);
+        }
+      } else if (me.role === "surveyor") {
+        const fk = String(payload.form_key || "default");
+        if (fk !== "default") {
+          const asg = await sql`
+            SELECT f.form_key FROM survey_assignments a
+            JOIN survey_form f ON f.id = a.survey_id
+            WHERE a.user_id = ${me.id} AND f.form_key = ${fk}
+            LIMIT 1
+          `.catch(() => []);
+          if (!asg.length) {
+            return json({
+              error: "You are not assigned to this survey. Ask your Client Admin for the survey assignment.",
+            }, 403);
+          }
+        }
+      }
       // Idempotent: a field-app sync retry of the same package must not insert a duplicate
       const pkgId = String(
         (answers as Record<string, unknown>)?.client_package_id ||
@@ -5982,7 +6100,10 @@ Deno.serve(async (req) => {
         return json({ error: "kind must be photo or audio" }, 400);
       }
 
-      const exists = await sql`SELECT id, payload FROM submissions WHERE id = ${id}`;
+      const scopeKeys = await adminFormKeyScope(sql, me);
+      const exists = scopeKeys
+        ? await sql`SELECT id, payload FROM submissions WHERE id = ${id} AND payload->>'form_key' = ANY(${scopeKeys})`
+        : await sql`SELECT id, payload FROM submissions WHERE id = ${id}`;
       if (!exists.length) return json({ error: "Submission not found" }, 404);
 
       let mime = String(
@@ -6200,7 +6321,17 @@ Deno.serve(async (req) => {
     if (path.match(/^\/api\/submissions\/\d+\/media$/) && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
       const id = Number(path.split("/")[3]);
-      if (!isPortalAdmin(me.role)) {
+      if (isPortalAdmin(me.role)) {
+        // Client Admins see media only for records in their own/assigned projects.
+        const scopeKeys = await adminFormKeyScope(sql, me);
+        if (scopeKeys) {
+          const visible = await sql`
+            SELECT id FROM submissions
+            WHERE id = ${id} AND payload->>'form_key' = ANY(${scopeKeys}) LIMIT 1
+          `.catch(() => []);
+          if (!visible.length) return json({ error: "Not found" }, 404);
+        }
+      } else {
         // Surveyor can view media only for their own submission
         const own = await sql`
           SELECT id FROM submissions WHERE id = ${id}
@@ -6317,28 +6448,46 @@ Deno.serve(async (req) => {
     // Dashboard + filters — full super-set / sub-set analytics
     if (path === "/api/analytics" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      const result = await buildAnalytics(sql, url);
+      const envScope = await adminFormKeyScope(sql, me);
+      const result = await buildAnalytics(sql, url, envScope);
       // Envelope: data_as_of watermark + fact health (09-ANALYTICS-SPEC §5/§8, ADR-014/016)
-      const [w] = await sql`
-        SELECT MAX(confirmed_at) AS as_of FROM record_facts
-      `.catch(() => [{ as_of: null }]);
+      const [w] = envScope
+        ? await sql`
+            SELECT MAX(confirmed_at) AS as_of FROM record_facts WHERE survey_key = ANY(${envScope})
+          `.catch(() => [{ as_of: null }])
+        : await sql`
+            SELECT MAX(confirmed_at) AS as_of FROM record_facts
+          `.catch(() => [{ as_of: null }]);
       let dataAsOf: string | null = (w as { as_of?: unknown } | undefined)?.as_of
         ? String((w as { as_of?: unknown }).as_of)
         : null;
       if (!dataAsOf) {
         // transient window before backfill — fall back to freshest confirmed stamp
-        const [f] = await sql`
-          SELECT MAX((payload->>'confirmed_at')::timestamptz) AS as_of
-          FROM submissions WHERE payload->>'status' = 'confirmed'
-        `.catch(() => [{ as_of: null }]);
+        const [f] = envScope
+          ? await sql`
+              SELECT MAX((payload->>'confirmed_at')::timestamptz) AS as_of
+              FROM submissions
+              WHERE payload->>'status' = 'confirmed' AND payload->>'form_key' = ANY(${envScope})
+            `.catch(() => [{ as_of: null }])
+          : await sql`
+              SELECT MAX((payload->>'confirmed_at')::timestamptz) AS as_of
+              FROM submissions WHERE payload->>'status' = 'confirmed'
+            `.catch(() => [{ as_of: null }]);
         dataAsOf = (f as { as_of?: unknown } | undefined)?.as_of
           ? String((f as { as_of?: unknown }).as_of)
           : null;
       }
-      const [fc] = await sql`SELECT COUNT(*)::int AS n FROM record_facts`.catch(() => [{ n: 0 }]);
-      const [failedN] = await sql`
-        SELECT COUNT(*)::int AS n FROM submissions WHERE fact_status = 'failed'
-      `.catch(() => [{ n: 0 }]);
+      const [fc] = envScope
+        ? await sql`SELECT COUNT(*)::int AS n FROM record_facts WHERE survey_key = ANY(${envScope})`.catch(() => [{ n: 0 }])
+        : await sql`SELECT COUNT(*)::int AS n FROM record_facts`.catch(() => [{ n: 0 }]);
+      const [failedN] = envScope
+        ? await sql`
+            SELECT COUNT(*)::int AS n FROM submissions
+            WHERE fact_status = 'failed' AND payload->>'form_key' = ANY(${envScope})
+          `.catch(() => [{ n: 0 }])
+        : await sql`
+            SELECT COUNT(*)::int AS n FROM submissions WHERE fact_status = 'failed'
+          `.catch(() => [{ n: 0 }]);
       const failed = Number((failedN as { n?: number } | undefined)?.n ?? 0);
       const confirmedTotal = Number(result?.statusCounts?.confirmed ?? 0);
       return json({
@@ -6366,7 +6515,10 @@ Deno.serve(async (req) => {
         const [a] = await sql`SELECT COUNT(*)::int AS n FROM assembly_constituencies`;
         const [p] = await sql`SELECT COUNT(*)::int AS n FROM mp_constituencies`;
         const [r] = await sql`SELECT COUNT(*)::int AS n FROM revenue_divisions`;
-        const [s] = await sql`SELECT COUNT(*)::int AS n FROM submissions`;
+        const geoScope = await adminFormKeyScope(sql, me);
+        const [s] = geoScope
+          ? await sql`SELECT COUNT(*)::int AS n FROM submissions WHERE payload->>'form_key' = ANY(${geoScope})`
+          : await sql`SELECT COUNT(*)::int AS n FROM submissions`;
         const districts = await sql`SELECT * FROM districts ORDER BY name LIMIT 100`;
         const acs = await sql`
           SELECT name, covering_districts, mp_constituency, reservation
@@ -6424,7 +6576,7 @@ Deno.serve(async (req) => {
         const constituencyQ = (url.searchParams.get("constituency") || "").trim().toLowerCase();
         const statusQ = (url.searchParams.get("status") || "confirmed").trim().toLowerCase();
 
-        const allRows = await loadAnalyticsRows(sql, 20000);
+        const allRows = await loadAnalyticsRows(sql, 20000, await adminFormKeyScope(sql, me));
         let rows = allRows;
         if (statusQ !== "all") rows = rows.filter((r) => r.status === statusQ);
         if (dateFrom) rows = rows.filter((r) => dayKey(r.created_at) >= dateFrom);

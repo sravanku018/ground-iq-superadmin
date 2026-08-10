@@ -26,11 +26,12 @@ const AdminAuditScreen = lazy(() => import('./AdminAudit'))
 const AdminQuestionBankScreen = lazy(() => import('./AdminQuestionBank'))
 const AdminSeatsScreen = lazy(() => import('./AdminSeats'))
 
+// Client Admin nav — Question Bank (FR-QB-02) sits under Data collection
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: '◈', pages: ['overview', 'report', 'analyze'] },
   { id: 'surveyors', label: 'Surveyors', icon: '👤', pages: ['users'] },
   { id: 'surveys', label: 'Surveys', icon: '▤', pages: ['surveys'] },
-  { id: 'data', label: 'Data collection', icon: '☰', pages: ['questions', 'review', 'upload', 'data'] },
+  { id: 'data', label: 'Data collection', icon: '☰', pages: ['questions', 'bank', 'review', 'upload', 'data'] },
 ]
 
 // Super Admin console only (01-PRD.md): platform governance group
@@ -223,7 +224,15 @@ export default function AdminPortal({ superAdminOnly = false }) {
   const [toast, setToast] = useState(null)
   const [navOpen, setNavOpen] = useState(false)
 
-  const nav = superAdminOnly ? [PLATFORM_NAV, ...NAV] : NAV
+  const nav = superAdminOnly
+    ? [
+        PLATFORM_NAV,
+        // console keeps Question Bank under Platform only — avoid duplicate subtabs
+        ...NAV.map((n) =>
+          n.id === 'data' ? { ...n, pages: n.pages.filter((p) => p !== 'bank') } : n
+        ),
+      ]
+    : NAV
 
   const goPage = useCallback((p) => {
     setPage(p)

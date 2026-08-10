@@ -22,6 +22,9 @@ const AdminAnalyzeScreen = lazy(() => import('./AdminAnalyze'))
 const ReviewQAScreen = lazy(() => import('./ReviewQA'))
 const DashboardScreen = lazy(() => import('./Dashboard'))
 const AdminDataScreen = lazy(() => import('./AdminData'))
+const AdminAuditScreen = lazy(() => import('./AdminAudit'))
+const AdminQuestionBankScreen = lazy(() => import('./AdminQuestionBank'))
+const AdminSeatsScreen = lazy(() => import('./AdminSeats'))
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: '◈', pages: ['overview', 'report', 'analyze'] },
@@ -29,6 +32,14 @@ const NAV = [
   { id: 'surveys', label: 'Surveys', icon: '▤', pages: ['surveys'] },
   { id: 'data', label: 'Data collection', icon: '☰', pages: ['questions', 'review', 'upload', 'data'] },
 ]
+
+// Super Admin console only (01-PRD.md): platform governance group
+const PLATFORM_NAV = {
+  id: 'platform',
+  label: 'Platform',
+  icon: '✦',
+  pages: ['audit', 'bank', 'seats'],
+}
 
 const PAGE_LABELS = {
   overview: 'Overview',
@@ -40,6 +51,9 @@ const PAGE_LABELS = {
   review: 'Review',
   upload: 'Upload',
   data: 'Data',
+  audit: 'Audit Log',
+  bank: 'Question Bank',
+  seats: 'Seat Requests',
 }
 
 function formatDate(v) {
@@ -208,6 +222,8 @@ export default function AdminPortal({ superAdminOnly = false }) {
   const [loadingData, setLoadingData] = useState(false)
   const [toast, setToast] = useState(null)
   const [navOpen, setNavOpen] = useState(false)
+
+  const nav = superAdminOnly ? [PLATFORM_NAV, ...NAV] : NAV
 
   const goPage = useCallback((p) => {
     setPage(p)
@@ -388,7 +404,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
   }
 
   const activeNavLabel =
-    NAV.find((n) => n.pages.includes(page))?.label || PAGE_LABELS[page] || 'Admin'
+    nav.find((n) => n.pages.includes(page))?.label || PAGE_LABELS[page] || 'Admin'
 
   return (
     <div className={`portal-shell${navOpen ? ' nav-open' : ''}`}>
@@ -440,7 +456,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           </div>
         </div>
         <nav className="portal-nav">
-          {NAV.map((n) => (
+          {nav.map((n) => (
             <button
               key={n.id}
               type="button"
@@ -500,7 +516,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
       </aside>
 
       <main className="portal-main">
-        {NAV.filter((n) => n.pages.length > 1 && n.pages.includes(page)).map((n) => (
+        {nav.filter((n) => n.pages.length > 1 && n.pages.includes(page)).map((n) => (
           <div className="admin-subtabs" key={n.id}>
             {n.pages.map((p) => (
               <button
@@ -531,6 +547,9 @@ export default function AdminPortal({ superAdminOnly = false }) {
           {page === 'analyze' && <DashboardScreen onToast={notify} />}
           {page === 'review' && <ReviewQAScreen onToast={notify} />}
           {page === 'upload' && <AdminDataScreen onToast={notify} />}
+          {page === 'audit' && <AdminAuditScreen onToast={notify} />}
+          {page === 'bank' && <AdminQuestionBankScreen onToast={notify} />}
+          {page === 'seats' && <AdminSeatsScreen onToast={notify} />}
           {page === 'data' && (
             <DataList
               items={items}

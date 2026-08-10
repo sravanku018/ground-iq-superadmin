@@ -177,6 +177,70 @@ export function resetSuperAdminPassword(password) {
   })
 }
 
+/** Platform-wide audit log (Super Admin only) — FR-AUD-02 */
+export function getAuditLog(params = {}) {
+  const qs = new URLSearchParams()
+  if (params.action) qs.set('action', params.action)
+  if (params.actor) qs.set('actor', params.actor)
+  if (params.entity) qs.set('entity', params.entity)
+  if (params.limit) qs.set('limit', params.limit)
+  const q = qs.toString()
+  return request(`/api/audit-log${q ? `?${q}` : ''}`)
+}
+
+/** Global Question Bank (FR-QB-02) */
+export function listQuestionBank() {
+  return request('/api/question-bank')
+}
+
+export function createQuestionBank(body) {
+  return request('/api/question-bank', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function updateQuestionBank(id, body) {
+  return request(`/api/question-bank/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function deleteQuestionBank(id) {
+  return request(`/api/question-bank/${id}`, { method: 'DELETE' })
+}
+
+export function copyQuestionBank(id) {
+  return request(`/api/question-bank/${id}/copy`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+/** Seat-limit upgrade requests (BR-006 / FR-USR-10) */
+export function getSeatRequests() {
+  return request('/api/seat-limit-requests')
+}
+
+export function createSeatRequest(body) {
+  return request('/api/seat-limit-requests', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function approveSeatRequest(id) {
+  return request(`/api/seat-limit-requests/${id}/approve`, { method: 'POST' })
+}
+
+export function denySeatRequest(id) {
+  return request(`/api/seat-limit-requests/${id}/deny`, { method: 'POST' })
+}
+
 export function deleteUser(id) {
   return request(`/api/users/${id}`, {
     method: 'DELETE',

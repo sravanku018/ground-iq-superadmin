@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  createSeatRequest,
   createSuperAdmin,
   createUser,
   deleteUser,
@@ -7,6 +8,7 @@ import {
   enableUser,
   generateUsers,
   getProgressBoard,
+  getSeatRequests,
   getStoredUser,
   listSurveys,
   listUsers,
@@ -161,6 +163,10 @@ export default function AdminUsersScreen({ onToast }) {
   const [saUsername, setSaUsername] = useState('')
   const [saPassword, setSaPassword] = useState('')
   const [saResetPassword, setSaResetPassword] = useState('')
+  const [seatData, setSeatData] = useState(null)
+  const [seatRequestedLimit, setSeatRequestedLimit] = useState(10)
+  const [seatReason, setSeatReason] = useState('')
+  const [seatBusy, setSeatBusy] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [edit, setEdit] = useState({
     username: '',
@@ -202,14 +208,16 @@ export default function AdminUsersScreen({ onToast }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [data, prog, svs] = await Promise.all([
+      const [data, prog, svs, seats] = await Promise.all([
         listUsers(),
         getProgressBoard().catch(() => null),
         listSurveys('').catch(() => ({ items: [] })),
+        getSeatRequests().catch(() => null),
       ])
       setUsers(data.users || [])
       setBoard(prog)
       setAllSurveys(svs.items || [])
+      if (seats) setSeatData(seats)
     } catch (e) {
       onToast?.(e.message, 'error')
     } finally {
@@ -709,6 +717,30 @@ export default function AdminUsersScreen({ onToast }) {
     }
   }
   const superAdmins = users.filter((u) => u.role === 'super_admin')
+
+  const submitSeatRequest = async () => {
+    setSeatBusy(true)
+    try {
+      await createSeatRequest({
+        requested_limit: Number(seatRequestedLimit) || 10,
+        reason: seatReason,
+      })
+      onToast?.('Seat upgrade request sent to Super Admin ✓', 'ok')
+      setSeatReason('')
+      const seats = await getSeatRequests()
+      setSeatData(seats)
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setSeatBusy(false)
+    }
+  }
+
+  const seatPending = (seatData?.requests || []).filter((r) => r.status === 'pending')
+  const seatDecided = (seatData?.requests || []).filter((r) => r.status !== 'pending')
+  const currentAdmins = seatData?.current_admins ?? 0
+  const approvedLimit = seatData?.limits?.approved_limit != null ? Number(seatData.limits.approved_limit) : 5
+
   const statusColor = (s) => {
     if (s === 'completed') return 'ok'
     if (s === 'in_progress') return 'warn'
@@ -891,6 +923,88 @@ export default function AdminUsersScreen({ onToast }) {
                 {saBusy ? 'Resetting…' : 'Reset Super Admin password'}
               </button>
             </form>
+          )}
+        </div>
+      )}
+
+      {me?.role === 'admin' && (
+        <div className="card" style={{ marginBottom: 14, border: '1px solid rgba(56,189,248,0.45)' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 8,
+            }}
+          >
+            <div>
+              <h3 style={{ margin: '0 0 4px' }}>🪑 Admin seat limit</h3>
+              <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                {currentAdmins} of {approvedLimit} admin seats used. Request an upgrade; Super Admin
+                approves it (BR-006).
+              </p>
+            </div>
+            {seatPending.length > 0 && (
+              <span
+                className="pill"
+                style={{ fontSize: 11, fontWeight: 'bold', background: 'rgba(217,119,6,0.12)', border: '1px solid rgba(217,119,6,0.5)', color: '#d97706' }}
+              >
+                ⏳ {seatPending.length} pending request{seatPending.length > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+          {seatPending.length === 0 ? (
+            <form
+              style={{
+                display: 'flex',
+                gap: 8,
+                flexWrap: 'wrap',
+                marginTop: 10,
+                alignItems: 'flex-end',
+              }}
+              onSubmit={(e) => {
+                e.preventDefault()
+                void submitSeatRequest()
+              }}
+            >
+              <label className="field compact" style={{ width: 130 }}>
+                <span>Requested seats</span>
+                <input
+                  type="number"
+                  min={currentAdmins + 1}
+                  value={seatRequestedLimit}
+                  onChange={(e) => setSeatRequestedLimit(Number(e.target.value) || 10)}
+                />
+              </label>
+              <label className="field compact" style={{ flex: 1, minWidth: 200 }}>
+                <span>Reason</span>
+                <input
+                  value={seatReason}
+                  onChange={(e) => setSeatReason(e.target.value)}
+                  placeholder="e.g. new team joining next month"
+                />
+              </label>
+              <button type="submit" className="btn small primary" disabled={seatBusy}>
+                {seatBusy ? 'Sending…' : 'Request upgrade'}
+              </button>
+            </form>
+          ) : (
+            <ul style={{ margin: '10px 0 0', paddingLeft: 18, fontSize: 13 }}>
+              {seatPending.map((r) => (
+                <li key={r.id}>
+                  Pending: {r.requested_limit} admin seats
+                  {r.reason ? ` — “${r.reason}”` : ''} (sent{' '}
+                  {new Date(r.created_at).toLocaleDateString()})
+                </li>
+              ))}
+            </ul>
+          )}
+          {seatDecided.length > 0 && (
+            <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
+              Recent decisions:{' '}
+              {seatDecided.slice(0, 3).map((r) => `${r.requested_limit} seats ${r.status}${r.decided_by_name ? ` by ${r.decided_by_name}` : ''}`).join(' · ')}
+            </p>
           )}
         </div>
       )}

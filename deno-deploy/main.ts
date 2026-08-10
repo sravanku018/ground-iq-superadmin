@@ -192,6 +192,33 @@ function isPortalAdmin(role: unknown): boolean {
   return role === "admin" || role === "super_admin";
 }
 
+/**
+ * Append a platform audit-log entry (FR-AUD-01/02) — fire-and-forget so the
+ * request path never slows down. Actor is the specific account (id + username),
+ * never just the role.
+ */
+function logAudit(
+  actor: { id: unknown; username: unknown; role: unknown } | null,
+  action: string,
+  entityType?: string,
+  entityId?: unknown,
+  meta?: Record<string, unknown>,
+): void {
+  if (!sql || !actor) return;
+  void sql`
+    INSERT INTO audit_log (actor_id, actor_name, actor_role, action, entity_type, entity_id, meta)
+    VALUES (
+      ${actor.id},
+      ${actor.username},
+      ${actor.role},
+      ${action},
+      ${entityType || null},
+      ${entityId != null ? String(entityId) : null},
+      ${JSON.stringify(meta || {})}::jsonb
+    )
+  `.catch(() => null);
+}
+
 
 /** Unique surveyor key ID, e.g. GROUND-8F3K2Q (no 0/O/1/I) */
 function genUserKeyId(): string {
@@ -511,6 +538,71 @@ async function ensureSchema() {
   `.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_survey_respondents_survey ON survey_respondents(survey_id)`.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_survey_assignments_survey ON survey_assignments(survey_id)`.catch(() => null);
+
+  // ── Platform governance (01-PRD.md Super Admin): audit log, global question bank, seat limits ──
+  // FR-AUD-01/02: append-only platform audit trail, per actor account.
+  await sql`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id BIGSERIAL PRIMARY KEY,
+      actor_id INTEGER,
+      actor_name TEXT,
+      actor_role TEXT,
+      action TEXT NOT NULL,
+      entity_type TEXT,
+      entity_id TEXT,
+      meta JSONB DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log (created_at DESC)`.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log (actor_id)`.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log (action)`.catch(() => null);
+
+  // FR-QB-02: question bank templates — is_global (Super Admin authored, all tenants)
+  // vs private (Client Admin authored).
+  await sql`
+    CREATE TABLE IF NOT EXISTS question_bank (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      questions JSONB NOT NULL DEFAULT '[]'::jsonb,
+      is_global BOOLEAN NOT NULL DEFAULT FALSE,
+      created_by INTEGER REFERENCES app_users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_question_bank_global ON question_bank (is_global)`.catch(() => null);
+
+  // BR-006 / FR-USR-10: seat-limit upgrade requests (Client Admin submits, Super Admin decides)
+  await sql`
+    CREATE TABLE IF NOT EXISTS seat_limit_requests (
+      id SERIAL PRIMARY KEY,
+      requested_by INTEGER REFERENCES app_users(id) ON DELETE SET NULL,
+      requested_by_name TEXT,
+      seat_role TEXT NOT NULL DEFAULT 'admin',
+      requested_limit INTEGER NOT NULL,
+      reason TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      decided_by INTEGER,
+      decided_by_name TEXT,
+      decided_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `.catch(() => null);
+  await sql`
+    CREATE TABLE IF NOT EXISTS seat_limits (
+      seat_role TEXT PRIMARY KEY,
+      approved_limit INTEGER NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by TEXT
+    )
+  `.catch(() => null);
+  // Default admin seats; approval of an upgrade request raises the limit (BR-006)
+  await sql`
+    INSERT INTO seat_limits (seat_role, approved_limit, updated_by)
+    VALUES ('admin', 5, 'system default')
+    ON CONFLICT (seat_role) DO NOTHING
+  `.catch(() => null);
 
   // Seed default questions if empty
   try {
@@ -2729,6 +2821,13 @@ Deno.serve(async (req) => {
         INSERT INTO app_sessions (token, user_id, expires_at)
         VALUES (${token}, ${user.id}, ${expires.toISOString()})
       `;
+      logAudit(
+        { id: user.id, username: user.username, role: user.role },
+        "login",
+        "user",
+        user.id,
+        { expected_role: expectedRole },
+      );
       return json({
         token,
         user: {
@@ -3090,6 +3189,19 @@ Deno.serve(async (req) => {
       if (password.length < 4) {
         return json({ error: "Password min 4 characters" }, 400);
       }
+      // BR-006: enforce the approved admin seat limit (Super Admin raises it via approval).
+      // Super Admin is the approval authority and is not bound by the cap.
+      if (role === "admin" && me.role !== "super_admin") {
+        const [sl] = await sql`SELECT approved_limit FROM seat_limits WHERE seat_role = 'admin'`.catch(() => []);
+        const limit = sl ? Number((sl as { approved_limit: unknown }).approved_limit) : 5;
+        const [cnt] = await sql`SELECT COUNT(*)::int AS n FROM app_users WHERE role = 'admin' AND active = TRUE`.catch(() => [{ n: 0 }]);
+        const current = Number((cnt as { n?: unknown }[])[0]?.n ?? 0);
+        if (current >= limit) {
+          return json({
+            error: `Admin seat limit (${limit}) reached — file a seat upgrade request; Super Admin approves it (BR-006)`,
+          }, 403);
+        }
+      }
       // Ensure role check allows surveyor
       await sql`ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_role_check`.catch(() => null);
       await sql`
@@ -3108,6 +3220,7 @@ Deno.serve(async (req) => {
           RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone
         `;
         const u = inserted[0] as Record<string, unknown>;
+        logAudit(me, "user_create", "user", u.id, { username: u.username, role, target_quota });
         return json({
           user: {
             id: u.id,
@@ -3164,6 +3277,7 @@ Deno.serve(async (req) => {
           RETURNING id, username, display_name, role, active, created_at, key_id
         `;
         const u = inserted[0] as Record<string, unknown>;
+        logAudit(me, "super_admin_create", "user", u.id, { username: u.username });
         return json({
           user: {
             id: u.id,
@@ -3204,6 +3318,7 @@ Deno.serve(async (req) => {
       if (!sa) return json({ error: "No Super Admin found" }, 404);
       const password_hash = await hashPasswordAsync(password);
       await sql`UPDATE app_users SET password_hash = ${password_hash} WHERE id = ${sa.id}`;
+      logAudit(me, "super_admin_reset", "user", sa.id, { username: sa.username });
       return json({ ok: true, username: sa.username });
     }
 
@@ -3258,6 +3373,11 @@ Deno.serve(async (req) => {
           errors.push(`${username}: ${(e as Error).message || "exists"}`);
         }
       }
+      logAudit(me, "users_bulk_create", "user", null, {
+        count: created.length,
+        prefix: names[0] || "",
+        target_quota,
+      });
       return json({
         ok: true,
         created: created.length,
@@ -3506,6 +3626,25 @@ Deno.serve(async (req) => {
         sessionsCleared = Array.isArray(del) ? del.length : 0;
       }
 
+      // FR-AUD-01: log admin-driven account changes (not self phone/photo-only edits)
+      const adminChanged =
+        nextActive !== ex.active ||
+        passwordChanged ||
+        nextUsername !== ex.username ||
+        body.role !== undefined ||
+        body.target_quota !== undefined ||
+        body.verified !== undefined;
+      if (adminChanged && isAdmin) {
+        logAudit(me, "user_update", "user", id, {
+          username: ex.username,
+          active: nextActive,
+          password_changed: passwordChanged,
+          role_changed: body.role !== undefined,
+          quota_changed: body.target_quota !== undefined,
+          verified_changed: body.verified !== undefined,
+        });
+      }
+
       const u = rows[0] as Record<string, unknown>;
       return json({
         ok: true,
@@ -3544,12 +3683,240 @@ Deno.serve(async (req) => {
       if (!existing.length) return json({ error: "Not found" }, 404);
       await sql`DELETE FROM app_sessions WHERE user_id = ${id}`;
       await sql`DELETE FROM app_users WHERE id = ${id}`;
+      logAudit(me, "user_delete", "user", id, {
+        username: (existing[0] as { username: string }).username,
+        role: (existing[0] as { role: string }).role,
+      });
       return json({
         ok: true,
         deleted: true,
         id,
         username: (existing[0] as { username: string }).username,
       });
+    }
+
+    // ── Super Admin platform governance (01-PRD.md §Super Admin) ──
+    // FR-AUD-02: platform-wide audit log, per actor account, Super Admin only.
+    if (path === "/api/audit-log" && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+      const action = String(url.searchParams.get("action") || "").trim();
+      const actor = String(url.searchParams.get("actor") || "").trim();
+      const entity = String(url.searchParams.get("entity") || "").trim();
+      const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 150, 1), 500);
+      const rows = await sql`
+        SELECT id, actor_id, actor_name, actor_role, action, entity_type, entity_id, meta, created_at
+        FROM audit_log
+        WHERE (${action} = '' OR action = ${action})
+          AND (${actor} = '' OR actor_name ILIKE ${`%${actor}%`})
+          AND (${entity} = '' OR entity_type = ${entity})
+        ORDER BY id DESC LIMIT ${limit}
+      `.catch(() => []);
+      return json({ entries: rows, count: (rows as unknown[]).length });
+    }
+
+    // FR-QB-02: Global Question Bank — Super Admin authors is_global templates;
+    // Client Admins see global + their own, and can copy any into a survey.
+    if (path === "/api/question-bank" && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const rows = await sql`
+        SELECT id, name, questions, is_global, created_by, created_at, updated_at
+        FROM question_bank
+        WHERE is_global = TRUE OR created_by = ${me.id}
+        ORDER BY is_global DESC, id DESC
+      `.catch(() => []);
+      return json({ templates: rows });
+    }
+
+    if (path === "/api/question-bank" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const body = await readBody(req);
+      const name = String(body.name || "").trim();
+      const questions = Array.isArray(body.questions) ? body.questions : [];
+      if (!name) return json({ error: "Template name required" }, 400);
+      // is_global forced true only for super_admin (FR-QB-02)
+      const isGlobal = me.role === "super_admin" && body.is_global === true;
+      const rows = await sql`
+        INSERT INTO question_bank (name, questions, is_global, created_by)
+        VALUES (${name}, ${JSON.stringify(questions)}::jsonb, ${isGlobal}, ${me.id})
+        RETURNING id, name, questions, is_global, created_by, created_at, updated_at
+      `.catch(() => []);
+      const t = (rows as Record<string, unknown>[])[0];
+      if (!t) return json({ error: "Could not create template" }, 500);
+      logAudit(me, "question_bank_create", "question_bank", t.id, {
+        name,
+        is_global: isGlobal,
+        questions: questions.length,
+      });
+      return json({ template: t }, 201);
+    }
+
+    if (path.startsWith("/api/question-bank/") && method === "PUT") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const id = Number(path.split("/")[3]);
+      const body = await readBody(req);
+      const rows = await sql`SELECT * FROM question_bank WHERE id = ${id}`.catch(() => []);
+      const t = rows[0] as Record<string, unknown> | undefined;
+      if (!t) return json({ error: "Not found" }, 404);
+      // FR-QB-02 / BR-003: global templates are Super Admin authored — no tenant can alter them
+      if (t.is_global === true && me.role !== "super_admin") {
+        return json({ error: "Global templates are Super Admin only" }, 403);
+      }
+      const isOwner = Number(t.created_by) === Number(me.id);
+      if (!isOwner && me.role !== "super_admin") {
+        return json({ error: "Only the author or Super Admin can edit this template" }, 403);
+      }
+      const name = String(body.name != null ? body.name : t.name || "Template").trim() || "Template";
+      const questions = Array.isArray(body.questions)
+        ? body.questions
+        : (Array.isArray(t.questions) ? t.questions : []);
+      const isGlobal = t.is_global === true || (me.role === "super_admin" && body.is_global === true);
+      await sql`
+        UPDATE question_bank
+        SET name = ${name}, questions = ${JSON.stringify(questions)}::jsonb,
+            is_global = ${isGlobal}, updated_at = NOW()
+        WHERE id = ${id}
+      `.catch(() => null);
+      logAudit(me, "question_bank_update", "question_bank", id, { name, is_global: isGlobal });
+      return json({ ok: true });
+    }
+
+    if (path.startsWith("/api/question-bank/") && method === "DELETE") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const id = Number(path.split("/")[3]);
+      const rows = await sql`SELECT id, name, created_by, is_global FROM question_bank WHERE id = ${id}`.catch(() => []);
+      const t = rows[0] as Record<string, unknown> | undefined;
+      if (!t) return json({ error: "Not found" }, 404);
+      // FR-QB-02 / BR-003: global templates are Super Admin authored — no tenant can alter them
+      if (t.is_global === true && me.role !== "super_admin") {
+        return json({ error: "Global templates are Super Admin only" }, 403);
+      }
+      const isOwner = Number(t.created_by) === Number(me.id);
+      if (!isOwner && me.role !== "super_admin") {
+        return json({ error: "Only the author or Super Admin can delete this template" }, 403);
+      }
+      await sql`DELETE FROM question_bank WHERE id = ${id}`.catch(() => null);
+      logAudit(me, "question_bank_delete", "question_bank", id, { name: t.name });
+      return json({ ok: true, deleted: true });
+    }
+
+    // Copy a bank template into a real survey (survey_form) so surveyors can use it.
+    if (path.match(/^\/api\/question-bank\/\d+\/copy$/) && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const id = Number(path.split("/")[3]);
+      const rows = await sql`SELECT id, name, questions FROM question_bank WHERE id = ${id}`.catch(() => []);
+      const t = rows[0] as Record<string, unknown> | undefined;
+      if (!t) return json({ error: "Not found" }, 404);
+      const questions = Array.isArray(t.questions) ? t.questions : [];
+      const title = `${String(t.name || "Template").trim()} Survey`;
+      const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "survey";
+      let formKey = base;
+      let n = 1;
+      for (;;) {
+        const clash = await sql`SELECT id FROM survey_form WHERE form_key = ${formKey} LIMIT 1`;
+        if (!(clash as unknown[]).length) break;
+        n += 1;
+        formKey = `${base}-${n}`;
+      }
+      const ins = await sql`
+        INSERT INTO survey_form (form_key, title, questions, updated_at)
+        VALUES (${formKey}, ${title}, ${JSON.stringify(questions)}::jsonb, NOW())
+        RETURNING id, form_key, title
+      `.catch(() => []);
+      const created = (ins as Record<string, unknown>[])[0];
+      if (!created) return json({ error: "Could not create survey from template" }, 500);
+      logAudit(me, "question_bank_copy", "survey", created.id, { template: id, title });
+      return json({ ok: true, survey: created }, 201);
+    }
+
+    // BR-006 / FR-USR-10: seat-limit upgrade requests.
+    if (path === "/api/seat-limit-requests" && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const [limits] = await sql`SELECT seat_role, approved_limit, updated_at, updated_by FROM seat_limits`.catch(() => []);
+      const [cnt] = await sql`SELECT COUNT(*)::int AS n FROM app_users WHERE role = 'admin' AND active = TRUE`.catch(() => [{ n: 0 }]);
+      const reqs = me.role === "super_admin"
+        ? await sql`
+            SELECT id, requested_by, requested_by_name, seat_role, requested_limit, reason,
+                   status, decided_by, decided_by_name, decided_at, created_at
+            FROM seat_limit_requests ORDER BY id DESC LIMIT 200
+          `.catch(() => [])
+        : await sql`
+            SELECT id, requested_by, requested_by_name, seat_role, requested_limit, reason,
+                   status, decided_by, decided_by_name, decided_at, created_at
+            FROM seat_limit_requests WHERE requested_by = ${me.id} ORDER BY id DESC LIMIT 200
+          `.catch(() => []);
+      return json({
+        requests: reqs,
+        limits: (limits as Record<string, unknown>) || null,
+        current_admins: Number((cnt as { n?: unknown }[])[0]?.n ?? 0),
+        can_submit: me.role === "admin",
+      });
+    }
+
+    if (path === "/api/seat-limit-requests" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "admin") {
+        return json({ error: "Only Client Admins submit seat upgrade requests" }, 403);
+      }
+      const body = await readBody(req);
+      const requestedLimit = Math.max(1, Math.min(Number(body.requested_limit) || 0, 10000));
+      const reason = String(body.reason || "").trim();
+      if (!requestedLimit) return json({ error: "requested_limit required" }, 400);
+      const open = await sql`
+        SELECT id FROM seat_limit_requests WHERE requested_by = ${me.id} AND status = 'pending' LIMIT 1
+      `.catch(() => []);
+      if ((open as unknown[]).length) {
+        return json({ error: "You already have a pending seat upgrade request" }, 409);
+      }
+      const rows = await sql`
+        INSERT INTO seat_limit_requests (requested_by, requested_by_name, seat_role, requested_limit, reason)
+        VALUES (${me.id}, ${me.name || me.username}, 'admin', ${requestedLimit}, ${reason || null})
+        RETURNING id, seat_role, requested_limit, reason, status, created_at
+      `.catch(() => []);
+      const r = (rows as Record<string, unknown>[])[0];
+      if (!r) return json({ error: "Could not create request" }, 500);
+      logAudit(me, "seat_request_submit", "seat_limit_requests", r.id, {
+        seat_role: "admin",
+        requested_limit: requestedLimit,
+      });
+      return json({ request: r }, 201);
+    }
+
+    if (path.match(/^\/api\/seat-limit-requests\/\d+\/(approve|deny)$/) && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+      const id = Number(path.split("/")[3]);
+      const approve = path.endsWith("/approve");
+      const rows = await sql`SELECT * FROM seat_limit_requests WHERE id = ${id}`.catch(() => []);
+      const r = rows[0] as Record<string, unknown> | undefined;
+      if (!r) return json({ error: "Not found" }, 404);
+      if (r.status !== "pending") return json({ error: "Request already decided" }, 409);
+      if (approve) {
+        await sql`
+          INSERT INTO seat_limits (seat_role, approved_limit, updated_at, updated_by)
+          VALUES (${String(r.seat_role || "admin")}, ${Number(r.requested_limit)}, NOW(), ${me.name || me.username})
+          ON CONFLICT (seat_role)
+          DO UPDATE SET approved_limit = ${Number(r.requested_limit)}, updated_at = NOW(), updated_by = ${me.name || me.username}
+        `.catch(() => null);
+      }
+      await sql`
+        UPDATE seat_limit_requests
+        SET status = ${approve ? "approved" : "denied"}, decided_by = ${me.id},
+            decided_by_name = ${me.name || me.username}, decided_at = NOW()
+        WHERE id = ${id}
+      `.catch(() => null);
+      logAudit(me, approve ? "seat_request_approve" : "seat_request_deny", "seat_limit_requests", id, {
+        seat_role: r.seat_role,
+        requested_limit: r.requested_limit,
+        requested_by: r.requested_by_name,
+      });
+      return json({ ok: true, status: approve ? "approved" : "denied" });
     }
 
     if (path === "/api/submissions" && method === "GET") {
@@ -4379,6 +4746,7 @@ Deno.serve(async (req) => {
         await sql`UPDATE submissions SET fact_status = NULL, fact_error = NULL WHERE id = ${id}`.catch(() => null);
       }
 
+      logAudit(me, "submission_status", "submission", id, { status: next, force });
       return json({
         ok: true,
         id,
@@ -4540,6 +4908,11 @@ Deno.serve(async (req) => {
         VALUES (${formKey}, ${title}, ${JSON.stringify(questions)}::jsonb, NOW())
         RETURNING id, form_key, title, updated_at
       `;
+      logAudit(me, "survey_create", "survey", (rows[0] as { id?: unknown }).id, {
+        title,
+        form_key: formKey,
+        questions: questions.length,
+      });
       return json({ ok: true, survey: rows[0] }, 201);
     }
 
@@ -4604,6 +4977,7 @@ Deno.serve(async (req) => {
           WHERE id = ${id}
         `;
       }
+      logAudit(me, "survey_update", "survey", id, { title: title || undefined });
       return json({ ok: true });
     }
 
@@ -4616,6 +4990,7 @@ Deno.serve(async (req) => {
       await sql`DELETE FROM survey_assignments WHERE survey_id = ${id}`.catch(() => null);
       await sql`DELETE FROM survey_respondents WHERE survey_id = ${id}`.catch(() => null);
       await sql`DELETE FROM survey_form WHERE id = ${id}`;
+      logAudit(me, "survey_delete", "survey", id, { form_key: (rows[0] as { form_key: string }).form_key });
       return json({ ok: true, deleted: true });
     }
 
@@ -5462,6 +5837,12 @@ Deno.serve(async (req) => {
           }
           lines.push(rec.join(","));
         }
+        logAudit(me, "data_export", "export", null, {
+          rows: rows.length,
+          status: statusQ,
+          from: dateFrom,
+          to: dateTo,
+        });
         return new Response(lines.join("\n"), {
           status: 200,
           headers: {

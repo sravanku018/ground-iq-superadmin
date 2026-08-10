@@ -1,0 +1,414 @@
+import { useCallback, useEffect, useState } from 'react'
+import {
+  copyQuestionBank,
+  createQuestionBank,
+  deleteQuestionBank,
+  getStoredUser,
+  listQuestionBank,
+  updateQuestionBank,
+} from './api'
+
+const EMPTY_Q = {
+  id: '',
+  label: '',
+  type: 'text',
+  options: [],
+  required: false,
+  speak: '',
+}
+
+const defaultOptionsForType = (t) => {
+  if (t === 'yesno') return ['Yes', 'No']
+  if (t === 'abc') return ['A', 'B', 'C', 'D']
+  if (t === 'sentiment' || t === 'sentiment_text') return ['Positive', 'Neutral', 'Negative']
+  if (t === 'range' || t === 'numeric_range' || t === 'age') return ['10-20', '21-30', '31-40', '41-50', '50+']
+  if (t === 'choice') return ['Option 1', 'Option 2', 'Option 3']
+  return []
+}
+
+const TYPE_OPTIONS = [
+  ['range', '🔢 Numeric Range Buttons (e.g. 10-20, 21-30, 50+)'],
+  ['yesno', '✓ Yes / ✕ No Buttons'],
+  ['sentiment_text', '📝 Text + Sentiment Fillers'],
+  ['choice', '🔘 Choice / Custom Options'],
+  ['abc', '🔤 A · B · C · D Choice Buttons'],
+  ['sentiment', '⭐ Sentiment Rating Scale'],
+  ['text', '✏️ Open Text Input'],
+  ['age', '🔢 Age / Numeric Field'],
+]
+
+export default function AdminQuestionBankScreen({ onToast }) {
+  const me = getStoredUser()
+  const isSuper = me?.role === 'super_admin'
+  const [templates, setTemplates] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(null) // template object being edited, null = list view
+  const [name, setName] = useState('')
+  const [isGlobal, setIsGlobal] = useState(false)
+  const [questions, setQuestions] = useState([])
+  const [saving, setSaving] = useState(false)
+  const [busyId, setBusyId] = useState(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await listQuestionBank()
+      setTemplates(data.templates || [])
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [onToast])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  function startCreate() {
+    setEditing({ id: null })
+    setName('')
+    setIsGlobal(false)
+    setQuestions([])
+  }
+
+  function startEdit(t) {
+    setEditing(t)
+    setName(t.name || '')
+    setIsGlobal(!!t.is_global)
+    setQuestions(Array.isArray(t.questions) ? t.questions.map((q) => ({ ...q, optionsText: (q.options || []).join(', ') })) : [])
+  }
+
+  function updateQ(i, patch) {
+    setQuestions((list) => list.map((q, idx) => (idx === i ? { ...q, ...patch } : q)))
+  }
+
+  function handleTypeChange(i, newType) {
+    const defaults = defaultOptionsForType(newType)
+    updateQ(i, { type: newType, options: defaults, optionsText: defaults.join(', ') })
+  }
+
+  function addQ() {
+    setQuestions((list) => [
+      ...list,
+      {
+        ...EMPTY_Q,
+        id: `q_${Date.now()}`,
+        label: 'New question',
+        speak: 'New question',
+      },
+    ])
+  }
+
+  function removeQ(i) {
+    setQuestions((list) => list.filter((_, idx) => idx !== i))
+  }
+
+  function cleanQuestions() {
+    return questions.map((q) => {
+      const optsFromText =
+        q.optionsText != null
+          ? String(q.optionsText)
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : null
+      const finalOptions =
+        optsFromText && optsFromText.length > 0
+          ? optsFromText
+          : Array.isArray(q.options) && q.options.length > 0
+            ? q.options
+            : undefined
+      return {
+        id: String(q.id || '').trim() || `q_${Math.random().toString(36).slice(2, 8)}`,
+        label: String(q.label || '').trim() || 'Question',
+        type: String(q.type || 'text'),
+        options: finalOptions,
+        required: !!q.required,
+        speak: String(q.speak || q.label || '').trim(),
+      }
+    })
+  }
+
+  async function save() {
+    if (!name.trim()) {
+      onToast?.('Template name required', 'error')
+      return
+    }
+    setSaving(true)
+    try {
+      const cleaned = cleanQuestions()
+      if (editing?.id) {
+        await updateQuestionBank(editing.id, { name, questions: cleaned, is_global: isGlobal })
+        onToast?.('Template updated', 'ok')
+      } else {
+        await createQuestionBank({ name, questions: cleaned, is_global: isGlobal })
+        onToast?.(isSuper && isGlobal ? 'Global template created — all tenants can use it' : 'Template created', 'ok')
+      }
+      setEditing(null)
+      await load()
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function remove(t) {
+    if (!window.confirm(`Delete template "${t.name}"?`)) return
+    setBusyId(t.id)
+    try {
+      await deleteQuestionBank(t.id)
+      onToast?.('Template deleted', 'ok')
+      await load()
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function useTemplate(t) {
+    setBusyId(t.id)
+    try {
+      const d = await copyQuestionBank(t.id)
+      onToast?.(`Survey "${d.survey?.title || 'created'}" created from template — edit it under Surveys`, 'ok')
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="screen">
+        <header className="screen-head">
+          <h2>{editing?.id ? `Edit template · ${name || '…'}` : 'New question-bank template'}</h2>
+          <p>
+            {isSuper
+              ? 'Global templates (★) are available to every client; Client Admins can also save private templates.'
+              : 'Private templates are visible only to you — Super Admin templates appear with a ★.'}
+          </p>
+        </header>
+
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <label className="field compact" style={{ flex: 2, minWidth: 220 }}>
+              <span>Template name *</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Assembly Election 2026" />
+            </label>
+            {isSuper && (
+              <label
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: isGlobal ? 'rgba(245,158,11,0.15)' : 'rgba(15,23,42,0.05)',
+                  border: isGlobal ? '1px solid #f59e0b' : '1px solid #e2e8f0',
+                  borderRadius: 8,
+                  padding: '9px 14px',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isGlobal}
+                  onChange={(e) => setIsGlobal(e.target.checked)}
+                />
+                <span style={{ fontSize: 13, fontWeight: 'bold', color: isGlobal ? '#d97706' : '#475569' }}>
+                  {isGlobal ? '★ Global (all tenants)' : 'Publish as Global template'}
+                </span>
+              </label>
+            )}
+            {!isSuper && <span className="muted" style={{ fontSize: 12 }}>Private to your portal</span>}
+          </div>
+        </div>
+
+        {questions.map((q, i) => {
+          const type = q.type || 'text'
+          const hasOptions = ['choice', 'yesno', 'abc', 'sentiment', 'sentiment_text', 'range', 'numeric_range', 'age'].includes(type)
+          const currentOpts = Array.isArray(q.options) && q.options.length > 0
+            ? q.options
+            : (q.optionsText || '').split(',').map((s) => s.trim()).filter(Boolean)
+
+          return (
+            <div key={q.id || i} className="card" style={{ marginBottom: 14, borderLeft: '4px solid #38bdf8' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span className="pill ok" style={{ fontSize: 11, fontWeight: 'bold' }}>
+                  Q{i + 1} · {type.toUpperCase().replace('_', ' ')}
+                </span>
+                <button type="button" className="btn small danger" onClick={() => removeQ(i)}>
+                  Delete Q{i + 1}
+                </button>
+              </div>
+              <label className="field">
+                <span>Field ID (Unique Key)</span>
+                <input value={q.id} onChange={(e) => updateQ(i, { id: e.target.value })} placeholder="e.g. age_range" />
+              </label>
+              <label className="field">
+                <span>Question Text / Label *</span>
+                <input value={q.label} onChange={(e) => updateQ(i, { label: e.target.value })} placeholder="What is the question?" />
+              </label>
+              <label className="field">
+                <span>Voice Prompt (spoken by surveyor)</span>
+                <input value={q.speak || ''} onChange={(e) => updateQ(i, { speak: e.target.value })} placeholder="Ask respondent…" />
+              </label>
+              <label className="field">
+                <span>Question Type</span>
+                <select value={type} onChange={(e) => handleTypeChange(i, e.target.value)} style={{ fontWeight: 'bold' }}>
+                  {TYPE_OPTIONS.map(([v, label]) => (
+                    <option key={v} value={v}>{label}</option>
+                  ))}
+                </select>
+              </label>
+              {hasOptions && (
+                <div style={{ marginTop: 10, background: 'rgba(15,23,42,0.05)', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 }}>
+                  <label className="field" style={{ marginBottom: 8 }}>
+                    <span>Answer Options (comma-separated)</span>
+                    <input
+                      value={q.optionsText != null ? q.optionsText : (Array.isArray(q.options) && q.options.length ? q.options.join(', ') : defaultOptionsForType(type).join(', '))}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        updateQ(i, { optionsText: val, options: val.split(',').map((s) => s.trim()).filter(Boolean) })
+                      }}
+                      placeholder="Satisfied, Neutral, Unsatisfied, Don't Know"
+                    />
+                  </label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {(currentOpts.length > 0 ? currentOpts : defaultOptionsForType(type)).map((opt, optIdx) => (
+                      <span
+                        key={optIdx}
+                        style={{
+                          background: '#eef2f7',
+                          border: '1px solid #059669',
+                          color: '#0f172a',
+                          borderRadius: 16,
+                          padding: '4px 10px',
+                          fontSize: 12,
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        {opt}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <label
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  background: q.required ? 'rgba(5, 150, 105, 0.12)' : 'rgba(15, 23, 42, 0.05)',
+                  border: q.required ? '1px solid #059669' : '1px solid #e2e8f0',
+                  borderRadius: 8,
+                  padding: '10px 14px',
+                  cursor: 'pointer',
+                  margin: '10px 0 0',
+                }}
+              >
+                <input type="checkbox" checked={!!q.required} onChange={(e) => updateQ(i, { required: e.target.checked })} />
+                <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#059669' : '#64748b' }}>
+                  {q.required ? '✓ Required question' : 'Optional question'}
+                </span>
+              </label>
+            </div>
+          )
+        })}
+
+        <button type="button" className="btn small" onClick={addQ} style={{ marginRight: 8 }}>
+          + Add Question
+        </button>
+        <button type="button" className="btn small primary" onClick={() => void save()} disabled={saving}>
+          {saving ? 'Saving…' : editing?.id ? 'Save changes' : 'Create template'}
+        </button>
+        <button
+          type="button"
+          className="btn small"
+          style={{ marginLeft: 8 }}
+          onClick={() => {
+            if (!saving) setEditing(null)
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="screen">
+      <header className="screen-head">
+        <h2>{isSuper ? 'Super Admin · Global Question Bank' : 'Question Bank'}</h2>
+        <p>
+          FR-QB-02: reusable question templates. {isSuper ? '★ templates are global (all tenants); ' : 'Your private templates plus ★ global ones. '}
+          “Use template” creates a live survey you can assign to surveyors.
+        </p>
+      </header>
+
+      <button type="button" className="btn small primary" onClick={startCreate} style={{ marginBottom: 12 }}>
+        ＋ New Template
+      </button>
+
+      {loading ? (
+        <p className="muted">Loading question bank…</p>
+      ) : templates.length === 0 ? (
+        <div className="card">
+          <p className="muted" style={{ margin: 0 }}>
+            No templates yet. Create one to reuse across surveys — mark it ★ global to share with every client.
+          </p>
+        </div>
+      ) : (
+        templates.map((t) => {
+          const qs = Array.isArray(t.questions) ? t.questions : []
+          return (
+            <div
+              key={t.id}
+              className="card"
+              style={{
+                marginBottom: 10,
+                padding: '12px 14px',
+                borderLeft: t.is_global ? '4px solid #f59e0b' : '4px solid #38bdf8',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 12,
+                flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <strong>{t.name}</strong>
+                  {t.is_global && (
+                    <span className="pill" style={{ fontSize: 11, fontWeight: 'bold', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.5)', color: '#d97706' }}>
+                      ★ GLOBAL
+                    </span>
+                  )}
+                  <span className="pill ok" style={{ fontSize: 11 }}>{qs.length} questions</span>
+                </div>
+                {qs.length > 0 && (
+                  <p className="muted" style={{ margin: '4px 0 0', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 520 }}>
+                    {qs.slice(0, 6).map((q) => q.label).join(' · ')}
+                    {qs.length > 6 ? ' …' : ''}
+                  </p>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" className="btn small primary" disabled={busyId === t.id} onClick={() => useTemplate(t)}>
+                  {busyId === t.id ? '…' : 'Use template → survey'}
+                </button>
+                <button type="button" className="btn small" onClick={() => startEdit(t)}>
+                  Edit
+                </button>
+                <button type="button" className="btn small danger" disabled={busyId === t.id} onClick={() => void remove(t)}>
+                  Delete
+                </button>
+              </div>
+            </div>
+          )
+        })
+      )}
+    </div>
+  )
+}

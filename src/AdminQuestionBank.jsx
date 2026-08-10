@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import OptionPills from './OptionPills'
 import {
   copyQuestionBank,
   createQuestionBank,
@@ -289,22 +290,12 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
                     />
                   </label>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {(currentOpts.length > 0 ? currentOpts : defaultOptionsForType(type)).map((opt, optIdx) => (
-                      <span
-                        key={optIdx}
-                        style={{
-                          background: '#eef2f7',
-                          border: '1px solid #059669',
-                          color: '#0f172a',
-                          borderRadius: 16,
-                          padding: '4px 10px',
-                          fontSize: 12,
-                          fontWeight: 'bold',
-                        }}
-                      >
-                        {opt}
-                      </span>
-                    ))}
+                    <OptionPills
+                      options={currentOpts.length > 0 ? currentOpts : defaultOptionsForType(type)}
+                      onChange={(list) => updateQ(i, { options: list, optionsText: list.join(', ') })}
+                      addLabel="+ Add Option"
+                      addValue={(n) => `Option ${n}`}
+                    />
                   </div>
                 </div>
               )}

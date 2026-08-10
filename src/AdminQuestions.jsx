@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getQuestions, getSurvey, listSurveys, saveQuestions, updateSurvey } from './api'
+import OptionPills from './OptionPills'
 
 const EMPTY_Q = {
   id: '',
@@ -278,57 +279,12 @@ export default function AdminQuestionsScreen({ onToast, user }) {
 
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ fontSize: 11, fontWeight: 'bold', color: '#38bdf8' }}>Active Option Pills:</span>
-                  {(currentOpts.length > 0 ? currentOpts : defaultOptionsForType(type)).map((opt, optIdx) => (
-                    <span
-                      key={optIdx}
-                      style={{
-                        background: '#eef2f7',
-                        border: '1px solid #059669',
-                        color: '#0f172a',
-                        borderRadius: 16,
-                        padding: '4px 10px',
-                        fontSize: 12,
-                        fontWeight: 'bold',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
-                    >
-                      {opt}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const list = currentOpts.filter((_, idx) => idx !== optIdx)
-                          updateQ(i, { options: list, optionsText: list.join(', ') })
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 0,
-                          color: '#ff6b6b',
-                          cursor: 'pointer',
-                          fontWeight: 'bold',
-                          fontSize: 13,
-                          padding: 0,
-                          lineHeight: 1,
-                        }}
-                        title="Remove option"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  ))}
-                  <button
-                    type="button"
-                    className="btn small primary"
-                    style={{ padding: '3px 10px', fontSize: 11 }}
-                    onClick={() => {
-                      const base = currentOpts.length > 0 ? currentOpts : defaultOptionsForType(type)
-                      const next = [...base, `Option ${base.length + 1}`]
-                      updateQ(i, { options: next, optionsText: next.join(', ') })
-                    }}
-                  >
-                    + Add Option
-                  </button>
+                  <OptionPills
+                    options={currentOpts.length > 0 ? currentOpts : defaultOptionsForType(type)}
+                    onChange={(list) => updateQ(i, { options: list, optionsText: list.join(', ') })}
+                    addLabel="+ Add Option"
+                    addValue={(n) => `Option ${n + 1}`}
+                  />
                 </div>
               </div>
             )}

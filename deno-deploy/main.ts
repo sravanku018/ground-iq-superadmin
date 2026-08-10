@@ -152,7 +152,8 @@ async function getUser(token: string | null) {
            COALESCE(u.can_edit_surveys, FALSE) AS can_edit_surveys,
            COALESCE(u.can_review_data, FALSE) AS can_review_data,
            COALESCE(u.can_verify_surveyors, FALSE) AS can_verify_surveyors,
-           COALESCE(u.can_crud_questionnaire, FALSE) AS can_crud_questionnaire
+           COALESCE(u.can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
+           COALESCE(u.can_validate_proof, FALSE) AS can_validate_proof
     FROM app_sessions s
     JOIN app_users u ON u.id = s.user_id
     WHERE s.token = ${token}
@@ -165,7 +166,8 @@ async function getUser(token: string | null) {
       SELECT u.id, u.username, u.display_name, u.role, u.active, u.created_at,
              NULL AS key_id, NULL AS phone, NULL AS photo, NULL AS aadhaar_front, NULL AS aadhaar_back,
              FALSE AS verified, FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
-             FALSE AS can_review_data, FALSE AS can_verify_surveyors, FALSE AS can_crud_questionnaire
+             FALSE AS can_review_data, FALSE AS can_verify_surveyors, FALSE AS can_crud_questionnaire,
+             FALSE AS can_validate_proof
       FROM app_sessions s
       JOIN app_users u ON u.id = s.user_id
       WHERE s.token = ${token}
@@ -195,6 +197,7 @@ async function getUser(token: string | null) {
     can_review_data: (u as Record<string, unknown>).can_review_data === true,
     can_verify_surveyors: (u as Record<string, unknown>).can_verify_surveyors === true,
     can_crud_questionnaire: (u as Record<string, unknown>).can_crud_questionnaire === true,
+    can_validate_proof: (u as Record<string, unknown>).can_validate_proof === true,
   };
 }
 
@@ -450,6 +453,7 @@ async function ensureSchema() {
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_review_data BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_verify_surveyors BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_crud_questionnaire BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_validate_proof BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   // Unique key ID backfill for existing users (idempotent — different key per row)
   const noKey = await sql`
     SELECT id FROM app_users WHERE key_id IS NULL OR key_id = ''
@@ -2874,6 +2878,8 @@ Deno.serve(async (req) => {
           can_edit_surveys: (user as Record<string, unknown>).can_edit_surveys === true,
           can_review_data: (user as Record<string, unknown>).can_review_data === true,
           can_verify_surveyors: (user as Record<string, unknown>).can_verify_surveyors === true,
+          can_crud_questionnaire: (user as Record<string, unknown>).can_crud_questionnaire === true,
+          can_validate_proof: (user as Record<string, unknown>).can_validate_proof === true,
         },
         expires_at: expires.toISOString(),
         access:
@@ -3160,7 +3166,8 @@ Deno.serve(async (req) => {
                COALESCE(can_edit_surveys, FALSE) AS can_edit_surveys,
                COALESCE(can_review_data, FALSE) AS can_review_data,
                COALESCE(can_verify_surveyors, FALSE) AS can_verify_surveyors,
-               COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire
+               COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
+               COALESCE(can_validate_proof, FALSE) AS can_validate_proof
         FROM app_users
         ORDER BY id
       `.catch(async () =>
@@ -3168,7 +3175,7 @@ Deno.serve(async (req) => {
           SELECT id, username, display_name, role, active, created_at,
                  FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
                  FALSE AS can_review_data, FALSE AS can_verify_surveyors,
-                 FALSE AS can_crud_questionnaire
+                 FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof
           FROM app_users ORDER BY id
         `
       );
@@ -3204,6 +3211,7 @@ Deno.serve(async (req) => {
           can_review_data: r.can_review_data === true,
           can_verify_surveyors: r.can_verify_surveyors === true,
           can_crud_questionnaire: r.can_crud_questionnaire === true,
+          can_validate_proof: r.can_validate_proof === true,
           surveys: assignedMap.get(Number(r.id)) || [],
           status: isCollector ? progressStatus(done, target) : "admin",
           progress_label: isCollector
@@ -3265,10 +3273,11 @@ Deno.serve(async (req) => {
         const canReviewData = canSuper && body.can_review_data === true;
         const canVerifySurveyors = canSuper && body.can_verify_surveyors === true;
         const canCrudQuestionnaire = canSuper && body.can_crud_questionnaire === true;
+        const canValidateProof = canSuper && body.can_validate_proof === true;
         const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire)
-          VALUES (${username}, ${password_hash}, ${name}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canCrudQuestionnaire})
-          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire
+          INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof)
+          VALUES (${username}, ${password_hash}, ${name}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canCrudQuestionnaire}, ${canValidateProof})
+          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof
         `;
         const u = inserted[0] as Record<string, unknown>;
         logAudit(me, "user_create", "user", u.id, {
@@ -3280,6 +3289,7 @@ Deno.serve(async (req) => {
           can_review_data: canReviewData,
           can_verify_surveyors: canVerifySurveyors,
           can_crud_questionnaire: canCrudQuestionnaire,
+          can_validate_proof: canValidateProof,
         });
         return json({
           user: {
@@ -3658,6 +3668,7 @@ Deno.serve(async (req) => {
         "can_review_data",
         "can_verify_surveyors",
         "can_crud_questionnaire",
+        "can_validate_proof",
       ] as const;
       const nextPowers: Record<string, boolean> = {};
       for (const k of POWER_KEYS) {
@@ -3702,9 +3713,10 @@ Deno.serve(async (req) => {
               can_edit_surveys = ${nextPowers.can_edit_surveys},
               can_review_data = ${nextPowers.can_review_data},
               can_verify_surveyors = ${nextPowers.can_verify_surveyors},
-              can_crud_questionnaire = ${nextPowers.can_crud_questionnaire}
+              can_crud_questionnaire = ${nextPowers.can_crud_questionnaire},
+              can_validate_proof = ${nextPowers.can_validate_proof}
           WHERE id = ${id}
-          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire
+          RETURNING id, username, display_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof
         `;
       } catch (e) {
         const msg = (e as Error).message || "";
@@ -4144,6 +4156,7 @@ Deno.serve(async (req) => {
           photo_url: payload?.photo_url || null,
           audio_url: payload?.audio_url || null,
           media_storage: payload?.media_storage || null,
+          proof_validated: payload?.proof_validated || null,
         };
       });
 
@@ -4624,6 +4637,7 @@ Deno.serve(async (req) => {
           : [],
         confirmed_at: payload.confirmed_at || null,
         confirmed_by: payload.confirmed_by || null,
+        proof_validated: payload.proof_validated || null,
       });
     }
 
@@ -4908,6 +4922,88 @@ Deno.serve(async (req) => {
         confirmed_by: payload.confirmed_by,
         confirmed_at: payload.confirmed_at,
       });
+    }
+
+    // Proof validation — phone number + Aadhaar format check on a record (grantable power)
+    if (path.match(/^\/api\/submissions\/\d+\/proof$/) && method === "PATCH") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!hasPower(me, "can_validate_proof")) {
+        return json({
+          error: "Super Admin has not granted your account proof-validation rights (phone + Aadhaar)",
+        }, 403);
+      }
+      const id = Number(path.split("/")[3]);
+      const body = await readBody(req);
+      const rows = await sql`SELECT id, payload FROM submissions WHERE id = ${id}`;
+      if (!rows.length) return json({ error: "Not found" }, 404);
+      const payload = parsePayload(rows[0].payload);
+      const answers = ((payload.answers || {}) as Record<string, unknown>);
+
+      // Find proof fields by common key names (case-insensitive, underscore-boundary match
+      // so e.g. "uuid"/"guid" never get treated as Aadhaar)
+      let phoneRaw = "";
+      let aadhaarRaw = "";
+      const phoneKeys = ["phone", "mobile", "phone_number", "contact", "contact_number", "mobile_number"];
+      const aadhaarKeys = ["aadhaar", "aadhaar_no", "aadhaar_number", "uid", "aadhaar_id", "id_proof"];
+      const norm = (s: string) => String(s).trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
+      const matchesKey = (key: string, known: string) => {
+        const k = norm(known);
+        return key === k || key.startsWith(k + "_") || key.endsWith("_" + k);
+      };
+      for (const [k, v] of Object.entries(answers)) {
+        const key = norm(k);
+        const val = v == null ? "" : String(v);
+        if (!phoneRaw && phoneKeys.some((pk) => matchesKey(key, pk))) phoneRaw = val;
+        if (!aadhaarRaw && aadhaarKeys.some((ak) => matchesKey(key, ak))) aadhaarRaw = val;
+      }
+
+      // Strip separators and optional +91 / 91 country prefix before checking
+      const strip = (s: string) =>
+        String(s).replace(/[\s\-().]/g, "").replace(/^\+?91/, "");
+      const phone = strip(phoneRaw);
+      const aadhaar = strip(aadhaarRaw);
+      const phoneValid = /^[6-9]\d{9}$/.test(phone); // Indian mobile: 10 digits, starts 6-9
+      const aadhaarValid = /^\d{12}$/.test(aadhaar); // Aadhaar: 12 digits
+
+      const anyFound = !!phoneRaw || !!aadhaarRaw;
+      const result = {
+        phone: {
+          found: !!phoneRaw,
+          value: phoneRaw || null,
+          valid: phoneValid,
+        },
+        aadhaar: {
+          found: !!aadhaarRaw,
+          value: aadhaarRaw || null,
+          valid: aadhaarValid,
+        },
+        all_valid: (!phoneRaw || phoneValid) && (!aadhaarRaw || aadhaarValid),
+      };
+      // Only mark proof-validated when at least one proof field exists and all present ones pass
+      const proofValidated = anyFound && result.all_valid;
+
+      payload.proof_validated = {
+        ok: proofValidated,
+        phone: result.phone,
+        aadhaar: result.aadhaar,
+        checked_at: new Date().toISOString(),
+        checked_by: me.name || me.username,
+        note: body.note ? String(body.note).slice(0, 500) : null,
+      };
+      await sql`
+        UPDATE submissions
+        SET payload = ${JSON.stringify(payload)}::jsonb
+        WHERE id = ${id}
+      `;
+
+      logAudit(me, "proof_validation", "submission", id, {
+        phone_valid: result.phone.valid,
+        aadhaar_valid: result.aadhaar.valid,
+        ok: proofValidated,
+        note: (payload.proof_validated as Record<string, unknown>)?.note ?? null,
+      });
+      return json({ ok: true, id, ...result, proof_validated: payload.proof_validated });
     }
 
     // Bulk confirm all pending (bootstrap / after review)

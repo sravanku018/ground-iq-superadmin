@@ -18,6 +18,7 @@ const POWER_DEFS = [
   { key: 'can_review_data', label: 'Data review', icon: '✓' },
   { key: 'can_verify_surveyors', label: 'Verify surveyors', icon: '🛡' },
   { key: 'can_crud_questionnaire', label: 'CRUD questionnaire', icon: '🗂' },
+  { key: 'can_validate_proof', label: 'Proof validation', icon: '📞' },
 ]
 
 const EMPTY_FORM = { username: '', name: '', password: '' }

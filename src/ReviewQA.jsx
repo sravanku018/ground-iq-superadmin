@@ -8,6 +8,7 @@ import {
   listSurveys,
   retryFact,
   setSubmissionStatus,
+  validateSubmissionProof,
 } from './api'
 import { PortalEmpty, PortalError, PortalSkeleton } from './PortalUI'
 import SubmissionEditor from './SubmissionEditor'
@@ -19,6 +20,8 @@ import SubmissionEditor from './SubmissionEditor'
 export default function ReviewQAScreen({ onToast, user }) {
   // Data verification power — Super Admin grants it (least privilege)
   const canReview = user?.role === 'super_admin' || !!user?.can_review_data
+  // Proof validation power — phone + Aadhaar format check on records
+  const canValidateProof = user?.role === 'super_admin' || !!user?.can_validate_proof
   const [status, setStatus] = useState('pending')
   const [survey, setSurvey] = useState('')
   const [surveys, setSurveys] = useState([])
@@ -142,6 +145,34 @@ export default function ReviewQAScreen({ onToast, user }) {
       }
     },
     [load, onToast],
+  )
+
+  const validateProofFor = useCallback(
+    async (id) => {
+      if (!canValidateProof) {
+        onToast?.('Super Admin has not granted your account proof-validation rights (phone + Aadhaar)', 'error')
+        return
+      }
+      setBusyId(id)
+      try {
+        const res = await validateSubmissionProof(id)
+        const parts = []
+        if (res?.phone?.found) parts.push(`phone ${res.phone.valid ? '✓' : '✗'}`)
+        if (res?.aadhaar?.found) parts.push(`Aadhaar ${res.aadhaar.valid ? '✓' : '✗'}`)
+        onToast?.(
+          parts.length
+            ? `Proof: ${parts.join(' · ')}`
+            : 'No phone/Aadhaar fields found in this record',
+          res?.all_valid || !parts.length ? 'ok' : 'error',
+        )
+        await load()
+      } catch (e) {
+        onToast?.(e.message, 'error')
+      } finally {
+        setBusyId(null)
+      }
+    },
+    [canValidateProof, load, onToast],
   )
 
   async function bulkConfirm() {
@@ -347,6 +378,39 @@ export default function ReviewQAScreen({ onToast, user }) {
                     {item.status === 'confirmed' && item.fact_status === 'failed'
                       ? ' · ⚠ fact failed'
                       : ''}
+                    {item.proof_validated ? (
+                      item.proof_validated.ok ? (
+                        <span
+                          style={{
+                            marginLeft: 6,
+                            color: '#0a8f3c',
+                            fontWeight: 600,
+                            background: '#e6f6ec',
+                            borderRadius: 10,
+                            padding: '1px 8px',
+                            fontSize: 11,
+                          }}
+                        >
+                          Proof ✓
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            marginLeft: 6,
+                            color: '#b3261e',
+                            fontWeight: 600,
+                            background: '#fdecea',
+                            borderRadius: 10,
+                            padding: '1px 8px',
+                            fontSize: 11,
+                          }}
+                        >
+                          Proof ✗
+                        </span>
+                      )
+                    ) : (
+                      ''
+                    )}
                   </span>
                   <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
                     {open ? 'Hide Q/A ▲' : 'Show Q/A + media ▼'}
@@ -448,6 +512,54 @@ export default function ReviewQAScreen({ onToast, user }) {
                         )}
                       </div>
                     </div>
+                    {item.proof_validated && (
+                      <div
+                        className="card"
+                        style={{
+                          marginBottom: 10,
+                          padding: 10,
+                          background: '#f7fafc',
+                          border: '1px solid #e2e8f0',
+                        }}
+                      >
+                        <strong style={{ fontSize: 13 }}>
+                          Proof validation{' '}
+                          {item.proof_validated.ok ? '✓' : '✗'}
+                          <span className="muted" style={{ fontSize: 11, fontWeight: 400 }}>
+                            {' '}
+                            · by {item.proof_validated.checked_by} ·{' '}
+                            {new Date(item.proof_validated.checked_at).toLocaleString()}
+                          </span>
+                        </strong>
+                        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {item.proof_validated.phone && (
+                            <span style={{ fontSize: 12 }}>
+                              📞 Phone: <strong>{item.proof_validated.phone.value || '—'}</strong>{' '}
+                              {item.proof_validated.phone.found
+                                ? item.proof_validated.phone.valid
+                                  ? <span style={{ color: '#0a8f3c' }}>✓ valid</span>
+                                  : <span style={{ color: '#b3261e' }}>✗ invalid format</span>
+                                : <span className="muted">not present</span>}
+                            </span>
+                          )}
+                          {item.proof_validated.aadhaar && (
+                            <span style={{ fontSize: 12 }}>
+                              🪪 Aadhaar: <strong>{item.proof_validated.aadhaar.value || '—'}</strong>{' '}
+                              {item.proof_validated.aadhaar.found
+                                ? item.proof_validated.aadhaar.valid
+                                  ? <span style={{ color: '#0a8f3c' }}>✓ valid</span>
+                                  : <span style={{ color: '#b3261e' }}>✗ invalid format</span>
+                                : <span className="muted">not present</span>}
+                            </span>
+                          )}
+                          {item.proof_validated.note && (
+                            <span className="muted" style={{ fontSize: 11 }}>
+                              Note: {item.proof_validated.note}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     {qa.map((row) => (
                       <div key={row.q} className="kv" style={{ marginBottom: 6 }}>
                         <span className="muted">{row.q}</span>
@@ -486,6 +598,17 @@ export default function ReviewQAScreen({ onToast, user }) {
                   >
                     {editingId === item.id ? 'Close edit' : 'Edit (e)'}
                   </button>
+                  {canValidateProof && (
+                    <button
+                      type="button"
+                      className={`btn small ${item.proof_validated?.ok ? '' : 'primary'}`}
+                      disabled={busyId === item.id}
+                      title="Format-check phone number + Aadhaar on this record (Proof validation power)"
+                      onClick={() => validateProofFor(item.id)}
+                    >
+                      {item.proof_validated ? 'Re-validate proof' : 'Validate proof'}
+                    </button>
+                  )}
                   {canReview && item.status !== 'confirmed' && (
                     <button
                       type="button"

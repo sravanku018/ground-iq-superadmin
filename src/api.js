@@ -329,6 +329,15 @@ export function getSubmission(id) {
   return request(`/api/submissions/${id}`)
 }
 
+/** Proof validation — format-check phone + Aadhaar on a record (grantable power) */
+export function validateSubmissionProof(id, body = {}) {
+  return request(`/api/submissions/${id}/proof`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
 /**
  * Client Admin: edit survey data
  * body: { answers?, submitted_by?, geo?, status?, has_audio?, has_photo?, note?, force? }

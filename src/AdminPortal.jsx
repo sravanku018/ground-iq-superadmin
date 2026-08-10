@@ -68,6 +68,20 @@ const PAGE_LABELS = {
   admins: 'Client Admins',
 }
 
+// Which Super-Admin-granted power unlocks each management page for a Client Admin.
+// Pages not listed (overview/report/analyze/audit/seats/admins) are never gated here:
+// analytics are viewable by any admin; console-only pages are Super Admin only.
+const PAGE_POWER = {
+  users: 'can_verify_surveyors',
+  // Surveys screen allows either power internally (AdminSurveys canEdit)
+  surveys: ['can_crud_questionnaire', 'can_edit_surveys'],
+  questions: 'can_edit_surveys',
+  bank: 'can_manage_questions',
+  review: 'can_review_data',
+  upload: 'can_validate_proof',
+  data: 'can_validate_proof',
+}
+
 function formatDate(v) {
   if (!v) return '—'
   try {
@@ -80,7 +94,12 @@ function formatDate(v) {
   }
 }
 
-function Overview({ user, stats, onNav, superAdminOnly = false }) {
+function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => true }) {
+  const gated = (p) => {
+    // Super Admin (or console mode) always sees every feature
+    if (superAdminOnly || user?.role === 'super_admin') return true
+    return canPage(p)
+  }
   return (
     <div className="portal-page">
       <header className="portal-page-head">
@@ -114,36 +133,48 @@ function Overview({ user, stats, onNav, superAdminOnly = false }) {
       </div>
 
       <div className="portal-action-grid">
-        <button type="button" className="portal-action" onClick={() => onNav('users')}>
-          <span className="portal-action-n">1</span>
-          <strong>Users &amp; targets</strong>
-          <span>Create surveyors, set record quotas</span>
-        </button>
-        <button type="button" className="portal-action" onClick={() => onNav('questions')}>
-          <span className="portal-action-n">2</span>
-          <strong>Questions bank</strong>
-          <span>Field app loads these automatically</span>
-        </button>
-        <button type="button" className="portal-action" onClick={() => onNav('analyze')}>
-          <span className="portal-action-n">3</span>
-          <strong>Analyze</strong>
-          <span>Charts, maps &amp; filters (confirmed data)</span>
-        </button>
-        <button type="button" className="portal-action" onClick={() => onNav('review')}>
-          <span className="portal-action-n">4</span>
-          <strong>Review · edit · confirm</strong>
-          <span>Correct answers, delete bad rows, then confirm</span>
-        </button>
-        <button type="button" className="portal-action primary" onClick={() => onNav('report')}>
-          <span className="portal-action-n">5</span>
-          <strong>Report</strong>
-          <span>Daily / monthly / surveyor tables · geo + voice boards</span>
-        </button>
-        <button type="button" className="portal-action" onClick={() => onNav('upload')}>
-          <span className="portal-action-n">↑</span>
-          <strong>Upload / geo</strong>
-          <span>CSV &amp; geography inventory</span>
-        </button>
+        {gated('users') && (
+          <button type="button" className="portal-action" onClick={() => onNav('users')}>
+            <span className="portal-action-n">1</span>
+            <strong>Users &amp; targets</strong>
+            <span>Create surveyors, set record quotas</span>
+          </button>
+        )}
+        {gated('questions') && (
+          <button type="button" className="portal-action" onClick={() => onNav('questions')}>
+            <span className="portal-action-n">2</span>
+            <strong>Questions bank</strong>
+            <span>Field app loads these automatically</span>
+          </button>
+        )}
+        {gated('analyze') && (
+          <button type="button" className="portal-action" onClick={() => onNav('analyze')}>
+            <span className="portal-action-n">3</span>
+            <strong>Analyze</strong>
+            <span>Charts, maps &amp; filters (confirmed data)</span>
+          </button>
+        )}
+        {gated('review') && (
+          <button type="button" className="portal-action" onClick={() => onNav('review')}>
+            <span className="portal-action-n">4</span>
+            <strong>Review · edit · confirm</strong>
+            <span>Correct answers, delete bad rows, then confirm</span>
+          </button>
+        )}
+        {gated('report') && (
+          <button type="button" className="portal-action primary" onClick={() => onNav('report')}>
+            <span className="portal-action-n">5</span>
+            <strong>Report</strong>
+            <span>Daily / monthly / surveyor tables · geo + voice boards</span>
+          </button>
+        )}
+        {gated('upload') && (
+          <button type="button" className="portal-action" onClick={() => onNav('upload')}>
+            <span className="portal-action-n">↑</span>
+            <strong>Upload / geo</strong>
+            <span>CSV &amp; geography inventory</span>
+          </button>
+        )}
       </div>
 
       <div className="portal-note card">
@@ -235,7 +266,19 @@ export default function AdminPortal({ superAdminOnly = false }) {
   const [toast, setToast] = useState(null)
   const [navOpen, setNavOpen] = useState(false)
 
-  const nav = superAdminOnly
+  // Super Admin always has every power; Client Admins only see pages their granted powers unlock.
+  const canPage = useCallback(
+    (p) => {
+      if (user?.role === 'super_admin') return true
+      const need = PAGE_POWER[p]
+      if (!need) return true
+      const needs = Array.isArray(need) ? need : [need]
+      return needs.some((k) => !!user?.[k])
+    },
+    [user]
+  )
+
+  const baseNav = superAdminOnly
     ? [
         CLIENT_ADMINS_NAV,
         PLATFORM_NAV,
@@ -245,6 +288,9 @@ export default function AdminPortal({ superAdminOnly = false }) {
         ),
       ]
     : NAV
+  const nav = baseNav
+    .map((n) => ({ ...n, pages: n.pages.filter(canPage) }))
+    .filter((n) => n.pages.length > 0)
 
   const goPage = useCallback((p) => {
     setPage(p)
@@ -553,12 +599,13 @@ export default function AdminPortal({ superAdminOnly = false }) {
           </div>
         ))}
         <Suspense fallback={<PortalSkeleton rows={6} label="Loading screen…" />}>
-          {page === 'overview' && (
+          {(page === 'overview' || !canPage(page)) && (
             <Overview
               user={user}
               stats={stats}
               onNav={goPage}
               superAdminOnly={superAdminOnly}
+              canPage={canPage}
             />
           )}
           {page === 'users' && <AdminUsersScreen onToast={notify} />}

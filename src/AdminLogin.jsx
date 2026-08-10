@@ -18,7 +18,7 @@ export default function AdminLogin({ onSuccess, onToast }) {
     try {
       clearSession()
       const data = await login(username.trim(), password, 'admin')
-      if (data.user?.role !== 'admin') {
+      if (data.user?.role !== 'admin' && data.user?.role !== 'super_admin') {
         clearSession()
         throw new Error('Client Admin portal only.')
       }

@@ -159,6 +159,15 @@ export function enableUser(id) {
 }
 
 /** Hard delete user (prefer disable) */
+/** Create an additional Super Admin account (cap 3 platform-wide) — Super Admin only */
+export function createSuperAdmin(body) {
+  return request('/api/super-admin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
 export function deleteUser(id) {
   return request(`/api/users/${id}`, {
     method: 'DELETE',

@@ -50,6 +50,21 @@ function colorFor(name, i = 0) {
   return PARTY_COLORS[name] || PALETTE[i % PALETTE.length]
 }
 
+/** Relative freshness — 09-ANALYTICS-SPEC §7: "Data as of {relative time}" */
+function timeAgo(iso) {
+  const t = new Date(iso).getTime()
+  if (!(t > 0)) return ''
+  const diff = Date.now() - t
+  if (diff < 60 * 1000) return 'just now'
+  const m = Math.floor(diff / 60000)
+  if (m < 60) return `${m} min ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h} hr${h > 1 ? 's' : ''} ago`
+  const d = Math.floor(h / 24)
+  if (d === 1) return 'yesterday'
+  return `${d} days ago`
+}
+
 function ChartCard({ title, subtitle, children, tall }) {
   return (
     <section className={`chart-card ${tall ? 'tall' : ''}`}>
@@ -335,6 +350,7 @@ export default function DashboardScreen({ onToast }) {
   })
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [surveys, setSurveys] = useState([])
   const [boardTab, setBoardTab] = useState('day') // day | month | surveyor | geo
 
@@ -348,6 +364,7 @@ export default function DashboardScreen({ onToast }) {
 
   const load = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const params = {
         district: filters.district,
@@ -375,6 +392,7 @@ export default function DashboardScreen({ onToast }) {
       })
       setData(res)
     } catch (e) {
+      setError(e.message)
       onToast?.(e.message, 'error')
     } finally {
       setLoading(false)
@@ -395,6 +413,46 @@ export default function DashboardScreen({ onToast }) {
       period: 'total',
       day: new Date().toISOString().slice(0, 10),
       month: new Date().toISOString().slice(0, 7),
+    })
+
+  // Active-filter chips (08-UXUI-SPEC §4.1: filter bar chips, accent-tinted when active)
+  const filterChipLabels = {
+    district: 'District',
+    party: 'Party',
+    gender: 'Gender',
+    caste: 'Caste',
+    constituency: 'Assembly',
+    user: 'Surveyor',
+    survey: 'Survey',
+  }
+  const activeFilterChips = useMemo(() => {
+    const chips = []
+    for (const [k, v] of Object.entries(filters)) {
+      if (!v) continue
+      if (k === 'day' || k === 'month') continue
+      if (k === 'period' && v === 'total') continue
+      if (k === 'period') {
+        chips.push({
+          key: 'period',
+          label: 'Period',
+          value: { today: 'Today', day: 'Day', month: 'Month' }[v] || v,
+        })
+        continue
+      }
+      if (k.startsWith('q_')) {
+        const q = data?.dataFilters?.questions?.find((x) => `q_${x.id}` === k)
+        chips.push({ key: k, label: q?.label || 'Question', value: v })
+        continue
+      }
+      chips.push({ key: k, label: filterChipLabels[k] || k, value: v })
+    }
+    return chips
+  }, [filters, data])
+  const removeFilter = (key) =>
+    setFilters((f) => {
+      const next = { ...f, [key]: '' }
+      if (key === 'district') next.constituency = ''
+      return next
     })
 
   const activeCount = useMemo(
@@ -468,9 +526,13 @@ export default function DashboardScreen({ onToast }) {
             }}
           >
             {data.data_as_of && (
-              <span className={stale ? 'pill bad' : 'pill ok'} style={{ margin: 0 }}>
+              <span
+                className={stale ? 'pill bad' : 'pill ok'}
+                style={{ margin: 0 }}
+                title={new Date(data.data_as_of).toLocaleString()}
+              >
                 <span className="dot" />
-                Data as of {new Date(data.data_as_of).toLocaleString()}
+                Data as of {timeAgo(data.data_as_of)}
                 {stale ? ' · stale (no new confirmations in 2+ days)' : ''}
               </span>
             )}
@@ -1038,6 +1100,16 @@ export default function DashboardScreen({ onToast }) {
         </div>
       )}
 
+      {/* Widget-level resilience (08-UXUI-SPEC §4b): keep last good data, retry inline */}
+      {error && data && (
+        <div className="banner error" role="alert" style={{ marginBottom: 12 }}>
+          Refresh failed: {error} — showing last loaded data.{' '}
+          <button type="button" className="link-btn" onClick={load}>
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* KPI strip — only after confirm */}
       {reportReady && data && (
         <div className="kpi-strip">
@@ -1104,6 +1176,32 @@ export default function DashboardScreen({ onToast }) {
         </section>
       )}
 
+      {/* Active filter chips — accent-tinted, one tap to remove */}
+      {reportReady && activeFilterChips.length > 0 && (
+        <div className="pill-row" style={{ marginBottom: 10 }}>
+          {activeFilterChips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              className="chip selected"
+              style={{
+                background: 'var(--accent-bg)',
+                border: '1px solid var(--accent-border)',
+                color: 'var(--accent)',
+                fontWeight: 700,
+              }}
+              onClick={() => removeFilter(chip.key)}
+              title={`Remove ${chip.label} filter`}
+            >
+              {chip.label}: {chip.value} ✕
+            </button>
+          ))}
+          <button type="button" className="link-btn" onClick={clearFilters}>
+            Clear all
+          </button>
+        </div>
+      )}
+
       {/* Filters */}
       <section className="filter-panel">
         <div className="filter-head">
@@ -1131,7 +1229,17 @@ export default function DashboardScreen({ onToast }) {
         </label>
       </section>
 
-      {loading && !data ? (
+      {error && !data ? (
+        <div className="card" style={{ padding: 16, textAlign: 'center' }} role="alert">
+          <h3 style={{ margin: '0 0 8px' }}>Couldn't load the dashboard</h3>
+          <p className="muted" style={{ fontSize: 13, margin: '0 0 12px' }}>
+            {error}
+          </p>
+          <button type="button" className="btn small primary" onClick={load}>
+            Retry
+          </button>
+        </div>
+      ) : loading && !data ? (
         <div className="card" style={{ padding: 16 }}>
           <p className="muted center" style={{ margin: 0 }}>
             Checking confirmed data…

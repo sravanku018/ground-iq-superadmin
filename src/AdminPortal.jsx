@@ -191,7 +191,7 @@ function DataList({ items, loading, onRefresh, surveys, surveyFilter, onSurveyCh
 export default function AdminPortal() {
   const [user, setUser] = useState(() => {
     const u = getStoredUser()
-    return u?.role === 'admin' ? u : null
+    return u?.role === 'admin' || u?.role === 'super_admin' ? u : null
   })
   const [authReady, setAuthReady] = useState(false)
   const [page, setPage] = useState('overview')
@@ -293,7 +293,7 @@ export default function AdminPortal() {
       }
       try {
         const data = await me()
-        if (data.user?.role !== 'admin') {
+        if (data.user?.role !== 'admin' && data.user?.role !== 'super_admin') {
           await logout()
           if (!cancelled) {
             setUser(null)
@@ -469,8 +469,13 @@ export default function AdminPortal() {
             {loadingData ? 'Refreshing…' : '🔄 Refresh Data'}
           </button>
           <div className="portal-user">
-            <strong>{user.name || user.username}</strong>
-            <span>@{user.username}</span>
+            <strong>
+              {user.name || user.username}
+              {user.role === 'super_admin' ? ' ★' : ''}
+            </strong>
+            <span>
+              @{user.username} · {user.role === 'super_admin' ? 'Super Admin' : 'Client Admin'}
+            </span>
           </div>
           <p className="app-version-foot portal-version" aria-label="App version">
             {versionLabel()}

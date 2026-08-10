@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  createSuperAdmin,
   createUser,
   deleteUser,
   disableUser,
   enableUser,
   generateUsers,
   getProgressBoard,
+  getStoredUser,
   listSurveys,
   listUsers,
   revokeUserSessions,
@@ -154,6 +156,7 @@ export default function AdminUsersScreen({ onToast }) {
   const [board, setBoard] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [saBusy, setSaBusy] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [edit, setEdit] = useState({
     username: '',
@@ -657,7 +660,31 @@ export default function AdminUsersScreen({ onToast }) {
     // Newest first so create/generate shows at the top
     .sort((a, b) => Number(b.id) - Number(a.id))
 
-  const admins = users.filter((u) => u.role === 'admin')
+  const me = getStoredUser()
+  const admins = users.filter((u) => u.role === 'admin' || u.role === 'super_admin')
+
+  /** Create an additional Super Admin (max 3 platform-wide) — Super Admin only */
+  const createSuperAdminAcct = async () => {
+    const username = window.prompt('Super Admin username (unique, lowercase):', '')
+    if (!username) return
+    const password = window.prompt('Super Admin password (min 8 characters):', '')
+    if (!password) return
+    setSaBusy(true)
+    try {
+      await createSuperAdmin({
+        username: username.trim().toLowerCase(),
+        password,
+        name: 'Super Admin',
+      })
+      onToast?.('Super Admin created ✓', 'ok')
+      await load()
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setSaBusy(false)
+    }
+  }
+  const superAdmins = users.filter((u) => u.role === 'super_admin')
   const statusColor = (s) => {
     if (s === 'completed') return 'ok'
     if (s === 'in_progress') return 'warn'
@@ -723,9 +750,57 @@ export default function AdminUsersScreen({ onToast }) {
             Refresh
           </button>
         </div>
-      </div>
+      </div>      {me?.role === 'super_admin' && (
+        <div className="card" style={{ marginBottom: 14, border: '1px solid rgba(245,158,11,0.45)' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 8,
+            }}
+          >
+            <div>
+              <h3 style={{ margin: '0 0 4px' }}>★ Platform Super Admins</h3>
+              <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                {superAdmins.length} of 3 seats used · Super Admins have full platform access
+                (01-PRD.md)
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn small"
+              disabled={saBusy || superAdmins.length >= 3}
+              onClick={createSuperAdminAcct}
+            >
+              {saBusy
+                ? 'Creating…'
+                : superAdmins.length >= 3
+                  ? 'Cap reached (3 of 3)'
+                  : '＋ Create Super Admin'}
+            </button>
+          </div>
+          {superAdmins.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+              {superAdmins.map((sa) => (
+                <span
+                  key={sa.id}
+                  className="chip selected"
+                  style={{
+                    background: 'rgba(245,158,11,0.15)',
+                    border: '1px solid rgba(245,158,11,0.5)',
+                  }}
+                >
+                  ★ {sa.name || sa.username} · @{sa.username}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
-      <div className="admin-subtabs">
+        <div className="admin-subtabs">
         <button
           type="button"
           className={tab === 'create' ? 'map-tab active' : 'map-tab'}
@@ -1204,30 +1279,39 @@ export default function AdminUsersScreen({ onToast }) {
                   <div>
                     <strong>{u.name || u.username}</strong>
                     <span className="meta">
-                      @{u.username} · admin
+                      @{u.username} ·{' '}
+                      {u.role === 'super_admin' ? '★ super admin' : 'admin'}
                       {u.active === false ? ' · disabled' : ''}
                     </span>
                   </div>
                   <div className="user-actions">
-                    <button type="button" className="btn small" onClick={() => openEdit(u)}>
-                      Edit
-                    </button>
-                    {u.active !== false ? (
-                      <button
-                        type="button"
-                        className="btn small danger"
-                        onClick={() => handleDisable(u)}
-                      >
-                        Disable
-                      </button>
+                    {u.role === 'super_admin' ? (
+                      <span className="meta" style={{ fontSize: 11 }}>
+                        Platform account
+                      </span>
                     ) : (
-                      <button
-                        type="button"
-                        className="btn small"
-                        onClick={() => handleEnable(u)}
-                      >
-                        Enable
-                      </button>
+                      <>
+                        <button type="button" className="btn small" onClick={() => openEdit(u)}>
+                          Edit
+                        </button>
+                        {u.active !== false ? (
+                          <button
+                            type="button"
+                            className="btn small danger"
+                            onClick={() => handleDisable(u)}
+                          >
+                            Disable
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn small"
+                            onClick={() => handleEnable(u)}
+                          >
+                            Enable
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                   {editingId === u.id && (

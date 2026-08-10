@@ -64,6 +64,14 @@ async function hashPasswordAsync(password: string): Promise<string> {
   return pbkdf2Hash(password, saltHex);
 }
 
+/** Strong random password for Super Admin bootstrap (never committed to the repo). */
+function randomPassword(length: number): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+  const out = new Uint8Array(length);
+  crypto.getRandomValues(out);
+  return [...out].map((b) => chars[b % chars.length]).join("");
+}
+
 async function verifyPassword(
   password: string,
   stored: string,
@@ -145,7 +153,7 @@ async function getUser(token: string | null) {
     WHERE s.token = ${token}
       AND s.expires_at > NOW()
       AND u.active = TRUE
-      AND u.role IN ('admin', 'surveyor')
+      AND u.role IN ('super_admin', 'admin', 'surveyor')
     LIMIT 1
   `.catch(async () =>
     await sql`
@@ -157,7 +165,7 @@ async function getUser(token: string | null) {
       WHERE s.token = ${token}
         AND s.expires_at > NOW()
         AND u.active = TRUE
-        AND u.role IN ('admin', 'surveyor')
+        AND u.role IN ('super_admin', 'admin', 'surveyor')
       LIMIT 1
     `.catch(() => [])
   );
@@ -178,6 +186,12 @@ async function getUser(token: string | null) {
     verified: u.verified === true,
   };
 }
+
+/** Portal roles: Client Admin + platform Super Admin (01-PRD.md §2). Super Admin has all admin powers. */
+function isPortalAdmin(role: unknown): boolean {
+  return role === "admin" || role === "super_admin";
+}
+
 
 /** Unique surveyor key ID, e.g. GROUND-8F3K2Q (no 0/O/1/I) */
 function genUserKeyId(): string {
@@ -390,6 +404,37 @@ async function ensureSchema() {
     await sql`UPDATE app_users SET key_id = ${await uniqueUserKeyId()} WHERE id = ${r.id}`
       .catch(() => null);
   }
+  // Super Admin bootstrap (12-DEPLOYMENT.md §4): first account only, random password printed once.
+  try {
+    const saRows = await sql`SELECT COUNT(*) AS n FROM app_users WHERE role = 'super_admin'`;
+    const saCount = Number((saRows[0] as { n?: unknown } | undefined)?.n ?? 0);
+    if (saCount === 0) {
+      await sql`ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_role_check`.catch(() => null);
+      await sql`ALTER TABLE app_users ADD CONSTRAINT app_users_role_check CHECK (role IN ('super_admin','admin','field','user','surveyor'))`.catch(() => null);
+      const saPass = randomPassword(18);
+      const saHash = await hashPasswordAsync(saPass);
+      const saInserted = await sql`
+        INSERT INTO app_users (username, password_hash, display_name, role, active, key_id)
+        VALUES ('superadmin', ${saHash}, 'Super Admin', 'super_admin', TRUE, ${await uniqueUserKeyId()})
+        ON CONFLICT (username) DO NOTHING
+        RETURNING id, role
+      `.catch(() => []);
+      const saCreated = (saInserted as { id?: unknown; role?: unknown }[])[0];
+      if (saCreated && saCreated.role === "super_admin") {
+        console.log("=== SUPER ADMIN BOOTSTRAP (printed once — keep private) ===");
+        console.log("username: superadmin");
+        console.log(`password: ${saPass}`);
+        console.log("Change it after first login.");
+      } else {
+        console.log(
+          "super admin bootstrap: 'superadmin' username already in use — no account created. Use /api/super-admin.",
+        );
+      }
+    }
+  } catch (e) {
+    console.log("super admin bootstrap skipped:", (e as Error).message);
+  }
+
   await sql`
     CREATE TABLE IF NOT EXISTS app_sessions (
       token TEXT PRIMARY KEY,
@@ -2632,8 +2677,8 @@ Deno.serve(async (req) => {
           error: "Invalid username or password. Use the login Client Admin created for you.",
         }, 401);
       }
-      // Only admin (portal) or surveyor (field app). No public signup / legacy field/user.
-      if (user.role !== "admin" && user.role !== "surveyor") {
+      // Only admin/super_admin (portal) or surveyor (field app). No public signup / legacy field/user.
+      if (user.role !== "super_admin" && user.role !== "admin" && user.role !== "surveyor") {
         return json({
           error:
             "Account not allowed. Ask Client Admin to create a surveyor login for the field app.",
@@ -2652,7 +2697,7 @@ Deno.serve(async (req) => {
       }
       // Portal must send expected_role=admin
       if (expectedRole === "admin") {
-        if (user.role !== "admin") {
+        if (user.role !== "admin" && user.role !== "super_admin") {
           return json({
             error:
               "Client Admin portal only. Surveyors sign in on the field app with their app login.",
@@ -2690,13 +2735,17 @@ Deno.serve(async (req) => {
         },
         expires_at: expires.toISOString(),
         access:
-          user.role === "admin"
-            ? "client_admin_portal"
-            : "surveyor_field_app",
+          user.role === "surveyor"
+            ? "surveyor_field_app"
+            : user.role === "super_admin"
+              ? "super_admin_portal"
+              : "client_admin_portal",
         note:
           user.role === "surveyor"
             ? "Login created by Client Admin — field app only"
-            : "Client Admin portal access",
+            : user.role === "super_admin"
+              ? "Platform Super Admin — full access"
+              : "Client Admin portal access",
       });
     }
 
@@ -2867,7 +2916,7 @@ Deno.serve(async (req) => {
 
     if (path === "/api/progress" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const rows = await sql`
         SELECT id, username, display_name, role, active, COALESCE(target_quota, 0) AS target_quota, created_at
         FROM app_users
@@ -2922,7 +2971,7 @@ Deno.serve(async (req) => {
     // Admin sets quota for one or all surveyors
     if (path === "/api/progress/quota" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const body = await readBody(req);
       const target = Math.max(0, Math.min(Number(body.target) || 0, 100000));
       if (body.user_id) {
@@ -2943,7 +2992,7 @@ Deno.serve(async (req) => {
     // ── Users: list / generate (admin) ───────────────────────
     if (path === "/api/users" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const assignedRows = await sql`
         SELECT sa.user_id, f.id AS survey_id, f.title, f.form_key
         FROM survey_assignments sa JOIN survey_form f ON f.id = sa.survey_id
@@ -3014,7 +3063,7 @@ Deno.serve(async (req) => {
 
     if (path === "/api/users" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const body = await readBody(req);
       const username = String(body.username || "").trim().toLowerCase();
       const password = String(body.password || "");
@@ -3034,7 +3083,7 @@ Deno.serve(async (req) => {
       await sql`
         ALTER TABLE app_users
         ADD CONSTRAINT app_users_role_check
-        CHECK (role IN ('admin', 'field', 'user', 'surveyor'))
+        CHECK (role IN ('super_admin', 'admin', 'field', 'user', 'surveyor'))
       `.catch(() => null);
       await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS target_quota INTEGER NOT NULL DEFAULT 0`
         .catch(() => null);
@@ -3073,10 +3122,54 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Create an additional Super Admin (01-PRD.md: max 3 platform-wide, Super Admin only)
+    if (path === "/api/super-admin" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+      const body = await readBody(req);
+      const username = String(body.username || "").trim().toLowerCase();
+      const password = String(body.password || "");
+      const name = String(body.name || "Super Admin").trim();
+      if (!username || !password) return json({ error: "username and password required" }, 400);
+      if (password.length < 8) return json({ error: "Password min 8 characters" }, 400);
+      const countRows = await sql`SELECT COUNT(*) AS n FROM app_users WHERE role = 'super_admin'`;
+      const count = Number((countRows[0] as { n?: unknown } | undefined)?.n ?? 0);
+      if (count >= 3) return json({ error: "Super Admin cap of 3 reached" }, 403);
+      await sql`ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_role_check`.catch(() => null);
+      await sql`ALTER TABLE app_users ADD CONSTRAINT app_users_role_check CHECK (role IN ('super_admin','admin','field','user','surveyor'))`.catch(() => null);
+      try {
+        const password_hash = await hashPasswordAsync(password);
+        const key_id = await uniqueUserKeyId();
+        const inserted = await sql`
+          INSERT INTO app_users (username, password_hash, display_name, role, active, key_id)
+          VALUES (${username}, ${password_hash}, ${name}, 'super_admin', TRUE, ${key_id})
+          RETURNING id, username, display_name, role, active, created_at, key_id
+        `;
+        const u = inserted[0] as Record<string, unknown>;
+        return json({
+          user: {
+            id: u.id,
+            username: u.username,
+            name: u.display_name || u.username,
+            role: u.role,
+            active: u.active !== false,
+            created_at: u.created_at,
+            key_id: u.key_id || key_id,
+          },
+        }, 201);
+      } catch (e) {
+        const msg = (e as Error).message || "";
+        if (msg.includes("unique") || msg.includes("duplicate")) {
+          return json({ error: "Username already exists" }, 409);
+        }
+        return json({ error: msg || "Could not create super admin" }, 500);
+      }
+    }
+
     // Bulk generate surveyors: { count, prefix, password, target_quota }
     if (path === "/api/users/generate" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const body = await readBody(req);
       const count = Math.min(Math.max(Number(body.count) || 1, 1), 100);
       const prefix = String(body.prefix || "s").trim().toLowerCase().replace(/[^a-z0-9_]/g, "") || "s";
@@ -3104,7 +3197,7 @@ Deno.serve(async (req) => {
       await sql`
         ALTER TABLE app_users
         ADD CONSTRAINT app_users_role_check
-        CHECK (role IN ('admin', 'field', 'user', 'surveyor'))
+        CHECK (role IN ('super_admin', 'admin', 'field', 'user', 'surveyor'))
       `.catch(() => null);
       await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS target_quota INTEGER NOT NULL DEFAULT 0`
         .catch(() => null);
@@ -3248,7 +3341,7 @@ Deno.serve(async (req) => {
       const ex = existing[0] as Record<string, unknown>;
 
       const isSelf = me.id === id;
-      const isAdmin = me.role === "admin";
+      const isAdmin = isPortalAdmin(me.role);
 
       if (!isAdmin && !isSelf) {
         return json({ error: "Forbidden — can only update own profile" }, 403);
@@ -3402,7 +3495,7 @@ Deno.serve(async (req) => {
     // DELETE user (optional hard remove) — prefer disable
     if (path.startsWith("/api/users/") && method === "DELETE") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/").pop());
       if (!id) return json({ error: "Invalid id" }, 400);
       if (id === me.id) return json({ error: "Cannot delete your own account" }, 400);
@@ -3420,7 +3513,7 @@ Deno.serve(async (req) => {
 
     if (path === "/api/submissions" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const limit = Math.min(Number(url.searchParams.get("limit") || 200), 1000);
       const statusQ = (url.searchParams.get("status") || "").trim().toLowerCase();
       let dateFrom = (url.searchParams.get("date_from") || "").trim();
@@ -3672,7 +3765,7 @@ Deno.serve(async (req) => {
     // Client Admin analyze board: by date + user
     if (path === "/api/admin/analyze" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       let dateFrom = (url.searchParams.get("date_from") || "").trim();
       let dateTo = (url.searchParams.get("date_to") || "").trim();
       const userQ = (url.searchParams.get("user") || "").trim().toLowerCase();
@@ -3949,7 +4042,7 @@ Deno.serve(async (req) => {
     // Client Admin: get one submission (full payload for edit)
     if (path.match(/^\/api\/submissions\/\d+$/) && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
       const rows = await sql`
         SELECT id, payload, created_at FROM submissions WHERE id = ${id}
@@ -3992,7 +4085,7 @@ Deno.serve(async (req) => {
     // Client Admin: EDIT survey data (answers, surveyor, geo, status)
     if (path.match(/^\/api\/submissions\/\d+$/) && method === "PATCH") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
       const body = await readBody(req);
       const rows = await sql`SELECT id, payload FROM submissions WHERE id = ${id}`;
@@ -4160,7 +4253,7 @@ Deno.serve(async (req) => {
     // Client Admin: DELETE survey record
     if (path.match(/^\/api\/submissions\/\d+$/) && method === "DELETE") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
       const rows = await sql`SELECT id FROM submissions WHERE id = ${id}`;
       if (!rows.length) return json({ error: "Not found" }, 404);
@@ -4177,7 +4270,7 @@ Deno.serve(async (req) => {
     // Confirm / reject — strict: complete only (unless force)
     if (path.match(/^\/api\/submissions\/\d+\/status$/) && method === "PATCH") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
       const body = await readBody(req);
       const next = String(body.status || "").toLowerCase();
@@ -4259,7 +4352,7 @@ Deno.serve(async (req) => {
     // Bulk confirm all pending (bootstrap / after review)
     if (path === "/api/submissions/confirm-pending" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const body = await readBody(req);
       const max = Math.min(Number(body.limit) || 500, 2000);
       const rows = await sql`
@@ -4302,7 +4395,7 @@ Deno.serve(async (req) => {
     // Client Admin: retry fact materialization for a failed record (FR-PRC-04)
     if (path.match(/^\/api\/submissions\/\d+\/retry-fact$/) && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
       try {
         const res = await materializeFact(sql, id);
@@ -4320,7 +4413,7 @@ Deno.serve(async (req) => {
     // ── Surveys (multi-survey: name + own questions + team + respondents) ────
     if (path === "/api/surveys" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const q = (url.searchParams.get("q") || "").trim().toLowerCase();
       const rows = await sql`
         SELECT id, form_key, title, questions, updated_at FROM survey_form ORDER BY title
@@ -4376,7 +4469,7 @@ Deno.serve(async (req) => {
 
     if (path === "/api/surveys" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const body = await readBody(req);
       const title = String(body.title || "").trim();
       if (!title) return json({ error: "Survey name required" }, 400);
@@ -4411,7 +4504,7 @@ Deno.serve(async (req) => {
 
     if (path.match(/^\/api\/surveys\/\d+$/) && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
       const rows = await sql`
         SELECT id, form_key, title, questions, updated_at FROM survey_form WHERE id = ${id}
@@ -4446,7 +4539,7 @@ Deno.serve(async (req) => {
 
     if (path.match(/^\/api\/surveys\/\d+$/) && method === "PUT") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
       const body = await readBody(req);
       const rows = await sql`SELECT id, title FROM survey_form WHERE id = ${id}`;
@@ -4475,7 +4568,7 @@ Deno.serve(async (req) => {
 
     if (path.match(/^\/api\/surveys\/\d+$/) && method === "DELETE") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
       const rows = await sql`SELECT form_key FROM survey_form WHERE id = ${id}`;
       if (!rows.length) return json({ error: "Not found" }, 404);
@@ -4488,7 +4581,7 @@ Deno.serve(async (req) => {
     // Replace the surveyor team for a survey
     if (path.match(/^\/api\/surveys\/\d+\/surveyors$/) && method === "PUT") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
       const body = await readBody(req);
       const ids = (Array.isArray(body.user_ids) ? body.user_ids : [])
@@ -4539,7 +4632,7 @@ Deno.serve(async (req) => {
     // Respondents per survey
     if (path.match(/^\/api\/surveys\/\d+\/respondents$/) && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
       const body = await readBody(req);
       const name = String(body.name || "").trim();
@@ -4554,7 +4647,7 @@ Deno.serve(async (req) => {
 
     if (path.match(/^\/api\/surveys\/\d+\/respondents\/\d+$/) && method === "PATCH") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const body = await readBody(req);
       const status = String(body.status || "").toLowerCase();
       if (status === "done") {
@@ -4573,7 +4666,7 @@ Deno.serve(async (req) => {
 
     if (path.match(/^\/api\/surveys\/\d+\/respondents\/\d+$/) && method === "DELETE") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       await sql`
         DELETE FROM survey_respondents
         WHERE id = ${Number(path.split("/")[5])} AND survey_id = ${Number(path.split("/")[3])}
@@ -4639,7 +4732,7 @@ Deno.serve(async (req) => {
     // Admin saves question bank (dashboard)
     if (path === "/api/admin/questions" && method === "PUT") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const body = await readBody(req);
       const title = String(body.title || "Field Survey");
       const questions = Array.isArray(body.questions) ? body.questions : DEFAULT_QUESTIONS;
@@ -5028,7 +5121,7 @@ Deno.serve(async (req) => {
     if (path.match(/^\/api\/submissions\/\d+\/media$/) && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
       const id = Number(path.split("/")[3]);
-      if (me.role !== "admin") {
+      if (!isPortalAdmin(me.role)) {
         // Surveyor can view media only for their own submission
         const own = await sql`
           SELECT id FROM submissions WHERE id = ${id}
@@ -5187,7 +5280,7 @@ Deno.serve(async (req) => {
     // Admin geo summary (for Upload tab)
     if (path === "/api/admin/geo-summary" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       try {
         const [d] = await sql`SELECT COUNT(*)::int AS n FROM districts`;
         const [m] = await sql`SELECT COUNT(*)::int AS n FROM mandals`;
@@ -5224,7 +5317,7 @@ Deno.serve(async (req) => {
     // survey (form_key), district, constituency, status (default confirmed).
     if (path === "/api/admin/export" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin") return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       try {
         let dateFrom = (url.searchParams.get("date_from") || url.searchParams.get("from") || "").trim();
         let dateTo = (url.searchParams.get("date_to") || url.searchParams.get("to") || "").trim();

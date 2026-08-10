@@ -185,8 +185,8 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 100% 70% at 50% -20%, rgba(0, 229, 153, 0.28), transparent 55%),
-    radial-gradient(circle at 90% 80%, rgba(14, 165, 233, 0.08), transparent 40%);
+    radial-gradient(ellipse 100% 70% at 50% -20%, rgba(5, 150, 105, 0.14), transparent 55%),
+    radial-gradient(circle at 90% 80%, rgba(14, 165, 233, 0.06), transparent 40%);
 }
 
 .fl-header {
@@ -242,7 +242,7 @@
   font-size: 32px;
   font-weight: 800;
   letter-spacing: -0.03em;
-  color: #fff;
+  color: #0f172a;
 }
 
 .fl-lead {
@@ -1174,7 +1174,7 @@
   border: 1px solid #e2e8f0 !important;
   color: #0f172a !important;
   border-radius: 8px !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.15) !important;
   padding: 0 !important;
 }
 
@@ -1187,7 +1187,7 @@
 .survey-map-tooltip .map-popup strong {
   display: block;
   margin-bottom: 4px;
-  color: #fff;
+  color: #0f172a;
 }
 
 .leaflet-container {
@@ -1277,10 +1277,10 @@
 
 .hero-card {
   background: linear-gradient(145deg, #d1fae5 0%, #ecfdf5 50%, #e0f2fe 100%);
-  border: 1px solid rgba(0, 229, 153, 0.25);
+  border: 1px solid rgba(5, 150, 105, 0.25);
   border-radius: 20px;
   padding: 22px 18px;
-  color: #e7fff4;
+  color: var(--text-h);
   margin-bottom: 14px;
 }
 
@@ -1296,13 +1296,13 @@
 .hero-card h1 {
   margin: 8px 0 0;
   font-size: 28px;
-  color: #fff;
+  color: #0f172a;
   letter-spacing: -0.5px;
 }
 
 .hero-sub {
   margin: 10px 0 14px;
-  color: #a7c4b6;
+  color: var(--text);
   font-size: 14px;
   line-height: 1.45;
 }

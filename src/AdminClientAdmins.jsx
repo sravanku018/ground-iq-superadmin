@@ -96,58 +96,47 @@ export default function AdminClientAdminsScreen({ onToast }) {
     }
   }
 
-  const saveMaxQuestions = async (u) => {
-    const next = maxQInputs[u.id] != null ? Number(maxQInputs[u.id]) : (u.max_questions_per_survey ?? 0)
+  /** Single save: caps + account fields in one PATCH (one Save button in profile). */
+  const saveAllChanges = async (u) => {
     setSaving(true)
     try {
-      await updateUser(u.id, { max_questions_per_survey: Math.max(0, next) })
-      onToast?.(
-        next > 0
-          ? `Cap set · @${u.username} max ${next} questions per survey`
-          : `Cap cleared · @${u.username} unlimited questions per survey`,
-        'ok',
-      )
+      const qVal = maxQInputs[u.id] != null ? Number(maxQInputs[u.id]) : (u.max_questions_per_survey ?? 0)
+      const svVal = maxSvInputs[u.id] != null ? Number(maxSvInputs[u.id]) : (u.max_surveys ?? 0)
+      const srVal = maxSrInputs[u.id] != null ? Number(maxSrInputs[u.id]) : (u.max_surveyors ?? 0)
+      const parts = []
+      const body = {
+        max_questions_per_survey: Math.max(0, qVal),
+        max_surveys: Math.max(0, svVal),
+        max_surveyors: Math.max(0, srVal),
+      }
+      // Account fields (only include when the user actually typed something new)
+      const typedUsername = edit.username.trim()
+      const typedName = edit.name.trim()
+      const typedPassword = edit.password.trim()
+      if (typedUsername && typedUsername.toLowerCase() !== String(u.username || '').toLowerCase()) {
+        body.username = typedUsername.toLowerCase()
+      }
+      if (typedName && typedName !== String(u.name || u.display_name || '')) {
+        body.name = typedName
+      }
+      if (typedPassword) body.password = typedPassword
+
+      const res = await updateUser(u.id, body)
+      parts.push('caps saved')
+      if (res.username_changed) parts.push('username updated')
+      if (res.password_changed) parts.push('password updated · sessions revoked')
+      onToast?.(`Saved @${u.username} · ${parts.join(' · ')}`, 'ok')
+      if (res.password_changed && res.plain_password) {
+        setCreated({
+          username: res.user?.username || body.username || u.username,
+          password: res.plain_password,
+          name: res.user?.name || body.name || u.name || u.username,
+        })
+      }
       setMaxQInputs((m) => ({ ...m, [u.id]: undefined }))
-      await load()
-    } catch (e) {
-      onToast?.(e.message, 'error')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const saveMaxSurveys = async (u) => {
-    const next = maxSvInputs[u.id] != null ? Number(maxSvInputs[u.id]) : (u.max_surveys ?? 0)
-    setSaving(true)
-    try {
-      await updateUser(u.id, { max_surveys: Math.max(0, next) })
-      onToast?.(
-        next > 0
-          ? `Cap set · @${u.username} max ${next} surveys`
-          : `Cap cleared · @${u.username} unlimited surveys`,
-        'ok',
-      )
       setMaxSvInputs((m) => ({ ...m, [u.id]: undefined }))
-      await load()
-    } catch (e) {
-      onToast?.(e.message, 'error')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const saveMaxSurveyors = async (u) => {
-    const next = maxSrInputs[u.id] != null ? Number(maxSrInputs[u.id]) : (u.max_surveyors ?? 0)
-    setSaving(true)
-    try {
-      await updateUser(u.id, { max_surveyors: Math.max(0, next) })
-      onToast?.(
-        next > 0
-          ? `Cap set · @${u.username} max ${next} surveyors`
-          : `Cap cleared · @${u.username} unlimited surveyors`,
-        'ok',
-      )
       setMaxSrInputs((m) => ({ ...m, [u.id]: undefined }))
+      setEdit({ username: '', name: '', password: '' })
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -188,35 +177,6 @@ export default function AdminClientAdminsScreen({ onToast }) {
       await load()
     } catch (err) {
       onToast?.(err.message, 'error')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function saveEdit(u) {
-    setSaving(true)
-    try {
-      const body = {
-        username: edit.username.trim().toLowerCase(),
-        name: edit.name.trim(),
-      }
-      if (edit.password.trim()) body.password = edit.password.trim()
-      const res = await updateUser(u.id, body)
-      const parts = ['Saved']
-      if (res.username_changed) parts.push('username updated')
-      if (res.password_changed) parts.push('password updated · sessions revoked')
-      onToast?.(parts.join(' · '), 'ok')
-      if (res.password_changed && res.plain_password) {
-        setCreated({
-          username: res.user?.username || body.username,
-          password: res.plain_password,
-          name: res.user?.name || body.name,
-        })
-      }
-      setEdit({ username: '', name: '', password: '' })
-      await load()
-    } catch (e) {
-      onToast?.(e.message, 'error')
     } finally {
       setSaving(false)
     }
@@ -528,14 +488,6 @@ export default function AdminClientAdminsScreen({ onToast }) {
                             }
                             style={{ width: 90, padding: '6px 8px' }}
                           />
-                          <button
-                            type="button"
-                            className="btn small primary"
-                            disabled={saving}
-                            onClick={() => void saveMaxQuestions(u)}
-                          >
-                            Save
-                          </button>
                         </div>
                       </label>
                       <label className="field compact" style={{ margin: 0 }}>
@@ -562,14 +514,6 @@ export default function AdminClientAdminsScreen({ onToast }) {
                             }
                             style={{ width: 90, padding: '6px 8px' }}
                           />
-                          <button
-                            type="button"
-                            className="btn small primary"
-                            disabled={saving}
-                            onClick={() => void saveMaxSurveys(u)}
-                          >
-                            Save
-                          </button>
                         </div>
                       </label>
                       <label className="field compact" style={{ margin: 0 }}>
@@ -596,14 +540,6 @@ export default function AdminClientAdminsScreen({ onToast }) {
                             }
                             style={{ width: 90, padding: '6px 8px' }}
                           />
-                          <button
-                            type="button"
-                            className="btn small primary"
-                            disabled={saving}
-                            onClick={() => void saveMaxSurveyors(u)}
-                          >
-                            Save
-                          </button>
                         </div>
                       </label>
                     </div>
@@ -678,13 +614,28 @@ export default function AdminClientAdminsScreen({ onToast }) {
                           style={{ minWidth: 140 }}
                         />
                       </label>
-                      <button type="button" className="btn small primary" disabled={saving} onClick={() => saveEdit(u)}>
-                        Save account
-                      </button>
                     </div>
                     <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
-                      Changing username/password revokes all active sessions (forces re-login).
+                      Leave password blank to keep it. Changing username/password revokes all active
+                      sessions (forces re-login).
                     </p>
+
+                    {/* One save for everything in this profile */}
+                    <div style={{ marginTop: 14 }}>
+                      <button
+                        type="button"
+                        className="btn primary"
+                        style={{ width: '100%' }}
+                        disabled={saving}
+                        onClick={() => void saveAllChanges(u)}
+                      >
+                        {saving ? 'Saving…' : '💾 Save all changes'}
+                      </button>
+                      <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
+                        Saves the caps above plus any account changes (username / name / password)
+                        in one go.
+                      </p>
+                    </div>
 
                     {/* Danger zone */}
                     <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>

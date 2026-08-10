@@ -3214,6 +3214,18 @@ Deno.serve(async (req) => {
         }
         const target = Number(r.target_quota) || 0;
         const isCollector = r.role === "surveyor" || r.role === "field";
+        // Usage vs allocated caps (Super Admin console → Client Admins tab)
+        let survey_count = 0;
+        let surveyor_count = 0;
+        let question_count = 0;
+        if (r.role === "admin") {
+          const [sCnt] = await sql`SELECT COUNT(*)::int AS n FROM survey_form WHERE created_by = ${Number(r.id)}`.catch(() => [{ n: 0 }]);
+          survey_count = Number((sCnt as { n?: unknown }[])[0]?.n ?? 0);
+          const [srCnt] = await sql`SELECT COUNT(*)::int AS n FROM app_users WHERE role = 'surveyor' AND created_by = ${Number(r.id)}`.catch(() => [{ n: 0 }]);
+          surveyor_count = Number((srCnt as { n?: unknown }[])[0]?.n ?? 0);
+          const [qCnt] = await sql`SELECT COALESCE(SUM(jsonb_array_length(questions)), 0)::int AS n FROM survey_form WHERE created_by = ${Number(r.id)}`.catch(() => [{ n: 0 }]);
+          question_count = Number((qCnt as { n?: unknown }[])[0]?.n ?? 0);
+        }
         users.push({
           id: r.id,
           username: r.username,
@@ -3222,6 +3234,9 @@ Deno.serve(async (req) => {
           active: r.active,
           created_at: r.created_at,
           target_quota: target,
+          survey_count,
+          surveyor_count,
+          question_count,
           done,
           key_id: r.key_id || null,
           phone: r.phone || null,

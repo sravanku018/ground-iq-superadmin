@@ -75,6 +75,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
     : 5
   const currentAdmins = seatData?.current_admins ?? admins.length
   const seatPending = (seatData?.requests || []).filter((r) => r.status === 'pending')
+  const canAccessCount = admins.filter((a) => a.active !== false).length
 
   const toggleProfile = (u) => {
     setProfileId(profileId === u.id ? null : u.id)
@@ -287,12 +288,16 @@ export default function AdminClientAdminsScreen({ onToast }) {
             <span>Client Admins</span>
           </div>
           <div className="stat">
-            <strong>{admins.filter((a) => a.verified).length}</strong>
-            <span>Verified</span>
+            <strong>{canAccessCount} / {admins.length}</strong>
+            <span>Client Admins can access</span>
           </div>
           <div className="stat">
             <strong>{currentAdmins} / {approvedLimit}</strong>
-            <span>Admin seats used</span>
+            <span>Clients granted access</span>
+          </div>
+          <div className="stat">
+            <strong>{admins.filter((a) => a.verified).length}</strong>
+            <span>Verified</span>
           </div>
           <div className="stat">
             <strong>{seatPending.length}</strong>
@@ -383,10 +388,14 @@ export default function AdminClientAdminsScreen({ onToast }) {
                         {powersOf(u).length > 0
                           ? `powers: ${powersOf(u).map((p) => `${p.icon} ${p.label}`).join(', ')}`
                           : '🔒 no powers granted'}
-                        {u.max_surveys > 0 ? ` · surveys ≤ ${u.max_surveys}` : ''}
-                        {u.max_questions_per_survey > 0 ? ` · Q/survey ≤ ${u.max_questions_per_survey}` : ''}
-                        {u.max_surveyors > 0 ? ` · surveyors ≤ ${u.max_surveyors}` : ''}
                       </>
+                    )}
+                    {u.active !== false && (
+                      <span className="meta" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                        <span className="pill">📋 surveys {u.survey_count ?? 0}/{u.max_surveys > 0 ? u.max_surveys : '∞'}</span>
+                        <span className="pill">📝 {u.question_count ?? 0} questions created</span>
+                        <span className="pill">👥 surveyors {u.surveyor_count ?? 0}/{u.max_surveyors > 0 ? u.max_surveyors : '∞'}</span>
+                      </span>
                     )}
                   </span>
                 </div>
@@ -496,7 +505,10 @@ export default function AdminClientAdminsScreen({ onToast }) {
                     <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>📏 Limits</h4>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                       <label className="field compact" style={{ margin: 0 }}>
-                        <span>Max questions per survey (0 = unlimited)</span>
+                        <span>
+                          Max questions per survey (0 = unlimited) ·{' '}
+                          <strong style={{ color: '#059669' }}>{u.question_count ?? 0}</strong> questions created
+                        </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input
                             type="number"
@@ -526,7 +538,10 @@ export default function AdminClientAdminsScreen({ onToast }) {
                         </div>
                       </label>
                       <label className="field compact" style={{ margin: 0 }}>
-                        <span>Max surveys (0 = unlimited)</span>
+                        <span>
+                          Max surveys (0 = unlimited) ·{' '}
+                          <strong style={{ color: '#059669' }}>{u.survey_count ?? 0}</strong> used
+                        </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input
                             type="number"
@@ -556,7 +571,10 @@ export default function AdminClientAdminsScreen({ onToast }) {
                         </div>
                       </label>
                       <label className="field compact" style={{ margin: 0 }}>
-                        <span>Max surveyors (0 = unlimited)</span>
+                        <span>
+                          Max surveyors (0 = unlimited) ·{' '}
+                          <strong style={{ color: '#059669' }}>{u.surveyor_count ?? 0}</strong> used
+                        </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input
                             type="number"

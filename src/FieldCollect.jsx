@@ -686,11 +686,11 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         location_state: locationDetails?.state || '',
       }
 
-      // Keep the draft's record number when confirming it (draft-first flow)
+      const currentDone = Math.max(localDoneCount, progress?.done || 0)
       const localSeq =
         draft?.recordIndex != null
           ? draft.recordIndex
-          : Math.max(progress?.next_record || 0, localDoneCount) + 1
+          : Math.max(progress?.next_record || 0, currentDone + 1)
       const packageId = await savePackageLocal({
         form_key: formMeta?.form_key || 'default',
         form_id: `field-${user?.username || 's'}-${Date.now()}`,
@@ -804,10 +804,11 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         location_state: locationDetails?.state || '',
       }
 
+      const currentDone = Math.max(localDoneCount, progress?.done || 0)
       const localSeq =
         draft?.recordIndex != null
           ? draft.recordIndex
-          : Math.max(progress?.next_record || 0, localDoneCount) + 1
+          : Math.max(progress?.next_record || 0, currentDone + 1)
       await savePackageLocal(
         {
           form_key: formMeta?.form_key || 'default',

@@ -122,10 +122,11 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
       .then((all) => {
         if (!alive) return
         const me = user?.name || user?.username || ''
-        const mine = (all || []).filter(
-          (p) => String(p.qa?.submitted_by || '') === me,
+        const list = Array.isArray(all) ? all : []
+        const mine = list.filter(
+          (p) => p && String(p.qa?.submitted_by || '') === me,
         )
-        const maxIdx = mine.reduce((m, p) => Math.max(m, Number(p.recordIndex) || 0), 0)
+        const maxIdx = mine.reduce((m, p) => Math.max(m, Number(p?.recordIndex) || 0), 0)
         if (maxIdx) setLocalDoneCount(maxIdx)
         else if (mine.length) setLocalDoneCount(mine.length)
       })
@@ -146,13 +147,15 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
   // Editing a saved draft: prefill everything from phone storage
   const draftLoaded = useRef(null)
   useEffect(() => {
-    if (!draft) return
+    if (!draft || !draft.id) return
     if (draftLoaded.current === draft.id && questions.length) return
     draftLoaded.current = draft.id
     const d = draft.qa || draft
     const init = {}
-    for (const q of questions) init[q.id] = ''
-    setAnswers({ ...init, ...d.answers })
+    for (const q of questions || []) {
+      if (q && q.id) init[q.id] = ''
+    }
+    setAnswers({ ...init, ...(d.answers || {}) })
     const g = d.geo
     if (g && Number.isFinite(Number(g.lat))) {
       setGeo({ lat: Number(g.lat), lng: Number(g.lng), accuracy: g.accuracy ?? 0, at: g.at ?? '', locked: true })
@@ -171,7 +174,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         /* ignore */
       }
     }
-    setStep(typeof draft.step === 'number' ? Math.min(draft.step, 2) : 2)
+    setStep(typeof draft.step === 'number' ? Math.min(Math.max(0, draft.step), 2) : 2)
   }, [draft, questions])
 
   const geoLocked = isGeoValid(geo)
@@ -1256,7 +1259,19 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
               </div>
             ) : (
               <>
-                {q && (
+                {!q ? (
+                  <div className="card" style={{ padding: 20, textAlign: 'center' }}>
+                    <p className="muted">Loading survey questions or no questions available for this survey…</p>
+                    <button
+                      type="button"
+                      className="btn small primary"
+                      style={{ marginTop: 8 }}
+                      onClick={() => loadQuestions({ silent: false })}
+                    >
+                      🔄 Refresh survey questions
+                    </button>
+                  </div>
+                ) : (
                   <div className="card">
                     <p className="muted">
                       Question {activeQ + 1} / {questions.length}

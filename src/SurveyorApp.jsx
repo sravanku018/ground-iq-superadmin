@@ -1,4 +1,40 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Component, useCallback, useEffect, useState } from 'react'
+
+class CollectErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error, info) {
+    console.error('Collect Screen Error:', error, info)
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="card" style={{ padding: 24, textAlign: 'center', margin: 16 }}>
+          <h3 style={{ marginTop: 0, color: '#ef4444' }}>⚠️ Collect Screen Error</h3>
+          <p className="muted" style={{ fontSize: 13 }}>
+            {this.state.error?.message || 'An unexpected error occurred while loading the survey collector.'}
+          </p>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() => {
+              this.setState({ hasError: false, error: null })
+              this.props.onReset?.()
+            }}
+          >
+            🔄 Reload Collect Screen
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 import {
   getMyProgress,
   getMySubmissions,
@@ -1155,23 +1191,25 @@ export default function SurveyorApp() {
             />
           )}
           {tab === 'collect' && (
-            <FieldCollectScreen
-              key={collectKey}
-              user={user}
-              draft={editDraft}
-              onToast={notify}
-              onDone={(_id, prog) => {
-                setEditDraft(null)
-                if (prog) setMyProgress(prog)
-                else getMyProgress().then(setMyProgress).catch(() => {})
-                void getQueueSnapshot().then((s) => setPendingSync(s.pending))
-              }}
-              onSavedDraft={() => {
-                setEditDraft(null)
-                setTab('drafts')
-                refreshDraftCount()
-              }}
-            />
+            <CollectErrorBoundary onReset={() => setCollectKey((k) => k + 1)}>
+              <FieldCollectScreen
+                key={collectKey}
+                user={user}
+                draft={editDraft}
+                onToast={notify}
+                onDone={(_id, prog) => {
+                  setEditDraft(null)
+                  if (prog) setMyProgress(prog)
+                  else getMyProgress().then(setMyProgress).catch(() => {})
+                  void getQueueSnapshot().then((s) => setPendingSync(s.pending))
+                }}
+                onSavedDraft={() => {
+                  setEditDraft(null)
+                  setTab('drafts')
+                  refreshDraftCount()
+                }}
+              />
+            </CollectErrorBoundary>
           )}
           {tab === 'drafts' && (
             <DraftsScreen

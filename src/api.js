@@ -465,14 +465,28 @@ export function getMySurveys() {
 export async function getSurveyForm() {
   try {
     const mine = await getMySurveys()
-    if (mine.items && mine.items.length) {
-      return { ...mine.items[0], surveys: mine.items }
+    if (mine && Array.isArray(mine.items) && mine.items.length) {
+      const item = mine.items[0]
+      return {
+        ...item,
+        questions: Array.isArray(item.questions) ? item.questions : [],
+        surveys: mine.items,
+      }
     }
   } catch {
     /* fall back to default */
   }
-  const d = await getQuestions()
-  return { ...d, surveys: [] }
+  try {
+    const d = await getQuestions()
+    return {
+      form_key: d?.form_key || 'default',
+      title: d?.title || 'Survey',
+      questions: Array.isArray(d?.questions) ? d.questions : [],
+      surveys: [],
+    }
+  } catch {
+    return { form_key: 'default', title: 'Survey', questions: [], surveys: [] }
+  }
 }
 
 /** Admin: list surveys (q = name search filter) */

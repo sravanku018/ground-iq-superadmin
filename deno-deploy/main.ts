@@ -786,6 +786,12 @@ async function ensureSchema() {
   await sql`CREATE INDEX IF NOT EXISTS idx_districts_name ON districts (name)`.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_mandals_district ON mandals (district)`.catch(() => null);
 
+  await sql`CREATE INDEX IF NOT EXISTS idx_survey_admin_access_admin ON survey_admin_access(admin_id)`.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_survey_admin_access_survey ON survey_admin_access(survey_id)`.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_survey_assignments_survey ON survey_assignments(survey_id)`.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_survey_form_created_by ON survey_form(created_by)`.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_submissions_survey_id ON submissions(survey_id)`.catch(() => null);
+
   // Keep legacy field/user inactive; surveyors are created from admin dashboard
   await sql`
     UPDATE app_users SET active = FALSE WHERE role IN ('field', 'user')
@@ -3098,49 +3104,35 @@ Deno.serve(async (req) => {
       const [acs] = await sql`SELECT COUNT(*)::int AS n FROM assembly_constituencies`.catch(() => [{ n: 0 }]);
       const [srs] = await sql`SELECT COUNT(*)::int AS n FROM survey_responses`.catch(() => [{ n: 0 }]);
 
-      // Primary KPIs = survey coverage (same as maps/filters), not full master geo tables
-      let surveyDistricts = 0;
-      let surveyAcs = 0;
-      try {
-        const emptyUrl = new URL("http://local/api/analytics?status=all");
-        const analytics = await buildAnalytics(sql, emptyUrl, statsScope);
-        surveyDistricts = analytics.filterOptions?.districts?.length ?? 0;
-        surveyAcs = analytics.filterOptions?.constituencies?.length ?? 0;
-      } catch {
-        // fall back to 0 if analytics fails
-      }
+      const [factGeo] = await sql`
+        SELECT COUNT(DISTINCT district)::int AS dist_count,
+               COUNT(DISTINCT constituency)::int AS ac_count
+        FROM record_facts
+      `.catch(() => [{ dist_count: 0, ac_count: 0 }]);
 
-      // Pipeline counts (pending / confirmed)
-      let pending = 0;
-      let confirmed = 0;
-      let rejected = 0;
-      try {
-        const sample = statsScope
-          ? await sql`
-              SELECT payload FROM submissions
-              WHERE payload->>'form_key' = ANY(${statsScope})
-              ORDER BY created_at DESC LIMIT 10000
-            `
-          : await sql`
-              SELECT payload FROM submissions ORDER BY created_at DESC LIMIT 10000
-            `;
-        for (const r of sample as { payload: Record<string, unknown> }[]) {
-          let p = r.payload;
-          if (typeof p === "string") {
-            try {
-              p = JSON.parse(p);
-            } catch {
-              p = {};
-            }
-          }
-          const st = payloadStatus(p as Record<string, unknown>);
-          if (st === "confirmed") confirmed += 1;
-          else if (st === "rejected") rejected += 1;
-          else pending += 1;
-        }
-      } catch {
-        /* ignore */
-      }
+      const surveyDistricts = Number((factGeo as Record<string, unknown>)?.dist_count || dists?.n || 0);
+      const surveyAcs = Number((factGeo as Record<string, unknown>)?.ac_count || acs?.n || 0);
+
+      // Fast SQL 1-row status aggregation
+      const [statusRow] = statsScope
+        ? await sql`
+            SELECT
+              COUNT(*) FILTER (WHERE fact_status = 'confirmed' OR fact_status = 'materialized')::int AS confirmed,
+              COUNT(*) FILTER (WHERE fact_status = 'rejected')::int AS rejected,
+              COUNT(*) FILTER (WHERE fact_status IS NULL OR (fact_status <> 'confirmed' AND fact_status <> 'materialized' AND fact_status <> 'rejected'))::int AS pending
+            FROM submissions WHERE payload->>'form_key' = ANY(${statsScope})
+          `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }])
+        : await sql`
+            SELECT
+              COUNT(*) FILTER (WHERE fact_status = 'confirmed' OR fact_status = 'materialized')::int AS confirmed,
+              COUNT(*) FILTER (WHERE fact_status = 'rejected')::int AS rejected,
+              COUNT(*) FILTER (WHERE fact_status IS NULL OR (fact_status <> 'confirmed' AND fact_status <> 'materialized' AND fact_status <> 'rejected'))::int AS pending
+            FROM submissions
+          `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }]);
+
+      const confirmed = Number((statusRow as Record<string, unknown>)?.confirmed || 0);
+      const rejected = Number((statusRow as Record<string, unknown>)?.rejected || 0);
+      const pending = Number((statusRow as Record<string, unknown>)?.pending || 0);
 
       return json({
         submissions: subs?.n ?? 0,
@@ -5536,13 +5528,22 @@ Deno.serve(async (req) => {
       // Projects are scoped to their owner, plus explicit Client Admin project access.
       // Surveyor assignments remain a separate Client-Admin-only concern.
       const rows = me.role === "super_admin"
-        ? await sql`SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form ORDER BY title`
-        : await sql`
-            SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form
-            WHERE created_by = ${me.id}
-               OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-            ORDER BY title
-          `;
+        ? (q
+            ? await sql`SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form WHERE LOWER(title) LIKE ${'%' + q + '%'} ORDER BY title`
+            : await sql`SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form ORDER BY title`)
+        : (q
+            ? await sql`
+                SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
+                WHERE (created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
+                  AND LOWER(title) LIKE ${'%' + q + '%'}
+                ORDER BY title
+              `
+            : await sql`
+                SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
+                WHERE created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                ORDER BY title
+              `);
+
       // Project → Client Admin connections for the Super Admin project list.
       const adminAccess = await sql`
         SELECT saa.survey_id, u.id, u.username, COALESCE(u.display_name, u.username) AS name,
@@ -5557,17 +5558,17 @@ Deno.serve(async (req) => {
         adminAccessMap.set(Number(a.survey_id), arr);
       }
       const adminRows = await sql`
-        SELECT id, COALESCE(display_name, username) AS name, company_name FROM app_users WHERE role = 'admin'
+        SELECT id, COALESCE(display_name, username) AS name, company_name, role FROM app_users WHERE role = 'admin'
       `.catch(() => []);
-      const adminById = new Map<number, { name: string; company_name: string | null }>();
-      for (const a of adminRows as { id: number; name: string; company_name: string | null }[]) {
-        adminById.set(Number(a.id), { name: String(a.name), company_name: a.company_name || null });
+      const adminById = new Map<number, { name: string; company_name: string | null; role: string }>();
+      for (const a of adminRows as { id: number; name: string; company_name: string | null; role: string }[]) {
+        adminById.set(Number(a.id), { name: String(a.name), company_name: a.company_name || null, role: String(a.role || 'admin') });
       }
       const asg = await sql`
         SELECT a.survey_id, COUNT(*)::int AS n,
-               ARRAY_AGG(DISTINCT COALESCE(u.name, u.username)) AS names
+               ARRAY_AGG(DISTINCT COALESCE(u.display_name, u.username)) AS names
         FROM survey_assignments a
-        JOIN users u ON a.user_id = u.id
+        JOIN app_users u ON a.user_id = u.id
         GROUP BY a.survey_id
       `.catch(async () =>
         await sql`
@@ -5580,25 +5581,32 @@ Deno.serve(async (req) => {
                COUNT(*) FILTER (WHERE status = 'done')::int AS done
         FROM survey_respondents GROUP BY survey_id
       `.catch(() => []);
+
+      // Fast indexed submissions count
       const sub = await sql`
-        SELECT payload->>'form_key' AS fk, COUNT(*)::int AS n FROM submissions GROUP BY payload->>'form_key'
+        SELECT survey_id, COUNT(*)::int AS n FROM submissions WHERE survey_id IS NOT NULL GROUP BY survey_id
       `.catch(() => []);
-      const asgMap = new Map(asg.map((r) => [Number((r as { survey_id: number }).survey_id), r as { n: number; names?: string[] }]));
-      const rspMap = new Map(rsp.map((r) => [Number((r as { survey_id: number }).survey_id), r as { total: number; done: number }]));
-      const subMap = new Map(sub.map((r) => [String((r as { fk: string }).fk), (r as { n: number }).n]));
+      const subByFk = await sql`
+        SELECT payload->>'form_key' AS fk, COUNT(*)::int AS n FROM submissions WHERE survey_id IS NULL AND payload->>'form_key' IS NOT NULL GROUP BY payload->>'form_key'
+      `.catch(() => []);
+
+      const asgMap = new Map((asg as any[]).map((r) => [Number(r.survey_id), r]));
+      const rspMap = new Map((rsp as any[]).map((r) => [Number(r.survey_id), r]));
+      const subMap = new Map((sub as any[]).map((r) => [Number(r.survey_id), Number(r.n)]));
+      const subByFkMap = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.n)]));
+
       const items = (rows as Record<string, unknown>[]).map((r) => {
-        let qs = r.questions;
-        if (typeof qs === "string") {
-          try { qs = JSON.parse(qs); } catch { qs = []; }
-        }
-        const asgData = asgMap.get(Number(r.id));
+        const qCount = Number(r.question_count || 0);
+        const asgData = asgMap.get(Number(r.id)) as { n?: number; names?: string[] } | undefined;
         const names = Array.isArray(asgData?.names) ? asgData.names.filter(Boolean) : [];
         const connectedAdmins = adminAccessMap.get(Number(r.id)) || [];
         const ownerId = r.created_by != null ? Number(r.created_by) : null;
         const owner = ownerId != null ? adminById.get(ownerId) : undefined;
-        const admins = owner && !connectedAdmins.some((a) => a.id === ownerId)
+        // Only include owner if owner is a Client Admin (role === 'admin')
+        const admins = (owner && owner.role === 'admin' && !connectedAdmins.some((a) => a.id === ownerId))
           ? [{ id: ownerId, username: '', name: owner.name, company_name: owner.company_name }, ...connectedAdmins]
           : connectedAdmins;
+        const subCount = subMap.get(Number(r.id)) || subByFkMap.get(String(r.form_key)) || 0;
         return {
           id: r.id,
           form_key: r.form_key,
@@ -5606,21 +5614,18 @@ Deno.serve(async (req) => {
           company_name: r.company_name || null,
           owner_company: owner?.company_name ?? null,
           owner_name: owner?.name ?? null,
-          question_count: Array.isArray(qs) ? qs.length : 0,
+          question_count: qCount,
           updated_at: r.updated_at,
           surveyors: asgData?.n || 0,
           surveyor_names: names.join(", ") || "",
           admin_count: admins.length,
           admin_names: admins.map((a) => `${a.company_name || 'No company'} · ${a.name}`).join(", "),
-          respondents_total: rspMap.get(Number(r.id))?.total || 0,
-          respondents_done: rspMap.get(Number(r.id))?.done || 0,
-          submissions: subMap.get(String(r.form_key)) || 0,
+          respondents_total: (rspMap.get(Number(r.id)) as any)?.total || 0,
+          respondents_done: (rspMap.get(Number(r.id)) as any)?.done || 0,
+          submissions: subCount,
         };
       });
-      const filtered = q
-        ? items.filter((s) => String(s.title || "").toLowerCase().includes(q))
-        : items;
-      return json({ items: filtered, count: filtered.length });
+      return json({ items, count: items.length });
     }
 
     if (path === "/api/surveys" && method === "POST") {

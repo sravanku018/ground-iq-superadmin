@@ -306,6 +306,10 @@ export default function AdminSurveysScreen({ onToast, user }) {
   const [newTitle, setNewTitle] = useState('')
   const [saving, setSaving] = useState(false)
   const [exists, setExists] = useState(null) // existing survey with same name
+  // create mode — Super Admin registers company + Client Admins who are part of the project
+  // (reuses allAdmins, which the detail "share with client admins" panel also populates)
+  const [newCompany, setNewCompany] = useState('')
+  const [checkedAdmins, setCheckedAdmins] = useState({})
 
   // detail mode
   const [detail, setDetail] = useState(null)
@@ -332,6 +336,19 @@ export default function AdminSurveysScreen({ onToast, user }) {
   useEffect(() => {
     if (mode === 'list') load()
   }, [load, mode])
+
+  // Super Admin "New project": load Client Admin accounts for the registration form
+  useEffect(() => {
+    if (mode === 'create' && user?.role === 'super_admin' && allAdmins.length === 0) {
+      listUsers()
+        .then((d) => {
+          const admins = (d.users || d.surveyors || d || [])
+            .filter((u) => u.role === 'admin' && u.active !== false)
+          setAllAdmins(admins)
+        })
+        .catch(() => {})
+    }
+  }, [mode, user?.role, allAdmins.length])
 
   // Manual refresh only — auto-refresh disabled to prevent unwanted background database wake-ups
 
@@ -377,12 +394,35 @@ export default function AdminSurveysScreen({ onToast, user }) {
       onToast?.('Project name required', 'error')
       return
     }
+    const isSuper = user?.role === 'super_admin'
+    if (isSuper) {
+      const adminIds = Object.keys(checkedAdmins).filter((k) => checkedAdmins[k]).map(Number)
+      if (adminIds.length === 0) {
+        onToast?.('Select at least one Client Admin who is part of this project', 'error')
+        return
+      }
+      if (!newCompany.trim()) {
+        onToast?.('Enter the company name this project is mapped under', 'error')
+        return
+      }
+    }
     setSaving(true)
     try {
-      const d = await createSurvey({ title, questions: [] })
+      const d = await createSurvey({
+        title,
+        questions: [],
+        ...(isSuper
+          ? {
+              company_name: newCompany.trim(),
+              admin_ids: Object.keys(checkedAdmins).filter((k) => checkedAdmins[k]).map(Number),
+            }
+          : {}),
+      })
       onToast?.(`Project "${title}" created`, 'ok')
       setMode('list')
       setNewTitle('')
+      setNewCompany('')
+      setCheckedAdmins({})
       setExists(null)
       await load()
       if (d?.survey?.id) openDetail(d.survey.id)
@@ -405,6 +445,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
       await updateSurvey(detail.id, {
         title: detail.title,
         questions: cleanQuestions(detail.questions),
+        ...(user?.role === 'super_admin' ? { company_name: detail.company_name || '' } : {}),
       })
       onToast?.('Project name + questions saved', 'ok')
       await openDetail(detail.id)
@@ -547,6 +588,68 @@ export default function AdminSurveysScreen({ onToast, user }) {
           )}
         </div>
 
+        {user?.role === 'super_admin' && (
+          <div className="card" style={{ marginBottom: 12 }}>
+            <h3 style={{ marginTop: 0, fontSize: 15 }}>🏢 Register company & Client Admins</h3>
+            <label className="field">
+              <span>Company name (project is mapped under this company)</span>
+              <input
+                value={newCompany}
+                onChange={(e) => setNewCompany(e.target.value)}
+                placeholder="e.g. Acme Research"
+              />
+            </label>
+            <p className="muted" style={{ fontSize: 12, margin: '12px 0 6px' }}>
+              Client Admins who are <strong>part of this project</strong> (at least one)
+              {Object.keys(checkedAdmins).filter((k) => checkedAdmins[k]).length > 0
+                ? ` · ${Object.keys(checkedAdmins).filter((k) => checkedAdmins[k]).length} selected`
+                : ''}:
+            </p>
+            {allAdmins.length === 0 ? (
+              <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                No Client Admin accounts yet — create them in the Client Admins tab first.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {allAdmins.map((u) => (
+                  <label
+                    key={u.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      background: checkedAdmins[String(u.id)] ? '#c8f5df' : 'rgba(15,23,42,0.05)',
+                      border: checkedAdmins[String(u.id)] ? '1px solid #059669' : '1px solid #e2e8f0',
+                      borderRadius: 8,
+                      padding: '9px 12px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!checkedAdmins[String(u.id)]}
+                      onChange={(e) =>
+                        setCheckedAdmins((c) => ({ ...c, [String(u.id)]: e.target.checked }))
+                      }
+                    />
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>
+                      {u.name || u.username}
+                      <span className="muted" style={{ fontWeight: 400 }}>
+                        {' '}@{u.username}
+                        {u.company_name ? ` · ${u.company_name}` : ''}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <p className="muted" style={{ fontSize: 11, margin: '8px 0 0' }}>
+              Selected Client Admins get shared access and see this project in their Projects tab —
+              the Super Admin remains the owner.
+            </p>
+          </div>
+        )}
+
         <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
           Questions are added after creating — open the project to edit them (name, questions, team).
         </p>
@@ -555,7 +658,14 @@ export default function AdminSurveysScreen({ onToast, user }) {
           type="button"
           className="btn primary"
           onClick={saveNew}
-          disabled={saving || !newTitle.trim() || !canEdit}
+          disabled={
+            saving ||
+            !newTitle.trim() ||
+            !canEdit ||
+            (user?.role === 'super_admin' &&
+              (!newCompany.trim() ||
+                Object.keys(checkedAdmins).filter((k) => checkedAdmins[k]).length === 0))
+          }
         >
           {saving ? 'Creating…' : 'Create project'}
         </button>
@@ -587,9 +697,19 @@ export default function AdminSurveysScreen({ onToast, user }) {
           <h3 style={{ margin: '4px 0 8px', fontSize: 20, color: '#0f172a', fontWeight: 'bold' }}>
             {detail.title}
           </h3>
+          {user?.role === 'super_admin' && (
+            <label className="field" style={{ marginTop: 8, maxWidth: 420 }}>
+              <span>Company (project mapped under)</span>
+              <input
+                value={detail.company_name || ownerCompany || ''}
+                onChange={(e) => setDetail({ ...detail, company_name: e.target.value })}
+                placeholder="e.g. Acme Research"
+              />
+            </label>
+          )}
           <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
             {user?.role === 'super_admin'
-              ? `🏢 Home company: ${ownerCompany || 'No company'} · ${(detail.admins || []).length} client admin(s) — ${(detail.admins || []).map((a) => `${a.company_name || 'No company'} · ${a.name || a.username}`).join(', ') || 'none connected yet'}`
+              ? `🏢 Home company: ${detail.company_name || ownerCompany || 'No company'} · ${(detail.admins || []).length} client admin(s) — ${(detail.admins || []).map((a) => `${a.company_name || 'No company'} · ${a.name || a.username}`).join(', ') || 'none connected yet'}`
               : <>👥 <strong>Field Team (People who take survey):</strong>{' '}{(detail.surveyors || []).length > 0
                 ? (detail.surveyors || []).map((s) => s.username || s.name).join(', ')
                 : 'No surveyors assigned yet'}</>}
@@ -830,9 +950,9 @@ export default function AdminSurveysScreen({ onToast, user }) {
               )}
               <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
                 Projects are mapped under a company — this project's home company is{' '}
-                <strong>{ownerCompany || 'No company'}</strong>. Connect Client Admins by company to
-                share it; surveyors are never connected or managed by Super Admin. Connected Client
-                Admins see the project in their Projects tab.
+                <strong>{detail.company_name || ownerCompany || 'No company'}</strong>. Connect
+                Client Admins by company to share it; surveyors are never connected or managed by
+                Super Admin. Connected Client Admins see the project in their Projects tab.
               </p>
             </>
           ) : (
@@ -896,7 +1016,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           <strong style={{ fontSize: 16, color: '#0f172a' }}>{s.title}</strong>
           {user?.role === 'super_admin' && (
             <div style={{ fontSize: 13, color: '#334155', fontWeight: 600, marginTop: 3 }}>
-              🏢 {s.owner_company || 'No company'}
+              🏢 {s.company_name || s.owner_company || 'No company'}
               {s.owner_name ? ` · owned by ${s.owner_name}` : ''}
             </div>
           )}
@@ -933,7 +1053,17 @@ export default function AdminSurveysScreen({ onToast, user }) {
         >
           ⟳ Refresh
         </button>
-        <button type="button" className="btn primary" onClick={() => setMode('create')}>
+        <button
+          type="button"
+          className="btn primary"
+          onClick={() => {
+            setNewTitle('')
+            setNewCompany('')
+            setCheckedAdmins({})
+            setExists(null)
+            setMode('create')
+          }}
+        >
           + New project
         </button>
       </header>
@@ -961,7 +1091,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         <>
           {Object.entries(
             surveys.reduce((acc, s) => {
-              const c = s.owner_company || 'No company'
+              const c = s.company_name || s.owner_company || 'No company'
               ;(acc[c] = acc[c] || []).push(s)
               return acc
             }, {})

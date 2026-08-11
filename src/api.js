@@ -483,12 +483,19 @@ export function listSurveys(q = '') {
   return request(`/api/surveys${qs ? `?${qs}` : ''}`)
 }
 
-/** Admin: create survey (name + questions). 409 + existing_id if name exists */
-export function createSurvey({ title, questions }) {
+/**
+ * Admin: create survey/project (name + questions). 409 + existing_id if name exists.
+ * Super Admin may also register the company this project is mapped under and the
+ * Client Admins who are part of it (company_name, admin_ids).
+ */
+export function createSurvey({ title, questions, company_name, admin_ids }) {
+  const body = { title, questions }
+  if (company_name != null && company_name !== '') body.company_name = company_name
+  if (Array.isArray(admin_ids) && admin_ids.length > 0) body.admin_ids = admin_ids
   return request('/api/surveys', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, questions }),
+    body: JSON.stringify(body),
   })
 }
 
@@ -497,12 +504,14 @@ export function getSurvey(id) {
   return request(`/api/surveys/${id}`)
 }
 
-/** Admin: update title/questions */
-export function updateSurvey(id, { title, questions }) {
+/** Admin: update title/questions; Super Admin may also update company_name */
+export function updateSurvey(id, { title, questions, company_name }) {
+  const body = { title, questions }
+  if (company_name !== undefined) body.company_name = company_name
   return request(`/api/surveys/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, questions }),
+    body: JSON.stringify(body),
   })
 }
 

@@ -466,6 +466,8 @@ async function ensureSchema() {
   // Super-Admin-set cap on how many surveys a Client Admin may create (0 = unlimited)
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveys INT NOT NULL DEFAULT 0`.catch(() => null);
   await sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS created_by INT`.catch(() => null);
+  // Company a project is mapped under (registered at creation by the Super Admin).
+  await sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_name TEXT`.catch(() => null);
   // Super-Admin-set cap on how many surveyors a Client Admin may create (0 = unlimited)
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveyors INT NOT NULL DEFAULT 0`.catch(() => null);
   // Ownership: who created each account — surveyor caps count accounts created by that admin
@@ -5405,9 +5407,9 @@ Deno.serve(async (req) => {
       // Projects are scoped to their owner, plus explicit Client Admin project access.
       // Surveyor assignments remain a separate Client-Admin-only concern.
       const rows = me.role === "super_admin"
-        ? await sql`SELECT id, form_key, title, questions, updated_at, created_by FROM survey_form ORDER BY title`
+        ? await sql`SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form ORDER BY title`
         : await sql`
-            SELECT id, form_key, title, questions, updated_at, created_by FROM survey_form
+            SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form
             WHERE created_by = ${me.id}
                OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
             ORDER BY title
@@ -5472,6 +5474,7 @@ Deno.serve(async (req) => {
           id: r.id,
           form_key: r.form_key,
           title: r.title,
+          company_name: r.company_name || null,
           owner_company: owner?.company_name ?? null,
           owner_name: owner?.name ?? null,
           question_count: Array.isArray(qs) ? qs.length : 0,
@@ -5503,6 +5506,25 @@ Deno.serve(async (req) => {
       const title = String(body.title || "").trim();
       if (!title) return json({ error: "Survey name required" }, 400);
       const questions = Array.isArray(body.questions) ? body.questions : [];
+      // Super Admin registers the company this project is mapped under + the Client
+      // Admins who are part of it (they get project access; the Super Admin stays owner).
+      let companyName: string | null = null;
+      let connectedAdminIds: number[] = [];
+      if (me.role === "super_admin") {
+        companyName = String(body.company_name || "").trim().slice(0, 160) || null;
+        connectedAdminIds = [...new Set(
+          (Array.isArray(body.admin_ids) ? body.admin_ids : [])
+            .map(Number)
+            .filter((v: number) => Number.isFinite(v)),
+        )];
+        if (connectedAdminIds.length) {
+          const valid = await sql`SELECT id FROM app_users WHERE role = 'admin' AND id = ANY(${connectedAdminIds})`.catch(() => []);
+          const validIds = new Set((valid as { id: number }[]).map((r) => Number(r.id)));
+          if (validIds.size !== connectedAdminIds.length) {
+            return json({ error: "Only Client Admin accounts can be connected" }, 422);
+          }
+        }
+      }
       // Super-Admin-set per-survey question cap for this Client Admin (0 = unlimited)
       const maxQsCreate = Number((me as Record<string, unknown>).max_questions_per_survey) || 0;
       if (maxQsCreate > 0 && questions.length > maxQsCreate) {
@@ -5542,14 +5564,23 @@ Deno.serve(async (req) => {
         formKey = `${base}-${n}`;
       }
       const rows = await sql`
-        INSERT INTO survey_form (form_key, title, questions, updated_at, created_by)
-        VALUES (${formKey}, ${title}, ${JSON.stringify(questions)}::jsonb, NOW(), ${me.id})
+        INSERT INTO survey_form (form_key, title, questions, updated_at, created_by, company_name)
+        VALUES (${formKey}, ${title}, ${JSON.stringify(questions)}::jsonb, NOW(), ${me.id}, ${companyName})
         RETURNING id, form_key, title, updated_at
       `;
-      logAudit(me, "survey_create", "survey", (rows[0] as { id?: unknown }).id, {
+      const surveyId = (rows[0] as { id?: unknown }).id;
+      // The registered Client Admins are part of this project (shared access).
+      if (me.role === "super_admin" && connectedAdminIds.length) {
+        for (const adminId of connectedAdminIds) {
+          await sql`INSERT INTO survey_admin_access (survey_id, admin_id) VALUES (${surveyId}, ${adminId}) ON CONFLICT DO NOTHING`.catch(() => null);
+        }
+      }
+      logAudit(me, "survey_create", "survey", surveyId, {
         title,
         form_key: formKey,
         questions: questions.length,
+        company_name: companyName,
+        admin_ids: connectedAdminIds,
       });
       return json({ ok: true, survey: rows[0] }, 201);
     }
@@ -5560,16 +5591,16 @@ Deno.serve(async (req) => {
       const id = Number(path.split("/")[3]);
       // Client Admin can open only owned or explicitly assigned projects.
       const rows = me.role === "super_admin"
-        ? await sql`SELECT id, form_key, title, questions, updated_at, created_by FROM survey_form WHERE id = ${id}`
+        ? await sql`SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form WHERE id = ${id}`
         : await sql`
-            SELECT id, form_key, title, questions, updated_at, created_by FROM survey_form
+            SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form
             WHERE id = ${id} AND (
               created_by = ${me.id}
               OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
             )
           `;
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
-      const r = rows[0] as { id: number; form_key: string; title: string; questions: unknown; updated_at: string; created_by: number | null };
+      const r = rows[0] as { id: number; form_key: string; title: string; questions: unknown; updated_at: string; created_by: number | null; company_name: string | null };
       let questions = r.questions;
       if (typeof questions === "string") {
         try { questions = JSON.parse(questions); } catch { questions = []; }
@@ -5615,6 +5646,7 @@ Deno.serve(async (req) => {
           respondents,
           owner_id: r.created_by,
           owner: owner ? `${owner.name}${owner.company_name ? ` · ${owner.company_name}` : ""}` : null,
+          company_name: r.company_name || null,
           admins,
           admin_count: admins.length,
         },
@@ -5693,7 +5725,18 @@ Deno.serve(async (req) => {
           WHERE id = ${id}
         `;
       }
-      logAudit(me, "survey_update", "survey", id, { title: title || undefined });
+      // The company a project is mapped under is registered by the Super Admin.
+      let nextCompanyName: string | null | undefined;
+      if (me.role === "super_admin" && body.company_name !== undefined) {
+        nextCompanyName = String(body.company_name || "").trim().slice(0, 160) || null;
+        await sql`
+          UPDATE survey_form SET company_name = ${nextCompanyName}, updated_at = NOW() WHERE id = ${id}
+        `;
+      }
+      logAudit(me, "survey_update", "survey", id, {
+        title: title || undefined,
+        company_name: nextCompanyName === undefined ? undefined : nextCompanyName,
+      });
       return json({ ok: true });
     }
 

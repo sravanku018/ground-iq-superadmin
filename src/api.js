@@ -538,6 +538,43 @@ export function setSurveyAdmins(id, adminIds) {
   })
 }
 
+/** Super Admin: companies registry — list registered companies (with their Client Admins) */
+export function listCompanies() {
+  return request('/api/companies')
+}
+
+/** Super Admin: create a company */
+export function createCompany(name) {
+  return request('/api/companies', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+}
+
+/** Super Admin: rename a company (member profiles stay in sync) */
+export function updateCompany(id, { name }) {
+  return request(`/api/companies/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+}
+
+/** Super Admin: delete a company (Client Admins are unlinked) */
+export function deleteCompany(id) {
+  return request(`/api/companies/${id}`, { method: 'DELETE' })
+}
+
+/** Super Admin: replace which Client Admins belong to a company */
+export function setCompanyAdmins(id, adminIds) {
+  return request(`/api/companies/${id}/admins`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ admin_ids: adminIds }),
+  })
+}
+
 /** Admin: add respondent to a survey */
 export function addRespondent(id, { name, phone }) {
   return request(`/api/surveys/${id}/respondents`, {

@@ -6,6 +6,7 @@ import {
   enableUser,
   getSeatRequests,
   getStoredUser,
+  listCompanies,
   listUsers,
   updateUser,
 } from './api'
@@ -45,16 +46,19 @@ export default function AdminClientAdminsScreen({ onToast }) {
   const [maxQInputs, setMaxQInputs] = useState({})
   const [maxSvInputs, setMaxSvInputs] = useState({})
   const [maxSrInputs, setMaxSrInputs] = useState({})
+  const [companyNames, setCompanyNames] = useState([])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [data, seats] = await Promise.all([
+      const [data, seats, companies] = await Promise.all([
         listUsers(),
         getSeatRequests().catch(() => null),
+        listCompanies().catch(() => null),
       ])
       setUsers(data.users || [])
       if (seats) setSeatData(seats)
+      if (companies) setCompanyNames((companies.items || []).map((c) => c.name))
     } catch (e) {
       onToast?.(e.message, 'error')
     } finally {
@@ -242,6 +246,12 @@ export default function AdminClientAdminsScreen({ onToast }) {
         </p>
       </header>
 
+      <datalist id="registered-company-names">
+        {companyNames.map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
+
       {/* Compact seat + pending summary */}
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="stat-row" style={{ marginBottom: 10 }}>
@@ -302,6 +312,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
               onChange={(e) => setForm({ ...form, company_name: e.target.value })}
               placeholder="e.g. Acme Research"
               autoComplete="organization"
+              list="registered-company-names"
             />
           </label>
           <label className="field compact">
@@ -645,6 +656,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                           onChange={(e) => setEdit({ ...edit, company_name: e.target.value })}
                           placeholder="Company / organisation"
                           style={{ minWidth: 140 }}
+                          list="registered-company-names"
                         />
                       </label>
                       <label className="field compact" style={{ margin: 0 }}>

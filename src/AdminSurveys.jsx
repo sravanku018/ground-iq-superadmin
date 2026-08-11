@@ -4,6 +4,7 @@ import {
   createSurvey,
   deleteSurvey,
   getSurvey,
+  listCompanies,
   listSurveys,
   listUsers,
   setSurveyAdmins,
@@ -310,6 +311,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
   // (reuses allAdmins, which the detail "share with client admins" panel also populates)
   const [newCompany, setNewCompany] = useState('')
   const [checkedAdmins, setCheckedAdmins] = useState({})
+  const [companyNames, setCompanyNames] = useState([])
 
   // detail mode
   const [detail, setDetail] = useState(null)
@@ -349,6 +351,15 @@ export default function AdminSurveysScreen({ onToast, user }) {
         .catch(() => {})
     }
   }, [mode, user?.role, allAdmins.length])
+
+  // Super Admin "New project": load registered companies for the company datalist
+  useEffect(() => {
+    if (mode === 'create' && user?.role === 'super_admin' && companyNames.length === 0) {
+      listCompanies()
+        .then((d) => setCompanyNames((d.items || []).map((c) => c.name)))
+        .catch(() => {})
+    }
+  }, [mode, user?.role, companyNames.length])
 
   // Manual refresh only — auto-refresh disabled to prevent unwanted background database wake-ups
 
@@ -597,8 +608,14 @@ export default function AdminSurveysScreen({ onToast, user }) {
                 value={newCompany}
                 onChange={(e) => setNewCompany(e.target.value)}
                 placeholder="e.g. Acme Research"
+                list="registered-companies"
               />
             </label>
+            <datalist id="registered-companies">
+              {companyNames.map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
             <p className="muted" style={{ fontSize: 12, margin: '12px 0 6px' }}>
               Client Admins who are <strong>part of this project</strong> (at least one)
               {Object.keys(checkedAdmins).filter((k) => checkedAdmins[k]).length > 0
@@ -704,6 +721,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
                 value={detail.company_name || ownerCompany || ''}
                 onChange={(e) => setDetail({ ...detail, company_name: e.target.value })}
                 placeholder="e.g. Acme Research"
+                list="registered-companies"
               />
             </label>
           )}

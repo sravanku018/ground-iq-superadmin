@@ -146,6 +146,7 @@ async function getUser(token: string | null) {
   if (!token || !sql) return null;
   const rows = await sql`
     SELECT u.id, u.username, u.display_name, u.role, u.active, u.created_at,
+           u.company_id, u.company_name,
            u.key_id, u.phone, u.photo, u.aadhaar_front, u.aadhaar_back,
            COALESCE(u.verified, FALSE) AS verified,
            COALESCE(u.can_manage_questions, FALSE) AS can_manage_questions,
@@ -167,6 +168,7 @@ async function getUser(token: string | null) {
   `.catch(async () =>
     await sql`
       SELECT u.id, u.username, u.display_name, u.role, u.active, u.created_at,
+             NULL AS company_id, NULL AS company_name,
              NULL AS key_id, NULL AS phone, NULL AS photo, NULL AS aadhaar_front, NULL AS aadhaar_back,
              FALSE AS verified, FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
              FALSE AS can_review_data, FALSE AS can_verify_surveyors, FALSE AS can_crud_questionnaire,
@@ -468,6 +470,18 @@ async function ensureSchema() {
   await sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS created_by INT`.catch(() => null);
   // Company a project is mapped under (registered at creation by the Super Admin).
   await sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_name TEXT`.catch(() => null);
+  // Companies registry (Super Admin creates them; Client Admins are added to them).
+  // company_name on app_users stays in sync for display/back-compat.
+  await sql`
+    CREATE TABLE IF NOT EXISTS companies (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      created_by INTEGER REFERENCES app_users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS company_id INT`.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_app_users_company ON app_users(company_id)`.catch(() => null);
   // Super-Admin-set cap on how many surveyors a Client Admin may create (0 = unlimited)
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveyors INT NOT NULL DEFAULT 0`.catch(() => null);
   // Ownership: who created each account — surveyor caps count accounts created by that admin
@@ -804,6 +818,80 @@ async function ensureSchema() {
       }
     }
   }
+
+  // Idempotent companies backfill: register any distinct company_names from app_users or survey_form into companies
+  await sql`
+    INSERT INTO companies (name, created_by)
+    SELECT DISTINCT TRIM(company_name) AS name, NULL AS created_by
+    FROM app_users
+    WHERE company_name IS NOT NULL AND TRIM(company_name) <> ''
+    ON CONFLICT (name) DO NOTHING
+  `.catch(() => null);
+
+  await sql`
+    INSERT INTO companies (name, created_by)
+    SELECT DISTINCT TRIM(company_name) AS name, NULL AS created_by
+    FROM survey_form
+    WHERE company_name IS NOT NULL AND TRIM(company_name) <> ''
+    ON CONFLICT (name) DO NOTHING
+  `.catch(() => null);
+
+  await sql`
+    UPDATE app_users u
+    SET company_id = c.id, company_name = c.name
+    FROM companies c
+    WHERE LOWER(u.company_name) = LOWER(c.name) AND (u.company_id IS NULL OR u.company_id <> c.id)
+  `.catch(() => null);
+}
+
+async function ensureCompanyExists(
+  sqlClient: typeof sql,
+  rawName: string | null | undefined,
+  createdBy: number | null
+): Promise<{ id: number; name: string } | null> {
+  if (!rawName || !sqlClient) return null;
+  const name = String(rawName).trim().slice(0, 160);
+  if (!name) return null;
+
+  try {
+    const existing = await sqlClient`
+      SELECT id, name FROM companies WHERE LOWER(name) = LOWER(${name}) LIMIT 1
+    `.catch(() => []);
+    if (existing.length) {
+      const comp = { id: Number((existing[0] as { id: unknown }).id), name: String((existing[0] as { name: unknown }).name) };
+      await sqlClient`
+        UPDATE app_users
+        SET company_id = ${comp.id}, company_name = ${comp.name}
+        WHERE LOWER(company_name) = LOWER(${comp.name}) AND (company_id IS NULL OR company_id <> ${comp.id})
+      `.catch(() => null);
+      return comp;
+    }
+
+    const inserted = await sqlClient`
+      INSERT INTO companies (name, created_by) VALUES (${name}, ${createdBy})
+      ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+      RETURNING id, name
+    `.catch(() => []);
+    if (inserted.length) {
+      const comp = { id: Number((inserted[0] as { id: unknown }).id), name: String((inserted[0] as { name: unknown }).name) };
+      await sqlClient`
+        UPDATE app_users
+        SET company_id = ${comp.id}, company_name = ${comp.name}
+        WHERE LOWER(company_name) = LOWER(${comp.name}) AND (company_id IS NULL OR company_id <> ${comp.id})
+      `.catch(() => null);
+      return comp;
+    }
+  } catch (_e) {
+    /* ignore fallback to re-select below */
+  }
+
+  const re = await sqlClient`
+    SELECT id, name FROM companies WHERE LOWER(name) = LOWER(${name}) LIMIT 1
+  `.catch(() => []);
+  if (re.length) {
+    return { id: Number((re[0] as { id: unknown }).id), name: String((re[0] as { name: unknown }).name) };
+  }
+  return null;
 }
 
 let schemaReady: Promise<void> | null = null;
@@ -3478,10 +3566,19 @@ Deno.serve(async (req) => {
           }
         }
       }
+        let finalCompanyName = companyName || null;
+        let companyId: number | null = null;
+        if (role === "admin" && finalCompanyName && sql) {
+          const comp = await ensureCompanyExists(sql, finalCompanyName, me.id);
+          if (comp) {
+            companyId = comp.id;
+            finalCompanyName = comp.name;
+          }
+        }
         const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, company_name, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors, created_by)
-          VALUES (${username}, ${password_hash}, ${name}, ${companyName || null}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${me.id})
-          RETURNING id, username, display_name, company_name, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors
+          INSERT INTO app_users (username, password_hash, display_name, company_name, company_id, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors, created_by)
+          VALUES (${username}, ${password_hash}, ${name}, ${finalCompanyName}, ${companyId}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${me.id})
+          RETURNING id, username, display_name, company_name, company_id, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors
         `;
         const u = inserted[0] as Record<string, unknown>;
         logAudit(me, "user_create", "user", u.id, {
@@ -3881,10 +3978,28 @@ Deno.serve(async (req) => {
       }
 
       const nextName = body.name != null ? String(body.name).trim() : ex.display_name;
-      const nextCompanyName =
+      let nextCompanyName =
         body.company_name !== undefined && me.role === "super_admin" && ex.role === "admin"
           ? String(body.company_name || "").trim().slice(0, 160) || null
           : (ex as Record<string, unknown>).company_name || null;
+      // Company registry link: when Super Admin explicitly changes a Client Admin's
+      // company_name, relink to a registered company with that name (or unlink).
+      const companyNameChanged =
+        body.company_name !== undefined && me.role === "super_admin" && ex.role === "admin";
+      let nextCompanyId: number | null =
+        (ex as Record<string, unknown>).company_id != null
+          ? Number((ex as Record<string, unknown>).company_id)
+          : null;
+      if (companyNameChanged) {
+        nextCompanyId = null;
+        if (nextCompanyName && sql) {
+          const comp = await ensureCompanyExists(sql, nextCompanyName, me.id);
+          if (comp) {
+            nextCompanyId = comp.id;
+            nextCompanyName = comp.name;
+          }
+        }
+      }
       const nextPhone =
         body.phone != null ? String(body.phone).trim() : (ex as Record<string, unknown>).phone || null;
       const nextPhoto =
@@ -3954,6 +4069,7 @@ Deno.serve(async (req) => {
               password_hash = ${password_hash},
               display_name = ${nextName},
               company_name = ${nextCompanyName},
+              company_id = ${nextCompanyId},
               role = ${nextRole},
               active = ${nextActive},
               target_quota = ${nextQuota},
@@ -5512,6 +5628,10 @@ Deno.serve(async (req) => {
       let connectedAdminIds: number[] = [];
       if (me.role === "super_admin") {
         companyName = String(body.company_name || "").trim().slice(0, 160) || null;
+        if (companyName && sql) {
+          const comp = await ensureCompanyExists(sql, companyName, me.id);
+          if (comp) companyName = comp.name;
+        }
         connectedAdminIds = [...new Set(
           (Array.isArray(body.admin_ids) ? body.admin_ids : [])
             .map(Number)
@@ -5523,6 +5643,14 @@ Deno.serve(async (req) => {
           if (validIds.size !== connectedAdminIds.length) {
             return json({ error: "Only Client Admin accounts can be connected" }, 422);
           }
+        }
+      } else {
+        companyName = (me as Record<string, unknown>).company_name
+          ? String((me as Record<string, unknown>).company_name).trim().slice(0, 160)
+          : null;
+        if (companyName && sql) {
+          const comp = await ensureCompanyExists(sql, companyName, me.id);
+          if (comp) companyName = comp.name;
         }
       }
       // Super-Admin-set per-survey question cap for this Client Admin (0 = unlimited)
@@ -5679,6 +5807,156 @@ Deno.serve(async (req) => {
       return json({ ok: true, connected: ids.length });
     }
 
+    // ── Companies registry (Super Admin creates companies, adds Client Admins) ──
+    if (path === "/api/companies" && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+      const rows = await sql`
+        SELECT c.id, c.name, c.created_at, c.created_by,
+               COALESCE(u.display_name, u.username) AS created_by_name
+        FROM companies c
+        LEFT JOIN app_users u ON u.id = c.created_by
+        ORDER BY c.name
+      `.catch(() => []);
+      const memberRows = await sql`
+        SELECT u.company_id AS cid, u.id, u.username,
+               COALESCE(u.display_name, u.username) AS name
+        FROM app_users u
+        WHERE u.company_id IS NOT NULL
+        ORDER BY u.username
+      `.catch(() => []);
+      const memberMap = new Map<number, { id: number; username: string; name: string }[]>();
+      for (const m of memberRows as { cid: number; id: number; username: string; name: string }[]) {
+        const arr = memberMap.get(Number(m.cid)) || [];
+        arr.push({ id: Number(m.id), username: String(m.username), name: String(m.name) });
+        memberMap.set(Number(m.cid), arr);
+      }
+      const projectRows = await sql`
+        SELECT LOWER(company_name) AS key, COUNT(*)::int AS n
+        FROM survey_form
+        WHERE company_name IS NOT NULL AND company_name <> ''
+        GROUP BY LOWER(company_name)
+      `.catch(() => []);
+      const projectMap = new Map<string, number>();
+      for (const p of projectRows as { key: string; n: number }[]) {
+        projectMap.set(String(p.key), Number(p.n));
+      }
+      const items = (rows as Record<string, unknown>[]).map((c) => ({
+        id: c.id,
+        name: c.name,
+        created_at: c.created_at,
+        created_by_name: c.created_by_name || null,
+        admins: memberMap.get(Number(c.id)) || [],
+        admin_count: (memberMap.get(Number(c.id)) || []).length,
+        project_count: projectMap.get(String(c.name).toLowerCase()) || 0,
+      }));
+      return json({ items, count: items.length });
+    }
+
+    if (path === "/api/companies" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+      const body = await readBody(req);
+      const name = String(body.name || "").trim().slice(0, 160);
+      if (!name) return json({ error: "Company name required" }, 400);
+      const dup = await sql`SELECT id FROM companies WHERE LOWER(name) = LOWER(${name}) LIMIT 1`.catch(() => []);
+      if (dup.length) return json({ error: `Company "${name}" already exists` }, 409);
+      let rows;
+      try {
+        rows = await sql`
+          INSERT INTO companies (name, created_by) VALUES (${name}, ${me.id})
+          RETURNING id, name, created_at
+        `;
+      } catch (err) {
+        const msg = (err as Error).message || "";
+        if (msg.includes("unique") || msg.includes("duplicate")) {
+          return json({ error: `Company "${name}" already exists` }, 409);
+        }
+        return json({ error: msg || "Could not create company" }, 500);
+      }
+      const c = rows[0] as { id: number; name: string; created_at: string } | undefined;
+      if (!c) return json({ error: "Could not create company" }, 500);
+      await sql`
+        UPDATE app_users
+        SET company_id = ${c.id}, company_name = ${c.name}
+        WHERE LOWER(company_name) = LOWER(${c.name}) AND (company_id IS NULL OR company_id <> ${c.id})
+      `.catch(() => null);
+      logAudit(me, "company_create", "company", c.id, { name });
+      return json({ company: c }, 201);
+    }
+
+    if (path.match(/^\/api\/companies\/\d+$/) && method === "PUT") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+      const id = Number(path.split("/")[3]);
+      const body = await readBody(req);
+      const name = String(body.name || "").trim().slice(0, 160);
+      if (!name) return json({ error: "Company name required" }, 400);
+      const ex = await sql`SELECT id, name FROM companies WHERE id = ${id}`.catch(() => []);
+      if (!ex.length) return json({ error: "Company not found" }, 404);
+      const oldName = String((ex[0] as { name: string }).name);
+      const dup = await sql`SELECT id FROM companies WHERE LOWER(name) = LOWER(${name}) AND id <> ${id} LIMIT 1`.catch(() => []);
+      if (dup.length) return json({ error: `Company "${name}" already exists` }, 409);
+      await sql`UPDATE companies SET name = ${name} WHERE id = ${id}`;
+      // Keep member profiles in sync so the admin list/profile show the new name.
+      await sql`UPDATE app_users SET company_name = ${name} WHERE company_id = ${id}`.catch(() => null);
+      logAudit(me, "company_rename", "company", id, { from: oldName, to: name });
+      return json({ ok: true, name });
+    }
+
+    if (path.match(/^\/api\/companies\/\d+$/) && method === "DELETE") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+      const id = Number(path.split("/")[3]);
+      const ex = await sql`SELECT id, name FROM companies WHERE id = ${id}`.catch(() => []);
+      if (!ex.length) return json({ error: "Company not found" }, 404);
+      const name = String((ex[0] as { name: string }).name);
+      // Unlink member Client Admins; keep their profile name only if it differs.
+      await sql`
+        UPDATE app_users SET company_id = NULL,
+          company_name = CASE WHEN company_name = ${name} THEN NULL ELSE company_name END
+        WHERE company_id = ${id}
+      `.catch(() => null);
+      await sql`DELETE FROM companies WHERE id = ${id}`;
+      logAudit(me, "company_delete", "company", id, { name });
+      return json({ ok: true, deleted: true });
+    }
+
+    // Replace which Client Admins belong to a company (they become "part of it").
+    if (path.match(/^\/api\/companies\/\d+\/admins$/) && method === "PUT") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+      const id = Number(path.split("/")[3]);
+      const body = await readBody(req);
+      const company = await sql`SELECT id, name FROM companies WHERE id = ${id}`.catch(() => []);
+      if (!company.length) return json({ error: "Company not found" }, 404);
+      const companyName = String((company[0] as { name: string }).name);
+      const requestedIds = [...new Set((Array.isArray(body.admin_ids) ? body.admin_ids : [])
+        .map(Number)
+        .filter((v: number) => Number.isFinite(v)))];
+      if (requestedIds.length) {
+        const valid = await sql`SELECT id FROM app_users WHERE role = 'admin' AND id = ANY(${requestedIds})`.catch(() => []);
+        const validIds = new Set((valid as { id: number }[]).map((r) => Number(r.id)));
+        if (validIds.size !== requestedIds.length) {
+          return json({ error: "Only Client Admin accounts can be added to a company" }, 422);
+        }
+      }
+      // Unlink everyone, then link the requested set (company_name stays in sync).
+      await sql`
+        UPDATE app_users SET company_id = NULL,
+          company_name = CASE WHEN company_name = ${companyName} THEN NULL ELSE company_name END
+        WHERE company_id = ${id}
+      `.catch(() => null);
+      if (requestedIds.length) {
+        await sql`
+          UPDATE app_users SET company_id = ${id}, company_name = ${companyName}
+          WHERE id = ANY(${requestedIds})
+        `.catch(() => null);
+      }
+      logAudit(me, "company_admins_update", "company", id, { admin_ids: requestedIds });
+      return json({ ok: true, connected: requestedIds.length });
+    }
+
     if (path.match(/^\/api\/surveys\/\d+$/) && method === "PUT") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
@@ -5729,6 +6007,10 @@ Deno.serve(async (req) => {
       let nextCompanyName: string | null | undefined;
       if (me.role === "super_admin" && body.company_name !== undefined) {
         nextCompanyName = String(body.company_name || "").trim().slice(0, 160) || null;
+        if (nextCompanyName && sql) {
+          const comp = await ensureCompanyExists(sql, nextCompanyName, me.id);
+          if (comp) nextCompanyName = comp.name;
+        }
         await sql`
           UPDATE survey_form SET company_name = ${nextCompanyName}, updated_at = NOW() WHERE id = ${id}
         `;

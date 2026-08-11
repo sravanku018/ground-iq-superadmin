@@ -28,6 +28,7 @@ const AdminAuditScreen = lazy(() => import('./AdminAudit'))
 const AdminQuestionBankScreen = lazy(() => import('./AdminQuestionBank'))
 const AdminSeatsScreen = lazy(() => import('./AdminSeats'))
 const AdminClientAdminsScreen = lazy(() => import('./AdminClientAdmins'))
+const AdminCompaniesScreen = lazy(() => import('./AdminCompanies'))
 
 // Client Admin nav — Question Bank (FR-QB-02) sits under Data collection
 const NAV = [
@@ -53,6 +54,14 @@ const CLIENT_ADMINS_NAV = {
   pages: ['admins'],
 }
 
+// Super Admin console only: companies registry (create companies, add Client Admins)
+const COMPANIES_NAV = {
+  id: 'companies',
+  label: 'Companies',
+  icon: '🏢',
+  pages: ['companies'],
+}
+
 // A dedicated Super Admin entry: projects are created here and then assigned
 // to one or more Client Admin profiles (shown with their company name).
 const PROJECTS_NAV = {
@@ -76,6 +85,7 @@ const PAGE_LABELS = {
   bank: 'Question Bank',
   seats: 'Seat Requests',
   admins: 'Client Admins',
+  companies: 'Companies',
 }
 
 // Which Super-Admin-granted power unlocks each management page for a Client Admin.
@@ -461,6 +471,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
   const baseNav = superAdminOnly
     ? [
         CLIENT_ADMINS_NAV,
+        COMPANIES_NAV,
         PROJECTS_NAV,
         PLATFORM_NAV,
         // console keeps Question Bank under Platform only — avoid duplicate subtabs
@@ -802,6 +813,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           {page === 'bank' && <AdminQuestionBankScreen onToast={notify} user={user} />}
           {page === 'seats' && <AdminSeatsScreen onToast={notify} />}
           {page === 'admins' && <AdminClientAdminsScreen onToast={notify} />}
+          {page === 'companies' && <AdminCompaniesScreen onToast={notify} />}
           {page === 'data' && (
             <DataList
               items={items}

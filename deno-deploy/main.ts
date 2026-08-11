@@ -5970,6 +5970,180 @@ Deno.serve(async (req) => {
       return json({ ok: true, connected: requestedIds.length });
     }
 
+    // ── Company Client Dashboard API ───────────────────────
+    if (path.match(/^\/api\/companies\/([^/]+)\/dashboard$/) && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+
+      const rawParam = decodeURIComponent(path.split("/")[3]);
+      let company: { id: number; name: string; created_at: string } | undefined;
+
+      if (/^\d+$/.test(rawParam)) {
+        const rows = await sql`SELECT id, name, created_at FROM companies WHERE id = ${Number(rawParam)}`.catch(() => []);
+        if (rows.length) company = rows[0] as { id: number; name: string; created_at: string };
+      }
+      if (!company) {
+        const rows = await sql`SELECT id, name, created_at FROM companies WHERE LOWER(name) = LOWER(${rawParam}) LIMIT 1`.catch(() => []);
+        if (rows.length) company = rows[0] as { id: number; name: string; created_at: string };
+      }
+      if (!company) {
+        company = { id: 0, name: rawParam, created_at: new Date().toISOString() };
+      }
+
+      const companyId = Number(company.id);
+      const companyName = String(company.name);
+
+      // 1. Client Admins
+      const admins = await sql`
+        SELECT id, username, COALESCE(display_name, username) AS name, company_name, created_at, verified, active
+        FROM app_users
+        WHERE role = 'admin' AND (company_id = ${companyId} OR LOWER(company_name) = LOWER(${companyName}))
+        ORDER BY username
+      `.catch(() => []);
+
+      const adminIds = (admins as { id: number }[]).map((a) => Number(a.id));
+
+      // 2. Surveys / Projects under this company
+      const surveyRows = await sql`
+        SELECT DISTINCT s.id, s.form_key, s.title, s.questions, s.updated_at, s.created_by, s.company_name
+        FROM survey_form s
+        LEFT JOIN survey_admin_access a ON a.survey_id = s.id
+        WHERE LOWER(s.company_name) = LOWER(${companyName})
+           OR (cardinality(${adminIds}) > 0 AND (s.created_by = ANY(${adminIds}) OR a.admin_id = ANY(${adminIds})))
+        ORDER BY s.title
+      `.catch(() => []);
+
+      const surveyIds = (surveyRows as { id: number }[]).map((s) => Number(s.id));
+
+      // 3. Surveyors mapped to these projects / created by company's client admins
+      const surveyors = await sql`
+        SELECT DISTINCT u.id, u.username, COALESCE(u.display_name, u.username) AS name,
+               u.phone, u.active, u.created_at, u.verified, u.target_quota,
+               (SELECT COUNT(*)::int FROM submissions sub WHERE (sub.payload->>'submitted_by' = u.username OR sub.payload->>'surveyor_id' = u.id::text)) AS submission_count
+        FROM app_users u
+        LEFT JOIN survey_assignments sa ON sa.user_id = u.id
+        WHERE (u.role IN ('surveyor', 'field'))
+          AND (
+            (cardinality(${adminIds}) > 0 AND u.created_by = ANY(${adminIds}))
+            OR (cardinality(${surveyIds}) > 0 AND sa.survey_id = ANY(${surveyIds}))
+          )
+        ORDER BY u.username
+      `.catch(() => []);
+
+      // 4. Submissions & Geo Location Data
+      const submissions = surveyIds.length
+        ? await sql`
+            SELECT id, survey_id, created_at, fact_status,
+                   payload->>'submitted_by' AS submitted_by,
+                   payload->'geo' AS geo,
+                   payload->'answers'->>'district' AS district,
+                   payload->'answers'->>'constituency' AS constituency,
+                   payload->'answers' AS answers,
+                   payload->>'latitude' AS latitude,
+                   payload->>'longitude' AS longitude
+            FROM submissions
+            WHERE survey_id = ANY(${surveyIds})
+            ORDER BY created_at DESC
+            LIMIT 500
+          `.catch(() => [])
+        : [];
+
+      let totalQuestions = 0;
+      const projectsFormatted = (surveyRows as Record<string, unknown>[]).map((s) => {
+        let qList: unknown[] = [];
+        try {
+          qList = typeof s.questions === "string" ? JSON.parse(s.questions) : (Array.isArray(s.questions) ? s.questions : []);
+        } catch (_) { qList = []; }
+        totalQuestions += qList.length;
+        return {
+          id: Number(s.id),
+          form_key: String(s.form_key || ""),
+          title: String(s.title || ""),
+          question_count: qList.length,
+          questions: qList,
+          updated_at: s.updated_at,
+          created_by: s.created_by,
+          company_name: s.company_name,
+        };
+      });
+
+      const locations: Record<string, unknown>[] = [];
+      const surveyTitleMap = new Map<number, string>();
+      for (const p of projectsFormatted) {
+        surveyTitleMap.set(p.id, p.title);
+      }
+
+      let confirmedCount = 0;
+      let pendingCount = 0;
+
+      for (const sub of submissions as Record<string, unknown>[]) {
+        if (sub.fact_status === "materialized" || sub.fact_status === "confirmed") {
+          confirmedCount++;
+        } else {
+          pendingCount++;
+        }
+
+        let lat: number | null = null;
+        let lng: number | null = null;
+
+        if (sub.latitude && sub.longitude) {
+          lat = Number(sub.latitude);
+          lng = Number(sub.longitude);
+        } else if (sub.geo && typeof sub.geo === "object") {
+          const g = sub.geo as Record<string, unknown>;
+          lat = Number(g.lat || g.latitude);
+          lng = Number(g.lng || g.longitude);
+        } else if (sub.answers && typeof sub.answers === "object") {
+          const a = sub.answers as Record<string, unknown>;
+          if (a.latitude && a.longitude) {
+            lat = Number(a.latitude);
+            lng = Number(a.longitude);
+          }
+        }
+
+        if (lat && lng && !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+          locations.push({
+            id: Number(sub.id),
+            survey_id: Number(sub.survey_id),
+            survey_title: surveyTitleMap.get(Number(sub.survey_id)) || "Survey",
+            lat,
+            lng,
+            submitted_by: sub.submitted_by || "Surveyor",
+            district: sub.district || null,
+            constituency: sub.constituency || null,
+            created_at: sub.created_at,
+          });
+        }
+      }
+
+      return json({
+        company: {
+          id: companyId,
+          name: companyName,
+          created_at: company.created_at,
+        },
+        summary: {
+          total_admins: (admins as unknown[]).length,
+          total_projects: projectsFormatted.length,
+          total_questions: totalQuestions,
+          total_surveyors: (surveyors as unknown[]).length,
+          total_submissions: (submissions as unknown[]).length,
+          total_locations: locations.length,
+          confirmed_qa: confirmedCount,
+          pending_qa: pendingCount,
+        },
+        admins,
+        projects: projectsFormatted,
+        surveyors,
+        locations,
+        qa_stats: {
+          confirmed: confirmedCount,
+          pending: pendingCount,
+          total: (submissions as unknown[]).length,
+        },
+      });
+    }
+
     if (path.match(/^\/api\/surveys\/\d+$/) && method === "PUT") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);

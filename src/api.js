@@ -575,6 +575,11 @@ export function setCompanyAdmins(id, adminIds) {
   })
 }
 
+/** Super Admin / Client Admin: fetch full Company Dashboard data */
+export function getCompanyDashboard(idOrName) {
+  return request(`/api/companies/${encodeURIComponent(idOrName)}/dashboard`)
+}
+
 /** Admin: add respondent to a survey */
 export function addRespondent(id, { name, phone }) {
   return request(`/api/surveys/${id}/respondents`, {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import CompanyClientDashboard from './CompanyClientDashboard'
 import {
   createUser,
   deleteUser,
@@ -38,6 +39,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [dashboardUserCompany, setDashboardUserCompany] = useState(null)
   const [seatData, setSeatData] = useState(null)
   const [profileId, setProfileId] = useState(null) // which admin's profile panel is open
   const [edit, setEdit] = useState(EMPTY_FORM)
@@ -462,7 +464,25 @@ export default function AdminClientAdminsScreen({ onToast }) {
                             : '🔒 no powers'}
                         </div>
                       </div>
+                      <button
+                        type="button"
+                        className={`btn small ${dashboardUserCompany === u.id ? 'primary' : ''}`}
+                        onClick={() => setDashboardUserCompany(dashboardUserCompany === u.id ? null : u.id)}
+                        style={{ marginLeft: 'auto' }}
+                      >
+                        {dashboardUserCompany === u.id ? 'Hide Dashboard' : '📊 Company Dashboard'}
+                      </button>
                     </div>
+
+                    {dashboardUserCompany === u.id && (
+                      <div style={{ marginTop: 14, width: '100%' }}>
+                        <CompanyClientDashboard
+                          companyIdOrName={u.company_id || u.company_name || u.username}
+                          onClose={() => setDashboardUserCompany(null)}
+                          onToast={onToast}
+                        />
+                      </div>
+                    )}
 
                     {/* Features (powers) */}
                     <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🧩 Features (granted powers)</h4>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import CompanyClientDashboard from './CompanyClientDashboard'
 import {
   createCompany,
   deleteCompany,
@@ -20,6 +21,7 @@ export default function AdminCompaniesScreen({ onToast }) {
   const [saving, setSaving] = useState(false)
   const [newName, setNewName] = useState('')
   const [openId, setOpenId] = useState(null)
+  const [dashboardCompanyId, setDashboardCompanyId] = useState(null)
   const [checked, setChecked] = useState({})
   const [editName, setEditName] = useState('')
 
@@ -219,6 +221,13 @@ export default function AdminCompaniesScreen({ onToast }) {
                 <div className="user-actions">
                   <button
                     type="button"
+                    className={`btn small ${dashboardCompanyId === c.id ? 'primary' : ''}`}
+                    onClick={() => setDashboardCompanyId(dashboardCompanyId === c.id ? null : c.id)}
+                  >
+                    {dashboardCompanyId === c.id ? 'Hide Dashboard' : '📊 Dashboard'}
+                  </button>
+                  <button
+                    type="button"
                     className={`btn small ${openId === c.id ? 'primary' : ''}`}
                     onClick={() => toggleOpen(c)}
                   >
@@ -228,6 +237,16 @@ export default function AdminCompaniesScreen({ onToast }) {
                     Delete
                   </button>
                 </div>
+
+                {dashboardCompanyId === c.id && (
+                  <div style={{ marginTop: 14, width: '100%' }}>
+                    <CompanyClientDashboard
+                      companyIdOrName={c.id}
+                      onClose={() => setDashboardCompanyId(null)}
+                      onToast={onToast}
+                    />
+                  </div>
+                )}
 
                 {openId === c.id && (
                   <div

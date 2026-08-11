@@ -60,6 +60,30 @@ export default function SubmissionMedia({ item, compact }) {
   const rawPhotoUrl = photo?.url || item?.photo_url || photoSrc
   const rawAudioUrl = audio?.url || item?.audio_url || audioSrc
 
+  const isConfirmed =
+    item?.status === 'confirmed' ||
+    item?.fact_status === 'confirmed' ||
+    item?.fact_status === 'materialized'
+
+  if (isConfirmed) {
+    return (
+      <div
+        className="card"
+        style={{
+          marginBottom: 10,
+          padding: '8px 12px',
+          background: '#ecfdf5',
+          border: '1px solid #a7f3d0',
+          borderRadius: 8,
+        }}
+      >
+        <span style={{ fontSize: 12, color: '#047857', fontWeight: 600 }}>
+          ✅ Confirmed Record — Photo & Audio hidden post-verification (Details only)
+        </span>
+      </div>
+    )
+  }
+
   if (!photoSrc && !audioSrc) return null
 
   return (

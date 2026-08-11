@@ -420,17 +420,24 @@ export default function ReviewQAScreen({ onToast, user }) {
                 {/* Always-visible mini media strip when open */}
                 {open && editingId !== item.id && (
                   <div className="qa-block" style={{ marginTop: 10 }}>
-                    <div className="card" style={{ marginBottom: 10, padding: 10 }}>
-                      <strong style={{ fontSize: 13 }}>Media</strong>
-                      <div
-                        style={{
-                          marginTop: 8,
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 8,
-                        }}
-                      >
-                        {photoSrc ? (
+                    {(item.status === 'confirmed' || item.fact_status === 'confirmed' || item.fact_status === 'materialized') ? (
+                      <div className="card" style={{ marginBottom: 10, padding: '8px 12px', background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+                        <span style={{ fontSize: 12, color: '#047857', fontWeight: 600 }}>
+                          ✅ Confirmed Record — Photo & Audio hidden post-verification (Details verified)
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="card" style={{ marginBottom: 10, padding: 10 }}>
+                        <strong style={{ fontSize: 13 }}>Media</strong>
+                        <div
+                          style={{
+                            marginTop: 8,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 8,
+                          }}
+                        >
+                          {photoSrc ? (
                           <div>
                             <div
                               style={{
@@ -512,6 +519,7 @@ export default function ReviewQAScreen({ onToast, user }) {
                         )}
                       </div>
                     </div>
+                  )}
                     {item.proof_validated && (
                       <div
                         className="card"

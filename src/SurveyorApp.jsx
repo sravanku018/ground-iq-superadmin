@@ -268,7 +268,7 @@ function MyRecordsScreen({ user, onToast }) {
         </button>
       </div>
       <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-        Submissions stored on server for @{user?.username}. Tap a record to open photo/audio.
+        Submissions stored on server for @{user?.username}. Tap a record to view details.
       </p>
 
       {records === null ? (
@@ -278,6 +278,8 @@ function MyRecordsScreen({ user, onToast }) {
       ) : (
         records.map((r) => {
           const open = openId === r.id
+          const isConfirmed = r.status === 'confirmed' || r.fact_status === 'confirmed' || r.fact_status === 'materialized'
+          const ans = r.answers || r.payload?.answers || {}
           return (
             <div key={r.id} className="card" style={{ marginTop: 10, padding: 12 }}>
               <button
@@ -294,19 +296,63 @@ function MyRecordsScreen({ user, onToast }) {
               >
                 <span style={{ fontWeight: 600, fontSize: 14 }}>
                   Record #{r.id}
-                  <span className={`pill ${r.status === 'confirmed' ? 'ok' : ''}`} style={{ marginLeft: 8 }}>
-                    {r.status}
+                  <span className={`pill ${isConfirmed ? 'ok' : ''}`} style={{ marginLeft: 8 }}>
+                    {isConfirmed ? 'Confirmed ✓' : r.status || 'pending'}
                   </span>
                 </span>
                 <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
                   {String(r.created_at || '').slice(0, 16).replace('T', ' ')}
-                  {r.submitted_by ? ` · ${r.submitted_by}` : ''}
+                  {r.submitted_by || r.payload?.submitted_by ? ` · ${r.submitted_by || r.payload?.submitted_by}` : ''}
                 </span>
                 <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                  {open ? 'Hide photo/audio ▲' : 'Show photo/audio ▼'}
+                  {open ? 'Hide details ▲' : 'Show details ▼'}
                 </div>
               </button>
-              {open && <SubmissionMedia item={r} compact style={{ marginTop: 8 }} />}
+              {open && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #e2e8f0' }}>
+                  <SubmissionMedia item={r} compact />
+                  <div style={{ fontSize: 13, marginTop: 8 }}>
+                    <strong style={{ display: 'block', marginBottom: 6, color: '#0f172a' }}>📋 Record Details:</strong>
+                    <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6 }}>
+                      <tbody>
+                        <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td className="muted" style={{ padding: '6px 8px' }}>Record ID:</td>
+                          <td style={{ textAlign: 'right', fontWeight: 600, padding: '6px 8px' }}>#{r.id}</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td className="muted" style={{ padding: '6px 8px' }}>Status:</td>
+                          <td style={{ textAlign: 'right', fontWeight: 600, padding: '6px 8px', color: isConfirmed ? '#059669' : '#d97706' }}>
+                            {isConfirmed ? 'Confirmed ✓' : r.status || 'pending'}
+                          </td>
+                        </tr>
+                        {(r.submitted_by || r.payload?.submitted_by) && (
+                          <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td className="muted" style={{ padding: '6px 8px' }}>Surveyor:</td>
+                            <td style={{ textAlign: 'right', fontWeight: 600, padding: '6px 8px' }}>{r.submitted_by || r.payload?.submitted_by}</td>
+                          </tr>
+                        )}
+                        {r.created_at && (
+                          <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td className="muted" style={{ padding: '6px 8px' }}>Submitted At:</td>
+                            <td style={{ textAlign: 'right', padding: '6px 8px' }}>{String(r.created_at).slice(0, 16).replace('T', ' ')}</td>
+                          </tr>
+                        )}
+                        {Object.entries(ans).map(([k, v]) => {
+                          if (k.startsWith('_') || k.startsWith('geo_') || k.startsWith('location_')) return null
+                          if (v == null || v === '') return null
+                          const valStr = Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v)
+                          return (
+                            <tr key={k} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td className="muted" style={{ padding: '6px 8px', textTransform: 'capitalize' }}>{k.replace(/_/g, ' ')}:</td>
+                              <td style={{ textAlign: 'right', fontWeight: 600, padding: '6px 8px' }}>{valStr}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )
         })

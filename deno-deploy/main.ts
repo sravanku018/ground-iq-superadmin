@@ -819,6 +819,13 @@ async function ensureSchema() {
     }
   }
 
+  // Auto-assign company to any Client Admin who has no company_name
+  await sql`
+    UPDATE app_users
+    SET company_name = COALESCE(NULLIF(TRIM(display_name), ''), username) || ' Organisation'
+    WHERE role = 'admin' AND (company_name IS NULL OR TRIM(company_name) = '')
+  `.catch(() => null);
+
   // Idempotent companies backfill: register any distinct company_names from app_users or survey_form into companies
   await sql`
     INSERT INTO companies (name, created_by)
@@ -3504,7 +3511,10 @@ Deno.serve(async (req) => {
       const target_quota = Math.max(0, Math.min(Number(body.target_quota) || 0, 100000));
       // surveyor = field collector (can login field app); admin = portal only
       const role = body.role === "admin" ? "admin" : "surveyor";
-      const companyName = role === "admin" ? String(body.company_name || "").trim().slice(0, 160) : "";
+      let companyName = role === "admin" ? String(body.company_name || "").trim().slice(0, 160) : "";
+      if (role === "admin" && !companyName) {
+        companyName = `${name || username} Organisation`;
+      }
       if (!username || !password) {
         return json({ error: "username and password required" }, 400);
       }
@@ -3982,6 +3992,9 @@ Deno.serve(async (req) => {
         body.company_name !== undefined && me.role === "super_admin" && ex.role === "admin"
           ? String(body.company_name || "").trim().slice(0, 160) || null
           : (ex as Record<string, unknown>).company_name || null;
+      if (ex.role === "admin" && !nextCompanyName) {
+        nextCompanyName = `${nextName || ex.username} Organisation`;
+      }
       // Company registry link: when Super Admin explicitly changes a Client Admin's
       // company_name, relink to a registered company with that name (or unlink).
       const companyNameChanged =
@@ -3990,7 +4003,7 @@ Deno.serve(async (req) => {
         (ex as Record<string, unknown>).company_id != null
           ? Number((ex as Record<string, unknown>).company_id)
           : null;
-      if (companyNameChanged) {
+      if (companyNameChanged || (ex.role === "admin" && !nextCompanyId)) {
         nextCompanyId = null;
         if (nextCompanyName && sql) {
           const comp = await ensureCompanyExists(sql, nextCompanyName, me.id);

@@ -310,7 +310,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
             <input
               value={form.company_name}
               onChange={(e) => setForm({ ...form, company_name: e.target.value })}
-              placeholder="e.g. Acme Research"
+              placeholder="e.g. Acme Research (auto-assigned if blank)"
               autoComplete="organization"
               list="registered-company-names"
             />

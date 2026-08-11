@@ -68,7 +68,17 @@ async function request(path, options = {}) {
   const data = await res.json().catch(() => ({}))
 
   if (res.status === 401) {
-    const err = new Error(data.error || 'Login required')
+    clearSession()
+    try {
+      window.dispatchEvent(
+        new CustomEvent('esurvey-unauthorized', { detail: data }),
+      )
+    } catch {
+      /* ignore */
+    }
+    const err = new Error(
+      data.error || 'Account updated or session expired. Please log in again.',
+    )
     err.status = 401
     throw err
   }

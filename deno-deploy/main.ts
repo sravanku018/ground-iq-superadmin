@@ -4103,12 +4103,15 @@ Deno.serve(async (req) => {
         return json({ error: msg || "Update failed" }, 500);
       }
 
-      // Disable or password/username change → revoke all sessions (force re-login)
+      // Revoke sessions on active status change, password/username change, role/company change, or admin edits
       const shouldRevoke =
         body.revoke_sessions === true ||
         nextActive === false ||
         passwordChanged ||
-        nextUsername !== ex.username;
+        nextUsername !== ex.username ||
+        nextRole !== ex.role ||
+        nextCompanyId !== ex.company_id ||
+        (isAdmin && !isSelf);
       let sessionsCleared = 0;
       if (shouldRevoke) {
         const del = await sql`DELETE FROM app_sessions WHERE user_id = ${id}`;

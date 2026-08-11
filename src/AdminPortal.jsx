@@ -504,6 +504,21 @@ export default function AdminPortal({ superAdminOnly = false }) {
     notify('Logged out', 'ok')
   }, [notify])
 
+  useEffect(() => {
+    const onUnauthorized = (e) => {
+      clearSession()
+      setUser(null)
+      setStats(null)
+      setItems([])
+      setSurveys([])
+      setPage('overview')
+      const msg = e?.detail?.error || 'Account updated or session expired — please sign in again'
+      notify(msg, 'error')
+    }
+    window.addEventListener('esurvey-unauthorized', onUnauthorized)
+    return () => window.removeEventListener('esurvey-unauthorized', onUnauthorized)
+  }, [notify])
+
   /** Lightweight overview KPIs only — not full submissions */
   const loadStats = useCallback(async () => {
     if (!getToken()) return

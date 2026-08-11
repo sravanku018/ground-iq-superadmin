@@ -1103,8 +1103,22 @@ export default function SurveyorApp() {
     }
   }, [notify])
 
+  // Global listener for 401 / unauthorized events (e.g. account updated, role changed, password reset)
+  useEffect(() => {
+    const onUnauthorized = (e) => {
+      stopSyncEngine()
+      clearSession()
+      setUser(null)
+      setMyProgress(null)
+      const msg = e?.detail?.error || 'Account updated or session expired — please log in again'
+      notify(msg, 'error')
+    }
+    window.addEventListener('esurvey-unauthorized', onUnauthorized)
+    return () => window.removeEventListener('esurvey-unauthorized', onUnauthorized)
+  }, [notify])
+
   // Account revalidation — a disabled/inactive user must never stay logged in or auto-login:
-  // re-check every 5 min and whenever the app returns to foreground. 401/disabled → force
+  // re-check every 60 seconds and whenever the app returns to foreground. 401/disabled → force
   // logout (clears the stored session). Transient network errors keep the session so a
   // surveyor in the field is never logged out by a bad connection.
   useEffect(() => {
@@ -1129,14 +1143,14 @@ export default function SurveyorApp() {
           setUser(null)
           setMyProgress(null)
           notify(
-            e?.disabled ? 'Account disabled — logged out' : 'Session expired — sign in again',
+            e?.disabled ? 'Account updated / disabled — logged out' : 'Session expired — sign in again',
             'error',
           )
         }
         // else: transient network error — keep session, retry next tick
       }
     }
-    const iv = setInterval(check, 5 * 60 * 1000)
+    const iv = setInterval(check, 60 * 1000)
     const onVis = () => {
       if (document.visibilityState === 'visible') void check()
     }

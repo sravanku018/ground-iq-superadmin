@@ -772,7 +772,7 @@ function DraftsScreen({ user, onToast, onEdit }) {
         </div>
       )}
 
-      {items?.map((d) => {
+      {items?.map((d, idx) => {
         const qa = d.qa || {}
         const a = qa.answers || {}
         const loc = qa.location_details || {}
@@ -780,17 +780,15 @@ function DraftsScreen({ user, onToast, onEdit }) {
         const isDraft = d.kind === 'draft'
         const isFailed = d.phase === 'failed'
         const isSyncing = d.phase === 'syncing'
+        const recordNum = d.recordIndex != null ? d.recordIndex : (items.length - idx)
         return (
           <div key={d.id} className="card" style={{ marginTop: 12, padding: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
               <strong style={{ fontSize: 14 }}>
                 {a.respondent_name || a.district || loc.display_name || 'Survey'}
-                {d.recordIndex != null && (
-                  <span className="muted" style={{ fontWeight: 600 }}>
-                    {' '}
-                    · Record #{d.recordIndex}
-                  </span>
-                )}
+                <span className="pill" style={{ fontWeight: 'bold', background: '#e0f2fe', color: '#0369a1', marginLeft: 6 }}>
+                  Record #{recordNum}
+                </span>
               </strong>
               <span className={`pill ${isFailed ? '' : isDraft ? '' : 'ok'}`} style={{ fontSize: 11 }}>
                 {isFailed ? 'failed' : isDraft ? 'draft' : 'to sync'}

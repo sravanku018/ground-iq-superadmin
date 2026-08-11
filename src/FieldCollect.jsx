@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getMyProgress, getSurveyForm } from './api'
 import { deleteDraft, savePackageLocal } from './localStore'
 import { forceSyncNow, getQueueSnapshot } from './syncEngine'

@@ -121,14 +121,18 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
       .then(({ listAllPackages }) => listAllPackages())
       .then((all) => {
         if (!alive) return
-        const me = user?.name || user?.username || ''
         const list = Array.isArray(all) ? all : []
-        const mine = list.filter(
-          (p) => p && String(p.qa?.submitted_by || '') === me,
-        )
+        const meName = String(user?.name || '').toLowerCase()
+        const meUsername = String(user?.username || '').toLowerCase()
+        const mine = list.filter((p) => {
+          if (!p) return false
+          const pUser = String(p.submitted_by || p.qa?.submitted_by || '').toLowerCase()
+          if (!pUser || (meName && pUser === meName) || (meUsername && pUser === meUsername)) return true
+          return true
+        })
         const maxIdx = mine.reduce((m, p) => Math.max(m, Number(p?.recordIndex) || 0), 0)
-        if (maxIdx) setLocalDoneCount(maxIdx)
-        else if (mine.length) setLocalDoneCount(mine.length)
+        const count = Math.max(maxIdx, mine.length)
+        if (count > 0) setLocalDoneCount(count)
       })
       .catch(() => {})
     return () => {
@@ -952,76 +956,80 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         </div>
 
         {/* Live quota + device queue */}
-        <div className="card" style={{ marginBottom: 10, padding: '12px 14px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong>
-              Record{' '}
-              {progress?.target > 0
-                ? `${Math.min(localDoneCount + 1, progress.target)} / ${progress.target}`
-                : `#${localDoneCount + 1}`}
-            </strong>
-            <span
-              className={`pill ${
-                progress?.status === 'completed'
-                  ? 'ok'
-                  : progress?.status === 'in_progress'
-                    ? 'warn'
-                    : 'bad'
-              }`}
-            >
-              <span className="dot" />
-              {progress?.status || '…'}
-            </span>
-          </div>
-          <p className="muted" style={{ margin: '6px 0 4px', fontSize: 12 }}>
-            {progLabel}
-            {progress?.remaining != null && progress.remaining > 0
-              ? ` · ${progress.remaining} left`
-              : ''}
-          </p>
-          <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
-            Device queue: <strong>{queueInfo?.pending ?? 0}</strong> waiting ·{' '}
-            <strong>{queueInfo?.failed ?? 0}</strong> failed · sync: QA → photo → audio
-          </p>
-          {progress?.target > 0 && (
-            <div
-              style={{
-                height: 10,
-                background: 'rgba(15,23,42,0.08)',
-                borderRadius: 99,
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  width: `${Math.min(
-                    100,
-                    Math.round(
-                      ((localDoneCount || progress.done || 0) / progress.target) * 100,
-                    ),
-                  )}%`,
-                  height: '100%',
-                  background: progress.complete ? '#22c55e' : '#38bdf8',
-                  transition: 'width 0.3s ease',
+        {(() => {
+          const effectiveDoneCount = Math.max(localDoneCount, progress?.done || 0)
+          const currentRecordNum = effectiveDoneCount + 1
+          return (
+            <div className="card" style={{ marginBottom: 10, padding: '12px 14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong>
+                  Record{' '}
+                  {progress?.target > 0
+                    ? `${Math.min(currentRecordNum, progress.target)} / ${progress.target}`
+                    : `#${currentRecordNum}`}
+                </strong>
+                <span
+                  className={`pill ${
+                    progress?.status === 'completed'
+                      ? 'ok'
+                      : progress?.status === 'in_progress'
+                        ? 'warn'
+                        : 'bad'
+                  }`}
+                >
+                  <span className="dot" />
+                  {progress?.status || '…'}
+                </span>
+              </div>
+              <p className="muted" style={{ margin: '6px 0 4px', fontSize: 12 }}>
+                {progLabel}
+                {progress?.remaining != null && progress.remaining > 0
+                  ? ` · ${progress.remaining} left`
+                  : ''}
+              </p>
+              <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
+                Device queue: <strong>{queueInfo?.pending ?? 0}</strong> waiting ·{' '}
+                <strong>{queueInfo?.failed ?? 0}</strong> failed · sync: QA → photo → audio
+              </p>
+              {progress?.target > 0 && (
+                <div
+                  style={{
+                    height: 10,
+                    background: 'rgba(15,23,42,0.08)',
+                    borderRadius: 99,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.round((effectiveDoneCount / progress.target) * 100),
+                      )}%`,
+                      height: '100%',
+                      background: progress.complete ? '#22c55e' : '#38bdf8',
+                      transition: 'width 0.3s ease',
+                    }}
+                  />
+                </div>
+              )}
+              <button
+                type="button"
+                className="btn small"
+                style={{ marginTop: 8 }}
+                onClick={() => {
+                  void forceSyncNow().then(() => {
+                    refreshQueue()
+                    refreshProgress()
+                    onToast?.('Queue sync started', 'ok')
+                  })
                 }}
-              />
+              >
+                Sync queue now
+              </button>
             </div>
-          )}
-          <button
-            type="button"
-            className="btn small"
-            style={{ marginTop: 8 }}
-            onClick={() => {
-              void forceSyncNow().then(() => {
-                refreshQueue()
-                refreshProgress()
-                onToast?.('Queue sync started', 'ok')
-              })
-            }}
-          >
-            Sync queue now
-          </button>
-        </div>
+          )
+        })()}
 
         <div className="stepper">
           {['GPS', 'Photo', 'Voice+Q/A', 'Done'].map((label, i) => (

@@ -3698,11 +3698,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Create a Super Admin (01-PRD.md: max 3 platform-wide). The FIRST Super Admin can be
-    // bootstrapped by any portal admin (no super admin password exists yet); afterwards only
-    // super_admin accounts can create more.
+    // Create a Super Admin (max 3 platform-wide) — Super Admin console only.
+    // Client Admin portal must never create Super Admins.
     if (path === "/api/super-admin" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") {
+        return json({
+          error: "Super Admin only — Client Admin cannot create Super Admin accounts",
+        }, 403);
+      }
       const body = await readBody(req);
       const username = String(body.username || "").trim().toLowerCase();
       const password = String(body.password || "");
@@ -3711,12 +3715,7 @@ Deno.serve(async (req) => {
       if (password.length < 8) return json({ error: "Password min 8 characters" }, 400);
       const countRows = await sql`SELECT COUNT(*) AS n FROM app_users WHERE role = 'super_admin'`;
       const count = Number((countRows[0] as { n?: unknown } | undefined)?.n ?? 0);
-      if (count === 0) {
-        if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      } else {
-        if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
-        if (count >= 3) return json({ error: "Super Admin cap of 3 reached" }, 403);
-      }
+      if (count >= 3) return json({ error: "Super Admin cap of 3 reached" }, 403);
       await sql`ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_role_check`.catch(() => null);
       await sql`ALTER TABLE app_users ADD CONSTRAINT app_users_role_check CHECK (role IN ('super_admin','admin','field','user','surveyor'))`.catch(() => null);
       try {
@@ -3749,20 +3748,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Bootstrap escape hatch: a portal admin can reset the password of the ONLY existing
-    // Super Admin (e.g. auto-bootstrapped account whose printed password was lost).
+    // Super Admin password reset — Super Admin console only (not Client Admin).
     if (path === "/api/super-admin/reset" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (me.role !== "super_admin") {
+        return json({
+          error: "Super Admin only — Client Admin cannot reset Super Admin passwords",
+        }, 403);
+      }
       const body = await readBody(req);
       const password = String(body.password || "");
       if (password.length < 8) return json({ error: "Password min 8 characters" }, 400);
       const countRows = await sql`SELECT COUNT(*) AS n FROM app_users WHERE role = 'super_admin'`;
       const count = Number((countRows[0] as { n?: unknown } | undefined)?.n ?? 0);
-      if (count !== 1) {
-        return json({
-          error: "Reset allowed only when exactly one Super Admin exists",
-        }, 403);
+      if (count < 1) {
+        return json({ error: "No Super Admin found" }, 404);
       }
       const saRows = await sql`SELECT id, username FROM app_users WHERE role = 'super_admin' LIMIT 1`;
       const sa = saRows[0] as { id: number; username: string } | undefined;

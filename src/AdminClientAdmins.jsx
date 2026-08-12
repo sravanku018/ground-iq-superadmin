@@ -226,7 +226,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
       const granted = POWER_DEFS.filter((p) => powers[p.key]).length
       const parts = [
         `${granted}/${POWER_DEFS.length} features`,
-        `limits Q${qVal} / projects ${svVal} / surveyors ${srVal}`,
+        `limits Q${qVal} / surveys ${svVal} / surveyors ${srVal}`,
       ]
       if (res?.username_changed) parts.push('username updated')
       if (res?.password_changed) parts.push('password updated · sessions revoked')

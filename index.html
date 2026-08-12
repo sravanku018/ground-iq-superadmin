@@ -2,6 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Avoid long-lived HTML shell cache: hashed assets change every deploy;
+         a stale index.html pointing at removed chunks causes MIME "text/html" module errors. -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta
@@ -12,7 +17,35 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="description" content="Election field survey mobile app for Telangana" />
-    <title>Election Survey · Surveyor</title>
+    <title>Ground IQ</title>
+    <!--
+      Self-heal BEFORE React loads: if a module script 404s (stale index.html
+      still names a removed Vite hash like index-DamPr00k.js), force one
+      cache-busting reload so the fresh index → new hashes is fetched.
+    -->
+    <script>
+      (function () {
+        var KEY = 'esurvey_module_miss_reload'
+        window.addEventListener(
+          'error',
+          function (e) {
+            var t = e && e.target
+            if (!t || t.tagName !== 'SCRIPT') return
+            if (t.type !== 'module' && !(t.src || '').includes('/assets/')) return
+            try {
+              if (sessionStorage.getItem(KEY) === '1') return
+              sessionStorage.setItem(KEY, '1')
+            } catch (_) {
+              /* private mode */
+            }
+            var u = new URL(window.location.href)
+            u.searchParams.set('_bust', String(Date.now()))
+            window.location.replace(u.toString())
+          },
+          true,
+        )
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

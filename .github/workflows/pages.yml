@@ -32,7 +32,13 @@ jobs:
           VITE_BASE: /ground-iq-superadmin/
           VITE_FIELD_APP: 0
           VITE_SUPER_ADMIN: 1
-      - run: cp dist/index.html dist/404.html
+      # SPA: 404.html for deep links. Also real /admin/ so Client Admin is HTTP 200
+      # (not 404→404.html), which avoids sticky cached shells that still name
+      # deleted Vite hashes (MIME text/html on module load).
+      - run: |
+          cp dist/index.html dist/404.html
+          mkdir -p dist/admin
+          cp dist/index.html dist/admin/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v5
         with:

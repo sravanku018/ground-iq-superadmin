@@ -20,6 +20,31 @@ export default defineConfig({
     __APP_VERSION_CODE__: JSON.stringify(appVersionCode),
     __APP_BUILD__: JSON.stringify(buildStamp),
   },
+  build: {
+    target: 'es2020',
+    cssCodeSplit: true,
+    // Smaller first paint on GitHub Pages — only preload direct entry deps
+    modulePreload: { polyfill: false },
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          // Keep React separate so admin shell caches across deploys of feature chunks
+          if (id.includes('react-dom') || id.includes('/react/') || id.includes('\\react\\')) {
+            return 'react-vendor'
+          }
+          // Heavy chart lib — only pulled when Analyze/Dashboard opens
+          if (id.includes('recharts') || id.includes('d3-') || id.includes('victory')) {
+            return 'charts'
+          }
+          // Map stack — only when SurveyMap opens
+          if (id.includes('leaflet')) {
+            return 'leaflet'
+          }
+        },
+      },
+    },
+  },
   server: {
     host: true,
     port: 5173,

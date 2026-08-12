@@ -175,9 +175,8 @@ function formatDate(v) {
 
 /**
  * Client Admin allocation card — shows the logged-in admin's own usage vs the
- * caps Super Admin set (surveys/questions/surveyors created / allocated) plus
- * their survey → surveyor mapping. Data comes from GET /api/users which is
- * tenant-scoped, so only this admin's own surveys & surveyors appear.
+ * caps Super Admin set on their profile (surveys / surveyors / questions per survey).
+ * Loads from /api/auth/me (preferred) then GET /api/users as fallback.
  */
 function AllocationCard({ user }) {
   const [self, setSelf] = useState(null)
@@ -187,22 +186,59 @@ function AllocationCard({ user }) {
   useEffect(() => {
     let cancelled = false
     setResolved(false)
-    listUsers()
-      .then((d) => {
+    setErr('')
+
+    async function load() {
+      // 1) /api/auth/me includes live counts for Client Admin
+      try {
+        const d = await me()
+        if (cancelled) return
+        if (d?.user && Number(d.user.id) === Number(user?.id)) {
+          setSelf(d.user)
+          setResolved(true)
+          return
+        }
+      } catch {
+        /* fall through */
+      }
+      // 2) GET /api/users — self row is included for Client Admin (id = me)
+      try {
+        const d = await listUsers()
         if (cancelled) return
         const row = (d.users || []).find((u) => Number(u.id) === Number(user?.id))
-        setSelf(row || null)
-        setResolved(true)
-      })
-      .catch((e) => {
+        if (row) {
+          setSelf(row)
+          setResolved(true)
+          return
+        }
+      } catch (e) {
         if (!cancelled) setErr(e.message || 'Failed to load allocation')
-      })
+      }
+      // 3) Session user at least shows Super-Admin-set caps (counts may be 0)
+      if (!cancelled) {
+        setSelf(
+          user
+            ? {
+                ...user,
+                survey_count: user.survey_count ?? 0,
+                surveyor_count: user.surveyor_count ?? 0,
+                question_count: user.question_count ?? 0,
+                survey_team: user.survey_team || [],
+                granted_surveys: user.granted_surveys || [],
+              }
+            : null,
+        )
+        setResolved(true)
+      }
+    }
+
+    void load()
     return () => {
       cancelled = true
     }
-  }, [user?.id])
+  }, [user?.id, user?.max_surveys, user?.max_surveyors, user?.max_questions_per_survey])
 
-  if (err) {
+  if (err && !self) {
     return (
       <div className="card" style={{ marginTop: 14 }}>
         <h3 style={{ marginTop: 0 }}>📊 My allocation</h3>
@@ -221,25 +257,47 @@ function AllocationCard({ user }) {
     )
   }
 
+  const maxSurveys = Number(self.max_surveys ?? user?.max_surveys) || 0
+  const maxSurveyors = Number(self.max_surveyors ?? user?.max_surveyors) || 0
+  const maxQ = Number(self.max_questions_per_survey ?? user?.max_questions_per_survey) || 0
   const fmt = (used, cap) => `${used ?? 0} / ${cap > 0 ? cap : '∞'}`
   const team = Array.isArray(self.survey_team) ? self.survey_team : []
+  const features = [
+    self.can_crud_questionnaire && 'Create surveys',
+    self.can_edit_surveys && 'Survey questions',
+    self.can_manage_questions && 'Question bank',
+    self.can_assign_surveyors && 'Assign surveyors',
+    self.can_review_data && 'Review data',
+    self.can_verify_surveyors && 'Verify surveyors',
+    self.can_validate_proof && 'Validate proof',
+  ].filter(Boolean)
+
   return (
     <div className="card" style={{ marginTop: 14 }}>
-      <h3 style={{ marginTop: 0 }}>📊 My allocation (created / allocated)</h3>
+      <h3 style={{ marginTop: 0 }}>📊 My allocation (created / Super Admin limit)</h3>
+      <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
+        Limits come from your Client Admin profile (set by Super Admin). 0 = unlimited.
+      </p>
       <div className="stat-row" style={{ marginBottom: 10 }}>
         <div className="stat">
-          <strong>{fmt(self.survey_count, self.max_surveys)}</strong>
+          <strong>{fmt(self.survey_count, maxSurveys)}</strong>
           <span>Surveys</span>
         </div>
         <div className="stat">
-          <strong>{fmt(self.surveyor_count, self.max_surveyors)}</strong>
+          <strong>{fmt(self.surveyor_count, maxSurveyors)}</strong>
           <span>Surveyors</span>
         </div>
         <div className="stat">
-          <strong>{fmt(self.question_count, self.max_questions_per_survey)}</strong>
-          <span>Questions / survey</span>
+          <strong>{fmt(self.question_count, maxQ)}</strong>
+          <span>Questions / survey (peak)</span>
         </div>
       </div>
+      {features.length > 0 && (
+        <p style={{ fontSize: 12, margin: '0 0 10px' }}>
+          <strong>Features on:</strong>{' '}
+          <span className="muted">{features.join(' · ')}</span>
+        </p>
+      )}
       <h4 style={{ fontSize: 13, margin: '8px 0 8px' }}>🗺 Survey → Surveyor mapping</h4>
       {team.length > 0 ? (
         <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -259,7 +317,7 @@ function AllocationCard({ user }) {
           No surveys yet — create surveys first, then map surveyors to them.
         </p>
       )}
-      {(Array.isArray(self.granted_surveys) && self.granted_surveys.length > 0) && (
+      {Array.isArray(self.granted_surveys) && self.granted_surveys.length > 0 && (
         <>
           <h4 style={{ fontSize: 13, margin: '14px 0 8px' }}>🔗 Connected projects (shared by Super Admin)</h4>
           <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -272,8 +330,8 @@ function AllocationCard({ user }) {
         </>
       )}
       <p className="muted" style={{ fontSize: 11, margin: '8px 0 0' }}>
-        Caps are set by Super Admin. Only your own surveys and surveyors are shown — nothing is mixed
-        with other client admins.
+        Caps are set by Super Admin on your profile. Creating past a limit is blocked until Super Admin
+        raises it. Only your own surveys and surveyors are shown.
       </p>
     </div>
   )

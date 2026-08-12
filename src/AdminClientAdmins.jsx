@@ -476,7 +476,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                     {u.active !== false && (
                       <span className="meta" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
                         <span className="pill" title="Surveys created / allocated">📋 surveys {u.survey_count ?? 0} / {u.max_surveys > 0 ? u.max_surveys : '∞'} allocated</span>
-                        <span className="pill" title="Total questions created / max per survey">📝 questions {u.question_count ?? 0} / {u.max_questions_per_survey > 0 ? u.max_questions_per_survey : '∞'} allocated</span>
+                        <span className="pill" title="Peak questions in one survey / max per survey">📝 questions {u.question_count ?? 0} / {u.max_questions_per_survey > 0 ? u.max_questions_per_survey : '∞'} allocated</span>
                         <span className="pill" title="Surveyors created / allocated">👥 surveyors {u.surveyor_count ?? 0} / {u.max_surveyors > 0 ? u.max_surveyors : '∞'} allocated</span>
                         <span className="pill" title="Records submitted by this Client Admin's surveyors">🗃 records {u.surveyor_record_count ?? 0}</span>
                       </span>

@@ -229,6 +229,19 @@ function sqlBool(v: unknown): boolean {
   return false;
 }
 
+/**
+ * Read COUNT(*) row from `const [row] = await sql\`SELECT COUNT(*)::int AS n …\``.
+ * Must use row.n — treating the row as an array always yields 0 and breaks limits/UI.
+ */
+function sqlCountN(row: unknown): number {
+  if (row == null) return 0;
+  if (typeof row === "object" && "n" in (row as object)) {
+    const n = Number((row as { n?: unknown }).n);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
 /** Grant-based power check — Super Admin always has every power; Client Admins need the grant. */
 function hasPower(
   me: { role: unknown } & Record<string, unknown> | null,
@@ -3116,6 +3129,51 @@ Deno.serve(async (req) => {
 
     if (path === "/api/auth/me" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
+      // Client Admin: attach live usage vs Super-Admin-set caps so Overview "My allocation" works
+      // without relying only on GET /api/users (which can be filtered / slow).
+      if (me.role === "admin" && sql) {
+        const [sCnt] = await sql`SELECT COUNT(*)::int AS n FROM survey_form WHERE created_by = ${me.id}`.catch(() => [{ n: 0 }]);
+        const [srCnt] = await sql`SELECT COUNT(*)::int AS n FROM app_users WHERE role = 'surveyor' AND created_by = ${me.id}`.catch(() => [{ n: 0 }]);
+        const [qCnt] = await sql`
+          SELECT COALESCE(MAX(jsonb_array_length(COALESCE(questions, '[]'::jsonb))), 0)::int AS n
+          FROM survey_form WHERE created_by = ${me.id}
+        `.catch(() => [{ n: 0 }]);
+        const teamRows = await sql`
+          SELECT f.id AS sid, f.title,
+                 COALESCE(array_agg(jsonb_build_object('id', u.id, 'username', u.username, 'name', COALESCE(u.display_name, u.username)))
+                   FILTER (WHERE u.id IS NOT NULL), '[]'::jsonb) AS surveyors
+          FROM survey_form f
+          LEFT JOIN survey_assignments a ON a.survey_id = f.id
+          LEFT JOIN app_users u ON u.id = a.user_id AND u.created_by = ${me.id} AND u.role = 'surveyor'
+          WHERE f.created_by = ${me.id}
+          GROUP BY f.id, f.title ORDER BY f.title
+        `.catch(() => []);
+        const survey_team = (teamRows as { sid: number; title: string; surveyors: unknown }[]).map((t) => ({
+          id: Number(t.sid),
+          title: String(t.title),
+          surveyors: Array.isArray(t.surveyors)
+            ? (t.surveyors as { id: number; username: string; name: string }[])
+            : [],
+        }));
+        const granted = await sql`
+          SELECT f.id, f.title
+          FROM survey_admin_access saa JOIN survey_form f ON f.id = saa.survey_id
+          WHERE saa.admin_id = ${me.id} ORDER BY f.title
+        `.catch(() => []);
+        return json({
+          user: {
+            ...me,
+            survey_count: sqlCountN(sCnt),
+            surveyor_count: sqlCountN(srCnt),
+            question_count: sqlCountN(qCnt),
+            survey_team,
+            granted_surveys: (granted as { id: number; title: string }[]).map((p) => ({
+              id: Number(p.id),
+              title: String(p.title),
+            })),
+          },
+        });
+      }
       return json({ user: me });
     }
 
@@ -3442,9 +3500,9 @@ Deno.serve(async (req) => {
         let survey_team: { id: number; title: string; surveyors: { id: number; username: string; name: string }[] }[] = [];
         if (r.role === "admin") {
           const [sCnt] = await sql`SELECT COUNT(*)::int AS n FROM survey_form WHERE created_by = ${Number(r.id)}`.catch(() => [{ n: 0 }]);
-          survey_count = Number((sCnt as { n?: unknown }[])[0]?.n ?? 0);
+          survey_count = sqlCountN(sCnt);
           const [srCnt] = await sql`SELECT COUNT(*)::int AS n FROM app_users WHERE role = 'surveyor' AND created_by = ${Number(r.id)}`.catch(() => [{ n: 0 }]);
-          surveyor_count = Number((srCnt as { n?: unknown }[])[0]?.n ?? 0);
+          surveyor_count = sqlCountN(srCnt);
           const [recordCnt] = await sql`
             SELECT COUNT(*)::int AS n
             FROM submissions s JOIN app_users u ON (
@@ -3453,9 +3511,13 @@ Deno.serve(async (req) => {
             )
             WHERE u.role = 'surveyor' AND u.created_by = ${Number(r.id)}
           `.catch(() => [{ n: 0 }]);
-          surveyor_record_count = Number((recordCnt as { n?: unknown }[])[0]?.n ?? 0);
-          const [qCnt] = await sql`SELECT COALESCE(SUM(jsonb_array_length(questions)), 0)::int AS n FROM survey_form WHERE created_by = ${Number(r.id)}`.catch(() => [{ n: 0 }]);
-          question_count = Number((qCnt as { n?: unknown }[])[0]?.n ?? 0);
+          surveyor_record_count = sqlCountN(recordCnt);
+          // Peak questions in any one survey (matches max_questions_per_survey cap)
+          const [qCnt] = await sql`
+            SELECT COALESCE(MAX(jsonb_array_length(COALESCE(questions, '[]'::jsonb))), 0)::int AS n
+            FROM survey_form WHERE created_by = ${Number(r.id)}
+          `.catch(() => [{ n: 0 }]);
+          question_count = sqlCountN(qCnt);
           // Survey → surveyor mapping for this admin (only their own surveys + own surveyors)
           const teamRows = await sql`
             SELECT f.id AS sid, f.title,
@@ -3555,7 +3617,7 @@ Deno.serve(async (req) => {
         const [sl] = await sql`SELECT approved_limit FROM seat_limits WHERE seat_role = 'admin'`.catch(() => []);
         const limit = sl ? Number((sl as { approved_limit: unknown }).approved_limit) : 5;
         const [cnt] = await sql`SELECT COUNT(*)::int AS n FROM app_users WHERE role = 'admin' AND active = TRUE`.catch(() => [{ n: 0 }]);
-        const current = Number((cnt as { n?: unknown }[])[0]?.n ?? 0);
+        const current = sqlCountN(cnt);
         if (current >= limit) {
           return json({
             error: `Admin seat limit (${limit}) reached — file a seat upgrade request; Super Admin approves it (BR-006)`,
@@ -3597,7 +3659,7 @@ Deno.serve(async (req) => {
         const cap = Number((me as Record<string, unknown>).max_surveyors) || 0;
         if (cap > 0) {
           const [sc] = await sql`SELECT COUNT(*)::int AS n FROM app_users WHERE role = 'surveyor' AND created_by = ${me.id}`.catch(() => [{ n: 0 }]);
-          const surveyorCount = Number((sc as { n?: unknown }[])[0]?.n ?? 0);
+          const surveyorCount = sqlCountN(sc);
           if (surveyorCount >= cap) {
             return json({
               error: `Surveyor limit reached — max ${cap} surveyors (set by Super Admin). Delete a surveyor or ask Super Admin to raise the limit.`,
@@ -3804,7 +3866,7 @@ Deno.serve(async (req) => {
         const cap = Number((me as Record<string, unknown>).max_surveyors) || 0;
         if (cap > 0) {
           const [sc] = await sql`SELECT COUNT(*)::int AS n FROM app_users WHERE role = 'surveyor' AND created_by = ${me.id}`.catch(() => [{ n: 0 }]);
-          const surveyorCount = Number((sc as { n?: unknown }[])[0]?.n ?? 0);
+          const surveyorCount = sqlCountN(sc);
           const remaining = Math.max(0, cap - surveyorCount);
           if (remaining <= 0) {
             return json({
@@ -4534,7 +4596,7 @@ Deno.serve(async (req) => {
       return json({
         requests: reqs,
         limits: (limits as Record<string, unknown>) || null,
-        current_admins: Number((cnt as { n?: unknown }[])[0]?.n ?? 0),
+        current_admins: sqlCountN(cnt),
         can_submit: me.role === "admin",
       });
     }

@@ -59,34 +59,29 @@ export default function AdminClientAdminsScreen({ onToast }) {
   const [powerDrafts, setPowerDrafts] = useState({})
   const [companyNames, setCompanyNames] = useState([])
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [data, seats, companies] = await Promise.all([
-        listUsers(),
-        getSeatRequests().catch(() => null),
-        listCompanies().catch(() => null),
-      ])
-      const list = data.users || []
-      setUsers(list)
-      if (seats) setSeatData(seats)
-      if (companies) setCompanyNames((companies.items || []).map((c) => c.name))
-      // Re-sync open profile checkboxes + limits from server after every fetch
-      setPowerDrafts((d) => {
-        const next = { ...d }
-        for (const u of list) {
-          if (next[u.id] != null) next[u.id] = powersFromUser(u)
-        }
-        return next
-      })
-      return list
-    } catch (e) {
-      onToast?.(e.message, 'error')
-      return []
-    } finally {
-      setLoading(false)
-    }
-  }, [onToast])
+  const load = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!silent) setLoading(true)
+      try {
+        const [data, seats, companies] = await Promise.all([
+          listUsers(),
+          getSeatRequests().catch(() => null),
+          listCompanies().catch(() => null),
+        ])
+        const list = data.users || []
+        setUsers(list)
+        if (seats) setSeatData(seats)
+        if (companies) setCompanyNames((companies.items || []).map((c) => c.name))
+        return list
+      } catch (e) {
+        onToast?.(e.message, 'error')
+        return []
+      } finally {
+        if (!silent) setLoading(false)
+      }
+    },
+    [onToast],
+  )
 
   useEffect(() => {
     load()
@@ -96,7 +91,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
   /** Always full map: server base + any in-progress checkbox edits */
   const draftPowers = (u) => ({
     ...powersFromUser(u),
-    ...(powerDrafts[u.id] || {}),
+    ...((powerDrafts[u.id] ?? powerDrafts[String(u.id)]) || {}),
   })
   const powersOf = (u) => POWER_DEFS.filter((p) => draftPowers(u)[p.key])
   const canVerify = me?.role === 'super_admin' || !!me?.can_verify_surveyors
@@ -108,126 +103,145 @@ export default function AdminClientAdminsScreen({ onToast }) {
   const seatPending = (seatData?.requests || []).filter((r) => r.status === 'pending')
   const canAccessCount = admins.filter((a) => a.active !== false).length
 
+  const uid = (u) => Number(u?.id)
+
   const toggleProfile = (u) => {
-    if (profileId === u.id) {
+    const id = uid(u)
+    if (profileId === id) {
       setProfileId(null)
       return
     }
-    setProfileId(u.id)
+    setProfileId(id)
     setEdit({
       username: u.username || '',
       name: u.name || u.display_name || '',
       company_name: u.company_name || '',
       password: '',
     })
-    setPowerDrafts((d) => ({ ...d, [u.id]: powersFromUser(u) }))
-    setMaxQInputs((m) => ({ ...m, [u.id]: u.max_questions_per_survey ?? 0 }))
-    setMaxSvInputs((m) => ({ ...m, [u.id]: u.max_surveys ?? 0 }))
-    setMaxSrInputs((m) => ({ ...m, [u.id]: u.max_surveyors ?? 0 }))
+    setPowerDrafts((d) => ({ ...d, [id]: powersFromUser(u) }))
+    setMaxQInputs((m) => ({ ...m, [id]: Number(u.max_questions_per_survey) || 0 }))
+    setMaxSvInputs((m) => ({ ...m, [id]: Number(u.max_surveys) || 0 }))
+    setMaxSrInputs((m) => ({ ...m, [id]: Number(u.max_surveyors) || 0 }))
   }
 
   const setPowerCheck = (u, key, checked) => {
+    const id = uid(u)
     setPowerDrafts((d) => ({
       ...d,
-      [u.id]: {
+      [id]: {
         ...powersFromUser(u),
-        ...(d[u.id] || {}),
+        ...(d[id] || {}),
         [key]: !!checked,
       },
     }))
   }
 
   const setAllPowers = (u, on) => {
-    const next = powersFromUser(u)
+    const id = uid(u)
+    const next = {}
     for (const p of POWER_DEFS) next[p.key] = !!on
-    setPowerDrafts((d) => ({ ...d, [u.id]: next }))
+    setPowerDrafts((d) => ({ ...d, [id]: next }))
   }
 
   /** Single save: features + caps + account fields in one PATCH. */
   const saveAllChanges = async (u) => {
+    const id = uid(u)
+    if (!id) {
+      onToast?.('Invalid user id — cannot save', 'error')
+      return
+    }
     setSaving(true)
     try {
       const powers = draftPowers(u)
-      // Prefer draft inputs; fall back to server values (never leave undefined)
-      const qVal =
-        maxQInputs[u.id] != null && maxQInputs[u.id] !== ''
-          ? Number(maxQInputs[u.id])
-          : Number(u.max_questions_per_survey) || 0
-      const svVal =
-        maxSvInputs[u.id] != null && maxSvInputs[u.id] !== ''
-          ? Number(maxSvInputs[u.id])
-          : Number(u.max_surveys) || 0
-      const srVal =
-        maxSrInputs[u.id] != null && maxSrInputs[u.id] !== ''
-          ? Number(maxSrInputs[u.id])
-          : Number(u.max_surveyors) || 0
+      const qRaw = maxQInputs[id] ?? maxQInputs[u.id] ?? u.max_questions_per_survey
+      const svRaw = maxSvInputs[id] ?? maxSvInputs[u.id] ?? u.max_surveys
+      const srRaw = maxSrInputs[id] ?? maxSrInputs[u.id] ?? u.max_surveyors
+      const qVal = Math.max(0, Math.min(100000, Number(qRaw) || 0))
+      const svVal = Math.max(0, Math.min(100000, Number(svRaw) || 0))
+      const srVal = Math.max(0, Math.min(100000, Number(srRaw) || 0))
 
       const body = {
-        max_questions_per_survey: Math.max(0, Math.min(100000, qVal || 0)),
-        max_surveys: Math.max(0, Math.min(100000, svVal || 0)),
-        max_surveyors: Math.max(0, Math.min(100000, srVal || 0)),
+        max_questions_per_survey: qVal,
+        max_surveys: svVal,
+        max_surveyors: srVal,
         // Always send every power key so partial drafts cannot wipe others
         ...Object.fromEntries(POWER_DEFS.map((p) => [p.key, !!powers[p.key]])),
       }
-      const typedUsername = edit.username.trim()
-      const typedName = edit.name.trim()
-      const typedPassword = edit.password.trim()
+      const typedUsername = String(edit.username || '').trim()
+      const typedName = String(edit.name || '').trim()
+      const typedPassword = String(edit.password || '').trim()
+      const typedCompany = String(edit.company_name || '').trim()
       if (typedUsername && typedUsername.toLowerCase() !== String(u.username || '').toLowerCase()) {
         body.username = typedUsername.toLowerCase()
       }
       if (typedName && typedName !== String(u.name || u.display_name || '')) {
         body.name = typedName
       }
-      if (edit.company_name.trim() !== String(u.company_name || '')) {
-        body.company_name = edit.company_name.trim()
+      if (typedCompany !== String(u.company_name || '')) {
+        body.company_name = typedCompany
       }
       if (typedPassword) body.password = typedPassword
 
-      const res = await updateUser(u.id, body)
-      if (!res?.ok && res?.error) throw new Error(res.error)
+      const res = await updateUser(id, body)
+      if (res?.error) throw new Error(res.error)
+      if (res && res.ok === false) throw new Error(res.message || 'Save rejected')
 
       const savedUser = res?.user || {}
+      // Prefer explicit body + powers we just sent (source of truth we wrote)
       const merged = {
         ...u,
-        ...powers,
         ...savedUser,
-        max_questions_per_survey: savedUser.max_questions_per_survey ?? body.max_questions_per_survey,
+        ...powers,
+        max_questions_per_survey:
+          savedUser.max_questions_per_survey ?? body.max_questions_per_survey,
         max_surveys: savedUser.max_surveys ?? body.max_surveys,
         max_surveyors: savedUser.max_surveyors ?? body.max_surveyors,
+        username: savedUser.username || u.username,
+        name: savedUser.name || u.name,
+        company_name:
+          savedUser.company_name !== undefined
+            ? savedUser.company_name
+            : u.company_name,
       }
-      // Keep profile open with saved values (do not wipe the form)
-      setPowerDrafts((d) => ({ ...d, [u.id]: powersFromUser(merged) }))
-      setMaxQInputs((m) => ({ ...m, [u.id]: merged.max_questions_per_survey ?? 0 }))
-      setMaxSvInputs((m) => ({ ...m, [u.id]: merged.max_surveys ?? 0 }))
-      setMaxSrInputs((m) => ({ ...m, [u.id]: merged.max_surveyors ?? 0 }))
+
+      // Optimistic list update — do NOT blank the page with loading spinner
+      setUsers((list) =>
+        list.map((row) => (Number(row.id) === id ? { ...row, ...merged } : row)),
+      )
+      setPowerDrafts((d) => ({ ...d, [id]: powersFromUser(merged) }))
+      setMaxQInputs((m) => ({ ...m, [id]: merged.max_questions_per_survey ?? 0 }))
+      setMaxSvInputs((m) => ({ ...m, [id]: merged.max_surveys ?? 0 }))
+      setMaxSrInputs((m) => ({ ...m, [id]: merged.max_surveyors ?? 0 }))
       setEdit({
-        username: merged.username || u.username || '',
-        name: merged.name || u.name || '',
-        company_name: merged.company_name || u.company_name || '',
+        username: merged.username || '',
+        name: merged.name || '',
+        company_name: merged.company_name || '',
         password: '',
       })
+      setProfileId(id)
 
       const granted = POWER_DEFS.filter((p) => powers[p.key]).length
       const parts = [
         `${granted}/${POWER_DEFS.length} features`,
-        `limits Q${body.max_questions_per_survey}/S${body.max_surveys}/R${body.max_surveyors}`,
+        `limits Q${qVal} / projects ${svVal} / surveyors ${srVal}`,
       ]
-      if (res.username_changed) parts.push('username updated')
-      if (res.password_changed) parts.push('password updated · sessions revoked')
+      if (res?.username_changed) parts.push('username updated')
+      if (res?.password_changed) parts.push('password updated · sessions revoked')
       onToast?.(
-        `Saved @${merged.username || u.username} · ${parts.join(' · ')}. Client Admin must re-login to use new features.`,
+        `Saved @${merged.username} · ${parts.join(' · ')}. Client Admin must re-login for new features.`,
         'ok',
       )
-      if (res.password_changed && res.plain_password) {
+      if (res?.password_changed && res.plain_password) {
         setCreated({
           username: res.user?.username || body.username || u.username,
           password: res.plain_password,
           name: res.user?.name || body.name || u.name || u.username,
         })
       }
-      // Refresh list from server (source of truth) without closing the profile
-      await load()
+      // Background refresh — silent so the open profile is not unmounted
+      load({ silent: true }).catch(() => {})
     } catch (e) {
+      console.error('Client Admin profile save failed', e)
       onToast?.(e.message || 'Save failed', 'error')
     } finally {
       setSaving(false)
@@ -313,7 +327,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
     try {
       await deleteUser(u.id)
       onToast?.(`Deleted @${u.username}`, 'ok')
-      if (profileId === u.id) setProfileId(null)
+      if (Number(profileId) === Number(u.id)) setProfileId(null)
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -439,7 +453,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
         ) : (
           <ul className="user-list">
             {admins.map((u) => (
-              <li key={u.id} style={{ border: profileId === u.id ? '1px solid #059669' : undefined, borderRadius: 10 }}>
+              <li key={u.id} style={{ border: Number(profileId) === Number(u.id) ? '1px solid #059669' : undefined, borderRadius: 10 }}>
                 <div>
                   <strong>
                     {u.name || u.username}{' '}
@@ -469,10 +483,10 @@ export default function AdminClientAdminsScreen({ onToast }) {
                 <div className="user-actions">
                   <button
                     type="button"
-                    className={`btn small ${profileId === u.id ? 'primary' : ''}`}
+                    className={`btn small ${Number(profileId) === Number(u.id) ? 'primary' : ''}`}
                     onClick={() => toggleProfile(u)}
                   >
-                    {profileId === u.id ? 'Close profile' : '👤 Profile'}
+                    {Number(profileId) === Number(u.id) ? 'Close profile' : '👤 Profile'}
                   </button>
                   <button
                     type="button"
@@ -495,7 +509,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                   </button>
                 </div>
 
-                {profileId === u.id && (
+                {Number(profileId) === Number(u.id) && (
                   <div
                     className="card"
                     style={{
@@ -568,11 +582,15 @@ export default function AdminClientAdminsScreen({ onToast }) {
 
                     {/* Features (powers) — checkmarks, save all at once */}
                     <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>
-                      🧩 Features (granted powers)
+                      🧩 Features &amp; limits
                       <span className="muted" style={{ fontWeight: 500, marginLeft: 8 }}>
-                        {powersOf(u).length}/{POWER_DEFS.length} checked
+                        {powersOf(u).length}/{POWER_DEFS.length} features checked
                       </span>
                     </h4>
+                    <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
+                      Tick features and set limits, then press <strong>Save features &amp; limits</strong>{' '}
+                      (does not close this profile).
+                    </p>
                     <div
                       style={{
                         display: 'flex',
@@ -652,11 +670,6 @@ export default function AdminClientAdminsScreen({ onToast }) {
                         )
                       })}
                     </div>
-                    <p className="muted" style={{ fontSize: 11, margin: '8px 0 0' }}>
-                      Tick features, then press <strong>Save all changes</strong> below. Super Admin
-                      only — one save writes every power.
-                    </p>
-
                     {/* Limits */}
                     <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>📏 Limits</h4>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -672,14 +685,14 @@ export default function AdminClientAdminsScreen({ onToast }) {
                             min="0"
                             max="100000"
                             value={
-                              maxQInputs[u.id] != null
-                                ? maxQInputs[u.id]
+                              maxQInputs[Number(u.id)] != null
+                                ? maxQInputs[Number(u.id)]
                                 : (u.max_questions_per_survey ?? 0)
                             }
                             onChange={(e) =>
                               setMaxQInputs((m) => ({
                                 ...m,
-                                [u.id]: Math.max(0, Number(e.target.value) || 0),
+                                [Number(u.id)]: Math.max(0, Number(e.target.value) || 0),
                               }))
                             }
                             style={{ width: 90, padding: '6px 8px' }}
@@ -698,14 +711,14 @@ export default function AdminClientAdminsScreen({ onToast }) {
                             min="0"
                             max="100000"
                             value={
-                              maxSvInputs[u.id] != null
-                                ? maxSvInputs[u.id]
+                              maxSvInputs[Number(u.id)] != null
+                                ? maxSvInputs[Number(u.id)]
                                 : (u.max_surveys ?? 0)
                             }
                             onChange={(e) =>
                               setMaxSvInputs((m) => ({
                                 ...m,
-                                [u.id]: Math.max(0, Number(e.target.value) || 0),
+                                [Number(u.id)]: Math.max(0, Number(e.target.value) || 0),
                               }))
                             }
                             style={{ width: 90, padding: '6px 8px' }}
@@ -724,14 +737,14 @@ export default function AdminClientAdminsScreen({ onToast }) {
                             min="0"
                             max="100000"
                             value={
-                              maxSrInputs[u.id] != null
-                                ? maxSrInputs[u.id]
+                              maxSrInputs[Number(u.id)] != null
+                                ? maxSrInputs[Number(u.id)]
                                 : (u.max_surveyors ?? 0)
                             }
                             onChange={(e) =>
                               setMaxSrInputs((m) => ({
                                 ...m,
-                                [u.id]: Math.max(0, Number(e.target.value) || 0),
+                                [Number(u.id)]: Math.max(0, Number(e.target.value) || 0),
                               }))
                             }
                             style={{ width: 90, padding: '6px 8px' }}
@@ -741,8 +754,23 @@ export default function AdminClientAdminsScreen({ onToast }) {
                     </div>
                     <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
                       Caps are enforced server-side when this admin creates surveyors, surveys,
-                      or edits surveys.
+                      or edits surveys. 0 = unlimited.
                     </p>
+
+                    {/* Save features + limits immediately under the controls */}
+                    <div style={{ marginTop: 14 }}>
+                      <button
+                        type="button"
+                        className="btn primary"
+                        style={{ width: '100%' }}
+                        disabled={saving}
+                        onClick={() => void saveAllChanges(u)}
+                      >
+                        {saving
+                          ? 'Saving…'
+                          : `💾 Save features & limits (${powersOf(u).length}/${POWER_DEFS.length} on)`}
+                      </button>
+                    </div>
 
                     {/* Separate tenant bucket: this profile's projects, surveyors and records only. */}
                     <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🗺 This Client Admin’s projects & surveyors</h4>
@@ -846,7 +874,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       sessions (forces re-login).
                     </p>
 
-                    {/* One save for everything in this profile */}
+                    {/* Save account fields too (same handler includes features + limits) */}
                     <div style={{ marginTop: 14 }}>
                       <button
                         type="button"
@@ -855,13 +883,11 @@ export default function AdminClientAdminsScreen({ onToast }) {
                         disabled={saving}
                         onClick={() => void saveAllChanges(u)}
                       >
-                        {saving
-                          ? 'Saving…'
-                          : `💾 Save all changes (${powersOf(u).length}/${POWER_DEFS.length} features)`}
+                        {saving ? 'Saving…' : '💾 Save profile (features + limits + account)'}
                       </button>
                       <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
-                        Saves feature checkmarks, limits, and account fields (username / name /
-                        password) in one request.
+                        One request writes features, limits, and account fields. Client Admin must
+                        re-login to see new menu powers.
                       </p>
                     </div>
 

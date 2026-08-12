@@ -2764,29 +2764,33 @@ async function buildAnalytics(
           return b.value - a.value || a.surveyor.localeCompare(b.surveyor);
         });
       })(),
-      // Dynamic per-question filter dropdowns (from the selected survey)
-      questions: surveyQuestions.map((q) => ({
-        id: q.id,
-        label: q.label,
-        type: q.type,
-        options: q.options,
-        counts: (() => {
-          const map = new Map<string, number>();
-          for (const r of universe) {
-            const av = answerOf(r.answers, q.id, q.label);
-            const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
-            for (const v of vals) {
-              const name = q.type === "age" ? ageBucket(v) : v;
-              if (!name || name === "Unknown") continue;
-              map.set(name, (map.get(name) || 0) + 1);
-            }
+      // Dynamic per-question filter dropdowns (from the selected survey).
+      // Counts come from `subset` (all active filters applied — district/party/
+      // gender/caste/q_* included) so the numbers shown next to each option
+      // match what the charts are currently displaying, not the unfiltered universe.
+      questions: surveyQuestions.map((q) => {
+        const map = new Map<string, number>();
+        for (const r of subset) {
+          const av = answerOf(r.answers, q.id, q.label);
+          const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
+          for (const v of vals) {
+            const name = q.type === "age" ? ageBucket(v) : v;
+            if (!name || name === "Unknown") continue;
+            map.set(name, (map.get(name) || 0) + 1);
           }
-          return [...map.entries()]
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 100);
-        })(),
-      })),
+        }
+        const counts = [...map.entries()]
+          .map(([name, value]) => ({ name, value }))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, 100);
+        return {
+          id: q.id,
+          label: q.label,
+          type: q.type,
+          options: q.options,
+          counts,
+        };
+      }),
       // Surveyor × month (each surveyor's monthly totals)
       by_surveyor_month: (() => {
         const map = new Map<string, { surveyor: string; month: string; value: number }>();

@@ -707,24 +707,34 @@ export default function DashboardScreen({ onToast }) {
             <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
               Question filters (auto from survey)
             </p>
-            {data?.dataFilters?.questions?.map((q) => (
-              <label className="field compact" key={q.id}>
-                <span>{q.label}</span>
-                <select
-                  value={filters[`q_${q.id}`] || ''}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, [`q_${q.id}`]: e.target.value }))
-                  }
-                >
-                  <option value="">All {q.label}</option>
-                  {(q.counts || []).map((c) => (
-                    <option key={c.name} value={c.name}>
-                      {c.name} ({c.value})
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
+            {data?.dataFilters?.questions?.map((q) => {
+              // Merge defined options (q.options) with submitted-value counts
+              // (q.counts) so a question with predefined choices but zero
+              // answers yet still shows its full choice list, and any answer
+              // value not in the defined list (free text) still appears.
+              const countMap = new Map((q.counts || []).map((c) => [c.name, c.value]))
+              const optionNames = [
+                ...new Set([...(q.options || []), ...countMap.keys()]),
+              ]
+              return (
+                <label className="field compact" key={q.id}>
+                  <span>{q.label}</span>
+                  <select
+                    value={filters[`q_${q.id}`] || ''}
+                    onChange={(e) =>
+                      setFilters((f) => ({ ...f, [`q_${q.id}`]: e.target.value }))
+                    }
+                  >
+                    <option value="">All {q.label}</option>
+                    {optionNames.map((name) => (
+                      <option key={name} value={name}>
+                        {countMap.has(name) ? `${name} (${countMap.get(name)})` : name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )
+            })}
             {!data?.dataFilters?.questions?.length && (
               <p className="muted" style={{ fontSize: 12, margin: 0 }}>
                 No question filters for this survey yet.

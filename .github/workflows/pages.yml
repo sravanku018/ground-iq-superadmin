@@ -1,4 +1,11 @@
-name: Deploy Super Admin console to GitHub Pages
+# Deploys GitHub Pages for either:
+#   ground-iq-web        → Client Admin  (https://sravanku018.github.io/ground-iq-web/)
+#   ground-iq-superadmin → Super Admin   (https://sravanku018.github.io/ground-iq-superadmin/)
+#
+# Both repos run this workflow; build flags depend on which repo is deploying.
+# Source of truth is always ground-iq-web@main.
+
+name: Deploy GitHub Pages
 
 on:
   push:
@@ -11,7 +18,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.repository }}
   cancel-in-progress: true
 
 jobs:
@@ -27,18 +34,23 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run build
+      # Super Admin console vs Client Admin portal
+      - name: Build site
         env:
-          VITE_BASE: /ground-iq-superadmin/
-          VITE_FIELD_APP: 0
-          VITE_SUPER_ADMIN: 1
-      # SPA: 404.html for deep links. Also real /admin/ so Client Admin is HTTP 200
-      # (not 404→404.html), which avoids sticky cached shells that still name
-      # deleted Vite hashes (MIME text/html on module load).
+          VITE_BASE: ${{ github.repository == 'sravanku018/ground-iq-superadmin' && '/ground-iq-superadmin/' || '/ground-iq-web/' }}
+          VITE_FIELD_APP: '0'
+          VITE_SUPER_ADMIN: ${{ github.repository == 'sravanku018/ground-iq-superadmin' && '1' || '0' }}
+        run: |
+          echo "Building for ${{ github.repository }}"
+          echo "VITE_BASE=$VITE_BASE VITE_SUPER_ADMIN=$VITE_SUPER_ADMIN VITE_FIELD_APP=$VITE_FIELD_APP"
+          npm run build
+      # SPA deep links + real /admin/ (Client Admin path) as HTTP 200
       - run: |
           cp dist/index.html dist/404.html
           mkdir -p dist/admin
           cp dist/index.html dist/admin/index.html
+          # Sanity: base path must match this Pages site
+          head -40 dist/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v5
         with:

@@ -828,7 +828,9 @@ export default function AdminPortal({ superAdminOnly = false }) {
           {page === 'bank' && <AdminQuestionBankScreen onToast={notify} user={user} />}
           {page === 'seats' && <AdminSeatsScreen onToast={notify} />}
           {page === 'admins' && <AdminClientAdminsScreen onToast={notify} />}
-          {page === 'companies' && <AdminCompaniesScreen onToast={notify} />}
+          {page === 'companies' && (
+            <AdminCompaniesScreen onToast={notify} onNav={goPage} />
+          )}
           {page === 'data' && (
             <DataList
               items={items}

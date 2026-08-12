@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import CompanyClientDashboard from './CompanyClientDashboard'
 import {
   createCompany,
+  createSurvey,
   deleteCompany,
   listCompanies,
   listUsers,
@@ -11,10 +12,10 @@ import {
 
 /**
  * Super Admin console — Companies registry.
- * Create companies, add Client Admins to them ("part of it"), rename and delete.
+ * Create companies, add Client Admins, then create projects under that company.
  * Company membership stays in sync with each Client Admin's company_name.
  */
-export default function AdminCompaniesScreen({ onToast }) {
+export default function AdminCompaniesScreen({ onToast, onNav }) {
   const [companies, setCompanies] = useState([])
   const [allAdmins, setAllAdmins] = useState([])
   const [loading, setLoading] = useState(true)
@@ -24,6 +25,9 @@ export default function AdminCompaniesScreen({ onToast }) {
   const [dashboardCompanyId, setDashboardCompanyId] = useState(null)
   const [checked, setChecked] = useState({})
   const [editName, setEditName] = useState('')
+  /** Project title draft while creating under the open company */
+  const [projectTitle, setProjectTitle] = useState('')
+  const [createdProject, setCreatedProject] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -33,8 +37,10 @@ export default function AdminCompaniesScreen({ onToast }) {
       setAllAdmins(
         (users.users || users.surveyors || users || []).filter((u) => u.role === 'admin'),
       )
+      return data.items || []
     } catch (e) {
       onToast?.(e.message, 'error')
+      return []
     } finally {
       setLoading(false)
     }
@@ -44,13 +50,20 @@ export default function AdminCompaniesScreen({ onToast }) {
     load()
   }, [load])
 
+  const openCompany = (c) => {
+    setOpenId(c.id)
+    setChecked(Object.fromEntries((c.admins || []).map((a) => [String(a.id), true])))
+    setEditName(c.name || '')
+    setProjectTitle('')
+    setCreatedProject(null)
+  }
+
   const toggleOpen = (c) => {
-    const isOpen = openId === c.id
-    setOpenId(isOpen ? null : c.id)
-    if (!isOpen) {
-      setChecked(Object.fromEntries((c.admins || []).map((a) => [String(a.id), true])))
-      setEditName(c.name || '')
+    if (openId === c.id) {
+      setOpenId(null)
+      return
     }
+    openCompany(c)
   }
 
   async function handleCreate(e) {
@@ -62,12 +75,69 @@ export default function AdminCompaniesScreen({ onToast }) {
     }
     setSaving(true)
     try {
-      await createCompany(name)
-      onToast?.(`Company "${name}" created`, 'ok')
+      const res = await createCompany(name)
+      onToast?.(`Company "${name}" created — add admins, then create a project below`, 'ok')
       setNewName('')
-      await load()
+      const items = await load()
+      // Open the new company so Super Admin can create a project immediately
+      const created =
+        res?.company ||
+        res?.item ||
+        items.find((x) => String(x.name || '').toLowerCase() === name.toLowerCase()) ||
+        items[0]
+      if (created) openCompany(created)
     } catch (err) {
       onToast?.(err.message, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleCreateProject(c) {
+    const title = projectTitle.trim()
+    if (!title) {
+      onToast?.('Enter a project name', 'error')
+      return
+    }
+    const adminIds = Object.keys(checked)
+      .filter((k) => checked[k])
+      .map(Number)
+    if (adminIds.length === 0) {
+      onToast?.(
+        'Select at least one Client Admin above (Save them first if you just checked them)',
+        'error',
+      )
+      return
+    }
+    setSaving(true)
+    try {
+      // Ensure membership is saved so company + project stay aligned
+      await setCompanyAdmins(c.id, adminIds).catch(() => null)
+      const d = await createSurvey({
+        title,
+        questions: [],
+        company_name: c.name,
+        admin_ids: adminIds,
+      })
+      const proj = d?.survey || d
+      setCreatedProject({
+        id: proj?.id,
+        title: proj?.title || title,
+        company: c.name,
+      })
+      setProjectTitle('')
+      onToast?.(`Project "${title}" created under ${c.name}`, 'ok')
+      await load()
+      // Keep panel open on this company
+      setOpenId(c.id)
+      setChecked(Object.fromEntries(adminIds.map((id) => [String(id), true])))
+    } catch (e) {
+      if (e.status === 409 && e.existing_id) {
+        onToast?.(`Project "${title}" already exists — open it in Projects`, 'warn')
+        setCreatedProject({ id: e.existing_id, title, company: c.name })
+      } else {
+        onToast?.(e.message, 'error')
+      }
     } finally {
       setSaving(false)
     }
@@ -136,8 +206,8 @@ export default function AdminCompaniesScreen({ onToast }) {
       <header className="screen-head">
         <h2>🏢 Companies</h2>
         <p>
-          Register companies and add Client Admins to them. Projects are then created under a
-          company and shared with its Client Admins.
+          1) Create a company → 2) Add Client Admins → 3) Create a project under that company
+          (shared with those admins).
         </p>
       </header>
 
@@ -179,7 +249,8 @@ export default function AdminCompaniesScreen({ onToast }) {
           </button>
         </form>
         <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
-          After creating, open the company to add the Client Admins who are part of it.
+          After create, the company opens automatically so you can add Client Admins and create a
+          project.
         </p>
       </div>
 
@@ -231,7 +302,7 @@ export default function AdminCompaniesScreen({ onToast }) {
                     className={`btn small ${openId === c.id ? 'primary' : ''}`}
                     onClick={() => toggleOpen(c)}
                   >
-                    {openId === c.id ? 'Close' : '👥 Admins'}
+                    {openId === c.id ? 'Close' : 'Manage · project'}
                   </button>
                   <button type="button" className="btn small danger" onClick={() => handleDelete(c)}>
                     Delete
@@ -326,6 +397,76 @@ export default function AdminCompaniesScreen({ onToast }) {
                         </button>
                       </>
                     )}
+
+                    {/* Create project under this company */}
+                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>
+                      📋 Create project under {c.name}
+                    </h4>
+                    <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
+                      Company is fixed to <strong>{c.name}</strong>. Selected Client Admins above
+                      get access to the new project.
+                    </p>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 10,
+                        flexWrap: 'wrap',
+                        alignItems: 'flex-end',
+                      }}
+                    >
+                      <label className="field compact" style={{ margin: 0, flex: '1 1 200px' }}>
+                        <span>Project name</span>
+                        <input
+                          value={projectTitle}
+                          onChange={(e) => setProjectTitle(e.target.value)}
+                          placeholder="e.g. Warangal Pre-poll 2026"
+                          disabled={saving}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="btn primary"
+                        disabled={saving || !projectTitle.trim()}
+                        onClick={() => void handleCreateProject(c)}
+                      >
+                        {saving ? '…' : '＋ Create project'}
+                      </button>
+                    </div>
+                    {createdProject &&
+                    String(createdProject.company || '').toLowerCase() ===
+                      String(c.name || '').toLowerCase() ? (
+                      <div
+                        className="card"
+                        style={{
+                          marginTop: 10,
+                          padding: 12,
+                          background: 'rgba(5, 150, 105, 0.08)',
+                          border: '1px solid rgba(5, 150, 105, 0.35)',
+                        }}
+                      >
+                        <strong style={{ color: '#059669' }}>
+                          ✓ Project “{createdProject.title}” created
+                        </strong>
+                        <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+                          Mapped under company {c.name}. Open Projects to add questions and
+                          surveyors.
+                        </p>
+                        {typeof onNav === 'function' ? (
+                          <button
+                            type="button"
+                            className="btn small primary"
+                            style={{ marginTop: 8 }}
+                            onClick={() => onNav('surveys')}
+                          >
+                            Open Projects tab →
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <p className="muted" style={{ fontSize: 11, margin: '8px 0 0' }}>
+                      Tip: save Client Admins first if you changed the checkboxes, then create the
+                      project (we also re-save membership on create).
+                    </p>
 
                     <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>✏️ Rename company</h4>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>

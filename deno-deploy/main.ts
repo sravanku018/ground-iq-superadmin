@@ -153,6 +153,7 @@ async function getUser(token: string | null) {
            COALESCE(u.can_edit_surveys, FALSE) AS can_edit_surveys,
            COALESCE(u.can_review_data, FALSE) AS can_review_data,
            COALESCE(u.can_verify_surveyors, FALSE) AS can_verify_surveyors,
+           COALESCE(u.can_assign_surveyors, FALSE) AS can_assign_surveyors,
            COALESCE(u.can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
            COALESCE(u.can_validate_proof, FALSE) AS can_validate_proof,
            COALESCE(u.max_questions_per_survey, 0) AS max_questions_per_survey,
@@ -171,7 +172,7 @@ async function getUser(token: string | null) {
              NULL AS company_id, NULL AS company_name,
              NULL AS key_id, NULL AS phone, NULL AS photo, NULL AS aadhaar_front, NULL AS aadhaar_back,
              FALSE AS verified, FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
-             FALSE AS can_review_data, FALSE AS can_verify_surveyors, FALSE AS can_crud_questionnaire,
+             FALSE AS can_review_data, FALSE AS can_verify_surveyors, FALSE AS can_assign_surveyors, FALSE AS can_crud_questionnaire,
              FALSE AS can_validate_proof, 0 AS max_questions_per_survey, 0 AS max_surveys,
              0 AS max_surveyors
       FROM app_sessions s
@@ -202,6 +203,7 @@ async function getUser(token: string | null) {
     can_edit_surveys: (u as Record<string, unknown>).can_edit_surveys === true,
     can_review_data: (u as Record<string, unknown>).can_review_data === true,
     can_verify_surveyors: (u as Record<string, unknown>).can_verify_surveyors === true,
+    can_assign_surveyors: (u as Record<string, unknown>).can_assign_surveyors === true,
     can_crud_questionnaire: (u as Record<string, unknown>).can_crud_questionnaire === true,
     can_validate_proof: (u as Record<string, unknown>).can_validate_proof === true,
     max_questions_per_survey: Number((u as Record<string, unknown>).max_questions_per_survey) || 0,
@@ -461,6 +463,7 @@ async function ensureSchema() {
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_edit_surveys BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_review_data BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_verify_surveyors BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_assign_surveyors BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_crud_questionnaire BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_validate_proof BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   // Super-Admin-set cap on how many questions a Client Admin may put into one survey (0 = unlimited)
@@ -773,14 +776,15 @@ async function ensureSchema() {
   `.catch(() => null);
 
   // Indexes for concurrent reads / filters at scale (safe IF NOT EXISTS)
+  // Removed: idx_submissions_answers_district/_party/_gender/_caste/_ac —
+  // no query filters these columns in SQL, filtering happens in JS after
+  // loadAnalyticsRows(). Removed: idx_submissions_payload_gin (jsonb_path_ops
+  // only accelerates @>/?/?|/?& operators; every query does ->>'x' = value,
+  // which this index type can't serve — write cost with zero read benefit).
+  // Removed: idx_submissions_survey_id — submissions has no survey_id column,
+  // this statement failed on every boot (silently, via .catch).
   await sql`CREATE INDEX IF NOT EXISTS idx_submissions_created_at ON submissions (created_at DESC)`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_submissions_answers_district ON submissions ((payload->'answers'->>'district'))`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_submissions_answers_party ON submissions ((payload->'answers'->>'winning_party'))`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_submissions_answers_gender ON submissions ((payload->'answers'->>'gender'))`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_submissions_answers_caste ON submissions ((payload->'answers'->>'caste'))`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_submissions_answers_ac ON submissions ((payload->'answers'->>'constituency'))`.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_submissions_submitted_by ON submissions ((payload->>'submitted_by'))`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_submissions_payload_gin ON submissions USING GIN (payload jsonb_path_ops)`.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_app_users_role_active ON app_users (role, active)`.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_assembly_name ON assembly_constituencies (name)`.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_districts_name ON districts (name)`.catch(() => null);
@@ -790,7 +794,6 @@ async function ensureSchema() {
   await sql`CREATE INDEX IF NOT EXISTS idx_survey_admin_access_survey ON survey_admin_access(survey_id)`.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_survey_assignments_survey ON survey_assignments(survey_id)`.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_survey_form_created_by ON survey_form(created_by)`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_submissions_survey_id ON submissions(survey_id)`.catch(() => null);
 
   // Keep legacy field/user inactive; surveyors are created from admin dashboard
   await sql`
@@ -2005,11 +2008,13 @@ async function adminFormKeyScope(
   me: { role: unknown; id: unknown } | null,
 ): Promise<string[] | null> {
   if (!me || me.role !== "admin") return null;
+  // No 'legacy'/'default' fallback here — every admin gets a starter project
+  // at account-creation time (see /api/users POST), so scope is strictly
+  // what they own or were explicitly granted via survey_admin_access.
   const rows = await sqlFn`
     SELECT form_key FROM survey_form
     WHERE created_by = ${me.id}
        OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-       OR form_key IN ('legacy', 'default')
   `.catch(() => []);
   return [...new Set((rows as { form_key: string }[]).map((r) => String(r.form_key)))];
 }
@@ -3548,6 +3553,7 @@ Deno.serve(async (req) => {
         const canEditSurveys = canSuper && body.can_edit_surveys === true;
         const canReviewData = canSuper && body.can_review_data === true;
         const canVerifySurveyors = canSuper && body.can_verify_surveyors === true;
+        const canAssignSurveyors = canSuper && body.can_assign_surveyors === true;
         const canCrudQuestionnaire = canSuper && body.can_crud_questionnaire === true;
         const canValidateProof = canSuper && body.can_validate_proof === true;
         const maxQuestionsPerSurvey = canSuper
@@ -3582,11 +3588,40 @@ Deno.serve(async (req) => {
           }
         }
         const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, company_name, company_id, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors, created_by)
-          VALUES (${username}, ${password_hash}, ${name}, ${finalCompanyName}, ${companyId}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${me.id})
-          RETURNING id, username, display_name, company_name, company_id, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors
+          INSERT INTO app_users (username, password_hash, display_name, company_name, company_id, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors, created_by)
+          VALUES (${username}, ${password_hash}, ${name}, ${finalCompanyName}, ${companyId}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canAssignSurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${me.id})
+          RETURNING id, username, display_name, company_name, company_id, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors
         `;
         const u = inserted[0] as Record<string, unknown>;
+
+        // Auto-provision a starter project for every new Client Admin, in the
+        // same request that creates their account (Super Admin does both in
+        // one step from the Client Admin profile screen). This gives them a
+        // real owned form_key immediately via adminFormKeyScope's
+        // `created_by = me.id` clause — no dependency on the shared
+        // 'legacy'/'default' fallback bucket.
+        let starterFormKey: string | null = null;
+        if (role === "admin" && sql) {
+          const base = (finalCompanyName || name || username)
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "") || "project";
+          let formKey = base;
+          let n = 1;
+          for (;;) {
+            const clash = await sql`SELECT id FROM survey_form WHERE form_key = ${formKey} LIMIT 1`;
+            if (!clash.length) break;
+            n += 1;
+            formKey = `${base}-${n}`;
+          }
+          const starterTitle = `${finalCompanyName || name} — Default Project`;
+          await sql`
+            INSERT INTO survey_form (form_key, title, questions, updated_at, created_by, company_name)
+            VALUES (${formKey}, ${starterTitle}, '[]'::jsonb, NOW(), ${u.id}, ${finalCompanyName})
+          `.catch(() => null);
+          starterFormKey = formKey;
+        }
+
         logAudit(me, "user_create", "user", u.id, {
           username: u.username,
           role,
@@ -3595,11 +3630,13 @@ Deno.serve(async (req) => {
           can_edit_surveys: canEditSurveys,
           can_review_data: canReviewData,
           can_verify_surveyors: canVerifySurveyors,
+          can_assign_surveyors: canAssignSurveyors,
           can_crud_questionnaire: canCrudQuestionnaire,
           can_validate_proof: canValidateProof,
           max_questions_per_survey: maxQuestionsPerSurvey,
           max_surveys: maxSurveysCreate,
           max_surveyors: maxSurveyorsCreate,
+          starter_form_key: starterFormKey,
         });
         return json({
           user: {
@@ -3617,6 +3654,8 @@ Deno.serve(async (req) => {
             can_edit_surveys: u.can_edit_surveys === true,
             can_review_data: u.can_review_data === true,
             can_verify_surveyors: u.can_verify_surveyors === true,
+            can_assign_surveyors: u.can_assign_surveyors === true,
+            starter_form_key: starterFormKey,
           },
           field_app_access: role === "surveyor",
           field_app_login: role === "surveyor"
@@ -4043,6 +4082,7 @@ Deno.serve(async (req) => {
         "can_edit_surveys",
         "can_review_data",
         "can_verify_surveyors",
+        "can_assign_surveyors",
         "can_crud_questionnaire",
         "can_validate_proof",
       ] as const;
@@ -4091,13 +4131,14 @@ Deno.serve(async (req) => {
               can_edit_surveys = ${nextPowers.can_edit_surveys},
               can_review_data = ${nextPowers.can_review_data},
               can_verify_surveyors = ${nextPowers.can_verify_surveyors},
+              can_assign_surveyors = ${nextPowers.can_assign_surveyors},
               can_crud_questionnaire = ${nextPowers.can_crud_questionnaire},
               can_validate_proof = ${nextPowers.can_validate_proof},
               max_questions_per_survey = ${nextMaxQuestionsPerSurvey},
               max_surveys = ${nextMaxSurveys},
               max_surveyors = ${nextMaxSurveyors}
           WHERE id = ${id}
-          RETURNING id, username, display_name, company_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors
+          RETURNING id, username, display_name, company_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors
         `;
       } catch (e) {
         const msg = (e as Error).message || "";
@@ -4168,6 +4209,7 @@ Deno.serve(async (req) => {
           can_edit_surveys: u.can_edit_surveys === true,
           can_review_data: u.can_review_data === true,
           can_verify_surveyors: u.can_verify_surveyors === true,
+          can_assign_surveyors: u.can_assign_surveyors === true,
           max_questions_per_survey: Number(u.max_questions_per_survey) || 0,
           max_surveys: Number(u.max_surveys) || 0,
           max_surveyors: Number(u.max_surveyors) || 0,
@@ -6250,6 +6292,9 @@ Deno.serve(async (req) => {
       if (me.role === "super_admin") {
         return json({ error: "Super Admin connects Client Admins to projects; surveyors are managed only by the Client Admin." }, 403);
       }
+      if (!hasPower(me, "can_assign_surveyors")) {
+        return json({ error: "Super Admin has not granted your account surveyor-assignment rights" }, 403);
+      }
       const id = Number(path.split("/")[3]);
       const body = await readBody(req);
       const ids = (Array.isArray(body.user_ids) ? body.user_ids : [])
@@ -6769,8 +6814,31 @@ Deno.serve(async (req) => {
     }
 
     // Stream & download media file (Neon storage) — audio, video, photo
+    // Only Client Admins / Super Admin may access this — surveyors have no
+    // permission here. A Client Admin additionally needs can_review_data,
+    // which only Super Admin can grant (see hasPower/isPortalAdmin, 214-224).
+    // Also scoped to the requesting admin's own submissions (same
+    // payload->>'form_key' = ANY(scopeKeys) pattern used everywhere else in
+    // this file) so one Client Admin can't reach another's media by
+    // guessing/incrementing the numeric media id.
     if (path.match(/^\/api\/media\/\d+\/file$/) && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!hasPower(me, "can_review_data")) {
+        return json({ error: "You don't have permission to view media — ask your Super Admin to enable it." }, 403);
+      }
       const mediaId = Number(path.split("/")[3]);
+      const scopeKeys = await adminFormKeyScope(sql, me);
+      const owns = scopeKeys
+        ? await sql`
+            SELECT sm.id
+            FROM survey_media sm
+            JOIN submissions s ON s.id = sm.submission_id
+            WHERE sm.id = ${mediaId} AND s.payload->>'form_key' = ANY(${scopeKeys})
+            LIMIT 1
+          `.catch(() => [])
+        : await sql`SELECT id FROM survey_media WHERE id = ${mediaId} LIMIT 1`.catch(() => []);
+      if (!owns.length) return json({ error: "Not found" }, 404);
       const rows = await sql`
         SELECT id, kind, mime, data, url, storage, submission_id
         FROM survey_media WHERE id = ${mediaId} LIMIT 1
@@ -7118,7 +7186,13 @@ Deno.serve(async (req) => {
           rows = rows.filter((r) => String(r.constituency || "").toLowerCase() === constituencyQ);
         }
 
-        // Photo / audio links per submission (first of each kind)
+        // Photo / audio links per submission (first of each kind).
+        // survey_media.url is stored as a relative path ("/api/media/:id/file")
+        // for Neon-hosted media — a CSV has no base origin, so a relative path
+        // in an exported file is not a usable/clickable link. Make it absolute
+        // using this request's own origin; external (R2) URLs are already
+        // absolute and pass through unchanged.
+        const origin = `${url.protocol}//${url.host}`;
         const mediaRows = await sql`
           SELECT submission_id, kind, url FROM survey_media
         `.catch(() => []);
@@ -7126,7 +7200,8 @@ Deno.serve(async (req) => {
         const audioUrl = new Map<number, string>();
         for (const m of mediaRows as { submission_id: number; kind: string; url: string | null }[]) {
           const id = Number(m.submission_id);
-          const u = m.url || "";
+          const raw = m.url || "";
+          const u = raw && !/^https?:\/\//i.test(raw) ? `${origin}${raw}?download=1` : raw;
           if (m.kind === "photo" && !photoUrl.has(id)) photoUrl.set(id, u);
           if (m.kind === "audio" && !audioUrl.has(id)) audioUrl.set(id, u);
         }

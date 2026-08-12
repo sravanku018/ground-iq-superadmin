@@ -198,14 +198,14 @@ async function getUser(token: string | null) {
     photo: u.photo || null,
     aadhaar_front: u.aadhaar_front || null,
     aadhaar_back: u.aadhaar_back || null,
-    verified: u.verified === true,
-    can_manage_questions: (u as Record<string, unknown>).can_manage_questions === true,
-    can_edit_surveys: (u as Record<string, unknown>).can_edit_surveys === true,
-    can_review_data: (u as Record<string, unknown>).can_review_data === true,
-    can_verify_surveyors: (u as Record<string, unknown>).can_verify_surveyors === true,
-    can_assign_surveyors: (u as Record<string, unknown>).can_assign_surveyors === true,
-    can_crud_questionnaire: (u as Record<string, unknown>).can_crud_questionnaire === true,
-    can_validate_proof: (u as Record<string, unknown>).can_validate_proof === true,
+    verified: sqlBool(u.verified),
+    can_manage_questions: sqlBool((u as Record<string, unknown>).can_manage_questions),
+    can_edit_surveys: sqlBool((u as Record<string, unknown>).can_edit_surveys),
+    can_review_data: sqlBool((u as Record<string, unknown>).can_review_data),
+    can_verify_surveyors: sqlBool((u as Record<string, unknown>).can_verify_surveyors),
+    can_assign_surveyors: sqlBool((u as Record<string, unknown>).can_assign_surveyors),
+    can_crud_questionnaire: sqlBool((u as Record<string, unknown>).can_crud_questionnaire),
+    can_validate_proof: sqlBool((u as Record<string, unknown>).can_validate_proof),
     max_questions_per_survey: Number((u as Record<string, unknown>).max_questions_per_survey) || 0,
     max_surveys: Number((u as Record<string, unknown>).max_surveys) || 0,
     max_surveyors: Number((u as Record<string, unknown>).max_surveyors) || 0,
@@ -217,12 +217,22 @@ function isPortalAdmin(role: unknown): boolean {
   return role === "admin" || role === "super_admin";
 }
 
+/** Coerce Postgres/JSON boolean-ish values (true | 't' | 'true' | 1). */
+function sqlBool(v: unknown): boolean {
+  if (v === true || v === 1) return true;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    return s === "t" || s === "true" || s === "1" || s === "yes";
+  }
+  return false;
+}
+
 /** Grant-based power check — Super Admin always has every power; Client Admins need the grant. */
 function hasPower(
   me: { role: unknown } & Record<string, unknown> | null,
   key: string,
 ): boolean {
-  return !!me && (me.role === "super_admin" || me[key] === true);
+  return !!me && (me.role === "super_admin" || sqlBool(me[key]));
 }
 
 /**
@@ -3483,14 +3493,14 @@ Deno.serve(async (req) => {
           photo: r.photo || null,
           aadhaar_front: r.aadhaar_front || null,
           aadhaar_back: r.aadhaar_back || null,
-          verified: r.verified === true,
-          can_manage_questions: r.can_manage_questions === true,
-          can_edit_surveys: r.can_edit_surveys === true,
-          can_review_data: r.can_review_data === true,
-          can_verify_surveyors: r.can_verify_surveyors === true,
-          can_assign_surveyors: r.can_assign_surveyors === true,
-          can_crud_questionnaire: r.can_crud_questionnaire === true,
-          can_validate_proof: r.can_validate_proof === true,
+          verified: sqlBool(r.verified),
+          can_manage_questions: sqlBool(r.can_manage_questions),
+          can_edit_surveys: sqlBool(r.can_edit_surveys),
+          can_review_data: sqlBool(r.can_review_data),
+          can_verify_surveyors: sqlBool(r.can_verify_surveyors),
+          can_assign_surveyors: sqlBool(r.can_assign_surveyors),
+          can_crud_questionnaire: sqlBool(r.can_crud_questionnaire),
+          can_validate_proof: sqlBool(r.can_validate_proof),
           max_questions_per_survey: Number(r.max_questions_per_survey) || 0,
           max_surveys: Number(r.max_surveys) || 0,
           max_surveyors: Number(r.max_surveyors) || 0,
@@ -4093,13 +4103,15 @@ Deno.serve(async (req) => {
       ] as const;
       const nextPowers: Record<string, boolean> = {};
       for (const k of POWER_KEYS) {
-        const cur = (ex as Record<string, unknown>)[k] === true;
-        nextPowers[k] =
-          body[k] === undefined
-            ? cur
-            : me.role === "super_admin"
-              ? body[k] === true
-              : cur;
+        const cur = sqlBool((ex as Record<string, unknown>)[k]);
+        if (body[k] === undefined) {
+          nextPowers[k] = cur;
+        } else if (me.role === "super_admin") {
+          // Accept true/false only from Super Admin body (boolean or "true"/"false")
+          nextPowers[k] = sqlBool(body[k]);
+        } else {
+          nextPowers[k] = cur; // Client Admin cannot change own grants
+        }
       }
       // Verification gate: surveyors need the granted verify power; client admin accounts
       // can only be verified by the Super Admin (client admins never verify each other)
@@ -4153,15 +4165,21 @@ Deno.serve(async (req) => {
         return json({ error: msg || "Update failed" }, 500);
       }
 
-      // Revoke sessions on active status change, password/username change, role/company change, or admin edits
+      // Revoke sessions only when credentials/status/identity change — NOT when
+      // Super Admin only updates powers/limits (that was kicking Client Admins
+      // on every feature save and made grants look "unsaved").
+      const companyIdChanged =
+        nextCompanyId !==
+        ((ex as Record<string, unknown>).company_id != null
+          ? Number((ex as Record<string, unknown>).company_id)
+          : null);
       const shouldRevoke =
         body.revoke_sessions === true ||
         nextActive === false ||
         passwordChanged ||
         nextUsername !== ex.username ||
         nextRole !== ex.role ||
-        nextCompanyId !== ex.company_id ||
-        (isAdmin && !isSelf);
+        (companyIdChanged && body.company_name !== undefined);
       let sessionsCleared = 0;
       if (shouldRevoke) {
         const del = await sql`DELETE FROM app_sessions WHERE user_id = ${id}`;
@@ -4209,12 +4227,14 @@ Deno.serve(async (req) => {
           photo: u.photo || nextPhoto || null,
           aadhaar_front: u.aadhaar_front || nextAadhaarFront || null,
           aadhaar_back: u.aadhaar_back || nextAadhaarBack || null,
-          verified: u.verified === true,
-          can_manage_questions: u.can_manage_questions === true,
-          can_edit_surveys: u.can_edit_surveys === true,
-          can_review_data: u.can_review_data === true,
-          can_verify_surveyors: u.can_verify_surveyors === true,
-          can_assign_surveyors: u.can_assign_surveyors === true,
+          verified: sqlBool(u.verified),
+          can_manage_questions: sqlBool(u.can_manage_questions),
+          can_edit_surveys: sqlBool(u.can_edit_surveys),
+          can_review_data: sqlBool(u.can_review_data),
+          can_verify_surveyors: sqlBool(u.can_verify_surveyors),
+          can_assign_surveyors: sqlBool(u.can_assign_surveyors),
+          can_crud_questionnaire: sqlBool(u.can_crud_questionnaire),
+          can_validate_proof: sqlBool(u.can_validate_proof),
           max_questions_per_survey: Number(u.max_questions_per_survey) || 0,
           max_surveys: Number(u.max_surveys) || 0,
           max_surveyors: Number(u.max_surveyors) || 0,

@@ -544,12 +544,24 @@ export function deleteSurvey(id) {
   return request(`/api/surveys/${id}`, { method: 'DELETE' })
 }
 
-/** Admin: replace surveyor team for a survey */
+/** Admin: replace surveyor team for a survey (survey-centric) */
 export function setSurveySurveyors(id, userIds) {
   return request(`/api/surveys/${id}/surveyors`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_ids: userIds }),
+  })
+}
+
+/**
+ * Admin: replace which surveys a surveyor is assigned to (user-centric).
+ * Field app loads these via GET /api/my-surveys.
+ */
+export function setUserSurveys(userId, surveyIds) {
+  return request(`/api/users/${userId}/surveys`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ survey_ids: surveyIds }),
   })
 }
 

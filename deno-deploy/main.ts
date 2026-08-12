@@ -3621,6 +3621,23 @@ Deno.serve(async (req) => {
         `;
         const u = inserted[0] as Record<string, unknown>;
 
+        // New surveyor with no explicit assignment still needs surveys in the
+        // field app (/api/my-surveys). Attach them to every survey this admin owns.
+        if (role === "surveyor" && me.role === "admin" && u.id != null) {
+          const mySurveys = await sql`
+            SELECT id FROM survey_form
+            WHERE created_by = ${me.id}
+              AND form_key NOT IN ('default', 'legacy')
+          `.catch(() => []);
+          for (const s of mySurveys as { id: number }[]) {
+            await sql`
+              INSERT INTO survey_assignments (survey_id, user_id)
+              VALUES (${Number(s.id)}, ${Number(u.id)})
+              ON CONFLICT (survey_id, user_id) DO NOTHING
+            `.catch(() => null);
+          }
+        }
+
         // Auto-provision a starter project for every new Client Admin, in the
         // same request that creates their account (Super Admin does both in
         // one step from the Client Admin profile screen). This gives them a
@@ -3836,11 +3853,35 @@ Deno.serve(async (req) => {
         const displayName = `Surveyor ${username}`;
         try {
           const key_id = await uniqueUserKeyId();
-          await sql`
+          const ins = await sql`
             INSERT INTO app_users (username, password_hash, display_name, role, target_quota, active, key_id, created_by)
             VALUES (${username}, ${password_hash}, ${displayName}, ${"surveyor"}, ${target_quota}, TRUE, ${key_id}, ${me.id})
+            RETURNING id
           `;
-          created.push({ username, password, name: displayName, target_quota, key_id });
+          const newId = Number((ins[0] as { id?: number } | undefined)?.id);
+          // Auto-attach bulk-created surveyors to every survey this admin owns
+          if (Number.isFinite(newId) && me.role === "admin") {
+            const mySurveys = await sql`
+              SELECT id FROM survey_form
+              WHERE created_by = ${me.id}
+                AND form_key NOT IN ('default', 'legacy')
+            `.catch(() => []);
+            for (const s of mySurveys as { id: number }[]) {
+              await sql`
+                INSERT INTO survey_assignments (survey_id, user_id)
+                VALUES (${Number(s.id)}, ${newId})
+                ON CONFLICT (survey_id, user_id) DO NOTHING
+              `.catch(() => null);
+            }
+          }
+          created.push({
+            username,
+            password,
+            name: displayName,
+            target_quota,
+            key_id,
+            id: Number.isFinite(newId) ? newId : undefined,
+          });
         } catch (e) {
           errors.push(`${username}: ${(e as Error).message || "exists"}`);
         }
@@ -5860,14 +5901,38 @@ Deno.serve(async (req) => {
         }
         connectedAdminIds = [...grantIds];
       }
+      // Client Admin: auto-assign all of their surveyors to the new survey so it
+      // appears immediately in the field app (surveyors load via /api/my-surveys).
+      let autoAssigned = 0;
+      if (me.role === "admin" && surveyId != null) {
+        const team = await sql`
+          SELECT id FROM app_users
+          WHERE role = 'surveyor' AND created_by = ${me.id} AND COALESCE(active, TRUE) = TRUE
+        `.catch(() => []);
+        for (const t of team as { id: number }[]) {
+          const uid = Number(t.id);
+          if (!Number.isFinite(uid)) continue;
+          await sql`
+            INSERT INTO survey_assignments (survey_id, user_id)
+            VALUES (${surveyId}, ${uid})
+            ON CONFLICT (survey_id, user_id) DO NOTHING
+          `.catch(() => null);
+          autoAssigned += 1;
+        }
+      }
       logAudit(me, "survey_create", "survey", surveyId, {
         title,
         form_key: formKey,
         questions: questions.length,
         company_name: companyName,
         admin_ids: connectedAdminIds,
+        auto_assigned_surveyors: autoAssigned,
       });
-      return json({ ok: true, survey: rows[0] }, 201);
+      return json({
+        ok: true,
+        survey: rows[0],
+        auto_assigned_surveyors: autoAssigned,
+      }, 201);
     }
 
     if (path.match(/^\/api\/surveys\/\d+$/) && method === "GET") {
@@ -6431,6 +6496,91 @@ Deno.serve(async (req) => {
         `.catch(() => null);
       }
       return json({ ok: true, assigned: allowed.length });
+    }
+
+    // Replace which surveys a surveyor is assigned to (user-centric).
+    // Used by Client Admin Surveyors tab — NOT the inverted setSurveySurveyors(surveyId, users).
+    if (path.match(/^\/api\/users\/\d+\/surveys$/) && method === "PUT") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (me.role === "super_admin") {
+        return json({
+          error: "Super Admin connects Client Admins to projects; surveyors are managed only by the Client Admin.",
+        }, 403);
+      }
+      if (!hasPower(me, "can_assign_surveyors")) {
+        return json({ error: "Super Admin has not granted your account surveyor-assignment rights" }, 403);
+      }
+      const userId = Number(path.split("/")[3]);
+      if (!Number.isFinite(userId)) return json({ error: "Invalid user id" }, 400);
+      const body = await readBody(req);
+      const surveyIds = (Array.isArray(body.survey_ids) ? body.survey_ids : [])
+        .map(Number)
+        .filter((v: number) => Number.isFinite(v));
+
+      // Must be a surveyor this Client Admin created
+      const userRows = await sql`
+        SELECT id, role, created_by FROM app_users WHERE id = ${userId} LIMIT 1
+      `.catch(() => []);
+      if (!userRows.length) return json({ error: "User not found" }, 404);
+      const target = userRows[0] as { id: number; role: string; created_by: number | null };
+      if (target.role !== "surveyor" && target.role !== "field") {
+        return json({ error: "Only surveyors can be assigned surveys" }, 422);
+      }
+      if (Number(target.created_by) !== Number(me.id)) {
+        return json({ error: "You can only assign surveys to surveyors you created" }, 403);
+      }
+
+      // Only allow surveys this admin owns or is shared on (or company-scoped SA projects)
+      const meCompany = String((me as { company_name?: unknown }).company_name || "").trim();
+      let allowedSurveyIds: number[] = [];
+      if (surveyIds.length) {
+        const okSurveys = meCompany
+          ? await sql`
+              SELECT id FROM survey_form
+              WHERE id = ANY(${surveyIds})
+                AND (
+                  created_by = ${me.id}
+                  OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                  OR (company_name IS NOT NULL AND TRIM(company_name) <> ''
+                      AND LOWER(TRIM(company_name)) = LOWER(${meCompany}))
+                )
+            `.catch(() => [])
+          : await sql`
+              SELECT id FROM survey_form
+              WHERE id = ANY(${surveyIds})
+                AND (
+                  created_by = ${me.id}
+                  OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                )
+            `.catch(() => []);
+        allowedSurveyIds = (okSurveys as { id: number }[]).map((r) => Number(r.id));
+      }
+
+      // Drop existing assignments for this surveyor on surveys this admin can manage
+      await sql`
+        DELETE FROM survey_assignments
+        WHERE user_id = ${userId}
+          AND survey_id IN (
+            SELECT id FROM survey_form
+            WHERE created_by = ${me.id}
+               OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+               OR (
+                 ${meCompany} <> ''
+                 AND company_name IS NOT NULL AND TRIM(company_name) <> ''
+                 AND LOWER(TRIM(company_name)) = LOWER(${meCompany})
+               )
+          )
+      `.catch(() => null);
+
+      for (const sid of allowedSurveyIds) {
+        await sql`
+          INSERT INTO survey_assignments (survey_id, user_id)
+          VALUES (${sid}, ${userId})
+          ON CONFLICT (survey_id, user_id) DO NOTHING
+        `.catch(() => null);
+      }
+      return json({ ok: true, assigned: allowedSurveyIds.length, survey_ids: allowedSurveyIds });
     }
 
     // Surveyor view: surveys assigned to me (with their questions) — field app

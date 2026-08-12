@@ -15,7 +15,7 @@ import {
   resetSuperAdminPassword,
   revokeUserSessions,
   setProgressQuota,
-  setSurveySurveyors,
+  setUserSurveys,
   updateUser,
 } from './api'
 import VerifiedBadge from './VerifiedBadge'
@@ -328,7 +328,7 @@ export default function AdminUsersScreen({ onToast }) {
         const surveyIds = Array.isArray(form.surveys) ? form.surveys.map(Number) : []
         if (surveyIds.length && created.id) {
           try {
-            await setSurveySurveyors(created.id, surveyIds)
+            await setUserSurveys(created.id, surveyIds)
           } catch (e) {
             onToast?.(`User created but survey assign failed: ${e.message}`, 'error')
           }
@@ -408,7 +408,7 @@ export default function AdminUsersScreen({ onToast }) {
             const u = byName.get(String(cu.username).toLowerCase())
             if (u?.id) {
               try {
-                await setSurveySurveyors(u.id, genSurveyIds)
+                await setUserSurveys(u.id, genSurveyIds)
                 assigned += 1
               } catch {
                 /* skip */
@@ -493,7 +493,7 @@ export default function AdminUsersScreen({ onToast }) {
           [...cur].sort().join() === [...next].sort().join()
         if (!same) {
           try {
-            await setSurveySurveyors(user.id, next)
+            await setUserSurveys(user.id, next)
             onToast?.(`Assigned surveys updated for @${user.username}`, 'ok')
           } catch (e) {
             onToast?.(`Surveys assign failed: ${e.message}`, 'error')

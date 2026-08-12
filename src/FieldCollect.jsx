@@ -909,7 +909,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
           <p>
             {user?.name || user?.username} · step {step + 1}/4 · {questions.length} Qs
           </p>
-          {(formMeta?.surveys || []).length > 1 && !editingDraft && (
+          {(formMeta?.surveys || []).length >= 1 && !editingDraft && (
             <label
               className="field compact"
               style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}

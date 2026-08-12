@@ -1046,8 +1046,20 @@ export default function AdminSurveysScreen({ onToast, user }) {
     )
   }
 
-  const renderCard = (s) => (
-    <div key={s.id} className="card" style={{ marginBottom: 10, padding: 14, borderLeft: '4px solid #00e599' }}>
+  const renderCard = (s) => {
+    const mine = Number(s.created_by) === Number(user?.id)
+    const sharedProject =
+      !isSuper && !mine && (s.company_name || s.owner_company || s.admin_count > 0)
+    return (
+    <div
+      key={s.id}
+      className="card"
+      style={{
+        marginBottom: 10,
+        padding: 14,
+        borderLeft: `4px solid ${sharedProject ? '#7c3aed' : '#00e599'}`,
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <button
           type="button"
@@ -1059,7 +1071,34 @@ export default function AdminSurveysScreen({ onToast, user }) {
           Open
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <strong style={{ fontSize: 16, color: '#0f172a' }}>{s.title}</strong>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <strong style={{ fontSize: 16, color: '#0f172a' }}>{s.title}</strong>
+            {sharedProject ? (
+              <span
+                className="pill"
+                style={{
+                  background: 'rgba(124, 58, 237, 0.12)',
+                  color: '#5b21b6',
+                  fontWeight: 700,
+                  fontSize: 11,
+                }}
+              >
+                Super Admin project · {s.company_name || user?.company_name || 'company'}
+              </span>
+            ) : !isSuper ? (
+              <span
+                className="pill"
+                style={{
+                  background: 'rgba(0, 229, 153, 0.12)',
+                  color: '#047857',
+                  fontWeight: 700,
+                  fontSize: 11,
+                }}
+              >
+                Your survey
+              </span>
+            ) : null}
+          </div>
           {user?.role === 'super_admin' && (
             <div style={{ fontSize: 13, color: '#334155', fontWeight: 600, marginTop: 3 }}>
               🏢 {s.company_name || s.owner_company || 'No company'}
@@ -1068,23 +1107,30 @@ export default function AdminSurveysScreen({ onToast, user }) {
           )}
           {user?.role !== 'super_admin' && (
             <div style={{ fontSize: 13, color: '#38bdf8', fontWeight: 'bold', marginTop: 3 }}>
-              👥 Field Team (People who took survey): {s.surveyor_names || `${s.surveyors || 0} assigned surveyor(s)`}
+              👥 Field Team: {s.surveyor_names || `${s.surveyors || 0} assigned surveyor(s)`}
             </div>
           )}
           <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
             📊 {s.submissions || 0} Submissions · 📋 {s.question_count || 0} Questions · Updated{' '}
             {String(s.updated_at || '').slice(0, 16).replace('T', ' ')}
           </div>
-          {s.admin_count > 0 && (
+          {isSuper && s.admin_count > 0 && (
             <div className="muted" style={{ fontSize: 12, marginTop: 3, color: '#7c3aed' }}>
-              🏢 {s.admin_count} client admin(s) connected to this project
+              🏢 {s.admin_count} client admin(s) connected
               {s.admin_names ? ` — ${s.admin_names}` : ''}
+            </div>
+          )}
+          {sharedProject && (
+            <div className="muted" style={{ fontSize: 12, marginTop: 3, color: '#5b21b6' }}>
+              Created by Super Admin for company {s.company_name || user?.company_name || '—'}. You can
+              open and run field work; you did not create this as your own survey.
             </div>
           )}
         </div>
       </div>
     </div>
-  )
+    )
+  }
 
   return (
     <div className="screen">

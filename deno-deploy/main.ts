@@ -193,6 +193,8 @@ async function getUser(token: string | null) {
     role: u.role,
     active: u.active,
     created_at: u.created_at,
+    company_id: u.company_id != null ? Number(u.company_id) : null,
+    company_name: u.company_name ? String(u.company_name) : null,
     key_id: u.key_id || null,
     phone: u.phone || null,
     photo: u.photo || null,
@@ -2008,24 +2010,30 @@ async function backfillFacts(
 
 /**
  * BR-004 record-layer scope: the form_keys a Client Admin may read/write.
- * Owned projects + Super-Admin-assigned projects (survey_admin_access) +
- * the legacy & default forms, which stay visible to every portal admin so
- * existing data never disappears. Super Admin and surveyors are unrestricted.
- * Returns null = unrestricted, or the allowed form_key list.
+ * - Surveys they created (created_by)
+ * - Explicit shares (survey_admin_access)
+ * - Super Admin projects mapped to their company (company_name match)
+ * Super Admin / surveyors: unrestricted (null).
  */
 async function adminFormKeyScope(
   sqlFn: NonNullable<typeof sql>,
-  me: { role: unknown; id: unknown } | null,
+  me: { role: unknown; id: unknown; company_name?: unknown } | null,
 ): Promise<string[] | null> {
   if (!me || me.role !== "admin") return null;
-  // No 'legacy'/'default' fallback here — every admin gets a starter project
-  // at account-creation time (see /api/users POST), so scope is strictly
-  // what they own or were explicitly granted via survey_admin_access.
-  const rows = await sqlFn`
-    SELECT form_key FROM survey_form
-    WHERE created_by = ${me.id}
-       OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-  `.catch(() => []);
+  const company = String((me as { company_name?: unknown }).company_name || "").trim();
+  const rows = company
+    ? await sqlFn`
+        SELECT form_key FROM survey_form
+        WHERE created_by = ${me.id}
+           OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+           OR (company_name IS NOT NULL AND TRIM(company_name) <> ''
+               AND LOWER(TRIM(company_name)) = LOWER(${company}))
+      `.catch(() => [])
+    : await sqlFn`
+        SELECT form_key FROM survey_form
+        WHERE created_by = ${me.id}
+           OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+      `.catch(() => []);
   return [...new Set((rows as { form_key: string }[]).map((r) => String(r.form_key)))];
 }
 
@@ -5599,24 +5607,44 @@ Deno.serve(async (req) => {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const q = (url.searchParams.get("q") || "").trim().toLowerCase();
-      // Projects are scoped to their owner, plus explicit Client Admin project access.
-      // Surveyor assignments remain a separate Client-Admin-only concern.
+      // Super Admin: all projects.
+      // Client Admin: own surveys + explicit shares + Super Admin projects for their company.
+      const meCompany = String((me as { company_name?: unknown }).company_name || "").trim();
       const rows = me.role === "super_admin"
         ? (q
             ? await sql`SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form WHERE LOWER(title) LIKE ${'%' + q + '%'} ORDER BY title`
             : await sql`SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form ORDER BY title`)
-        : (q
-            ? await sql`
-                SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
-                WHERE (created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
-                  AND LOWER(title) LIKE ${'%' + q + '%'}
-                ORDER BY title
-              `
-            : await sql`
-                SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
-                WHERE created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-                ORDER BY title
-              `);
+        : meCompany
+          ? (q
+              ? await sql`
+                  SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
+                  WHERE (
+                    created_by = ${me.id}
+                    OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                    OR (company_name IS NOT NULL AND TRIM(company_name) <> '' AND LOWER(TRIM(company_name)) = LOWER(${meCompany}))
+                  )
+                    AND LOWER(title) LIKE ${'%' + q + '%'}
+                  ORDER BY title
+                `
+              : await sql`
+                  SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
+                  WHERE created_by = ${me.id}
+                     OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                     OR (company_name IS NOT NULL AND TRIM(company_name) <> '' AND LOWER(TRIM(company_name)) = LOWER(${meCompany}))
+                  ORDER BY title
+                `)
+          : (q
+              ? await sql`
+                  SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
+                  WHERE (created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
+                    AND LOWER(title) LIKE ${'%' + q + '%'}
+                  ORDER BY title
+                `
+              : await sql`
+                  SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
+                  WHERE created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                  ORDER BY title
+                `);
 
       // Project → Client Admin connections for the Super Admin project list.
       const adminAccess = await sql`
@@ -5794,11 +5822,32 @@ Deno.serve(async (req) => {
         RETURNING id, form_key, title, updated_at
       `;
       const surveyId = (rows[0] as { id?: unknown }).id;
-      // The registered Client Admins are part of this project (shared access).
-      if (me.role === "super_admin" && connectedAdminIds.length) {
-        for (const adminId of connectedAdminIds) {
-          await sql`INSERT INTO survey_admin_access (survey_id, admin_id) VALUES (${surveyId}, ${adminId}) ON CONFLICT DO NOTHING`.catch(() => null);
+      // Super Admin project: grant every Client Admin in that company + any extra admin_ids.
+      // Company-mapped projects must show up for all Client Admins of that company.
+      if (me.role === "super_admin") {
+        const grantIds = new Set<number>(connectedAdminIds);
+        if (companyName) {
+          const companyAdmins = await sql`
+            SELECT id FROM app_users
+            WHERE role = 'admin' AND active = TRUE
+              AND (
+                LOWER(TRIM(COALESCE(company_name, ''))) = LOWER(${companyName})
+                OR company_id = (SELECT id FROM companies WHERE LOWER(TRIM(name)) = LOWER(${companyName}) LIMIT 1)
+              )
+          `.catch(() => []);
+          for (const a of companyAdmins as { id: number }[]) {
+            grantIds.add(Number(a.id));
+          }
         }
+        for (const adminId of grantIds) {
+          if (!Number.isFinite(adminId)) continue;
+          await sql`
+            INSERT INTO survey_admin_access (survey_id, admin_id)
+            VALUES (${surveyId}, ${adminId})
+            ON CONFLICT DO NOTHING
+          `.catch(() => null);
+        }
+        connectedAdminIds = [...grantIds];
       }
       logAudit(me, "survey_create", "survey", surveyId, {
         title,
@@ -5814,16 +5863,26 @@ Deno.serve(async (req) => {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
-      // Client Admin can open only owned or explicitly assigned projects.
+      // Client Admin: own survey, explicit share, or Super Admin project for their company.
+      const meCompanyOpen = String((me as { company_name?: unknown }).company_name || "").trim();
       const rows = me.role === "super_admin"
         ? await sql`SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form WHERE id = ${id}`
-        : await sql`
-            SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form
-            WHERE id = ${id} AND (
-              created_by = ${me.id}
-              OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-            )
-          `;
+        : meCompanyOpen
+          ? await sql`
+              SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form
+              WHERE id = ${id} AND (
+                created_by = ${me.id}
+                OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                OR (company_name IS NOT NULL AND TRIM(company_name) <> '' AND LOWER(TRIM(company_name)) = LOWER(${meCompanyOpen}))
+              )
+            `
+          : await sql`
+              SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form
+              WHERE id = ${id} AND (
+                created_by = ${me.id}
+                OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+              )
+            `;
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
       const r = rows[0] as { id: number; form_key: string; title: string; questions: unknown; updated_at: string; created_by: number | null; company_name: string | null };
       let questions = r.questions;

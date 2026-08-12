@@ -58,6 +58,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
   const [maxQInputs, setMaxQInputs] = useState({})
   const [maxSvInputs, setMaxSvInputs] = useState({})
   const [maxSrInputs, setMaxSrInputs] = useState({})
+  const [maxRecInputs, setMaxRecInputs] = useState({})
   /** Draft feature checkmarks per admin id — saved with Save all */
   const [powerDrafts, setPowerDrafts] = useState({})
   const [companyNames, setCompanyNames] = useState([])
@@ -125,6 +126,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
     setMaxQInputs((m) => ({ ...m, [id]: Number(u.max_questions_per_survey) || 0 }))
     setMaxSvInputs((m) => ({ ...m, [id]: Number(u.max_surveys) || 0 }))
     setMaxSrInputs((m) => ({ ...m, [id]: Number(u.max_surveyors) || 0 }))
+    setMaxRecInputs((m) => ({ ...m, [id]: Number(u.max_records) || 0 }))
   }
 
   const setPowerCheck = (u, key, checked) => {
@@ -159,14 +161,17 @@ export default function AdminClientAdminsScreen({ onToast }) {
       const qRaw = maxQInputs[id] ?? maxQInputs[u.id] ?? u.max_questions_per_survey
       const svRaw = maxSvInputs[id] ?? maxSvInputs[u.id] ?? u.max_surveys
       const srRaw = maxSrInputs[id] ?? maxSrInputs[u.id] ?? u.max_surveyors
+      const recRaw = maxRecInputs[id] ?? maxRecInputs[u.id] ?? u.max_records
       const qVal = Math.max(0, Math.min(100000, Number(qRaw) || 0))
       const svVal = Math.max(0, Math.min(100000, Number(svRaw) || 0))
       const srVal = Math.max(0, Math.min(100000, Number(srRaw) || 0))
+      const recVal = Math.max(0, Math.min(10_000_000, Number(recRaw) || 0))
 
       const body = {
         max_questions_per_survey: qVal,
         max_surveys: svVal,
         max_surveyors: srVal,
+        max_records: recVal,
         // Always send every power key so partial drafts cannot wipe others
         ...Object.fromEntries(POWER_DEFS.map((p) => [p.key, !!powers[p.key]])),
       }
@@ -199,6 +204,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
           savedUser.max_questions_per_survey ?? body.max_questions_per_survey,
         max_surveys: savedUser.max_surveys ?? body.max_surveys,
         max_surveyors: savedUser.max_surveyors ?? body.max_surveyors,
+        max_records: savedUser.max_records ?? body.max_records,
         username: savedUser.username || u.username,
         name: savedUser.name || u.name,
         company_name:
@@ -215,6 +221,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
       setMaxQInputs((m) => ({ ...m, [id]: merged.max_questions_per_survey ?? 0 }))
       setMaxSvInputs((m) => ({ ...m, [id]: merged.max_surveys ?? 0 }))
       setMaxSrInputs((m) => ({ ...m, [id]: merged.max_surveyors ?? 0 }))
+      setMaxRecInputs((m) => ({ ...m, [id]: merged.max_records ?? 0 }))
       setEdit({
         username: merged.username || '',
         name: merged.name || '',
@@ -226,7 +233,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
       const granted = POWER_DEFS.filter((p) => powers[p.key]).length
       const parts = [
         `${granted}/${POWER_DEFS.length} features`,
-        `limits Q${qVal} / surveys ${svVal} / surveyors ${srVal}`,
+        `limits Q${qVal} / surveys ${svVal} / surveyors ${srVal} / records ${recVal}`,
       ]
       if (res?.username_changed) parts.push('username updated')
       if (res?.password_changed) parts.push('password updated · sessions revoked')
@@ -478,7 +485,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                         <span className="pill" title="Surveys created / allocated">📋 surveys {u.survey_count ?? 0} / {u.max_surveys > 0 ? u.max_surveys : '∞'} allocated</span>
                         <span className="pill" title="Peak questions in one survey / max per survey">📝 questions {u.question_count ?? 0} / {u.max_questions_per_survey > 0 ? u.max_questions_per_survey : '∞'} allocated</span>
                         <span className="pill" title="Surveyors created / allocated">👥 surveyors {u.surveyor_count ?? 0} / {u.max_surveyors > 0 ? u.max_surveyors : '∞'} allocated</span>
-                        <span className="pill" title="Records submitted by this Client Admin's surveyors">🗃 records {u.surveyor_record_count ?? 0}</span>
+                        <span className="pill" title="Field records submitted / Super Admin record limit">🗃 records {u.surveyor_record_count ?? u.record_count ?? 0} / {u.max_records > 0 ? u.max_records : '∞'} allocated</span>
                       </span>
                     )}
                   </span>
@@ -754,10 +761,39 @@ export default function AdminClientAdminsScreen({ onToast }) {
                           />
                         </div>
                       </label>
+                      <label className="field compact" style={{ margin: 0 }}>
+                        <span>
+                          Max field records (0 = unlimited) ·{' '}
+                          <strong style={{ color: '#059669' }}>
+                            {u.surveyor_record_count ?? u.record_count ?? 0}
+                          </strong>{' '}
+                          submitted /{' '}
+                          {u.max_records > 0 ? u.max_records : '∞'} allocated
+                        </span>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10000000"
+                            value={
+                              maxRecInputs[Number(u.id)] != null
+                                ? maxRecInputs[Number(u.id)]
+                                : (u.max_records ?? 0)
+                            }
+                            onChange={(e) =>
+                              setMaxRecInputs((m) => ({
+                                ...m,
+                                [Number(u.id)]: Math.max(0, Number(e.target.value) || 0),
+                              }))
+                            }
+                            style={{ width: 110, padding: '6px 8px' }}
+                          />
+                        </div>
+                      </label>
                     </div>
                     <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
                       Caps are enforced server-side when this admin creates surveyors, surveys,
-                      or edits surveys. 0 = unlimited.
+                      edits surveys, or when surveyors submit field records. 0 = unlimited.
                     </p>
 
                     {/* Save features + limits immediately under the controls */}

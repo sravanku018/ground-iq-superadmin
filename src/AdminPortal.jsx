@@ -260,6 +260,10 @@ function AllocationCard({ user }) {
   const maxSurveys = Number(self.max_surveys ?? user?.max_surveys) || 0
   const maxSurveyors = Number(self.max_surveyors ?? user?.max_surveyors) || 0
   const maxQ = Number(self.max_questions_per_survey ?? user?.max_questions_per_survey) || 0
+  const maxRecords = Number(self.max_records ?? user?.max_records) || 0
+  const recordUsed = Number(
+    self.record_count ?? self.surveyor_record_count ?? user?.record_count ?? 0,
+  )
   const fmt = (used, cap) => `${used ?? 0} / ${cap > 0 ? cap : '∞'}`
   const team = Array.isArray(self.survey_team) ? self.survey_team : []
   const features = [
@@ -291,7 +295,17 @@ function AllocationCard({ user }) {
           <strong>{fmt(self.question_count, maxQ)}</strong>
           <span>Questions in largest survey</span>
         </div>
+        <div className="stat">
+          <strong>{fmt(recordUsed, maxRecords)}</strong>
+          <span>Field records</span>
+        </div>
       </div>
+      {maxRecords > 0 && recordUsed >= maxRecords && (
+        <p style={{ fontSize: 12, margin: '0 0 10px', color: '#b45309' }}>
+          Record limit reached ({recordUsed} / {maxRecords}). Surveyors cannot submit more until Super
+          Admin raises the cap.
+        </p>
+      )}
       {maxQ > 0 && Number(self.question_count || 0) === 0 && (
         <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
           No questions detected yet — open <strong>Surveys</strong> or <strong>Questions</strong> and

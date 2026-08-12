@@ -775,8 +775,10 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       </button>
                     </div>
 
-                    {/* Separate tenant bucket: this profile's projects, surveyors and records only. */}
-                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🗺 This Client Admin’s projects & surveyors</h4>
+                    {/* Surveys created by this Client Admin (not Super Admin projects) */}
+                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>
+                      🗂 Surveys created by this Client Admin
+                    </h4>
                     {Array.isArray(u.survey_team) && u.survey_team.length > 0 ? (
                       <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {u.survey_team.map((s) => (
@@ -792,31 +794,35 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       </ul>
                     ) : (
                       <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-                        No projects created by this Client Admin yet.
+                        No surveys created by this Client Admin yet (they use{' '}
+                        <strong>Create surveys</strong> power → Surveys → + New survey).
                       </p>
                     )}
                     <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
-                      Separate bucket: {u.surveyor_count ?? 0} surveyors and {u.surveyor_record_count ?? 0} records
-                      belong to this Client Admin only. Nothing is shared with another Client Admin.
+                      Separate bucket: {u.surveyor_count ?? 0} surveyors and {u.surveyor_record_count ?? 0}{' '}
+                      records belong to this Client Admin only.
                     </p>
 
-                    {/* Connected projects shared by Super Admin */}
-                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🔗 Connected projects (shared)</h4>
+                    {/* Projects Super Admin shared with them */}
+                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>
+                      🔗 Super Admin projects (shared with them)
+                    </h4>
                     {Array.isArray(u.granted_surveys) && u.granted_surveys.length > 0 ? (
                       <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {u.granted_surveys.map((s) => (
                           <li key={s.id} style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '8px 10px' }}>
                             <div style={{ fontWeight: 600, fontSize: 13, color: '#5b21b6' }}>🔗 {s.title}</div>
                             <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                              {u.company_name ? `${u.company_name} · ` : ''}Connected by Super Admin — this Client Admin can open this project.
+                              {u.company_name ? `${u.company_name} · ` : ''}
+                              Project created by Super Admin — Client Admin can open it (not create it).
                             </div>
                           </li>
                         ))}
                       </ul>
                     ) : (
                       <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-                        No projects connected yet — connect from the Projects tab (Super Admin → Projects → open a
-                        survey → "Share with client admins…").
+                        No Super Admin projects connected yet — Super Admin → Projects → open a
+                        project → share with this Client Admin.
                       </p>
                     )}
 

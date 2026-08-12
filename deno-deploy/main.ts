@@ -3350,6 +3350,7 @@ Deno.serve(async (req) => {
                    COALESCE(can_edit_surveys, FALSE) AS can_edit_surveys,
                    COALESCE(can_review_data, FALSE) AS can_review_data,
                    COALESCE(can_verify_surveyors, FALSE) AS can_verify_surveyors,
+                   COALESCE(can_assign_surveyors, FALSE) AS can_assign_surveyors,
                    COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
                    COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
@@ -3362,6 +3363,7 @@ Deno.serve(async (req) => {
               SELECT id, username, display_name, NULL::TEXT AS company_name, role, active, created_at,
                      FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
+                     FALSE AS can_assign_surveyors,
                      FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof,
                      0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors
               FROM app_users ORDER BY id
@@ -3376,6 +3378,7 @@ Deno.serve(async (req) => {
                    COALESCE(can_edit_surveys, FALSE) AS can_edit_surveys,
                    COALESCE(can_review_data, FALSE) AS can_review_data,
                    COALESCE(can_verify_surveyors, FALSE) AS can_verify_surveyors,
+                   COALESCE(can_assign_surveyors, FALSE) AS can_assign_surveyors,
                    COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
                    COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
@@ -3389,6 +3392,7 @@ Deno.serve(async (req) => {
               SELECT id, username, display_name, NULL::TEXT AS company_name, role, active, created_at,
                      FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
+                     FALSE AS can_assign_surveyors,
                      FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof,
                      0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors
               FROM app_users
@@ -3484,6 +3488,7 @@ Deno.serve(async (req) => {
           can_edit_surveys: r.can_edit_surveys === true,
           can_review_data: r.can_review_data === true,
           can_verify_surveyors: r.can_verify_surveyors === true,
+          can_assign_surveyors: r.can_assign_surveyors === true,
           can_crud_questionnaire: r.can_crud_questionnaire === true,
           can_validate_proof: r.can_validate_proof === true,
           max_questions_per_survey: Number(r.max_questions_per_survey) || 0,

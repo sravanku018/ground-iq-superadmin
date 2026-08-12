@@ -19,9 +19,16 @@ const POWER_DEFS = [
   { key: 'can_edit_surveys', label: 'Survey questions', icon: '▤', hint: 'Edit question content' },
   { key: 'can_review_data', label: 'Data review', icon: '✓', hint: 'Confirm/reject records' },
   { key: 'can_verify_surveyors', label: 'Verify surveyors', icon: '🛡', hint: 'Verify surveyor identity' },
+  { key: 'can_assign_surveyors', label: 'Assign surveyors', icon: '👥', hint: 'Map surveyors to projects' },
   { key: 'can_crud_questionnaire', label: 'CRUD questionnaire', icon: '🗂', hint: 'Create surveys + pick question count' },
   { key: 'can_validate_proof', label: 'Proof validation', icon: '📞', hint: 'Phone + Aadhaar format checks' },
 ]
+
+function powersFromUser(u) {
+  const o = {}
+  for (const p of POWER_DEFS) o[p.key] = !!u?.[p.key]
+  return o
+}
 
 const EMPTY_FORM = { username: '', name: '', company_name: '', password: '' }
 
@@ -48,6 +55,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
   const [maxQInputs, setMaxQInputs] = useState({})
   const [maxSvInputs, setMaxSvInputs] = useState({})
   const [maxSrInputs, setMaxSrInputs] = useState({})
+  /** Draft feature checkmarks per admin id — saved with Save all */
+  const [powerDrafts, setPowerDrafts] = useState({})
   const [companyNames, setCompanyNames] = useState([])
 
   const load = useCallback(async () => {
@@ -73,7 +82,12 @@ export default function AdminClientAdminsScreen({ onToast }) {
   }, [load])
 
   const admins = users.filter((u) => u.role === 'admin')
-  const powersOf = (u) => POWER_DEFS.filter((p) => u[p.key])
+  const powersOf = (u) => {
+    const draft = powerDrafts[u.id]
+    const src = draft || powersFromUser(u)
+    return POWER_DEFS.filter((p) => src[p.key])
+  }
+  const draftPowers = (u) => powerDrafts[u.id] || powersFromUser(u)
   const canVerify = me?.role === 'super_admin' || !!me?.can_verify_surveyors
 
   const approvedLimit = seatData?.limits?.approved_limit != null
@@ -84,36 +98,54 @@ export default function AdminClientAdminsScreen({ onToast }) {
   const canAccessCount = admins.filter((a) => a.active !== false).length
 
   const toggleProfile = (u) => {
-    setProfileId(profileId === u.id ? null : u.id)
-    setEdit({ username: u.username || '', name: u.name || u.display_name || '', company_name: u.company_name || '', password: '' })
-  }
-
-  const togglePower = async (u, key, label) => {
-    setSaving(true)
-    try {
-      const next = !u[key]
-      await updateUser(u.id, { [key]: next })
-      onToast?.(`${label} ${next ? 'granted' : 'revoked'} for ${u.name || u.username}`, 'ok')
-      await load()
-    } catch (e) {
-      onToast?.(e.message, 'error')
-    } finally {
-      setSaving(false)
+    if (profileId === u.id) {
+      setProfileId(null)
+      return
     }
+    setProfileId(u.id)
+    setEdit({
+      username: u.username || '',
+      name: u.name || u.display_name || '',
+      company_name: u.company_name || '',
+      password: '',
+    })
+    setPowerDrafts((d) => ({ ...d, [u.id]: powersFromUser(u) }))
   }
 
-  /** Single save: caps + account fields in one PATCH (one Save button in profile). */
+  const setPowerCheck = (userId, key, checked) => {
+    setPowerDrafts((d) => {
+      const prev = d[userId] ?? {}
+      return {
+        ...d,
+        [userId]: {
+          ...prev,
+          [key]: !!checked,
+        },
+      }
+    })
+  }
+
+  const setAllPowers = (userId, on) => {
+    const next = {}
+    for (const p of POWER_DEFS) next[p.key] = !!on
+    setPowerDrafts((d) => ({ ...d, [userId]: next }))
+  }
+
+  /** Single save: features + caps + account fields in one PATCH. */
   const saveAllChanges = async (u) => {
     setSaving(true)
     try {
       const qVal = maxQInputs[u.id] != null ? Number(maxQInputs[u.id]) : (u.max_questions_per_survey ?? 0)
       const svVal = maxSvInputs[u.id] != null ? Number(maxSvInputs[u.id]) : (u.max_surveys ?? 0)
       const srVal = maxSrInputs[u.id] != null ? Number(maxSrInputs[u.id]) : (u.max_surveyors ?? 0)
+      const powers = draftPowers(u)
       const parts = []
       const body = {
         max_questions_per_survey: Math.max(0, qVal),
         max_surveys: Math.max(0, svVal),
         max_surveyors: Math.max(0, srVal),
+        // All feature checkmarks in one request
+        ...Object.fromEntries(POWER_DEFS.map((p) => [p.key, !!powers[p.key]])),
       }
       // Account fields (only include when the user actually typed something new)
       const typedUsername = edit.username.trim()
@@ -129,6 +161,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
       if (typedPassword) body.password = typedPassword
 
       const res = await updateUser(u.id, body)
+      const granted = POWER_DEFS.filter((p) => powers[p.key]).length
+      parts.push(`${granted}/${POWER_DEFS.length} features`)
       parts.push('caps saved')
       if (res.username_changed) parts.push('username updated')
       if (res.password_changed) parts.push('password updated · sessions revoked')
@@ -143,6 +177,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
       setMaxQInputs((m) => ({ ...m, [u.id]: undefined }))
       setMaxSvInputs((m) => ({ ...m, [u.id]: undefined }))
       setMaxSrInputs((m) => ({ ...m, [u.id]: undefined }))
+      setPowerDrafts((d) => ({ ...d, [u.id]: powersFromUser({ ...u, ...powers }) }))
       setEdit(EMPTY_FORM)
       await load()
     } catch (e) {
@@ -484,25 +519,95 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       </div>
                     )}
 
-                    {/* Features (powers) */}
-                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>🧩 Features (granted powers)</h4>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {POWER_DEFS.map((p) => (
-                        <button
-                          key={p.key}
-                          type="button"
-                          className={`btn small ${u[p.key] ? 'primary' : ''}`}
-                          disabled={saving}
-                          onClick={() => void togglePower(u, p.key, p.label)}
-                          title={p.hint}
-                          style={{ fontSize: 12, padding: '5px 12px' }}
-                        >
-                          {p.icon} {p.label} {u[p.key] ? '✓' : '＋'}
-                        </button>
-                      ))}
+                    {/* Features (powers) — checkmarks, save all at once */}
+                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>
+                      🧩 Features (granted powers)
+                      <span className="muted" style={{ fontWeight: 500, marginLeft: 8 }}>
+                        {powersOf(u).length}/{POWER_DEFS.length} checked
+                      </span>
+                    </h4>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 8,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className="btn small"
+                        disabled={saving}
+                        onClick={() => setAllPowers(u.id, true)}
+                      >
+                        Check all
+                      </button>
+                      <button
+                        type="button"
+                        className="btn small"
+                        disabled={saving}
+                        onClick={() => setAllPowers(u.id, false)}
+                      >
+                        Uncheck all
+                      </button>
                     </div>
-                    <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
-                      Click a feature to grant (✓) or revoke (＋). Super Admin only — every change is audit-logged.
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                        gap: 8,
+                      }}
+                    >
+                      {POWER_DEFS.map((p) => {
+                        const checked = !!draftPowers(u)[p.key]
+                        return (
+                          <label
+                            key={p.key}
+                            title={p.hint}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 10,
+                              padding: '10px 12px',
+                              borderRadius: 10,
+                              border: checked
+                                ? '1px solid rgba(5, 150, 105, 0.45)'
+                                : '1px solid var(--border, #e2e8f0)',
+                              background: checked
+                                ? 'rgba(5, 150, 105, 0.08)'
+                                : 'var(--bg, #fff)',
+                              cursor: saving ? 'not-allowed' : 'pointer',
+                              userSelect: 'none',
+                              fontSize: 13,
+                              fontWeight: 600,
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={saving}
+                              onChange={(e) => setPowerCheck(u.id, p.key, e.target.checked)}
+                              style={{
+                                width: 18,
+                                height: 18,
+                                accentColor: '#059669',
+                                flexShrink: 0,
+                                cursor: 'pointer',
+                              }}
+                            />
+                            <span style={{ lineHeight: 1.3 }}>
+                              {p.icon} {p.label}
+                              {checked ? (
+                                <span style={{ color: '#059669', marginLeft: 4 }}>✓</span>
+                              ) : null}
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                    <p className="muted" style={{ fontSize: 11, margin: '8px 0 0' }}>
+                      Tick features, then press <strong>Save all changes</strong> below. Super Admin
+                      only — one save writes every power.
                     </p>
 
                     {/* Limits */}
@@ -703,11 +808,13 @@ export default function AdminClientAdminsScreen({ onToast }) {
                         disabled={saving}
                         onClick={() => void saveAllChanges(u)}
                       >
-                        {saving ? 'Saving…' : '💾 Save all changes'}
+                        {saving
+                          ? 'Saving…'
+                          : `💾 Save all changes (${powersOf(u).length}/${POWER_DEFS.length} features)`}
                       </button>
                       <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
-                        Saves the caps above plus any account changes (username / name / password)
-                        in one go.
+                        Saves feature checkmarks, limits, and account fields (username / name /
+                        password) in one request.
                       </p>
                     </div>
 

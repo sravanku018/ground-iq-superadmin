@@ -242,6 +242,76 @@ function sqlCountN(row: unknown): number {
   return 0;
 }
 
+/** Parse survey_form.questions whether stored as jsonb array or double-encoded string. */
+function parseQuestionsArray(raw: unknown): unknown[] {
+  let qs: unknown = raw;
+  if (typeof qs === "string") {
+    try {
+      qs = JSON.parse(qs);
+    } catch {
+      return [];
+    }
+  }
+  // Some rows store a JSON string inside jsonb
+  if (typeof qs === "string") {
+    try {
+      qs = JSON.parse(qs);
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(qs) ? qs : [];
+}
+
+/**
+ * Peak questions in any one survey a Client Admin can use (owned + shared + company projects).
+ * Used for "Questions / survey (peak)" vs max_questions_per_survey.
+ */
+async function peakQuestionsForAdmin(
+  sqlFn: NonNullable<typeof sql>,
+  adminId: number,
+  companyName?: string | null,
+): Promise<number> {
+  const company = String(companyName || "").trim();
+  const rows = company
+    ? await sqlFn`
+        SELECT questions FROM survey_form
+        WHERE form_key NOT IN ('default', 'legacy')
+          AND (
+            created_by = ${adminId}
+            OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${adminId})
+            OR (
+              company_name IS NOT NULL AND TRIM(company_name) <> ''
+              AND LOWER(TRIM(company_name)) = LOWER(${company})
+            )
+          )
+      `.catch(() => [])
+    : await sqlFn`
+        SELECT questions FROM survey_form
+        WHERE form_key NOT IN ('default', 'legacy')
+          AND (
+            created_by = ${adminId}
+            OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${adminId})
+          )
+      `.catch(() => []);
+  let peak = 0;
+  for (const r of rows as { questions?: unknown }[]) {
+    peak = Math.max(peak, parseQuestionsArray(r.questions).length);
+  }
+  // Fallback: own surveys only if nothing matched (older DBs without access rows)
+  if (peak === 0) {
+    const own = await sqlFn`
+      SELECT questions FROM survey_form
+      WHERE created_by = ${adminId}
+        AND form_key NOT IN ('default', 'legacy')
+    `.catch(() => []);
+    for (const r of own as { questions?: unknown }[]) {
+      peak = Math.max(peak, parseQuestionsArray(r.questions).length);
+    }
+  }
+  return peak;
+}
+
 /** Grant-based power check — Super Admin always has every power; Client Admins need the grant. */
 function hasPower(
   me: { role: unknown } & Record<string, unknown> | null,
@@ -3202,29 +3272,35 @@ Deno.serve(async (req) => {
       // Client Admin: attach live usage vs Super-Admin-set caps so Overview "My allocation" works
       // without relying only on GET /api/users (which can be filtered / slow).
       if (me.role === "admin" && sql) {
+        const meCompany = String((me as { company_name?: unknown }).company_name || "").trim();
         const [sCnt] = await sql`SELECT COUNT(*)::int AS n FROM survey_form WHERE created_by = ${me.id}`.catch(() => [{ n: 0 }]);
         const [srCnt] = await sql`SELECT COUNT(*)::int AS n FROM app_users WHERE role = 'surveyor' AND created_by = ${me.id}`.catch(() => [{ n: 0 }]);
-        const [qCnt] = await sql`
-          SELECT COALESCE(MAX(jsonb_array_length(COALESCE(questions, '[]'::jsonb))), 0)::int AS n
-          FROM survey_form WHERE created_by = ${me.id}
-        `.catch(() => [{ n: 0 }]);
+        // Peak Q across owned + shared + company projects (not only created_by)
+        const questionPeak = await peakQuestionsForAdmin(sql, Number(me.id), meCompany);
         const teamRows = await sql`
           SELECT f.id AS sid, f.title,
+                 jsonb_array_length(COALESCE(
+                   CASE WHEN jsonb_typeof(f.questions) = 'array' THEN f.questions ELSE '[]'::jsonb END,
+                   '[]'::jsonb
+                 ))::int AS qn,
                  COALESCE(array_agg(jsonb_build_object('id', u.id, 'username', u.username, 'name', COALESCE(u.display_name, u.username)))
                    FILTER (WHERE u.id IS NOT NULL), '[]'::jsonb) AS surveyors
           FROM survey_form f
           LEFT JOIN survey_assignments a ON a.survey_id = f.id
           LEFT JOIN app_users u ON u.id = a.user_id AND u.created_by = ${me.id} AND u.role = 'surveyor'
           WHERE f.created_by = ${me.id}
-          GROUP BY f.id, f.title ORDER BY f.title
+             OR f.id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+          GROUP BY f.id, f.title, f.questions ORDER BY f.title
         `.catch(() => []);
-        const survey_team = (teamRows as { sid: number; title: string; surveyors: unknown }[]).map((t) => ({
+        const survey_team = (teamRows as { sid: number; title: string; qn?: number; surveyors: unknown }[]).map((t) => ({
           id: Number(t.sid),
           title: String(t.title),
+          question_count: Number(t.qn) || 0,
           surveyors: Array.isArray(t.surveyors)
             ? (t.surveyors as { id: number; username: string; name: string }[])
             : [],
         }));
+        // If SQL qn was 0 for all (double-encoded questions), prefer JS peak per row via peakQuestionsForAdmin
         const granted = await sql`
           SELECT f.id, f.title
           FROM survey_admin_access saa JOIN survey_form f ON f.id = saa.survey_id
@@ -3235,7 +3311,7 @@ Deno.serve(async (req) => {
             ...me,
             survey_count: sqlCountN(sCnt),
             surveyor_count: sqlCountN(srCnt),
-            question_count: sqlCountN(qCnt),
+            question_count: questionPeak,
             survey_team,
             granted_surveys: (granted as { id: number; title: string }[]).map((p) => ({
               id: Number(p.id),
@@ -3664,12 +3740,12 @@ Deno.serve(async (req) => {
             WHERE u.role = 'surveyor' AND u.created_by = ${Number(r.id)}
           `.catch(() => [{ n: 0 }]);
           surveyor_record_count = sqlCountN(recordCnt);
-          // Peak questions in any one survey (matches max_questions_per_survey cap)
-          const [qCnt] = await sql`
-            SELECT COALESCE(MAX(jsonb_array_length(COALESCE(questions, '[]'::jsonb))), 0)::int AS n
-            FROM survey_form WHERE created_by = ${Number(r.id)}
-          `.catch(() => [{ n: 0 }]);
-          question_count = sqlCountN(qCnt);
+          // Peak questions across owned + shared + company projects
+          question_count = await peakQuestionsForAdmin(
+            sql,
+            Number(r.id),
+            r.company_name ? String(r.company_name) : null,
+          );
           // Survey → surveyor mapping for this admin (only their own surveys + own surveyors)
           const teamRows = await sql`
             SELECT f.id AS sid, f.title,

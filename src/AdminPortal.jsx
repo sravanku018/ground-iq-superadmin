@@ -289,9 +289,21 @@ function AllocationCard({ user }) {
         </div>
         <div className="stat">
           <strong>{fmt(self.question_count, maxQ)}</strong>
-          <span>Questions / survey (peak)</span>
+          <span>Questions in largest survey</span>
         </div>
       </div>
+      {maxQ > 0 && Number(self.question_count || 0) === 0 && (
+        <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
+          No questions detected yet — open <strong>Surveys</strong> or <strong>Questions</strong> and
+          save questions on a survey. Cap is {maxQ} questions per survey (Super Admin).
+        </p>
+      )}
+      {maxQ > 0 && Number(self.question_count || 0) > maxQ && (
+        <p style={{ fontSize: 12, margin: '0 0 10px', color: '#b45309' }}>
+          Peak {self.question_count} exceeds your limit of {maxQ}. Remove questions or ask Super Admin
+          to raise the cap.
+        </p>
+      )}
       {features.length > 0 && (
         <p style={{ fontSize: 12, margin: '0 0 10px' }}>
           <strong>Features on:</strong>{' '}
@@ -303,7 +315,14 @@ function AllocationCard({ user }) {
         <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
           {team.map((s) => (
             <li key={s.id} style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px' }}>
-              <div style={{ fontWeight: 600, fontSize: 13 }}>📋 {s.title}</div>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>
+                📋 {s.title}
+                {s.question_count != null ? (
+                  <span className="muted" style={{ fontWeight: 500, marginLeft: 8 }}>
+                    · {s.question_count} Q
+                  </span>
+                ) : null}
+              </div>
               <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                 {Array.isArray(s.surveyors) && s.surveyors.length > 0
                   ? `👥 ${s.surveyors.map((x) => x.name || x.username).join(', ')}`

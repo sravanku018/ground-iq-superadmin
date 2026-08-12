@@ -205,8 +205,9 @@ export default function AdminUsersScreen({ onToast }) {
     survey: '',
   })
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (opts = {}) => {
+    const silent = !!opts.silent
+    if (!silent) setLoading(true)
     try {
       const [data, prog, svs, seats] = await Promise.all([
         listUsers(),
@@ -219,14 +220,31 @@ export default function AdminUsersScreen({ onToast }) {
       setAllSurveys(svs.items || [])
       if (seats) setSeatData(seats)
     } catch (e) {
-      onToast?.(e.message, 'error')
+      if (!silent) onToast?.(e.message, 'error')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [onToast])
 
   useEffect(() => {
     load()
+  }, [load])
+
+  // Auto-refresh progress so field completions appear without manual Refresh
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return
+      void load({ silent: true })
+    }
+    const id = setInterval(tick, 20_000)
+    const onVis = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVis)
+    }
   }, [load])
 
   async function loadProfile(u, filters = profileFilters) {

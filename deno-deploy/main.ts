@@ -1943,6 +1943,76 @@ async function markFactFailed(sqlFn: NonNullable<typeof sql>, id: number, err: u
 }
 
 /**
+ * When a field package is fully complete (geo + photo + voice + Q/A, not a draft),
+ * auto-confirm + materialize facts so Client Admin Report / progress / overview
+ * update without a manual Review → Confirm step.
+ */
+async function autoConfirmIfComplete(
+  sqlFn: NonNullable<typeof sql>,
+  submissionId: number,
+): Promise<{ auto_confirmed: boolean; completeness: string }> {
+  const rows = await sqlFn`
+    SELECT id, payload FROM submissions WHERE id = ${submissionId} LIMIT 1
+  `.catch(() => []);
+  if (!rows.length) return { auto_confirmed: false, completeness: "incomplete" };
+  let payload = parsePayload((rows[0] as { payload: unknown }).payload);
+  if (isDraftSubmission(payload)) {
+    return { auto_confirmed: false, completeness: "incomplete" };
+  }
+  const cur = payloadStatus(payload);
+  if (cur === "confirmed") return { auto_confirmed: false, completeness: "complete" };
+  if (cur === "rejected") return { auto_confirmed: false, completeness: "incomplete" };
+
+  const mediaKinds = (
+    await sqlFn`SELECT kind FROM survey_media WHERE submission_id = ${submissionId}`.catch(() => [])
+  ).map((m) => String((m as { kind?: string }).kind || "").toLowerCase());
+  if (mediaKinds.includes("audio")) payload.has_audio = true;
+  if (mediaKinds.includes("photo")) payload.has_photo = true;
+
+  const verify = verifySubmission(payload, mediaKinds);
+  if (verify.completeness !== "complete") {
+    payload = {
+      ...payload,
+      completeness: verify.completeness,
+      verification: verify,
+      has_audio: verify.voice_ok ? true : payload.has_audio,
+      has_photo: verify.photo_ok ? true : payload.has_photo,
+    };
+    await sqlFn`
+      UPDATE submissions SET payload = ${JSON.stringify(payload)}::jsonb WHERE id = ${submissionId}
+    `.catch(() => null);
+    return { auto_confirmed: false, completeness: verify.completeness };
+  }
+
+  payload = translateGeoEnglish(payload);
+  payload.draft = false;
+  const ans = { ...((payload.answers || {}) as Record<string, unknown>) };
+  delete ans._draft;
+  delete ans.draft;
+  payload.answers = ans;
+  payload = {
+    ...payload,
+    status: "confirmed",
+    completeness: "complete",
+    verification: verify,
+    has_audio: true,
+    has_photo: true,
+    confirmed_at: new Date().toISOString(),
+    confirmed_by: "system (auto-complete)",
+    confirm_note: "Auto-confirmed: geo + photo + voice + Q/A complete",
+  };
+  await sqlFn`
+    UPDATE submissions SET payload = ${JSON.stringify(payload)}::jsonb WHERE id = ${submissionId}
+  `;
+  try {
+    await materializeFact(sqlFn, submissionId);
+  } catch (e) {
+    await markFactFailed(sqlFn, submissionId, e);
+  }
+  return { auto_confirmed: true, completeness: "complete" };
+}
+
+/**
  * Idempotent fact catch-up for confirmed submissions without a fact row.
  * Batched multi-row INSERTs — never one query per row — so even thousands of
  * legacy rows complete in a handful of round trips (boot/first-request safe).
@@ -3242,7 +3312,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Count completed records for one surveyor (by user_id or username/name)
+    // Count finished records for one surveyor (by user_id or username/name).
+    // Excludes drafts and rejected rows so targets reflect real completed work.
     async function countDoneForUser(u: {
       id: number;
       username: string;
@@ -3255,13 +3326,20 @@ Deno.serve(async (req) => {
       const dname = u.name || u.display_name || uname;
       const rows = await sql`
         SELECT COUNT(*)::int AS n FROM submissions
-        WHERE payload->>'user_id' = ${uid}
-           OR payload->>'submitted_by' = ${uname}
-           OR payload->>'submitted_by' = ${dname}
-           OR payload->'answers'->>'data_collector' = ${uname}
-           OR payload->'answers'->>'data_collector' = ${dname}
+        WHERE (
+             payload->>'user_id' = ${uid}
+          OR payload->>'submitted_by' = ${uname}
+          OR payload->>'submitted_by' = ${dname}
+          OR payload->'answers'->>'data_collector' = ${uname}
+          OR payload->'answers'->>'data_collector' = ${dname}
+        )
+          AND COALESCE(payload->>'status', 'pending') <> 'rejected'
+          AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+          AND COALESCE(payload->'answers'->>'_draft', 'false') NOT IN ('true', 't', '1')
+          AND COALESCE(payload->'answers'->>'draft', 'false') NOT IN ('true', 't', '1')
+          AND COALESCE(payload->>'content_type', '') <> 'draft'
       `.catch(() => [{ n: 0 }]);
-      return rows[0]?.n ?? 0;
+      return sqlCountN(rows[0]);
     }
 
     function progressStatus(done: number, target: number) {
@@ -3323,18 +3401,77 @@ Deno.serve(async (req) => {
     if (path === "/api/progress" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      const rows = await sql`
-        SELECT id, username, display_name, role, active, COALESCE(target_quota, 0) AS target_quota, created_at
-        FROM app_users
-        WHERE role IN ('surveyor', 'field')
-        ORDER BY id
-      `.catch(async () => {
-        const r = await sql`
-          SELECT id, username, display_name, role, active, created_at
-          FROM app_users WHERE role IN ('surveyor', 'field') ORDER BY id
-        `;
-        return r.map((x: Record<string, unknown>) => ({ ...x, target_quota: 0 }));
-      });
+
+      // Catch-up: auto-confirm complete pending packages so Client Admin sees done work
+      // without opening Review. Bounded batch keeps this cheap.
+      try {
+        const pendingRows = me.role === "super_admin"
+          ? await sql`
+              SELECT id FROM submissions
+              WHERE COALESCE(payload->>'status', 'pending') = 'pending'
+                AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+                AND (
+                  payload->>'has_photo' = 'true'
+                  OR payload->>'has_audio' = 'true'
+                  OR EXISTS (SELECT 1 FROM survey_media m WHERE m.submission_id = submissions.id)
+                )
+              ORDER BY id DESC LIMIT 40
+            `.catch(() => [])
+          : await sql`
+              SELECT s.id FROM submissions s
+              WHERE COALESCE(s.payload->>'status', 'pending') = 'pending'
+                AND COALESCE(s.payload->>'draft', 'false') NOT IN ('true', 't', '1')
+                AND (
+                  s.payload->>'user_id' IN (
+                    SELECT id::text FROM app_users WHERE created_by = ${me.id} AND role IN ('surveyor', 'field')
+                  )
+                  OR s.payload->>'submitted_by' IN (
+                    SELECT username FROM app_users WHERE created_by = ${me.id} AND role IN ('surveyor', 'field')
+                  )
+                  OR s.payload->>'form_key' = ANY(
+                    SELECT form_key FROM survey_form WHERE created_by = ${me.id}
+                    UNION
+                    SELECT f.form_key FROM survey_admin_access saa
+                    JOIN survey_form f ON f.id = saa.survey_id WHERE saa.admin_id = ${me.id}
+                  )
+                )
+              ORDER BY s.id DESC LIMIT 40
+            `.catch(() => []);
+        for (const pr of pendingRows as { id: number }[]) {
+          await autoConfirmIfComplete(sql, Number(pr.id)).catch(() => null);
+        }
+      } catch {
+        /* non-fatal */
+      }
+
+      // Client Admin: only their surveyors. Super Admin: all.
+      const rows = me.role === "super_admin"
+        ? await sql`
+            SELECT id, username, display_name, role, active, COALESCE(target_quota, 0) AS target_quota, created_at
+            FROM app_users
+            WHERE role IN ('surveyor', 'field')
+            ORDER BY id
+          `.catch(async () => {
+            const r = await sql`
+              SELECT id, username, display_name, role, active, created_at
+              FROM app_users WHERE role IN ('surveyor', 'field') ORDER BY id
+            `;
+            return r.map((x: Record<string, unknown>) => ({ ...x, target_quota: 0 }));
+          })
+        : await sql`
+            SELECT id, username, display_name, role, active, COALESCE(target_quota, 0) AS target_quota, created_at
+            FROM app_users
+            WHERE role IN ('surveyor', 'field') AND created_by = ${me.id}
+            ORDER BY id
+          `.catch(async () => {
+            const r = await sql`
+              SELECT id, username, display_name, role, active, created_at
+              FROM app_users
+              WHERE role IN ('surveyor', 'field') AND created_by = ${me.id}
+              ORDER BY id
+            `;
+            return r.map((x: Record<string, unknown>) => ({ ...x, target_quota: 0 }));
+          });
       const surveyors = [];
       for (const r of rows as {
         id: number;
@@ -3381,15 +3518,30 @@ Deno.serve(async (req) => {
       const body = await readBody(req);
       const target = Math.max(0, Math.min(Number(body.target) || 0, 100000));
       if (body.user_id) {
+        if (me.role !== "super_admin") {
+          const own = await sql`
+            SELECT id FROM app_users
+            WHERE id = ${Number(body.user_id)} AND created_by = ${me.id} AND role IN ('surveyor', 'field')
+            LIMIT 1
+          `.catch(() => []);
+          if (!own.length) return json({ error: "Not your surveyor" }, 403);
+        }
         await sql`
           UPDATE app_users SET target_quota = ${target} WHERE id = ${Number(body.user_id)}
         `;
         return json({ ok: true, user_id: Number(body.user_id), target });
       }
       if (body.all_surveyors) {
-        await sql`
-          UPDATE app_users SET target_quota = ${target} WHERE role = 'surveyor'
-        `;
+        if (me.role === "super_admin") {
+          await sql`
+            UPDATE app_users SET target_quota = ${target} WHERE role = 'surveyor'
+          `;
+        } else {
+          await sql`
+            UPDATE app_users SET target_quota = ${target}
+            WHERE role = 'surveyor' AND created_by = ${me.id}
+          `;
+        }
         return json({ ok: true, all_surveyors: true, target });
       }
       return json({ error: "Provide user_id or all_surveyors:true" }, 400);
@@ -6952,19 +7104,30 @@ Deno.serve(async (req) => {
         VALUES (${JSON.stringify(payload)}::jsonb)
         RETURNING id, payload, created_at
       `;
-      const row = rows[0];
+      const row = rows[0] as { id: number; payload: unknown; created_at: string };
+      // If package already includes media flags (or later media uploads complete), auto-confirm
+      const auto = await autoConfirmIfComplete(sql, Number(row.id)).catch(() => ({
+        auto_confirmed: false,
+        completeness: "incomplete",
+      }));
       return json({
         ok: true,
         id: row.id,
         form_id: payload.form_id,
         source: payload.source,
         submitted_by: agent,
-        status: "pending",
+        status: auto.auto_confirmed ? "confirmed" : "pending",
+        completeness: auto.completeness,
+        auto_confirmed: auto.auto_confirmed,
         answers: payload.answers,
         geo,
         created_at: row.created_at,
-        next: "POST /api/submissions/:id/media with kind=photo|audio",
-        note: "Q/A saved. Upload photo and audio separately.",
+        next: auto.auto_confirmed
+          ? "Record complete — visible in Client Admin Report automatically"
+          : "POST /api/submissions/:id/media with kind=photo|audio",
+        note: auto.auto_confirmed
+          ? "Q/A + media complete — auto-confirmed for Client Admin."
+          : "Q/A saved. Upload photo and audio separately; auto-confirms when complete.",
       }, 201);
     }
 
@@ -7102,6 +7265,12 @@ Deno.serve(async (req) => {
         UPDATE submissions SET payload = ${JSON.stringify(payload)}::jsonb WHERE id = ${id}
       `;
 
+      // After each media piece: if geo+photo+voice+QA all present, auto-confirm for Client Admin
+      const auto = await autoConfirmIfComplete(sql, id).catch(() => ({
+        auto_confirmed: false,
+        completeness: "incomplete",
+      }));
+
       return json({
         ok: true,
         submission_id: id,
@@ -7118,8 +7287,12 @@ Deno.serve(async (req) => {
         linked: true,
         url: publicUrl,
         storage: provider,
-        note:
-          mode === "neon"
+        status: auto.auto_confirmed ? "confirmed" : "pending",
+        completeness: auto.completeness,
+        auto_confirmed: auto.auto_confirmed,
+        note: auto.auto_confirmed
+          ? `${kind} linked — record auto-confirmed for Client Admin Report.`
+          : mode === "neon"
             ? `${kind} linked free in Neon (no credit card). Admin opens via API.`
             : `${kind} linked on ${provider}.`,
       }, 201);

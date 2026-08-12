@@ -675,12 +675,29 @@ export default function AdminPortal({ superAdminOnly = false }) {
     }
   }, [])
 
-  // Overview: stats only (cheap)
+  // Overview: stats only (cheap) — auto-refresh so field completions show up
   useEffect(() => {
     if (user && authReady && (page === 'overview' || !stats)) {
       void loadStats()
     }
   }, [user, authReady, page, loadStats]) // eslint-disable-line react-hooks/exhaustive-deps -- load stats on login + overview
+
+  useEffect(() => {
+    if (!user || !authReady || page !== 'overview') return undefined
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return
+      void loadStats()
+    }
+    const id = setInterval(tick, 25_000)
+    const onVis = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [user, authReady, page, loadStats])
 
   // Data tab: submissions only when open
   useEffect(() => {

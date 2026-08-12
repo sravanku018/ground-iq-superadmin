@@ -5701,7 +5701,14 @@ Deno.serve(async (req) => {
       const subMap = new Map((sub as any[]).map((r) => [Number(r.survey_id), Number(r.n)]));
       const subByFkMap = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.n)]));
 
-      const items = (rows as Record<string, unknown>[]).map((r) => {
+      const items = (rows as Record<string, unknown>[])
+        // Client Admin never sees platform seed forms (Field Survey / Legacy)
+        .filter((r) => {
+          if (me.role === "super_admin") return true;
+          const fk = String(r.form_key || "");
+          return fk !== "default" && fk !== "legacy";
+        })
+        .map((r) => {
         const qCount = Number(r.question_count || 0);
         const asgData = asgMap.get(Number(r.id)) as { n?: number; names?: string[] } | undefined;
         const names = Array.isArray(asgData?.names) ? asgData.names.filter(Boolean) : [];
@@ -6555,13 +6562,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Admin saves question bank (dashboard)
+    // Admin saves platform default form (form_key=default / Field Survey).
+    // Super Admin console only — Client Admin must edit their own surveys via PUT /api/surveys/:id.
     if (path === "/api/admin/questions" && method === "PUT") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      if (!hasPower(me, "can_edit_surveys")) {
+      if (me.role !== "super_admin") {
         return json({
-          error: "Super Admin has not granted your account survey-editing rights",
+          error: "Super Admin only — Client Admin cannot edit the platform Field Survey. Edit your own survey under Surveys / Questions.",
         }, 403);
       }
       const body = await readBody(req);

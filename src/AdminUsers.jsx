@@ -88,7 +88,7 @@ function SurveySelect({ value, onChange, all }) {
       >
         {value.length
           ? `${value.length} survey${value.length > 1 ? 's' : ''} selected`
-          : 'Select surveys… (none = default form)'}
+          : 'Select surveys… (none = not assigned)'}
       </button>
       {open && (
         <div
@@ -1060,7 +1060,7 @@ export default function AdminUsersScreen({ onToast }) {
             <span>Assign surveys to all created users (multiple)</span>
             <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
               Pick one or more surveys — every created surveyor gets all of them. None
-              selected = default Field Survey form on the app.
+              selected = surveyor has no survey until you assign one.
             </p>
             <SurveySelect
               value={gen.surveys}
@@ -1091,7 +1091,7 @@ export default function AdminUsersScreen({ onToast }) {
           <div className="field">
             <span>Assign surveys (multiple, optional)</span>
             <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
-              None selected = surveyor uses the default Field Survey form on the app.
+              None selected = surveyor has no survey until you assign one.
             </p>
             <SurveySelect
               value={form.surveys}
@@ -1554,7 +1554,7 @@ export default function AdminUsersScreen({ onToast }) {
                         <div className="field compact">
                           <span>Assign surveys (optional)</span>
                           <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
-                            None = uses the default Field Survey form on the app.
+                            None = no survey assigned until you pick one.
                           </p>
                           <SurveySelect
                             value={edit.surveys}

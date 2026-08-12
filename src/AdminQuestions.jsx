@@ -21,39 +21,78 @@ const defaultOptionsForType = (t) => {
 }
 
 export default function AdminQuestionsScreen({ onToast, user }) {
+  const isSuperAdmin = user?.role === 'super_admin'
   // Survey-question editing power — Super Admin grants it (least privilege)
-  const canEdit = user?.role === 'super_admin' || !!user?.can_edit_surveys
-  const [title, setTitle] = useState('Field Survey')
+  const canEdit = isSuperAdmin || !!user?.can_edit_surveys
+  const [title, setTitle] = useState('')
   const [questions, setQuestions] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [surveys, setSurveys] = useState([])
-  const [surveyId, setSurveyId] = useState('') // '' = default form, else survey id
+  // '' = Super Admin platform default only. Client Admin always uses a real survey id.
+  const [surveyId, setSurveyId] = useState('')
+  const [surveysReady, setSurveysReady] = useState(false)
 
   const load = useCallback(async () => {
+    if (!surveysReady) return
+    // Client Admin must never load the platform Field Survey (form_key=default)
+    if (!isSuperAdmin && !surveyId) {
+      setTitle('')
+      setQuestions([])
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
       if (surveyId) {
         const d = await getSurvey(surveyId)
-        setTitle(d.survey?.title || 'Field Survey')
+        setTitle(d.survey?.title || '')
         setQuestions(Array.isArray(d.survey?.questions) ? d.survey.questions : [])
-      } else {
+      } else if (isSuperAdmin) {
         const data = await getQuestions()
         setTitle(data.title || 'Field Survey')
         setQuestions(Array.isArray(data.questions) ? data.questions : [])
+      } else {
+        setTitle('')
+        setQuestions([])
       }
     } catch (e) {
       onToast?.(e.message, 'error')
     } finally {
       setLoading(false)
     }
-  }, [surveyId, onToast])
+  }, [surveyId, onToast, surveysReady, isSuperAdmin])
 
   useEffect(() => {
+    let cancelled = false
     listSurveys()
-      .then((d) => setSurveys(d.items || []))
-      .catch(() => {})
-  }, [])
+      .then((d) => {
+        if (cancelled) return
+        // Hide platform seed forms from Client Admin entirely
+        const items = (d.items || []).filter((s) => {
+          if (!isSuperAdmin && (s.form_key === 'default' || s.form_key === 'legacy')) return false
+          return true
+        })
+        setSurveys(items)
+        setSurveysReady(true)
+        setSurveyId((cur) => {
+          if (cur && items.some((s) => String(s.id) === String(cur))) return cur
+          // Client Admin: auto-select first survey — never Field Survey default
+          if (!isSuperAdmin) return items[0] ? String(items[0].id) : ''
+          // Super Admin: prefer a real project if present; empty = platform default
+          return cur || (items[0] ? String(items[0].id) : '')
+        })
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSurveys([])
+          setSurveysReady(true)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isSuperAdmin])
 
   useEffect(() => {
     load()
@@ -93,6 +132,10 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       onToast?.('Super Admin has not granted your account survey-editing rights', 'error')
       return
     }
+    if (!isSuperAdmin && !surveyId) {
+      onToast?.('Create a survey first (Surveys tab), then edit its questions here', 'error')
+      return
+    }
     setSaving(true)
     try {
       const cleaned = questions.map((q) => {
@@ -127,9 +170,13 @@ export default function AdminQuestionsScreen({ onToast, user }) {
           speak: String(q.speak || q.label || '').trim(),
         }
       })
-      await (surveyId
-        ? updateSurvey(surveyId, { title, questions: cleaned })
-        : saveQuestions({ title, questions: cleaned }))
+      if (surveyId) {
+        await updateSurvey(surveyId, { title, questions: cleaned })
+      } else if (isSuperAdmin) {
+        await saveQuestions({ title, questions: cleaned })
+      } else {
+        throw new Error('No survey selected')
+      }
       onToast?.('Questions saved — field app loads them automatically', 'ok')
       await load()
     } catch (e) {
@@ -139,7 +186,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
     }
   }
 
-  if (loading) {
+  if (!surveysReady || loading) {
     return (
       <div className="screen">
         <p className="muted">Loading questions…</p>
@@ -150,8 +197,8 @@ export default function AdminQuestionsScreen({ onToast, user }) {
   return (
     <div className="screen">
       <header className="screen-head">
-        <h2>Client Admin · Questions</h2>
-        <p>Pick a survey · edit here · surveyor app loads automatically after unlock</p>
+        <h2>{isSuperAdmin ? 'Super Admin · Questions' : 'Client Admin · Questions'}</h2>
+        <p>Pick a {isSuperAdmin ? 'project' : 'survey'} · edit here · surveyor app loads automatically after unlock</p>
       </header>
 
       {!canEdit && (
@@ -171,11 +218,23 @@ export default function AdminQuestionsScreen({ onToast, user }) {
         </div>
       )}
 
+      {!isSuperAdmin && surveys.length === 0 && (
+        <div className="card" style={{ marginBottom: 12, padding: '14px 16px' }}>
+          <p style={{ margin: 0 }}>
+            No surveys yet. Create one under <strong>Surveys</strong>, then edit its questions here.
+          </p>
+          <p className="muted" style={{ margin: '8px 0 0', fontSize: 12 }}>
+            The platform “Field Survey” form is not available in Client Admin.
+          </p>
+        </div>
+      )}
+
+      {(isSuperAdmin || surveys.length > 0) && (
       <div className="card" style={{ marginBottom: 12 }}>
         <label className="field">
-          <span>Survey</span>
+          <span>{isSuperAdmin ? 'Project / form' : 'Survey'}</span>
           <select value={surveyId} onChange={(e) => setSurveyId(e.target.value)}>
-            <option value="">Field Survey (default)</option>
+            {isSuperAdmin && <option value="">Platform default (Field Survey)</option>}
             {surveys.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.title}
@@ -193,6 +252,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
           separately.
         </p>
       </div>
+      )}
 
       {questions.map((q, i) => {
         const type = q.type || 'text'
@@ -383,12 +443,16 @@ export default function AdminQuestionsScreen({ onToast, user }) {
         )
       })}
 
-      <button type="button" className="btn primary" onClick={addQ} disabled={!canEdit} style={{ marginBottom: 12 }}>
-        + Add Question
-      </button>
-      <button type="button" className="btn primary" onClick={save} disabled={saving || !canEdit} style={{ marginLeft: 8 }}>
-        {saving ? 'Saving & Pushing…' : 'Save & Push to Mobile App ✓'}
-      </button>
+      {(isSuperAdmin || surveyId) && (
+        <>
+          <button type="button" className="btn primary" onClick={addQ} disabled={!canEdit} style={{ marginBottom: 12 }}>
+            + Add Question
+          </button>
+          <button type="button" className="btn primary" onClick={save} disabled={saving || !canEdit} style={{ marginLeft: 8 }}>
+            {saving ? 'Saving & Pushing…' : 'Save & Push to Mobile App ✓'}
+          </button>
+        </>
+      )}
     </div>
   )
 }

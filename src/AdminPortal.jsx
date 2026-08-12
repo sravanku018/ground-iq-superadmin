@@ -30,11 +30,11 @@ const AdminSeatsScreen = lazy(() => import('./AdminSeats'))
 const AdminClientAdminsScreen = lazy(() => import('./AdminClientAdmins'))
 const AdminCompaniesScreen = lazy(() => import('./AdminCompanies'))
 
-// Client Admin nav — Question Bank (FR-QB-02) sits under Data collection
+// Client Admin nav — they create Surveys (Super Admin creates Projects separately)
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: '◈', pages: ['overview', 'report', 'analyze'] },
   { id: 'surveyors', label: 'Surveyors', icon: '👤', pages: ['users'] },
-  { id: 'surveys', label: 'Projects', icon: '▤', pages: ['surveys'] },
+  { id: 'surveys', label: 'Surveys', icon: '▤', pages: ['surveys'] },
   { id: 'data', label: 'Data collection', icon: '☰', pages: ['questions', 'bank', 'review', 'upload', 'data'] },
 ]
 
@@ -62,8 +62,7 @@ const COMPANIES_NAV = {
   pages: ['companies'],
 }
 
-// A dedicated Super Admin entry: projects are created here and then assigned
-// to one or more Client Admin profiles (shown with their company name).
+// Super Admin creates Projects (shared with Client Admins by company).
 const PROJECTS_NAV = {
   id: 'projects',
   label: 'Projects',
@@ -76,7 +75,8 @@ const PAGE_LABELS = {
   report: 'Report',
   analyze: 'Analyze',
   users: 'Users & targets',
-  surveys: 'Projects',
+  // Client Admin label; Super Admin sidebar uses PROJECTS_NAV ("Projects")
+  surveys: 'Surveys',
   questions: 'Questions',
   review: 'Review',
   upload: 'Upload',
@@ -89,13 +89,10 @@ const PAGE_LABELS = {
 }
 
 // Which Super-Admin-granted power unlocks each management page for a Client Admin.
-// Pages not listed (overview/report/analyze/audit/seats/admins) are never gated here:
-// analytics are viewable by any admin; console-only pages are Super Admin only.
-// Surveyors (users) is NOT gated here — creating/managing surveyors is core Client Admin
-// work (BR-004). The "Verify surveyors" power only gates the verify button inside the
-// screen (AdminUsers checks it internally), never the whole tab.
+// Surveys = Client Admin creates field surveys (can_crud_questionnaire).
+// Super Admin uses the same screen for Projects (always allowed).
+// Surveyors is always available to Client Admin (BR-004).
 const PAGE_POWER = {
-  // Surveys screen allows either power internally (AdminSurveys canEdit)
   surveys: ['can_crud_questionnaire', 'can_edit_surveys'],
   questions: 'can_edit_surveys',
   bank: 'can_manage_questions',

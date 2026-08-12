@@ -296,8 +296,15 @@ function cleanQuestions(questions) {
 }
 
 export default function AdminSurveysScreen({ onToast, user }) {
-  // Survey-editing power — Super Admin grants it (least privilege)
-  const canEdit = user?.role === 'super_admin' || !!user?.can_edit_surveys || !!user?.can_crud_questionnaire
+  // Super Admin creates Projects; Client Admin creates Surveys (needs Create surveys power)
+  const isSuper = user?.role === 'super_admin'
+  const canCreate = isSuper || !!user?.can_crud_questionnaire
+  const canEditQs = isSuper || !!user?.can_edit_surveys || !!user?.can_crud_questionnaire
+  const canEdit = canCreate || canEditQs
+  // UI noun by role
+  const unit = isSuper ? 'project' : 'survey'
+  const Unit = isSuper ? 'Project' : 'Survey'
+  const Units = isSuper ? 'Projects' : 'Surveys'
   const [mode, setMode] = useState('list') // list | create | detail
   const [surveys, setSurveys] = useState([])
   const [search, setSearch] = useState('')
@@ -307,8 +314,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
   const [newTitle, setNewTitle] = useState('')
   const [saving, setSaving] = useState(false)
   const [exists, setExists] = useState(null) // existing survey with same name
-  // create mode — Super Admin registers company + Client Admins who are part of the project
-  // (reuses allAdmins, which the detail "share with client admins" panel also populates)
+  // Super Admin only: company + Client Admins when creating a Project
   const [newCompany, setNewCompany] = useState('')
   const [checkedAdmins, setCheckedAdmins] = useState({})
   const [companyNames, setCompanyNames] = useState([])
@@ -396,16 +402,20 @@ export default function AdminSurveysScreen({ onToast, user }) {
   }
 
   async function saveNew() {
-    if (!canEdit) {
-      onToast?.('Super Admin has not granted your account survey-editing rights', 'error')
+    if (!canCreate) {
+      onToast?.(
+        isSuper
+          ? 'Cannot create project'
+          : 'Super Admin has not granted Create surveys on your profile',
+        'error',
+      )
       return
     }
     const title = newTitle.trim()
     if (!title) {
-      onToast?.('Project name required', 'error')
+      onToast?.(`${Unit} name required`, 'error')
       return
     }
-    const isSuper = user?.role === 'super_admin'
     if (isSuper) {
       const adminIds = Object.keys(checkedAdmins).filter((k) => checkedAdmins[k]).map(Number)
       if (adminIds.length === 0) {
@@ -419,6 +429,8 @@ export default function AdminSurveysScreen({ onToast, user }) {
     }
     setSaving(true)
     try {
+      // Super Admin: project under company + share with Client Admins
+      // Client Admin: survey under their own company (no company picker)
       const d = await createSurvey({
         title,
         questions: [],
@@ -427,9 +439,11 @@ export default function AdminSurveysScreen({ onToast, user }) {
               company_name: newCompany.trim(),
               admin_ids: Object.keys(checkedAdmins).filter((k) => checkedAdmins[k]).map(Number),
             }
-          : {}),
+          : user?.company_name
+            ? { company_name: String(user.company_name).trim() }
+            : {}),
       })
-      onToast?.(`Project "${title}" created`, 'ok')
+      onToast?.(`${Unit} "${title}" created`, 'ok')
       setMode('list')
       setNewTitle('')
       setNewCompany('')
@@ -439,7 +453,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
       if (d?.survey?.id) openDetail(d.survey.id)
     } catch (e) {
       if (e.status === 409 && e.existing_id) {
-        onToast?.(`Project "${title}" already exists — opening it`, 'warn')
+        onToast?.(`${Unit} "${title}" already exists — opening it`, 'warn')
         openDetail(e.existing_id)
       } else {
         onToast?.(e.message, 'error')
@@ -458,7 +472,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         questions: cleanQuestions(detail.questions),
         ...(user?.role === 'super_admin' ? { company_name: detail.company_name || '' } : {}),
       })
-      onToast?.('Project name + questions saved', 'ok')
+      onToast?.(`${Unit} name + questions saved`, 'ok')
       await openDetail(detail.id)
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -516,7 +530,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
     setBusy(true)
     try {
       await deleteSurvey(detail.id)
-      onToast?.('Project deleted', 'ok')
+      onToast?.(`${Unit} deleted`, 'ok')
       setDetail(null)
       setMode('list')
       await load()
@@ -531,13 +545,13 @@ export default function AdminSurveysScreen({ onToast, user }) {
     return (
       <div className="screen">
         <header className="screen-head">
-          <h2>New project</h2>
+          <h2>{isSuper ? 'New project' : 'New survey'}</h2>
           <button type="button" className="btn small" onClick={() => setMode('list')}>
             ← Back
           </button>
         </header>
 
-        {!canEdit && (
+        {!canCreate && (
           <div
             className="card"
             style={{
@@ -548,25 +562,39 @@ export default function AdminSurveysScreen({ onToast, user }) {
               fontSize: 13,
             }}
           >
-            🔒 <strong>Projects are read-only for you.</strong> Creating or editing projects is
-            locked until the Super Admin grants your account <strong>CRUD questionnaire</strong> or
-            <strong>Survey questions</strong> power (Super Admin → Client Admins tab).
-            You can still open projects and view their teams.
+            🔒 <strong>{Units} are read-only for you.</strong>{' '}
+            {isSuper
+              ? 'You cannot create projects right now.'
+              : (
+                <>
+                  Super Admin must grant <strong>Create surveys</strong> on your Client Admin
+                  profile (Super Admin → Client Admins → Profile). Super Admin creates{' '}
+                  <strong>Projects</strong>; you create <strong>Surveys</strong>.
+                </>
+              )}
           </div>
         )}
         <div className="card" style={{ marginBottom: 12 }}>
           <label className="field">
-            <span>Project name</span>
+            <span>{Unit} name</span>
             <input
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="e.g. Assembly Survey 2026"
+              placeholder={
+                isSuper ? 'e.g. Warangal Pre-poll 2026' : 'e.g. Assembly field survey — Ward 12'
+              }
               autoFocus
-              disabled={!canEdit}
+              disabled={!canCreate}
             />
           </label>
+          {!isSuper && user?.company_name ? (
+            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+              🏢 Your company: <strong>{user.company_name}</strong> (set by Super Admin — surveys
+              are filed under this company).
+            </p>
+          ) : null}
           <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-            Filter existing projects by name to avoid duplicates or reuse.
+            Filter existing {unit}s by name to avoid duplicates.
           </p>
           {exists && (
             <p className="toast warn" style={{ marginTop: 8 }}>
@@ -576,7 +604,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           {!exists && nameMatches.length > 0 && (
             <div style={{ marginTop: 8 }}>
               <span className="muted" style={{ fontSize: 12 }}>
-                Existing projects matching "{newTitle}":
+                Existing {unit}s matching "{newTitle}":
               </span>
               {nameMatches.map((s) => (
                 <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
@@ -661,7 +689,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
               </div>
             )}
             <p className="muted" style={{ fontSize: 11, margin: '8px 0 0' }}>
-              Selected Client Admins get shared access and see this project in their Projects tab —
+              Selected Client Admins get shared access and see this project under Surveys —
               the Super Admin remains the owner.
             </p>
           </div>
@@ -698,7 +726,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
     return (
       <div className="screen">
         <header className="screen-head">
-          <h2>Project · {detail.title}</h2>
+          <h2>{Unit} · {detail.title}</h2>
           <button type="button" className="btn small" onClick={() => setMode('list')}>
             ← Back
           </button>
@@ -1061,7 +1089,12 @@ export default function AdminSurveysScreen({ onToast, user }) {
   return (
     <div className="screen">
       <header className="screen-head">
-        <h2>Projects</h2>
+        <h2>{Units}</h2>
+        <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+          {isSuper
+            ? 'Super Admin creates Projects and maps them to companies & Client Admins.'
+            : 'Client Admin creates Surveys under your company. Super Admin creates shared Projects separately.'}
+        </p>
         <button
           type="button"
           className="btn"
@@ -1074,6 +1107,12 @@ export default function AdminSurveysScreen({ onToast, user }) {
         <button
           type="button"
           className="btn primary"
+          disabled={!canCreate}
+          title={
+            canCreate
+              ? undefined
+              : 'Ask Super Admin to grant Create surveys on your profile'
+          }
           onClick={() => {
             setNewTitle('')
             setNewCompany('')
@@ -1082,17 +1121,17 @@ export default function AdminSurveysScreen({ onToast, user }) {
             setMode('create')
           }}
         >
-          + New project
+          + New {unit}
         </button>
       </header>
 
       <div className="card" style={{ marginBottom: 12 }}>
         <label className="field">
-          <span>Filter by project name</span>
+          <span>Filter by {unit} name</span>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Type a project name…"
+            placeholder={`Type a ${unit} name…`}
           />
         </label>
       </div>
@@ -1101,7 +1140,9 @@ export default function AdminSurveysScreen({ onToast, user }) {
 
       {!loading && surveys.length === 0 && (
         <p className="muted">
-          {search ? 'No projects match that name.' : 'No projects yet — click "+ New project".'}
+          {search
+            ? `No ${unit}s match that name.`
+            : `No ${unit}s yet — click "+ New ${unit}".`}
         </p>
       )}
 

@@ -13,14 +13,17 @@ import {
 } from './api'
 import VerifiedBadge from './VerifiedBadge'
 
-/** Grant-based powers (least privilege): Super Admin grants/revokes each per Client Admin. */
+/**
+ * Grant-based powers (least privilege).
+ * Roles: Super Admin creates Projects; Client Admin creates Surveys.
+ */
 const POWER_DEFS = [
+  { key: 'can_crud_questionnaire', label: 'Create surveys', icon: '🗂', hint: 'Client Admin: create/delete surveys (not Super Admin projects)' },
+  { key: 'can_edit_surveys', label: 'Edit survey questions', icon: '▤', hint: 'Edit questions on their surveys' },
   { key: 'can_manage_questions', label: 'Q-Bank', icon: '📚', hint: 'Question Bank template CRUD' },
-  { key: 'can_edit_surveys', label: 'Survey questions', icon: '▤', hint: 'Edit question content' },
-  { key: 'can_review_data', label: 'Data review', icon: '✓', hint: 'Confirm/reject records' },
+  { key: 'can_review_data', label: 'Data review', icon: '✓', hint: 'Confirm/reject field records' },
   { key: 'can_verify_surveyors', label: 'Verify surveyors', icon: '🛡', hint: 'Verify surveyor identity' },
-  { key: 'can_assign_surveyors', label: 'Assign surveyors', icon: '👥', hint: 'Map surveyors to projects' },
-  { key: 'can_crud_questionnaire', label: 'CRUD questionnaire', icon: '🗂', hint: 'Create surveys + pick question count' },
+  { key: 'can_assign_surveyors', label: 'Assign surveyors', icon: '👥', hint: 'Map surveyors onto surveys' },
   { key: 'can_validate_proof', label: 'Proof validation', icon: '📞', hint: 'Phone + Aadhaar format checks' },
 ]
 
@@ -701,7 +704,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       </label>
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>
-                          Max surveys (0 = unlimited) ·{' '}
+                          Max surveys they can create (0 = unlimited) ·{' '}
                           <strong style={{ color: '#059669' }}>{u.survey_count ?? 0}</strong> created /{' '}
                           {u.max_surveys > 0 ? u.max_surveys : '∞'} allocated
                         </span>

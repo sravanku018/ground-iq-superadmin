@@ -5705,14 +5705,19 @@ Deno.serve(async (req) => {
     if (path === "/api/surveys" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      if (!hasPower(me, "can_crud_questionnaire") && !hasPower(me, "can_edit_surveys")) {
+      // Super Admin creates Projects; Client Admin creates Surveys (needs Create surveys power)
+      if (me.role !== "super_admin" && !hasPower(me, "can_crud_questionnaire")) {
         return json({
-          error: "Super Admin has not granted your account questionnaire-editing rights",
+          error: "Super Admin has not granted Create surveys on your profile",
         }, 403);
       }
       const body = await readBody(req);
       const title = String(body.title || "").trim();
-      if (!title) return json({ error: "Survey name required" }, 400);
+      if (!title) {
+        return json({
+          error: me.role === "super_admin" ? "Project name required" : "Survey name required",
+        }, 400);
+      }
       const questions = Array.isArray(body.questions) ? body.questions : [];
       // Super Admin registers the company this project is mapped under + the Client
       // Admins who are part of it (they get project access; the Super Admin stays owner).

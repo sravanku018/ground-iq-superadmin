@@ -823,6 +823,10 @@ export default function AdminPortal({ superAdminOnly = false }) {
         </div>
       )}
 
+      <div className="admin-bell-dock">
+        <AdminBell user={user} onGoPage={goPage} />
+      </div>
+
       <header className="portal-topbar">
         <button
           type="button"
@@ -837,7 +841,6 @@ export default function AdminPortal({ superAdminOnly = false }) {
           <strong>Ground IQ · Admin</strong>
           <span>{activeNavLabel}</span>
         </div>
-        <AdminBell user={user} onGoPage={goPage} />
         <button
           type="button"
           className="btn small"
@@ -881,9 +884,6 @@ export default function AdminPortal({ superAdminOnly = false }) {
           ))}
         </nav>
         <div className="portal-sidebar-foot">
-          <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'flex-end' }}>
-            <AdminBell user={user} onGoPage={goPage} />
-          </div>
           <button
             type="button"
             className="btn small"

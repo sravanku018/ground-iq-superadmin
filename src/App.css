@@ -738,8 +738,8 @@
 .kpi {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px;
+  border-radius: var(--radius-box, 20px);
+  padding: var(--pad-box, 16px);
 }
 
 .kpi strong {
@@ -767,18 +767,18 @@
 .insight {
   font-size: 12px;
   font-weight: 600;
-  color: #a7f3d0;
-  background: rgba(0, 229, 153, 0.08);
-  border: 1px solid rgba(0, 229, 153, 0.2);
-  border-radius: 10px;
-  padding: 8px 12px;
+  color: var(--text-h);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-box, 20px);
+  padding: 10px 14px;
 }
 
 .filter-panel {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 12px;
+  border-radius: var(--radius-box, 20px);
+  padding: var(--pad-box, 16px);
   margin-bottom: 14px;
   display: flex;
   flex-direction: column;
@@ -842,8 +842,8 @@
 .chart-card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 12px 10px 8px;
+  border-radius: var(--radius-box, 20px);
+  padding: var(--pad-box, 16px);
   /* visible so Recharts tooltips/legends are not clipped (was causing layout jumps) */
   overflow: visible;
   min-width: 0;
@@ -885,10 +885,10 @@
 /* Step filters on Report / Analyze */
 .filter-step {
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px;
+  border-radius: var(--radius-box, 20px);
+  padding: var(--pad-box, 16px);
   margin-bottom: 10px;
-  background: rgba(0, 0, 0, 0.12);
+  background: #fff;
 }
 
 .filter-step-title {

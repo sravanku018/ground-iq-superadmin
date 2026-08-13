@@ -2,7 +2,6 @@
 
 .portal-shell {
   min-height: 100svh;
-  min-height: 100dvh;
   display: flex;
   background: #f4f6f9;
   color: var(--text);
@@ -35,7 +34,7 @@
   max-width: 420px;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: var(--radius-box, 20px);
   padding: 28px 24px;
   box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
 }
@@ -269,9 +268,9 @@
 
 .filter-section {
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-box, 20px);
   margin-bottom: 12px;
-  background: rgba(15, 23, 42, 0.04);
+  background: #fff;
   overflow: hidden;
 }
 
@@ -391,8 +390,8 @@
 .portal-kpi {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 16px;
+  border-radius: var(--radius-box, 20px);
+  padding: var(--pad-box, 16px);
 }
 
 .portal-kpi strong {
@@ -419,8 +418,8 @@
   align-items: flex-start;
   gap: 4px;
   text-align: left;
-  padding: 16px;
-  border-radius: 14px;
+  padding: var(--pad-box, 16px);
+  border-radius: var(--radius-box, 20px);
   border: 1px solid var(--border);
   background: var(--card);
   color: inherit;
@@ -489,7 +488,29 @@
 }
 
 .portal-main .stat-row {
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.portal-main .card,
+.portal-main .stat,
+.portal-main .kpi,
+.portal-main .chart-card,
+.portal-main .filter-panel,
+.portal-main .filter-step,
+.portal-main .portal-kpi,
+.portal-main .portal-action {
+  border-radius: var(--radius-box, 20px);
+  color: var(--text-h);
+}
+
+.portal-main .stat,
+.portal-main .kpi,
+.portal-main .portal-kpi {
+  padding: var(--pad-box, 16px);
+}
+
+.portal-main .btn {
+  border-radius: var(--radius-btn, 22px);
 }
 
 .portal-main .screen {

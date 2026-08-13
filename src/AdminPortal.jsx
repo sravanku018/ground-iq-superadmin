@@ -236,7 +236,7 @@ function AllocationCard({ user }) {
     return () => {
       cancelled = true
     }
-  }, [user?.id, user?.max_surveys, user?.max_surveyors, user?.max_questions_per_survey])
+  }, [user?.id, user?.max_surveys, user?.max_surveyors, user?.max_questions_per_survey, user?.max_records])
 
   if (err && !self) {
     return (
@@ -297,7 +297,10 @@ function AllocationCard({ user }) {
         </div>
         <div className="stat">
           <strong>{fmt(recordUsed, maxRecords)}</strong>
-          <span>Field records</span>
+          <span>
+            Records allotted
+            {maxRecords > 0 ? ` · ${Math.max(0, maxRecords - recordUsed)} left` : ''}
+          </span>
         </div>
       </div>
       {maxRecords > 0 && recordUsed >= maxRecords && (
@@ -406,6 +409,16 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           <strong>{stats?.districts ?? '—'}</strong>
           <span>Districts in data</span>
         </div>
+        {!superAdminOnly && user?.role !== 'super_admin' && (
+          <div className="portal-kpi">
+            <strong>
+              {Number(user?.record_count ?? user?.surveyor_record_count) || 0}
+              {' / '}
+              {Number(user?.max_records) > 0 ? Number(user.max_records) : '∞'}
+            </strong>
+            <span>Records allotted</span>
+          </div>
+        )}
       </div>
 
       <div className="portal-action-grid">
@@ -640,6 +653,8 @@ export default function AdminPortal({ superAdminOnly = false }) {
     if (!getToken()) return
     setLoadingData(true)
     try {
+      const meRes = await me().catch(() => null)
+      if (meRes?.user) setUser(meRes.user)
       await loadStats()
       if (page === 'data') {
         const data = await listSubmissions(150, '', { survey: surveyFilter })
@@ -921,7 +936,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
               canPage={canPage}
             />
           )}
-          {page === 'users' && <AdminUsersScreen onToast={notify} />}
+          {page === 'users' && <AdminUsersScreen onToast={notify} user={user} />}
           {page === 'surveys' && <AdminSurveysScreen onToast={notify} user={user} />}
           {page === 'questions' && <AdminQuestionsScreen onToast={notify} user={user} />}
           {/* Report = tables/boards (AdminAnalyze); Analyze = charts/maps (Dashboard) */}

@@ -119,8 +119,13 @@ export async function logout() {
   clearSession()
 }
 
-export function me() {
-  return request('/api/auth/me')
+export async function me() {
+  const data = await request('/api/auth/me')
+  if (data?.user) {
+    const token = getToken()
+    if (token) setSession(token, data.user)
+  }
+  return data
 }
 
 export function listUsers() {

@@ -147,6 +147,8 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
   const watchId = useRef(null)
   const streamRef = useRef(null)
   const audioStartedAt = useRef(null)
+  const workingDraftIdRef = useRef(draft?.id || null)
+  const draftCreatedAtRef = useRef(draft?.createdAt || null)
 
   // Editing a saved draft: prefill everything from phone storage
   const draftLoaded = useRef(null)
@@ -179,6 +181,9 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
       }
     }
     setStep(typeof draft.step === 'number' ? Math.min(Math.max(0, draft.step), 2) : 2)
+    if (typeof draft.activeQ === 'number' && draft.activeQ >= 0) {
+      setActiveQ(draft.activeQ)
+    }
   }, [draft, questions])
 
   const geoLocked = isGeoValid(geo)
@@ -760,44 +765,49 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
   /**
    * Save to phone storage only (draft-first): nothing reaches the server until
    * the surveyor explicitly confirms (Push to admin / Confirm & push).
+   * mode 'checkpoint' → Next button: upsert the same draft and stay on Collect.
    * autoNext → stay on Collect and start the next record.
    */
-  async function saveDraft({ autoNext = false } = {}) {
-    if (!geoLocked) {
-      onToast?.('Lock GPS first (step 1)', 'error')
-      setStep(0)
-      return
+  async function saveDraft({ autoNext = false, mode = 'finish', questionIndex } = {}) {
+    const checkpoint = mode === 'checkpoint'
+    if (!checkpoint) {
+      if (!geoLocked) {
+        onToast?.('Lock GPS first (step 1)', 'error')
+        setStep(0)
+        return false
+      }
+      if (!photoLocked) {
+        onToast?.('Capture photo first (step 2)', 'error')
+        setStep(1)
+        return false
+      }
     }
-    if (!photoLocked) {
-      onToast?.('Capture photo first (step 2)', 'error')
-      setStep(1)
-      return
-    }
-    setSaving(true)
+    if (!checkpoint) setSaving(true)
     try {
       let audioDataUrl = null
       let audioMime = 'audio/webm'
       let blob = audioBlob
       if ((!blob || blob.size < MIN_AUDIO_BYTES) && chunks.current.length) {
         blob = new Blob(chunks.current, { type: 'audio/webm' })
-        setAudioBlob(blob)
+        if (!checkpoint) setAudioBlob(blob)
       }
-      if (!blob || blob.size < MIN_AUDIO_BYTES) {
+      if (blob && blob.size >= MIN_AUDIO_BYTES) {
+        audioDataUrl = await blobToBase64(blob)
+        audioMime = blob.type || 'audio/webm'
+      } else if (!checkpoint) {
         onToast?.('Voice recording required to save a draft — activate voice and record', 'error')
         setStep(2)
-        return
+        return false
       }
-      audioDataUrl = await blobToBase64(blob)
-      audioMime = blob.type || 'audio/webm'
 
       // Keep meta keys in sync with META_ANSWER_KEYS (excluded from the answered count)
       const lockedAnswers = {
         ...answers,
         _draft: true,
-        geo_lat: geo.lat,
-        geo_lng: geo.lng,
-        geo_accuracy: geo.accuracy,
-        geo_at: geo.at,
+        geo_lat: geo?.lat,
+        geo_lng: geo?.lng,
+        geo_accuracy: geo?.accuracy,
+        geo_at: geo?.at,
         location_display: locationDetails?.display_name || '',
         location_district: locationDetails?.district || answers.district || '',
         location_mandal: locationDetails?.mandal || answers.mandal || '',
@@ -809,33 +819,59 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         draft?.recordIndex != null
           ? draft.recordIndex
           : Math.max(progress?.next_record || 0, currentDone + 1)
+
+      if (!workingDraftIdRef.current) {
+        workingDraftIdRef.current =
+          draft?.id ||
+          (typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `draft_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`)
+      }
+      if (!draftCreatedAtRef.current) {
+        draftCreatedAtRef.current = draft?.createdAt || new Date().toISOString()
+      }
+
       await savePackageLocal(
         {
+          id: workingDraftIdRef.current,
+          createdAt: draftCreatedAtRef.current,
           form_key: formMeta?.form_key || 'default',
           form_id: `field-${user?.username || 's'}-${Date.now()}`,
           source: 'mobile-field-survey',
           submitted_by: user?.name || user?.username,
           user_id: user?.id,
-          geo: { ...geo, locked: true },
+          geo: geo ? { ...geo, locked: !!geoLocked } : null,
           location_details: locationDetails,
           answers: lockedAnswers,
           photoDataUrl,
           audioDataUrl,
           audioMime,
           recordIndex: localSeq,
-          locks: { geo: true, location: !!locationDetails, photo: true, voice: !!audioDataUrl },
+          locks: {
+            geo: !!geoLocked,
+            location: !!locationDetails,
+            photo: !!photoLocked,
+            voice: !!audioDataUrl,
+          },
           step,
+          activeQ: Number.isInteger(questionIndex) ? questionIndex : activeQ,
           answered: answeredCount,
           total: questions.length,
         },
         { draft: true },
       )
       setLocalDoneCount(localSeq)
-      if (draft?.id) {
+      if (draft?.id && draft.id !== workingDraftIdRef.current) {
         await deleteDraft(draft.id).catch(() => {})
         draftLoaded.current = null
       }
+      if (checkpoint) {
+        onToast?.(`Saved as draft · Q${(Number.isInteger(questionIndex) ? questionIndex : activeQ) + 1}`, 'ok')
+        return true
+      }
       if (autoNext) {
+        workingDraftIdRef.current = null
+        draftCreatedAtRef.current = null
         resetForNextRecord()
         onToast?.(`Saved as draft #${localSeq} — review & push from Pending`, 'ok')
         onDone?.(null, null)
@@ -843,10 +879,12 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         onToast?.('Draft saved on this phone — review & push from Pending', 'ok')
         onSavedDraft?.()
       }
+      return true
     } catch (e) {
       onToast?.(e.message || 'Draft save failed', 'error')
+      return false
     } finally {
-      setSaving(false)
+      if (!checkpoint) setSaving(false)
     }
   }
 
@@ -1612,7 +1650,12 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                         <button
                           type="button"
                           className="btn primary"
-                          onClick={() => setActiveQ((i) => i + 1)}
+                          disabled={saving}
+                          onClick={() => {
+                            const nextQ = activeQ + 1
+                            setActiveQ(nextQ)
+                            void saveDraft({ mode: 'checkpoint', questionIndex: nextQ })
+                          }}
                         >
                           Next
                         </button>

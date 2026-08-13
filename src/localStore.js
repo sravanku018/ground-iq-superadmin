@@ -91,6 +91,9 @@ export async function savePackageLocal({
   step,
   answered,
   total,
+  id: existingId,
+  activeQ,
+  createdAt: existingCreatedAt,
 }, opts = {}) {
   // Hard reject incomplete packages (client-side lock) — drafts may skip locks
   const draft = !!opts.draft
@@ -104,11 +107,11 @@ export async function savePackageLocal({
     throw new Error('Package rejected: voice lock missing')
   }
 
-  const id = newId()
+  const id = existingId || newId()
   const pkg = {
     id,
     phase: /** @type {PackagePhase} */ (draft ? 'draft' : 'queued'),
-    createdAt: new Date().toISOString(),
+    createdAt: existingCreatedAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     attempts: 0,
     lastError: null,
@@ -118,6 +121,7 @@ export async function savePackageLocal({
     step: Number.isInteger(step) ? step : null,
     answered: Number.isInteger(answered) ? answered : null,
     total: Number.isInteger(total) ? total : null,
+    activeQ: Number.isInteger(activeQ) ? activeQ : null,
     locks: locks || {
       geo: true,
       photo: true,

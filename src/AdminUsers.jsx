@@ -154,7 +154,7 @@ function SurveySelect({ value, onChange, all }) {
   )
 }
 
-export default function AdminUsersScreen({ onToast }) {
+export default function AdminUsersScreen({ onToast, user: portalUser }) {
   const [users, setUsers] = useState([])
   const [board, setBoard] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -696,7 +696,10 @@ export default function AdminUsersScreen({ onToast }) {
     // Newest first so create/generate shows at the top
     .sort((a, b) => Number(b.id) - Number(a.id))
 
-  const me = getStoredUser()
+  const me = portalUser || getStoredUser()
+  const allotCap = Number(me?.max_records) || 0
+  const allotUsed = Number(me?.record_count ?? me?.surveyor_record_count) || 0
+  const allotLeft = allotCap > 0 ? Math.max(0, allotCap - allotUsed) : null
   const admins = users.filter((u) => u.role === 'admin' || u.role === 'super_admin')
 
   /** Reset the password of the only existing Super Admin (bootstrap escape hatch) */
@@ -808,6 +811,21 @@ export default function AdminUsersScreen({ onToast }) {
           day / month / geo filters
         </p>
       </header>
+
+      {me?.role === 'admin' && (
+        <div className="card" style={{ marginBottom: 14, padding: '12px 14px' }}>
+          <strong style={{ display: 'block', fontSize: 14 }}>
+            Records allotted{' '}
+            {allotUsed} / {allotCap > 0 ? allotCap : '∞'}
+          </strong>
+          <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
+            Super Admin set this cap on your profile.
+            {allotCap > 0
+              ? ` ${allotLeft} remaining for surveyor submissions.`
+              : ' Unlimited until Super Admin sets a number.'}
+          </p>
+        </div>
+      )}
 
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="stat-row" style={{ marginBottom: 10 }}>
@@ -1096,7 +1114,10 @@ export default function AdminUsersScreen({ onToast }) {
         <form className="card" onSubmit={handleCreate} style={{ marginBottom: 14 }}>
           <h3>Add one surveyor</h3>
           <label className="field">
-            <span>Target records</span>
+            <span>
+              Target records
+              {allotCap > 0 ? ` (allotted ${allotUsed}/${allotCap}, ${allotLeft} left)` : ''}
+            </span>
             <input
               type="number"
               min={0}

@@ -790,7 +790,7 @@ function DraftsScreen({ user, onToast, onEdit }) {
                   Record #{recordNum}
                 </span>
               </strong>
-              <span className={`pill ${isFailed ? '' : isDraft ? '' : 'ok'}`} style={{ fontSize: 11 }}>
+              <span className={`pending-chip ${isFailed ? 'fail' : isDraft ? 'draft' : 'sync'}`}>
                 {isFailed ? 'failed' : isDraft ? 'draft' : 'to sync'}
               </span>
             </div>
@@ -1306,23 +1306,13 @@ export default function SurveyorApp() {
           >
             <span className="nav-icon" aria-hidden>
               {t.icon}
+              {t.id === 'drafts' && draftsCount > 0 && (
+                <span className="nav-badge" aria-label={`${draftsCount} pending`}>
+                  {draftsCount > 99 ? '99+' : draftsCount}
+                </span>
+              )}
             </span>
             <span>{t.label}</span>
-            {t.id === 'drafts' && draftsCount > 0 && (
-              <span
-                style={{
-                  background: '#e11d48',
-                  color: '#fff',
-                  borderRadius: 10,
-                  fontSize: 10,
-                  lineHeight: '16px',
-                  padding: '0 6px',
-                  marginLeft: 4,
-                }}
-              >
-                {draftsCount}
-              </span>
-            )}
           </button>
         ))}
       </nav>

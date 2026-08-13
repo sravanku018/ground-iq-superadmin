@@ -15,8 +15,8 @@ export default function PhoneIndiaField({ value, onChange, disabled, placeholder
         disabled={disabled}
         placeholder={placeholder}
         onChange={(e) => {
-          const next = digits10(e.target.value)
-          onChange?.(next ? toE164In(next) : '')
+          const next = e.target.value.replace(/\D/g, '').slice(0, 10)
+          onChange?.(next ? `+91${next}` : '')
         }}
       />
     </div>

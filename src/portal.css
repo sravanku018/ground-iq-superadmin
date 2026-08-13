@@ -336,6 +336,9 @@
 }
 
 .phone-in input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
   border: 0;
   border-radius: 0;
   min-height: 48px;

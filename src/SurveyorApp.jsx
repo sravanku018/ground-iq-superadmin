@@ -959,6 +959,12 @@ export default function SurveyorApp() {
     refreshDraftCount()
   }, [refreshDraftCount])
 
+  const onCollectIdleHome = useCallback(() => {
+    setEditDraft(null)
+    setTab('home')
+    setCollectKey((k) => k + 1)
+  }, [])
+
   const handleLogout = useCallback(async () => {
     stopSyncEngine()
     await logout()
@@ -1275,6 +1281,7 @@ export default function SurveyorApp() {
                 onToast={notify}
                 onDone={onCollectDone}
                 onSavedDraft={onCollectSavedDraft}
+                onIdleHome={onCollectIdleHome}
               />
             </CollectErrorBoundary>
           </div>

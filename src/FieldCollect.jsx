@@ -108,7 +108,17 @@ async function reverseGeocode(lat, lng) {
   }
 }
 
-export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft, draft, active = true }) {
+const IDLE_HOME_MS = 3 * 60 * 1000
+
+export default function FieldCollectScreen({
+  user,
+  onToast,
+  onDone,
+  onSavedDraft,
+  onIdleHome,
+  draft,
+  active = true,
+}) {
   const [step, setStep] = useState(0) // 0 geo, 1 photo, 2 voice+qa, 3 done
   const [formMeta, setFormMeta] = useState(null)
   const [questions, setQuestions] = useState([])
@@ -196,7 +206,12 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         /* ignore */
       }
     }
-    setStep(typeof pkg.step === 'number' ? Math.min(Math.max(0, pkg.step), 2) : 2)
+    const hasGeo = g && Number.isFinite(Number(g.lat))
+    const hasPhoto = !!(pkg.photoDataUrl && String(pkg.photoDataUrl).length >= MIN_PHOTO_CHARS)
+    let nextStep = typeof pkg.step === 'number' ? Math.min(Math.max(0, pkg.step), 2) : 2
+    if (!hasGeo) nextStep = 0
+    else if (!hasPhoto) nextStep = Math.min(nextStep, 1)
+    setStep(nextStep)
     if (typeof pkg.activeQ === 'number' && pkg.activeQ >= 0) {
       setActiveQ(pkg.activeQ)
     }
@@ -242,6 +257,15 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
     voice: voiceLocked,
   }
   const allHardLocks = geoLocked && photoLocked && voiceLocked && locationLocked
+  const surveyUnlocked = geoLocked && photoLocked
+
+  useEffect(() => {
+    if (step >= 2 && !surveyUnlocked) {
+      setStep(!geoLocked ? 0 : 1)
+      setVoiceActivated(false)
+      onToast?.('Lock GPS and photo before the survey', 'error')
+    }
+  }, [step, surveyUnlocked, geoLocked, onToast])
 
   // Survey status saved with the draft: answered questions out of total (meta keys excluded)
   const answeredCount = useMemo(() => {
@@ -326,6 +350,25 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
     }
     return undefined
   }, [active])
+
+  useEffect(() => {
+    if (!active || !onIdleHome) return undefined
+    let timer = 0
+    const arm = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        onToast?.('Idle 3 minutes — back to Home', 'ok')
+        onIdleHome()
+      }, IDLE_HOME_MS)
+    }
+    arm()
+    const evs = ['pointerdown', 'touchstart', 'keydown']
+    evs.forEach((e) => window.addEventListener(e, arm, { passive: true }))
+    return () => {
+      window.clearTimeout(timer)
+      evs.forEach((e) => window.removeEventListener(e, arm))
+    }
+  }, [active, onIdleHome, onToast])
 
   function clearAudioUrl() {
     if (audioUrl) {
@@ -527,6 +570,11 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
   }
 
   async function startAudio() {
+    if (!geoLocked || !photoLocked) {
+      onToast?.('Lock GPS and photo before the survey', 'error')
+      setStep(!geoLocked ? 0 : 1)
+      return
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -1333,6 +1381,11 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                   }
                   if (!locks.photo) {
                     onToast?.('Photo lock required', 'error')
+                    return
+                  }
+                  if (!locks.geo || !locks.photo) {
+                    onToast?.('Lock GPS and photo before the survey', 'error')
+                    setStep(!locks.geo ? 0 : 1)
                     return
                   }
                   setStep(2)

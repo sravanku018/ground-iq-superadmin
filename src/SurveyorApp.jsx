@@ -76,7 +76,7 @@ const TABS = [
   { id: 'home', label: 'Home', icon: '⌂' },
   { id: 'collect', label: 'Collect', icon: '✎' },
   { id: 'drafts', label: 'Pending', icon: '📦' },
-  { id: 'records', label: 'Records', icon: '☰' },
+  { id: 'records', label: 'Activity', icon: '☰' },
   { id: 'profile', label: 'Profile', icon: '👤' },
 ]
 
@@ -211,7 +211,7 @@ function HomeScreen({
         {complete
           ? 'Target complete ✓'
           : done > 0
-            ? `Continue record #${myProgress?.next_record || done + 1}`
+            ? `Continue activity #${myProgress?.next_record || done + 1}`
             : 'Start collect · GPS → Photo → Q/A'}
       </button>
 
@@ -244,7 +244,7 @@ function MyRecordsScreen({ user, onToast }) {
       const d = await getMySubmissions()
       setRecords(d.items || [])
     } catch (e) {
-      onToast?.(e.message || 'Failed to load your records', 'error')
+      onToast?.(e.message || 'Failed to load your activity', 'error')
     } finally {
       setRefreshing(false)
     }
@@ -256,15 +256,8 @@ function MyRecordsScreen({ user, onToast }) {
 
   return (
     <div className="screen records-screen">
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 10,
-        }}
-      >
-        <h2 style={{ margin: 0 }}>My Submitted Records</h2>
+      <div className="screen-toolbar">
+        <h2>My activity</h2>
         <button
           type="button"
           className="btn small"
@@ -275,13 +268,13 @@ function MyRecordsScreen({ user, onToast }) {
         </button>
       </div>
       <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-        Submissions stored on server for @{user?.username}. Tap a record to view details.
+        Sent items for @{user?.username}. Tap one to view details.
       </p>
 
       {records === null ? (
-        <p className="muted">Loading records…</p>
+        <p className="muted">Loading activity…</p>
       ) : records.length === 0 ? (
-        <p className="muted">No records submitted yet.</p>
+        <p className="muted">No activity yet.</p>
       ) : (
         records.map((r) => {
           const open = openId === r.id
@@ -302,7 +295,7 @@ function MyRecordsScreen({ user, onToast }) {
                 onClick={() => setOpenId(open ? null : r.id)}
               >
                 <span style={{ fontWeight: 600, fontSize: 14 }}>
-                  Record #{r.id}
+                  Activity #{r.id}
                   <span className={`pill ${isConfirmed ? 'ok' : ''}`} style={{ marginLeft: 8 }}>
                     {isConfirmed ? 'Confirmed ✓' : r.status || 'pending'}
                   </span>
@@ -319,11 +312,11 @@ function MyRecordsScreen({ user, onToast }) {
                 <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #e2e8f0' }}>
                   <SubmissionMedia item={r} compact />
                   <div style={{ fontSize: 13, marginTop: 8 }}>
-                    <strong style={{ display: 'block', marginBottom: 6, color: '#0f172a' }}>📋 Record Details:</strong>
+                    <strong style={{ display: 'block', marginBottom: 6, color: '#0f172a' }}>Activity details</strong>
                     <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6 }}>
                       <tbody>
                         <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td className="muted" style={{ padding: '6px 8px' }}>Record ID:</td>
+                          <td className="muted" style={{ padding: '6px 8px' }}>Activity ID:</td>
                           <td style={{ textAlign: 'right', fontWeight: 600, padding: '6px 8px' }}>#{r.id}</td>
                         </tr>
                         <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -552,7 +545,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
 
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <h3 style={{ margin: 0, fontSize: 15, color: '#f8fafc' }}>📞 Surveyor Mobile Number</h3>
+          <h3 style={{ margin: 0, fontSize: 15 }}>Phone</h3>
           {user?.verified ? (
             <span aria-label="Locked" title="Locked" style={{ fontSize: 14 }}>
               🔒
@@ -610,7 +603,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
 
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <h3 style={{ margin: 0 }}>🪪 Aadhaar Identity Verification</h3>
+          <h3 style={{ margin: 0, fontSize: 15 }}>Aadhaar</h3>
           {user?.verified ? (
             <span aria-label="Locked" title="Locked" style={{ fontSize: 14 }}>
               🔒
@@ -724,18 +717,18 @@ function DraftsScreen({ user, onToast, onEdit }) {
     setPushing(id)
     try {
       await pushDraft(id)
-      onToast?.('Draft pushed to client admin — pending review', 'ok')
+      onToast?.('Sent — pending review', 'ok')
       void forceSyncNow()
       await load()
     } catch (e) {
-      onToast?.(e.message || 'Push failed', 'error')
+      onToast?.(e.message || 'Send failed', 'error')
     } finally {
       setPushing(null)
     }
   }
 
   const remove = async (id) => {
-    if (!confirm('Delete this record from the phone?')) return
+    if (!confirm('Delete this activity from the phone?')) return
     await deleteDraft(id).catch(() => {})
     await load()
   }
@@ -750,9 +743,9 @@ function DraftsScreen({ user, onToast, onEdit }) {
 
   return (
     <div className="screen home-screen">
-      <p className="ptr-hint">All records stay on this phone until you confirm & push them</p>
+      <p className="ptr-hint">Items stay on this phone until you send them</p>
       <div className="hero-card">
-        <p className="eyebrow">Phone pending</p>
+        <p className="eyebrow">Pending</p>
         <h1>{user?.name || user?.username}</h1>
         <p className="hero-sub">
           {items == null
@@ -774,8 +767,8 @@ function DraftsScreen({ user, onToast, onEdit }) {
       {items && items.length === 0 && (
         <div className="card" style={{ marginTop: 12, padding: '14px' }}>
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-            Nothing pending — records you collect stay on this phone as drafts. Review them here
-            and tap “Push to admin” to send them to Client Admin.
+            Nothing pending — collected activity stays on this phone as drafts. Review them here
+            and tap Send.
           </p>
         </div>
       )}
@@ -795,7 +788,7 @@ function DraftsScreen({ user, onToast, onEdit }) {
               <strong style={{ fontSize: 14 }}>
                 {a.respondent_name || a.district || loc.display_name || 'Survey'}
                 <span className="pill" style={{ fontWeight: 'bold', background: '#e0f2fe', color: '#0369a1', marginLeft: 6 }}>
-                  Record #{recordNum}
+                  Activity #{recordNum}
                 </span>
               </strong>
               <span className={`pending-chip ${isFailed ? 'fail' : isDraft ? 'draft' : 'sync'}`}>
@@ -829,10 +822,10 @@ function DraftsScreen({ user, onToast, onEdit }) {
             )}
 
             {isDraft && (
-              <div className="pill-row" style={{ marginTop: 8 }}>
+              <div className="act-actions">
                 <button
                   type="button"
-                  className="cta secondary"
+                  className="btn secondary"
                   disabled={pushing === d.id}
                   onClick={() => onEdit(d)}
                 >
@@ -840,15 +833,15 @@ function DraftsScreen({ user, onToast, onEdit }) {
                 </button>
                 <button
                   type="button"
-                  className="cta"
+                  className="btn primary"
                   disabled={pushing === d.id}
                   onClick={() => push(d.id)}
                 >
-                  {pushing === d.id ? 'Pushing…' : 'Push to admin'}
+                  {pushing === d.id ? 'Sending…' : 'Send'}
                 </button>
                 <button
                   type="button"
-                  className="cta secondary danger-cta"
+                  className="btn secondary danger-cta"
                   disabled={pushing === d.id}
                   onClick={() => remove(d.id)}
                 >
@@ -926,7 +919,7 @@ export default function SurveyorApp() {
         // Records tab: user + progress
         const prog = await getMyProgress().catch(() => null)
         if (prog) setMyProgress(prog)
-        notify('Records refreshed ✓', 'ok')
+        notify('Activity refreshed ✓', 'ok')
         return
       }
 
@@ -1242,8 +1235,8 @@ export default function SurveyorApp() {
       <main className="main">
         <PullToRefresh
           onRefresh={pullRefreshAll}
-          label={tab === 'profile' ? '↓ Pull to refresh profile' : tab === 'records' ? '↓ Pull to refresh records' : '↓ Pull to refresh'}
-          refreshingLabel={tab === 'profile' ? 'Refreshing profile…' : tab === 'records' ? 'Refreshing records…' : 'Refreshing…'}
+          label={tab === 'profile' ? '↓ Pull to refresh profile' : tab === 'records' ? '↓ Pull to refresh activity' : '↓ Pull to refresh'}
+          refreshingLabel={tab === 'profile' ? 'Refreshing profile…' : tab === 'records' ? 'Refreshing activity…' : 'Refreshing…'}
         >
           {tab === 'home' && (
             <HomeScreen
@@ -1288,7 +1281,7 @@ export default function SurveyorApp() {
                 setEditDraft(d)
                 setCollectKey((k) => k + 1)
                 setTab('collect')
-                notify('Draft loaded — review, then push', 'ok')
+                notify('Draft loaded — review, then send', 'ok')
               }}
             />
           )}

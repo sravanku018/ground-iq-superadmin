@@ -777,7 +777,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         resetForNextRecord()
         const next = effectiveDone + 1
         onToast?.(
-          `Auto next · local record ${next}${target ? ` / ${target}` : ''}`,
+          `Auto next · activity ${next}${target ? ` / ${target}` : ''}`,
           'ok',
         )
       }
@@ -935,14 +935,14 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         workingRecordIndexRef.current = null
         writeStoredOpenDraft(user, null)
         resetForNextRecord()
-        onToast?.(`Saved as draft #${localSeq} — review & push from Pending`, 'ok')
+        onToast?.(`Saved as draft #${localSeq} — review & send from Pending`, 'ok')
         onDone?.(null, null)
       } else {
         workingDraftIdRef.current = null
         draftCreatedAtRef.current = null
         workingRecordIndexRef.current = null
         writeStoredOpenDraft(user, null)
-        onToast?.('Draft saved on this phone — review & push from Pending', 'ok')
+        onToast?.('Draft saved on this phone — review & send from Pending', 'ok')
         onSavedDraft?.()
       }
       return true
@@ -1074,7 +1074,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         <div className="card quota-card" style={{ marginBottom: 10, padding: '12px 14px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>
-              Record{' '}
+              Activity{' '}
               {targetCount > 0
                 ? `${Math.min(nextRecordNum, targetCount)} / ${targetCount}`
                 : `#${nextRecordNum}`}
@@ -1653,7 +1653,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                           {saving
                             ? 'Saving…'
                             : allHardLocks
-                              ? 'Push to admin'
+                              ? 'Send'
                               : 'Locks incomplete'}
                         </button>
                       )}
@@ -1708,15 +1708,15 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
             <h3>{progress?.complete ? 'Target complete ✓' : 'Batch paused'}</h3>
             <p>
               {progress?.complete
-                ? `You finished ${progress.done} / ${progress.target} records assigned by admin.`
-                : `Saved ${progress?.done ?? '—'} records.`}
+                ? `You finished ${progress.done} / ${progress.target} activities assigned by admin.`
+                : `Saved ${progress?.done ?? '—'} activities.`}
             </p>
             <p className="muted" style={{ fontSize: 13 }}>
-              Each record was saved with GPS + location + photo + voice locks.
+              Each activity was saved with GPS + location + photo + voice locks.
             </p>
             {!progress?.complete && (
               <button type="button" className="btn primary" onClick={resetForNextRecord}>
-                Continue next record
+                Continue next activity
               </button>
             )}
             <button

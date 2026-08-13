@@ -105,9 +105,6 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
   }
 
   const openItem = (it) => {
-    const ids = seen.includes(it.id) ? seen : [...seen, it.id]
-    writeSeen(user?.id, ids)
-    setSeen(ids)
     setOpen(false)
     onGoPage?.(it)
   }
@@ -128,14 +125,14 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
           <div className="admin-bell-head">
             <strong>Notifications</strong>
             {count > 0 && (
-              <button type="button" className="link-btn" onClick={markAll}>
-                Mark read
+              <button type="button" className="link-btn" onClick={clearAll}>
+                Clear
               </button>
             )}
           </div>
           {shown.length === 0 ? (
             <p className="muted" style={{ margin: 0, padding: '10px 12px', fontSize: 13 }}>
-              No verification uploads or new activity yet.
+              No new notifications.
             </p>
           ) : (
             <ul className="admin-bell-list">

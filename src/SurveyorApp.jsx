@@ -38,7 +38,6 @@ class CollectErrorBoundary extends Component {
 import {
   getMyProgress,
   getMySubmissions,
-  getStats,
   getToken,
   logout,
   me,
@@ -1010,26 +1009,18 @@ export default function SurveyorApp() {
 
   const loadAppData = useCallback(async () => {
     if (!getToken()) return
-    try {
-      setMyProgress(await getMyProgress())
-    } catch {
-      /* ignore */
-    }
-    try {
-      const data = await getSurveyForm()
+    const [prog, form] = await Promise.all([
+      getMyProgress().catch(() => null),
+      getSurveyForm().catch(() => null),
+    ])
+    if (prog) setMyProgress(prog)
+    if (form) {
       setQuestionsMeta({
-        title: data.title,
-        count: (data.questions || []).length,
-        questions: data.questions,
-        updated_at: data.updated_at,
+        title: form.title,
+        count: (form.questions || []).length,
+        questions: form.questions,
+        updated_at: form.updated_at,
       })
-    } catch {
-      /* questions after redeploy */
-    }
-    try {
-      await getStats()
-    } catch {
-      /* optional */
     }
   }, [])
 

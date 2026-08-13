@@ -147,7 +147,7 @@ async function getUser(token: string | null) {
   const rows = await sql`
     SELECT u.id, u.username, u.display_name, u.role, u.active, u.created_at,
            u.company_id, u.company_name,
-           u.key_id, u.phone, u.photo, u.aadhaar_front, u.aadhaar_back,
+           u.key_id, u.phone,
            COALESCE(u.verified, FALSE) AS verified,
            COALESCE(u.can_manage_questions, FALSE) AS can_manage_questions,
            COALESCE(u.can_edit_surveys, FALSE) AS can_edit_surveys,
@@ -198,9 +198,6 @@ async function getUser(token: string | null) {
     company_name: u.company_name ? String(u.company_name) : null,
     key_id: u.key_id || null,
     phone: u.phone || null,
-    photo: u.photo || null,
-    aadhaar_front: u.aadhaar_front || null,
-    aadhaar_back: u.aadhaar_back || null,
     verified: sqlBool(u.verified),
     can_manage_questions: sqlBool((u as Record<string, unknown>).can_manage_questions),
     can_edit_surveys: sqlBool((u as Record<string, unknown>).can_edit_surveys),
@@ -3106,7 +3103,12 @@ Deno.serve(async (req) => {
 
   try {
     if (!sql) return json({ error: "DATABASE_URL not set" }, 500);
-    await ready();
+    // Login / health must not wait for the full schema pass (dozens of ALTERs)
+    // on a cold Deno isolate — that is the main "Signing in…" stall.
+    const isLogin = path === "/api/auth/login" && method === "POST";
+    const isHealth = path === "/" || path === "/api/health";
+    if (isLogin || isHealth) void ready();
+    else await ready();
 
     // Health
     if (path === "/" || path === "/api/health") {
@@ -3143,8 +3145,27 @@ Deno.serve(async (req) => {
         return json({ error: "Username and password required" }, 400);
       }
       const rows = await sql`
-        SELECT * FROM app_users WHERE LOWER(username) = ${username} LIMIT 1
-      `;
+        SELECT id, username, display_name, role, active, created_at, password_hash,
+               company_id, company_name, key_id, phone,
+               COALESCE(verified, FALSE) AS verified,
+               COALESCE(can_manage_questions, FALSE) AS can_manage_questions,
+               COALESCE(can_edit_surveys, FALSE) AS can_edit_surveys,
+               COALESCE(can_review_data, FALSE) AS can_review_data,
+               COALESCE(can_verify_surveyors, FALSE) AS can_verify_surveyors,
+               COALESCE(can_assign_surveyors, FALSE) AS can_assign_surveyors,
+               COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
+               COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
+               COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
+               COALESCE(max_surveys, 0) AS max_surveys,
+               COALESCE(max_surveyors, 0) AS max_surveyors,
+               COALESCE(max_records, 0) AS max_records
+        FROM app_users WHERE LOWER(username) = ${username} LIMIT 1
+      `.catch(async () =>
+        await sql`
+          SELECT id, username, display_name, role, active, created_at, password_hash
+          FROM app_users WHERE LOWER(username) = ${username} LIMIT 1
+        `
+      );
       const user = rows[0] as {
         id: number;
         username: string;
@@ -3228,9 +3249,6 @@ Deno.serve(async (req) => {
           company_name: uu.company_name ? String(uu.company_name) : null,
           key_id: uu.key_id || null,
           phone: uu.phone || null,
-          photo: uu.photo || null,
-          aadhaar_front: uu.aadhaar_front || null,
-          aadhaar_back: uu.aadhaar_back || null,
           verified: sqlBool(uu.verified),
           can_manage_questions: sqlBool(uu.can_manage_questions),
           can_edit_surveys: sqlBool(uu.can_edit_surveys),
@@ -3274,6 +3292,17 @@ Deno.serve(async (req) => {
 
     if (path === "/api/auth/me" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
+      // Profile photos live on /me only — never on login or every session lookup.
+      const mediaRows = await sql`
+        SELECT photo, aadhaar_front, aadhaar_back FROM app_users WHERE id = ${me.id} LIMIT 1
+      `.catch(() => []);
+      const media = (mediaRows[0] || {}) as Record<string, unknown>;
+      const withMedia = {
+        ...me,
+        photo: media.photo || null,
+        aadhaar_front: media.aadhaar_front || null,
+        aadhaar_back: media.aadhaar_back || null,
+      };
       // Client Admin: attach live usage vs Super-Admin-set caps so Overview "My allocation" works
       // without relying only on GET /api/users (which can be filtered / slow).
       if (me.role === "admin" && sql) {
@@ -3324,7 +3353,7 @@ Deno.serve(async (req) => {
         `.catch(() => []);
         return json({
           user: {
-            ...me,
+            ...withMedia,
             survey_count: sqlCountN(sCnt),
             surveyor_count: sqlCountN(srCnt),
             question_count: questionPeak,
@@ -3339,7 +3368,7 @@ Deno.serve(async (req) => {
           },
         });
       }
-      return json({ user: me });
+      return json({ user: withMedia });
     }
 
     if (path === "/api/auth/logout" && method === "POST") {

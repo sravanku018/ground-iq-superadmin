@@ -4,6 +4,7 @@ import {
   collapseDuplicateDrafts,
   deleteDraft,
   findOpenDraft,
+  getPackage,
   savePackageLocal,
 } from './localStore'
 
@@ -169,13 +170,9 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
     draft?.recordIndex ?? storedOpen?.recordIndex ?? null,
   )
 
-  // Editing a saved draft: prefill everything from phone storage
-  const draftLoaded = useRef(null)
-  useEffect(() => {
-    if (!draft || !draft.id) return
-    if (draftLoaded.current === draft.id && questions.length) return
-    draftLoaded.current = draft.id
-    const d = draft.qa || draft
+  function hydrateFromPackage(pkg) {
+    if (!pkg) return
+    const d = pkg.qa || pkg
     const init = {}
     for (const q of questions || []) {
       if (q && q.id) init[q.id] = ''
@@ -186,12 +183,12 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
       setGeo({ lat: Number(g.lat), lng: Number(g.lng), accuracy: g.accuracy ?? 0, at: g.at ?? '', locked: true })
       setLocationDetails(d.location_details || null)
     }
-    if (draft.photoDataUrl) setPhotoDataUrl(draft.photoDataUrl)
-    if (draft.audioDataUrl) {
-      setAudioUrl(draft.audioDataUrl)
+    if (pkg.photoDataUrl) setPhotoDataUrl(pkg.photoDataUrl)
+    if (pkg.audioDataUrl) {
+      setAudioUrl(pkg.audioDataUrl)
       setVoiceActivated(true)
       try {
-        fetch(draft.audioDataUrl)
+        fetch(pkg.audioDataUrl)
           .then((r) => r.blob())
           .then((b) => setAudioBlob(b))
           .catch(() => {})
@@ -199,11 +196,39 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         /* ignore */
       }
     }
-    setStep(typeof draft.step === 'number' ? Math.min(Math.max(0, draft.step), 2) : 2)
-    if (typeof draft.activeQ === 'number' && draft.activeQ >= 0) {
-      setActiveQ(draft.activeQ)
+    setStep(typeof pkg.step === 'number' ? Math.min(Math.max(0, pkg.step), 2) : 2)
+    if (typeof pkg.activeQ === 'number' && pkg.activeQ >= 0) {
+      setActiveQ(pkg.activeQ)
     }
+  }
+
+  // Editing a saved draft: prefill everything from phone storage
+  const draftLoaded = useRef(null)
+  useEffect(() => {
+    if (!draft || !draft.id) return
+    if (draftLoaded.current === draft.id && questions.length) return
+    draftLoaded.current = draft.id
+    hydrateFromPackage(draft)
   }, [draft, questions])
+
+  // Resume the in-progress survey if Collect remounted (tab / refresh / crash)
+  const resumedRef = useRef(false)
+  useEffect(() => {
+    if (draft?.id || resumedRef.current) return
+    const stored = readStoredOpenDraft(user)
+    if (!stored?.id) return
+    resumedRef.current = true
+    let alive = true
+    getPackage(stored.id)
+      .then((pkg) => {
+        if (!alive || !pkg || pkg.phase !== 'draft') return
+        hydrateFromPackage(pkg)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [user, draft])
 
   const geoLocked = isGeoValid(geo)
   const locationLocked = geoLocked && !!locationDetails
@@ -279,7 +304,8 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
   )
 
   useEffect(() => {
-    loadQuestions({ silent: true, resetAnswers: !draft }).catch(() => {})
+    const resume = !draft && !!readStoredOpenDraft(user)?.id
+    loadQuestions({ silent: true, resetAnswers: !draft && !resume }).catch(() => {})
     return () => {
       if (watchId.current != null && navigator.geolocation) {
         navigator.geolocation.clearWatch(watchId.current)

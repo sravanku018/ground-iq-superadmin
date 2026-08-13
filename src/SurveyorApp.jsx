@@ -936,8 +936,6 @@ export default function SurveyorApp() {
       })
       if (prog) setMyProgress(prog)
       if (queue) setPendingSync(queue.pending ?? 0)
-      // Remount Collect so form reloads latest questions
-      setCollectKey((k) => k + 1)
       notify(
         `Refreshed · ${(data.questions || []).length} question(s)` +
           (prog ? ` · ${prog.done ?? 0}/${prog.target || '—'}` : ''),
@@ -1225,6 +1223,7 @@ export default function SurveyorApp() {
 
       <main className="main">
         <PullToRefresh
+          disabled={tab === 'collect'}
           onRefresh={pullRefreshAll}
           label={tab === 'profile' ? '↓ Pull to refresh profile' : tab === 'records' ? '↓ Pull to refresh activity' : '↓ Pull to refresh'}
           refreshingLabel={tab === 'profile' ? 'Refreshing profile…' : tab === 'records' ? 'Refreshing activity…' : 'Refreshing…'}
@@ -1243,7 +1242,7 @@ export default function SurveyorApp() {
               onLogout={handleLogout}
             />
           )}
-          {tab === 'collect' && (
+          <div style={{ display: tab === 'collect' ? 'block' : 'none' }}>
             <CollectErrorBoundary onReset={() => setCollectKey((k) => k + 1)}>
               <FieldCollectScreen
                 key={collectKey}
@@ -1263,7 +1262,7 @@ export default function SurveyorApp() {
                 }}
               />
             </CollectErrorBoundary>
-          )}
+          </div>
           {tab === 'drafts' && (
             <DraftsScreen
               user={user}

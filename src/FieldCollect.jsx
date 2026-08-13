@@ -58,21 +58,6 @@ const META_ANSWER_KEYS = [
   'location_state',
 ]
 
-// Auto colors for option buttons (choice / A·B·C·D / Yes-No)
-const OPTION_COLORS = [
-  '#00e599',
-  '#38bdf8',
-  '#a78bfa',
-  '#f472b6',
-  '#fbbf24',
-  '#34d399',
-  '#fb7185',
-  '#60a5fa',
-  '#c084fc',
-  '#2dd4bf',
-  '#f59e0b',
-  '#e879f9',
-]
 // Sentiment type: Positive / Neutral / Negative
 const SENTIMENT_COLORS = {
   Positive: '#16a34a',
@@ -1021,7 +1006,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
 
   // Shell pull-to-refresh remounts this screen (collectKey) → useEffect reloads questions
   return (
-      <div className="screen field-collect">
+      <div className={`screen field-collect${step === 2 && voiceActivated ? ' qa-focus' : ''}`}>
         <p className="ptr-hint">↓ Pull down to refresh questions from admin</p>
         <header className="screen-head">
           <h2>{formMeta?.title || 'Field survey'}</h2>
@@ -1086,7 +1071,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         </div>
 
         {/* Live quota + device queue */}
-        <div className="card" style={{ marginBottom: 10, padding: '12px 14px' }}>
+        <div className="card quota-card" style={{ marginBottom: 10, padding: '12px 14px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>
               Record{' '}
@@ -1329,53 +1314,43 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         {/* STEP 2 — VOICE LOCK + Q/A */}
         {step === 2 && (
           <div>
-            <div className="card" style={{ marginBottom: 10 }}>
-              <h3>3 · Voice activation (mandatory)</h3>
-              <p className="muted" style={{ fontSize: 12 }}>
-                Microphone must be on. Interview audio is locked before answers can be saved.
-              </p>
-              {!locks.geo || !locks.photo ? (
-                <p className="pill bad">
-                  <span className="dot" />
-                  Complete GPS + photo locks first
-                </p>
-              ) : null}
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-                {editingDraft && voiceLocked ? (
-                  <span className="pill ok">
-                    <span className="dot" />
-                    🔒 VOICE LOCKED — draft audio cannot be re-recorded
-                  </span>
-                ) : !recording ? (
-                  <button
-                    type="button"
-                    className="btn primary"
-                    disabled={!locks.geo || !locks.photo}
-                    onClick={startAudio}
-                  >
-                    {audioBlob ? 'Re-activate voice' : 'Activate voice · start recording'}
+            {voiceActivated ? (
+              <div className="voice-strip">
+                {recording ? <span className="live-dot" aria-hidden /> : <span className="pill ok" style={{ margin: 0 }}>Voice on</span>}
+                <strong>{recording ? 'Recording interview' : 'Voice locked'}</strong>
+                {editingDraft && voiceLocked ? null : recording ? (
+                  <button type="button" className="btn secondary" onClick={stopAudio}>
+                    Stop
                   </button>
                 ) : (
-                  <button type="button" className="btn danger" onClick={stopAudio}>
-                    Stop recording (keep lock)
+                  <button type="button" className="btn secondary" onClick={startAudio}>
+                    Re-record
                   </button>
                 )}
-                {recording && (
-                  <span className="pill warn">
-                    <span className="dot" />● LIVE
-                  </span>
-                )}
-                {voiceActivated && (
-                  <span className="pill ok">
-                    <span className="dot" />
-                    VOICE ACTIVATED
-                  </span>
-                )}
               </div>
-              {audioUrl && (
-                <audio controls src={audioUrl} style={{ width: '100%', marginTop: 10 }} />
-              )}
-            </div>
+            ) : (
+              <div className="card" style={{ marginBottom: 10 }}>
+                <h3>3 · Voice activation (mandatory)</h3>
+                <p className="muted" style={{ fontSize: 12 }}>
+                  Microphone must be on. Interview audio is locked before answers can be saved.
+                </p>
+                {!locks.geo || !locks.photo ? (
+                  <p className="pill bad">
+                    <span className="dot" />
+                    Complete GPS + photo locks first
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn primary"
+                  style={{ marginTop: 8 }}
+                  disabled={!locks.geo || !locks.photo}
+                  onClick={startAudio}
+                >
+                  {audioBlob ? 'Re-activate voice' : 'Activate voice · start recording'}
+                </button>
+              </div>
+            )}
 
             {!voiceActivated ? (
               <div className="card">
@@ -1404,58 +1379,40 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                     </button>
                   </div>
                 ) : (
-                  <div className="card">
-                    <p className="muted">
-                      Question {activeQ + 1} / {questions.length}
-                    </p>
-                    <h3>{q.label}</h3>
-                    {q.speak && (
-                      <p className="muted" style={{ fontSize: 12 }}>
-                        Voice: “{q.speak}”
-                      </p>
-                    )}
+                  <div className="card qa-card">
+                    <div className="qa-progress">
+                      <div className="qa-progress-bar" aria-hidden>
+                        <i style={{ width: `${Math.round(((activeQ + 1) / Math.max(1, questions.length)) * 100)}%` }} />
+                      </div>
+                      <span className="qa-progress-n">
+                        {activeQ + 1} / {questions.length}
+                      </span>
+                    </div>
+                    <h3 className="qa-title">{q.label}</h3>
+                    {q.speak &&
+                      String(q.speak).trim() &&
+                      String(q.speak).trim().toLowerCase() !== 'new question' &&
+                      String(q.speak).trim() !== String(q.label || '').trim() && (
+                        <p className="muted" style={{ fontSize: 12, marginTop: -8, marginBottom: 12 }}>
+                          {q.speak}
+                        </p>
+                      )}
 
                     {q.type === 'yesno' ? (
-                      <div style={{ display: 'flex', gap: 16, marginTop: 10 }}>
+                      <div className="qa-options">
                         <button
                           type="button"
-                          className="chip"
-                          style={{
-                            flex: 1,
-                            background: '#059669',
-                            borderColor: '#059669',
-                            color: '#ffffff',
-                            padding: '16px 24px',
-                            fontSize: 18,
-                            fontWeight: 'bold',
-                            opacity: answers[q.id] && answers[q.id] !== 'Yes' ? 0.45 : 1,
-                            outline: answers[q.id] === 'Yes' ? '3px solid #ffffff' : 'none',
-                            outlineOffset: 2,
-                            boxShadow: answers[q.id] === 'Yes' ? '0 4px 14px rgba(5,150,105,0.6)' : 'none',
-                          }}
+                          className={`qa-opt yes${answers[q.id] === 'Yes' ? ' selected' : ''}`}
                           onClick={() => setAnswers((a) => ({ ...a, [q.id]: 'Yes' }))}
                         >
-                          ✓ YES
+                          Yes
                         </button>
                         <button
                           type="button"
-                          className="chip"
-                          style={{
-                            flex: 1,
-                            background: '#dc2626',
-                            borderColor: '#dc2626',
-                            color: '#ffffff',
-                            padding: '16px 24px',
-                            fontSize: 18,
-                            fontWeight: 'bold',
-                            opacity: answers[q.id] && answers[q.id] !== 'No' ? 0.45 : 1,
-                            outline: answers[q.id] === 'No' ? '3px solid #ffffff' : 'none',
-                            outlineOffset: 2,
-                            boxShadow: answers[q.id] === 'No' ? '0 4px 14px rgba(220,38,38,0.6)' : 'none',
-                          }}
+                          className={`qa-opt no${answers[q.id] === 'No' ? ' selected' : ''}`}
                           onClick={() => setAnswers((a) => ({ ...a, [q.id]: 'No' }))}
                         >
-                          ✕ NO
+                          No
                         </button>
                       </div>
                     ) : q.type === 'sentiment_text' ? (
@@ -1512,143 +1469,80 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                         </div>
                       </div>
                     ) : q.type === 'meter' ? (
-                      <div style={{ marginTop: 10 }}>
-                        <label className="field" style={{ marginBottom: 4 }}>
-                          <span>Sentiment Meter — tap the bar (1–100%)</span>
-                        </label>
-                        <input
-                          type="range"
-                          min="1"
-                          max="100"
-                          step="1"
-                          value={
-                            (() => {
-                              const raw = String(answers[q.id] || '').replace('%', '').trim()
-                              const n = Number(raw)
-                              return n >= 1 && n <= 100 ? n : 50
-                            })()
-                          }
-                          onChange={(e) =>
-                            setAnswers((a) => ({ ...a, [q.id]: `${Number(e.target.value)}%` }))
-                          }
-                          style={{ width: '100%', accentColor: '#059669', height: 34 }}
-                        />
-                        <div
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            fontSize: 11,
-                            color: '#94a3b8',
-                          }}
-                        >
-                          <span>1% · Very negative</span>
-                          <span>50% · Neutral</span>
-                          <span>100% · Very positive</span>
-                        </div>
-                        <div
-                          style={{
-                            marginTop: 8,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 8,
-                            flexWrap: 'wrap',
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: 24,
-                              fontWeight: 800,
-                              color: '#059669',
-                              minWidth: 72,
-                            }}
-                          >
-                            {(() => {
-                              const raw = String(answers[q.id] || '').replace('%', '').trim()
-                              const n = Number(raw)
-                              return n >= 1 && n <= 100 ? `${n}%` : '—'
-                            })()}
-                          </span>
-                          {(() => {
-                            const raw = String(answers[q.id] || '').replace('%', '').trim()
-                            const n = Number(raw)
-                            if (!(n >= 1 && n <= 100)) return null
-                            const mood =
-                              n <= 33 ? '🙁 Negative' : n <= 66 ? '😐 Neutral' : '😀 Positive'
-                            return (
-                              <span
-                                className="pill"
-                                style={{
-                                  fontSize: 12,
-                                  fontWeight: 'bold',
-                                  background:
-                                    n <= 33
-                                      ? 'rgba(220,38,38,0.15)'
-                                      : n <= 66
-                                        ? 'rgba(217,119,6,0.15)'
-                                        : 'rgba(5,150,105,0.15)',
-                                  border:
-                                    n <= 33
-                                      ? '1px solid rgba(220,38,38,0.5)'
-                                      : n <= 66
-                                        ? '1px solid rgba(217,119,6,0.5)'
-                                        : '1px solid rgba(5,150,105,0.5)',
-                                  color:
-                                    n <= 33 ? '#dc2626' : n <= 66 ? '#d97706' : '#059669',
-                                }}
-                              >
-                                {mood}
-                              </span>
-                            )
-                          })()}
-                        </div>
+                      <div className="qa-meter">
+                        {(() => {
+                          const raw = String(answers[q.id] || '').replace('%', '').trim()
+                          const n = Number(raw)
+                          const val = n >= 1 && n <= 100 ? n : 50
+                          const mood =
+                            val <= 33 ? 'Negative' : val <= 66 ? 'Neutral' : 'Positive'
+                          const moodClass =
+                            val <= 33 ? 'neg' : val <= 66 ? 'neu' : 'pos'
+                          return (
+                            <>
+                              <div className="qa-meter-track">
+                                <input
+                                  type="range"
+                                  min="1"
+                                  max="100"
+                                  step="1"
+                                  value={val}
+                                  onChange={(e) =>
+                                    setAnswers((a) => ({
+                                      ...a,
+                                      [q.id]: `${Number(e.target.value)}%`,
+                                    }))
+                                  }
+                                  aria-label="Sentiment 1 to 100"
+                                />
+                              </div>
+                              <div className="qa-meter-scale">
+                                <span>Negative</span>
+                                <span>Neutral</span>
+                                <span>Positive</span>
+                              </div>
+                              <div className="qa-meter-value">
+                                <strong>{answers[q.id] ? `${val}%` : '—'}</strong>
+                                {answers[q.id] ? (
+                                  <span className={`qa-opt selected ${moodClass}`} style={{ minHeight: 32, padding: '4px 12px' }}>
+                                    {mood}
+                                  </span>
+                                ) : (
+                                  <span className="muted">Tap the bar</span>
+                                )}
+                              </div>
+                            </>
+                          )
+                        })()}
                       </div>
                     ) : (Array.isArray(q.options) && q.options.length > 0) || (q.type === 'range' || q.type === 'numeric_range' || q.type === 'age') ? (
                       <div>
                         <div
-                          style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: 10,
-                            marginTop: 10,
-                          }}
+                          className={`qa-options${
+                            (Array.isArray(q.options) ? q.options.length : 5) === 1
+                              ? ' cols-1'
+                              : ''
+                          }`}
                         >
                           {(Array.isArray(q.options) && q.options.length > 0
                             ? q.options
                             : ['10-20', '21-30', '31-40', '41-50', '50+']
-                          ).map((opt, oi) => {
+                          ).map((opt) => {
                             const sel = answers[q.id] === opt
-                            const optKey = String(opt || '').trim()
-                            const bg =
-                              SENTIMENT_COLORS[optKey] ||
-                              (q.type === 'sentiment'
-                                ? optKey === 'Positive' ? '#059669' : optKey === 'Negative' ? '#dc2626' : '#d97706'
-                                : OPTION_COLORS[oi % OPTION_COLORS.length])
+                            const optKey = String(opt || '').trim().toLowerCase()
+                            const sent =
+                              q.type === 'sentiment' || SENTIMENT_COLORS[String(opt || '').trim()]
+                                ? optKey.startsWith('pos')
+                                  ? 'pos'
+                                  : optKey.startsWith('neg')
+                                    ? 'neg'
+                                    : 'neu'
+                                : ''
                             return (
                               <button
                                 key={opt}
                                 type="button"
-                                className="chip"
-                                style={{
-                                  background: bg,
-                                  borderColor: bg,
-                                  color: '#ffffff',
-                                  fontWeight: 'bold',
-                                  opacity: answers[q.id] && !sel ? 0.45 : 1,
-                                  outline: sel ? '3px solid #ffffff' : 'none',
-                                  outlineOffset: 2,
-                                  ...(q.type === 'abc'
-                                    ? { padding: '14px 28px', fontSize: 18, borderRadius: 12 }
-                                    : (q.type === 'range' || q.type === 'numeric_range' || q.type === 'age')
-                                      ? { padding: '12px 22px', fontSize: 16, borderRadius: 16, minWidth: 90 }
-                                      : q.type === 'sentiment'
-                                        ? {
-                                            padding: '14px 22px',
-                                            fontSize: 16,
-                                            borderRadius: 20,
-                                            minWidth: 110,
-                                          }
-                                        : { padding: '10px 18px', fontSize: 14, borderRadius: 18 }),
-                                }}
+                                className={`qa-opt${sel ? ' selected' : ''}${sent ? ` ${sent}` : ''}`}
                                 onClick={() => setAnswers((a) => ({ ...a, [q.id]: opt }))}
                               >
                                 {opt}
@@ -1706,10 +1600,10 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                       </label>
                     )}
 
-                    <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                    <div className="qa-tools">
                       {!listening ? (
                         <button type="button" className="btn secondary" onClick={startSpeechFill}>
-                          🎤 Speak fill
+                          Speak fill
                         </button>
                       ) : (
                         <button type="button" className="btn danger" onClick={stopSpeechFill}>
@@ -1718,7 +1612,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                       )}
                     </div>
 
-                    <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+                    <div className="qa-nav">
                       <button
                         type="button"
                         className="btn secondary"
@@ -1747,7 +1641,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                           disabled={saving}
                           onClick={() => saveDraft({ autoNext: true })}
                         >
-                          {saving ? 'Saving…' : 'Finish · save as draft'}
+                          {saving ? 'Saving…' : 'Finish'}
                         </button>
                       ) : (
                         <button
@@ -1759,11 +1653,13 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                           {saving
                             ? 'Saving…'
                             : allHardLocks
-                              ? 'Confirm & push to admin'
+                              ? 'Push to admin'
                               : 'Locks incomplete'}
                         </button>
                       )}
-                      {editingDraft && (
+                    </div>
+                    {editingDraft && (
+                      <div className="qa-tools">
                         <button
                           type="button"
                           className="btn secondary"
@@ -1772,8 +1668,6 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                         >
                           Keep as draft
                         </button>
-                      )}
-                      {editingDraft && (
                         <button
                           type="button"
                           className="btn secondary danger-cta"
@@ -1782,8 +1676,8 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                         >
                           Delete draft
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1798,8 +1692,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
                 {!editingDraft && (
                   <button
                     type="button"
-                    className="btn secondary"
-                    style={{ marginTop: 10 }}
+                    className="btn secondary qa-back"
                     onClick={() => setStep(1)}
                   >
                     Back to photo

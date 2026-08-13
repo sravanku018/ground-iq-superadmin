@@ -23,8 +23,9 @@ function isAdminPath() {
 /**
  * Website = Client Admin portal only. The Android APK keeps the surveyor
  * field app (built with VITE_FIELD_APP=1).
- * VITE_SUPER_ADMIN=1 → separate Super Admin console on its own GitHub page
- * (login server-gated to role super_admin).
+ * VITE_SUPER_ADMIN=1 → separate Super Admin console (GitHub Pages / Vercel).
+ * Vercel builds set these in vite.config.js from the GitHub repo name so
+ * ground-iq-web is Client Admin and ground-iq-superadmin is Super Admin.
  */
 const FIELD_APP_ENABLED = (import.meta.env.VITE_FIELD_APP ?? '1') !== '0'
 const SUPER_ADMIN_CONSOLE = (import.meta.env.VITE_SUPER_ADMIN ?? '0') === '1'

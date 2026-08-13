@@ -66,7 +66,7 @@ import {
   pushDraft,
 } from './localStore'
 import { clearSession, getSurveyForm } from './api'
-import { APP_VERSION, versionLabel } from './version'
+import { APP_BUILD, APP_VERSION, APP_VERSION_CODE, versionLabel } from './version'
 import VerifiedBadge from './VerifiedBadge'
 import './App.css'
 
@@ -79,14 +79,20 @@ const TABS = [
   { id: 'profile', label: 'Profile', icon: '👤' },
 ]
 
-/** On version change, clear old session so login screen + new build show cleanly */
+/** New install or new APK build must show login — never restore an old session. */
 function ensureUiVersion() {
   try {
-    const key = 'esurvey_ui_version'
+    const key = 'esurvey_ui_build'
+    const stamp = `${APP_VERSION}:${APP_VERSION_CODE}:${APP_BUILD}`
     const prev = localStorage.getItem(key)
-    if (prev !== APP_VERSION) {
+    if (prev !== stamp) {
       clearSession()
-      localStorage.setItem(key, APP_VERSION)
+      try {
+        localStorage.removeItem('esurvey_ui_version')
+      } catch {
+        /* ignore */
+      }
+      localStorage.setItem(key, stamp)
       return true
     }
   } catch {

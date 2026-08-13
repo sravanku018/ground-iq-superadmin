@@ -278,7 +278,7 @@
   width: 100%;
   box-sizing: border-box;
   padding: 15px 16px;
-  border-radius: 14px;
+  border-radius: var(--radius-btn, 22px);
   border: 1.5px solid #e2e8f0;
   background: #ffffff;
   color: #0f172a;
@@ -333,7 +333,7 @@
   margin-top: 8px;
   width: 100%;
   border: none;
-  border-radius: 14px;
+  border-radius: var(--radius-btn, 22px);
   padding: 16px;
   font: inherit;
   font-size: 17px;
@@ -1437,7 +1437,7 @@
 .cta {
   width: 100%;
   border: none;
-  border-radius: 14px;
+  border-radius: var(--radius-btn, 22px);
   padding: 16px;
   font: inherit;
   font-size: 16px;
@@ -1693,7 +1693,7 @@ textarea,
   color: var(--text-h);
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-btn, 22px);
   padding: 12px 14px;
   width: 100%;
   outline: none;
@@ -1765,7 +1765,7 @@ textarea:focus,
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text-h);
-  border-radius: 12px;
+  border-radius: var(--radius-btn, 22px);
   padding: 14px 16px;
   font: inherit;
   font-size: 15px;
@@ -2003,10 +2003,10 @@ textarea:focus,
 .qa-opt {
   min-height: 54px;
   padding: 12px 12px;
-  border-radius: 16px;
+  border-radius: var(--radius-btn, 22px);
   border: 1.5px solid #e2e8f0;
   background: #f8fafc;
-  color: #0f172a;
+  color: #000000;
   font: inherit;
   font-weight: 700;
   font-size: 15px;
@@ -2110,7 +2110,7 @@ textarea:focus,
   width: 100%;
   min-height: 50px;
   margin: 0;
-  border-radius: 14px;
+  border-radius: var(--radius-btn, 22px);
 }
 
 .qa-tools {
@@ -2146,6 +2146,7 @@ textarea:focus,
   min-height: 44px;
   padding: 10px 8px;
   font-size: 14px;
+  border-radius: var(--radius-btn, 22px);
 }
 
 .screen-toolbar {

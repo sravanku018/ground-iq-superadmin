@@ -1,7 +1,8 @@
 :root {
   /* Light theme (dark mode disabled) — basic accent colors enabled */
-  --text: #475569;
-  --text-h: #0f172a;
+  --text: #111111;
+  --text-h: #000000;
+  --radius-btn: 22px;
   --bg: #f4f6f9;
   --card: #ffffff;
   --border: #e2e8f0;

@@ -1,6 +1,36 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getMyProgress, getSurveyForm } from './api'
-import { deleteDraft, savePackageLocal } from './localStore'
+import {
+  collapseDuplicateDrafts,
+  deleteDraft,
+  findOpenDraft,
+  savePackageLocal,
+} from './localStore'
+
+function openDraftStorageKey(user) {
+  return `esurvey_open_draft_${user?.id || user?.username || 'me'}`
+}
+
+function readStoredOpenDraft(user) {
+  try {
+    const raw = localStorage.getItem(openDraftStorageKey(user))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed && parsed.id ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function writeStoredOpenDraft(user, data) {
+  try {
+    const key = openDraftStorageKey(user)
+    if (!data?.id) localStorage.removeItem(key)
+    else localStorage.setItem(key, JSON.stringify(data))
+  } catch {
+    /* ignore */
+  }
+}
 import { forceSyncNow, getQueueSnapshot } from './syncEngine'
 /**
  * LOCKED collect flow — surveyor cannot skip:
@@ -147,8 +177,12 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
   const watchId = useRef(null)
   const streamRef = useRef(null)
   const audioStartedAt = useRef(null)
-  const workingDraftIdRef = useRef(draft?.id || null)
-  const draftCreatedAtRef = useRef(draft?.createdAt || null)
+  const storedOpen = readStoredOpenDraft(user)
+  const workingDraftIdRef = useRef(draft?.id || storedOpen?.id || null)
+  const draftCreatedAtRef = useRef(draft?.createdAt || storedOpen?.createdAt || null)
+  const workingRecordIndexRef = useRef(
+    draft?.recordIndex ?? storedOpen?.recordIndex ?? null,
+  )
 
   // Editing a saved draft: prefill everything from phone storage
   const draftLoaded = useRef(null)
@@ -692,11 +726,14 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
       }
 
       const currentDone = Math.max(localDoneCount, progress?.done || 0)
+      const reuseId = workingDraftIdRef.current || draft?.id || null
       const localSeq =
-        draft?.recordIndex != null
-          ? draft.recordIndex
-          : Math.max(progress?.next_record || 0, currentDone + 1)
+        workingRecordIndexRef.current ??
+        draft?.recordIndex ??
+        Math.max(progress?.next_record || 0, currentDone + 1)
       const packageId = await savePackageLocal({
+        id: reuseId,
+        createdAt: draftCreatedAtRef.current || draft?.createdAt,
         form_key: formMeta?.form_key || 'default',
         form_id: `field-${user?.username || 's'}-${Date.now()}`,
         source: 'mobile-field-survey',
@@ -718,17 +755,21 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
       })
 
       setLocalDoneCount(localSeq)
+      writeStoredOpenDraft(user, null)
+      workingDraftIdRef.current = null
+      workingRecordIndexRef.current = null
+      draftCreatedAtRef.current = null
       const qstats = await refreshQueue()
       onToast?.(
         `Saved · locks OK · queue #${localSeq} · pending ${qstats?.pending ?? '—'}`,
         'ok',
       )
 
-      if (draft?.id) {
-        // An edited draft was pushed for real → remove it from phone drafts
+      if (draft?.id && draft.id !== packageId) {
         await deleteDraft(draft.id).catch(() => {})
         draftLoaded.current = null
       }
+      await collapseDuplicateDrafts().catch(() => {})
 
       void forceSyncNow()
 
@@ -784,6 +825,38 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
     }
     if (!checkpoint) setSaving(true)
     try {
+      // Reserve the same draft id + record # BEFORE any await so Next cannot
+      // race and write a second package beside the original.
+      if (!workingDraftIdRef.current) {
+        const stored = readStoredOpenDraft(user)
+        workingDraftIdRef.current =
+          draft?.id ||
+          stored?.id ||
+          (typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `draft_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`)
+        if (stored?.createdAt && !draftCreatedAtRef.current) {
+          draftCreatedAtRef.current = stored.createdAt
+        }
+        if (stored?.recordIndex != null && workingRecordIndexRef.current == null) {
+          workingRecordIndexRef.current = stored.recordIndex
+        }
+      }
+      if (!draftCreatedAtRef.current) {
+        draftCreatedAtRef.current = draft?.createdAt || new Date().toISOString()
+      }
+      if (workingRecordIndexRef.current == null) {
+        const currentDone = Math.max(localDoneCount, progress?.done || 0)
+        workingRecordIndexRef.current =
+          draft?.recordIndex ??
+          Math.max(progress?.next_record || 0, currentDone + 1)
+      }
+      writeStoredOpenDraft(user, {
+        id: workingDraftIdRef.current,
+        createdAt: draftCreatedAtRef.current,
+        recordIndex: workingRecordIndexRef.current,
+      })
+
       let audioDataUrl = null
       let audioMime = 'audio/webm'
       let blob = audioBlob
@@ -800,6 +873,23 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         return false
       }
 
+      // If this collect remounted, adopt any leftover draft for the same record.
+      const existing = await findOpenDraft({
+        userId: user?.id,
+        submittedBy: user?.name || user?.username,
+        formKey: formMeta?.form_key || 'default',
+        recordIndex: workingRecordIndexRef.current,
+      }).catch(() => null)
+      if (existing?.id && existing.id !== workingDraftIdRef.current) {
+        workingDraftIdRef.current = existing.id
+        draftCreatedAtRef.current = existing.createdAt || draftCreatedAtRef.current
+        writeStoredOpenDraft(user, {
+          id: existing.id,
+          createdAt: draftCreatedAtRef.current,
+          recordIndex: workingRecordIndexRef.current,
+        })
+      }
+
       // Keep meta keys in sync with META_ANSWER_KEYS (excluded from the answered count)
       const lockedAnswers = {
         ...answers,
@@ -814,22 +904,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         location_state: locationDetails?.state || '',
       }
 
-      const currentDone = Math.max(localDoneCount, progress?.done || 0)
-      const localSeq =
-        draft?.recordIndex != null
-          ? draft.recordIndex
-          : Math.max(progress?.next_record || 0, currentDone + 1)
-
-      if (!workingDraftIdRef.current) {
-        workingDraftIdRef.current =
-          draft?.id ||
-          (typeof crypto !== 'undefined' && crypto.randomUUID
-            ? crypto.randomUUID()
-            : `draft_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`)
-      }
-      if (!draftCreatedAtRef.current) {
-        draftCreatedAtRef.current = draft?.createdAt || new Date().toISOString()
-      }
+      const localSeq = workingRecordIndexRef.current
 
       await savePackageLocal(
         {
@@ -860,11 +935,11 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
         },
         { draft: true },
       )
-      setLocalDoneCount(localSeq)
       if (draft?.id && draft.id !== workingDraftIdRef.current) {
         await deleteDraft(draft.id).catch(() => {})
         draftLoaded.current = null
       }
+      await collapseDuplicateDrafts().catch(() => {})
       if (checkpoint) {
         onToast?.(`Saved as draft · Q${(Number.isInteger(questionIndex) ? questionIndex : activeQ) + 1}`, 'ok')
         return true
@@ -872,10 +947,16 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
       if (autoNext) {
         workingDraftIdRef.current = null
         draftCreatedAtRef.current = null
+        workingRecordIndexRef.current = null
+        writeStoredOpenDraft(user, null)
         resetForNextRecord()
         onToast?.(`Saved as draft #${localSeq} — review & push from Pending`, 'ok')
         onDone?.(null, null)
       } else {
+        workingDraftIdRef.current = null
+        draftCreatedAtRef.current = null
+        workingRecordIndexRef.current = null
+        writeStoredOpenDraft(user, null)
         onToast?.('Draft saved on this phone — review & push from Pending', 'ok')
         onSavedDraft?.()
       }

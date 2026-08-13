@@ -58,7 +58,14 @@ import {
 import LoginScreen from './Login'
 import FieldCollectScreen from './FieldCollect'
 import PullToRefresh from './PullToRefresh'
-import { deleteDraft, draftCount, listDrafts, listPendingPackages, pushDraft } from './localStore'
+import {
+  collapseDuplicateDrafts,
+  deleteDraft,
+  draftCount,
+  listDrafts,
+  listPendingPackages,
+  pushDraft,
+} from './localStore'
 import { clearSession, getSurveyForm } from './api'
 import { APP_VERSION, versionLabel } from './version'
 import VerifiedBadge from './VerifiedBadge'
@@ -694,6 +701,7 @@ function DraftsScreen({ user, onToast, onEdit }) {
 
   const load = useCallback(async () => {
     try {
+      await collapseDuplicateDrafts().catch(() => {})
       const [drafts, queued] = await Promise.all([listDrafts(), listPendingPackages()])
       const all = [
         ...(drafts || []).map((d) => ({ ...d, kind: 'draft' })),
@@ -964,10 +972,13 @@ export default function SurveyorApp() {
     startSyncEngine()
     setPendingSync(queueCount())
     void refreshQueueCountCache().then(setPendingSync)
-    void getQueueSnapshot().then((s) => {
-      setPendingSync(s.pending)
-      setDraftsCount((s.drafts ?? 0) + (s.pending ?? 0))
-    })
+    void collapseDuplicateDrafts()
+      .catch(() => {})
+      .then(() => getQueueSnapshot())
+      .then((s) => {
+        setPendingSync(s.pending)
+        setDraftsCount((s.drafts ?? 0) + (s.pending ?? 0))
+      })
     void refreshDraftCount()
 
     const offSync = onSyncEngine((ev) => {

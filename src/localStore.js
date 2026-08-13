@@ -154,8 +154,8 @@ export async function savePackageLocal({
     await idbReq(db.transaction(STORE, 'readwrite').objectStore(STORE).put(pkg))
     db.close()
   } catch {
-    // Fallback: localStorage (no huge audio if possible)
-    const list = listPackagesMetaFallback()
+    // Fallback: localStorage — replace same id, never append a second copy
+    const list = listPackagesMetaFallback().filter((x) => x.id !== id)
     list.push(stripHeavy(pkg))
     localStorage.setItem('esurvey_packages_fallback', JSON.stringify(list))
     // keep media separately if small enough
@@ -273,6 +273,67 @@ export async function listPendingPackages() {
 export async function listDrafts() {
   const all = await listAllPackages()
   return (all || []).filter((p) => p.phase === 'draft')
+}
+
+function draftOwnerKey(pkg) {
+  const qa = pkg?.qa || {}
+  return String(qa.user_id || qa.submitted_by || pkg.submitted_by || '')
+}
+
+function draftRecordKey(pkg) {
+  const qa = pkg?.qa || {}
+  const form = String(qa.form_key || pkg.form_key || 'default')
+  const rec = pkg.recordIndex != null ? String(pkg.recordIndex) : pkg.id
+  return `${draftOwnerKey(pkg)}|${form}|${rec}`
+}
+
+/** Keep the newest draft per surveyor + survey + record number; delete extras. */
+export async function collapseDuplicateDrafts() {
+  const drafts = await listDrafts()
+  const best = new Map()
+  const extras = []
+  for (const d of drafts) {
+    const key = draftRecordKey(d)
+    const prev = best.get(key)
+    if (!prev) {
+      best.set(key, d)
+      continue
+    }
+    const newer = String(d.updatedAt || d.createdAt || '') > String(prev.updatedAt || prev.createdAt || '')
+    if (newer) {
+      extras.push(prev)
+      best.set(key, d)
+    } else {
+      extras.push(d)
+    }
+  }
+  for (const d of extras) {
+    await removePackage(d.id).catch(() => {})
+  }
+  return extras.length
+}
+
+/** In-progress draft for this surveyor + survey + record (so Next/Finish reuse it). */
+export async function findOpenDraft({ userId, submittedBy, formKey, recordIndex } = {}) {
+  const drafts = await listDrafts()
+  const uid = userId != null ? String(userId) : ''
+  const who = String(submittedBy || '')
+  const form = String(formKey || 'default')
+  const rec = recordIndex != null ? Number(recordIndex) : null
+  const matches = drafts.filter((d) => {
+    const qa = d.qa || {}
+    const sameUser =
+      (uid && String(qa.user_id || '') === uid) ||
+      (who && String(qa.submitted_by || d.submitted_by || '') === who) ||
+      (!uid && !who)
+    const sameForm = String(qa.form_key || 'default') === form
+    const sameRec = rec == null || Number(d.recordIndex) === rec
+    return sameUser && sameForm && sameRec
+  })
+  matches.sort((a, b) =>
+    String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')),
+  )
+  return matches[0] || null
 }
 
 export async function draftCount() {

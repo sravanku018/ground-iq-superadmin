@@ -108,7 +108,7 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
     writeSeen(user?.id, ids)
     setSeen(ids)
     setOpen(false)
-    onGoPage?.(it.page)
+    onGoPage?.(it)
   }
 
   return (

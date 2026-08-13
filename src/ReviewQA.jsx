@@ -17,7 +17,7 @@ import SubmissionEditor from './SubmissionEditor'
  * Q/A review → confirm / reject.
  * Keyboard: j/k move · Enter expand · c confirm · r reject · e edit
  */
-export default function ReviewQAScreen({ onToast, user }) {
+export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFocusConsumed }) {
   // Data verification power — Super Admin grants it (least privilege)
   const canReview = user?.role === 'super_admin' || !!user?.can_review_data
   // Proof validation power — phone + Aadhaar format check on records
@@ -54,6 +54,26 @@ export default function ReviewQAScreen({ onToast, user }) {
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    if (focusSubmissionId == null) return
+    if (status !== 'pending' && status !== 'all') setStatus('pending')
+  }, [focusSubmissionId, status])
+
+  useEffect(() => {
+    if (focusSubmissionId == null || loading) return
+    const id = Number(focusSubmissionId)
+    if (!id) return
+    const idx = items.findIndex((it) => Number(it.id) === id)
+    if (idx < 0) return
+    setFocusIdx(idx)
+    setExpanded(id)
+    onFocusConsumed?.()
+    requestAnimationFrame(() => {
+      const el = listRef.current?.querySelector?.(`[data-review-id="${id}"]`)
+      el?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+    })
+  }, [focusSubmissionId, loading, items, onFocusConsumed])
 
   useEffect(() => {
     listSurveys()
@@ -341,6 +361,7 @@ export default function ReviewQAScreen({ onToast, user }) {
             return (
               <li
                 key={item.id}
+                data-review-id={item.id}
                 data-review-idx={idx}
                 className={`review-item card${focused ? ' is-focus' : ''}`}
                 style={{ marginBottom: 10 }}

@@ -156,7 +156,7 @@ function SurveySelect({ value, onChange, all }) {
   )
 }
 
-export default function AdminUsersScreen({ onToast, user: portalUser }) {
+export default function AdminUsersScreen({ onToast, user: portalUser, focusUserId, onFocusConsumed }) {
   const [users, setUsers] = useState([])
   const [board, setBoard] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -302,6 +302,14 @@ export default function AdminUsersScreen({ onToast, user: portalUser }) {
     setTab('profiles')
     loadProfile(u, initialFilters)
   }
+
+  useEffect(() => {
+    if (focusUserId == null || !users.length) return
+    const u = users.find((x) => Number(x.id) === Number(focusUserId))
+    if (!u) return
+    openProfile(u)
+    onFocusConsumed?.()
+  }, [focusUserId, users])
 
   function openEdit(u) {
     setEditingId(u.id)

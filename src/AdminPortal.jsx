@@ -557,6 +557,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
   const [loadingData, setLoadingData] = useState(false)
   const [toast, setToast] = useState(null)
   const [navOpen, setNavOpen] = useState(false)
+  const [deepLink, setDeepLink] = useState(null)
 
   // Super Admin always has every power; Client Admins only see pages their granted powers unlock.
   const canPage = useCallback(
@@ -586,9 +587,22 @@ export default function AdminPortal({ superAdminOnly = false }) {
     .map((n) => ({ ...n, pages: n.pages.filter(canPage) }))
     .filter((n) => n.pages.length > 0)
 
-  const goPage = useCallback((p) => {
-    setPage(p)
+  const goPage = useCallback((p, extra = null) => {
+    const pageId = typeof p === 'string' ? p : p?.page
+    if (!pageId) return
+    setPage(pageId)
     setNavOpen(false)
+    if (typeof p === 'object' && p) {
+      setDeepLink({
+        page: pageId,
+        userId: p.userId ?? extra?.userId ?? null,
+        submissionId: p.submissionId ?? extra?.submissionId ?? null,
+      })
+    } else if (extra) {
+      setDeepLink({ page: pageId, ...extra })
+    } else {
+      setDeepLink(null)
+    }
   }, [])
 
   const notify = useCallback((message, type = 'ok') => {
@@ -941,13 +955,27 @@ export default function AdminPortal({ superAdminOnly = false }) {
               canPage={canPage}
             />
           )}
-          {page === 'users' && <AdminUsersScreen onToast={notify} user={user} />}
+          {page === 'users' && (
+            <AdminUsersScreen
+              onToast={notify}
+              user={user}
+              focusUserId={deepLink?.page === 'users' ? deepLink.userId : null}
+              onFocusConsumed={() => setDeepLink(null)}
+            />
+          )}
           {page === 'surveys' && <AdminSurveysScreen onToast={notify} user={user} />}
           {page === 'questions' && <AdminQuestionsScreen onToast={notify} user={user} />}
           {/* Report = tables/boards (AdminAnalyze); Analyze = charts/maps (Dashboard) */}
           {page === 'report' && <AdminAnalyzeScreen onToast={notify} />}
           {page === 'analyze' && <DashboardScreen onToast={notify} />}
-          {page === 'review' && <ReviewQAScreen onToast={notify} user={user} />}
+          {page === 'review' && (
+            <ReviewQAScreen
+              onToast={notify}
+              user={user}
+              focusSubmissionId={deepLink?.page === 'review' ? deepLink.submissionId : null}
+              onFocusConsumed={() => setDeepLink(null)}
+            />
+          )}
           {page === 'upload' && <AdminDataScreen onToast={notify} />}
           {page === 'audit' && <AdminAuditScreen onToast={notify} />}
           {page === 'bank' && <AdminQuestionBankScreen onToast={notify} user={user} />}

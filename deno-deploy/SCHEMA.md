@@ -90,6 +90,8 @@ writes the audit row.
   verification-doc upload or field-record insert.
 - **Read path:** `GET /api/notifications?after=` (snapshot) then
   `GET /api/notifications/stream?token=&after=` (live).
+- Each item includes `page` plus `userId` (docs) or `submissionId`
+  (activity) so the bell can open that surveyor profile or Review row.
 - Do not add a 45s (or any) full-user-list poll as the source of truth.
 
 ## Decisions log

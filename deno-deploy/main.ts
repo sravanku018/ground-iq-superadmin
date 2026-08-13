@@ -336,12 +336,16 @@ function mapInboxRow(r: Record<string, unknown>) {
     }
   }
   const fields = Array.isArray(meta.fields) ? (meta.fields as unknown[]).map(String) : [];
+  const actorId = r.actor_id != null ? Number(r.actor_id) : null;
+  const entityId = r.entity_id != null && String(r.entity_id) !== "" ? Number(r.entity_id) : null;
   if (action === "profile_media") {
     return {
       id: `evt-${r.id}`,
       seq: Number(r.id) || 0,
       kind: "docs",
       page: "users",
+      userId: entityId || actorId,
+      submissionId: null,
       title: `@${r.actor_name || "surveyor"} uploaded verification docs`,
       detail: fields.length ? fields.join(" · ") : "photo / Aadhaar",
       at: r.created_at,
@@ -352,6 +356,8 @@ function mapInboxRow(r: Record<string, unknown>) {
     seq: Number(r.id) || 0,
     kind: "activity",
     page: "review",
+    userId: actorId,
+    submissionId: entityId,
     title: `New activity #${r.entity_id || ""}`.trim(),
     detail: String(r.actor_name || "surveyor"),
     at: r.created_at,

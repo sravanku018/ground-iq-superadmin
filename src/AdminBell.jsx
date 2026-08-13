@@ -95,12 +95,13 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
 
   const unread = items.filter((i) => !seen.includes(i.id))
   const count = unread.length
-  const shown = items.slice(0, 40)
+  const shown = unread.slice(0, 40)
 
-  const markAll = () => {
-    const ids = items.map((i) => i.id)
+  const clearAll = () => {
+    const ids = [...new Set([...seen, ...items.map((i) => i.id)])]
     writeSeen(user?.id, ids)
     setSeen(ids)
+    setOpen(false)
   }
 
   const openItem = (it) => {

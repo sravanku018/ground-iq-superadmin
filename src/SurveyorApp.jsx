@@ -953,6 +953,19 @@ export default function SurveyorApp() {
     }
   }, [notify, tab])
 
+  const onCollectDone = useCallback((_id, prog) => {
+    setEditDraft(null)
+    if (prog) setMyProgress(prog)
+    else getMyProgress().then(setMyProgress).catch(() => {})
+    void getQueueSnapshot().then((s) => setPendingSync(s.pending))
+  }, [])
+
+  const onCollectSavedDraft = useCallback(() => {
+    setEditDraft(null)
+    setTab('drafts')
+    refreshDraftCount()
+  }, [refreshDraftCount])
+
   const handleLogout = useCallback(async () => {
     stopSyncEngine()
     await logout()
@@ -964,7 +977,12 @@ export default function SurveyorApp() {
 
   useEffect(() => {
     if (!user || !authReady) return undefined
-    const stopNet = watchNetwork(setNetwork, { intervalMs: 45_000 })
+    const stopNet = watchNetwork((s) => {
+      setNetwork((prev) => {
+        if (prev && prev.quality === s.quality && prev.online === s.online) return prev
+        return s
+      })
+    }, { intervalMs: 60_000 })
     startSyncEngine()
     setPendingSync(queueCount())
     void refreshQueueCountCache().then(setPendingSync)
@@ -1149,14 +1167,20 @@ export default function SurveyorApp() {
         // else: transient network error — keep session, retry next tick
       }
     }
-    const iv = setInterval(check, 60 * 1000)
+    const iv = setInterval(check, 120 * 1000)
+    let visTimer = 0
     const onVis = () => {
-      if (document.visibilityState === 'visible') void check()
+      if (document.visibilityState !== 'visible') return
+      window.clearTimeout(visTimer)
+      visTimer = window.setTimeout(() => {
+        if (!dead) void check()
+      }, 800)
     }
     document.addEventListener('visibilitychange', onVis)
     return () => {
       dead = true
       clearInterval(iv)
+      window.clearTimeout(visTimer)
       document.removeEventListener('visibilitychange', onVis)
     }
   }, [user, authReady, notify])
@@ -1252,20 +1276,12 @@ export default function SurveyorApp() {
             <CollectErrorBoundary onReset={() => setCollectKey((k) => k + 1)}>
               <FieldCollectScreen
                 key={collectKey}
+                active={tab === 'collect'}
                 user={user}
                 draft={editDraft}
                 onToast={notify}
-                onDone={(_id, prog) => {
-                  setEditDraft(null)
-                  if (prog) setMyProgress(prog)
-                  else getMyProgress().then(setMyProgress).catch(() => {})
-                  void getQueueSnapshot().then((s) => setPendingSync(s.pending))
-                }}
-                onSavedDraft={() => {
-                  setEditDraft(null)
-                  setTab('drafts')
-                  refreshDraftCount()
-                }}
+                onDone={onCollectDone}
+                onSavedDraft={onCollectSavedDraft}
               />
             </CollectErrorBoundary>
           </div>

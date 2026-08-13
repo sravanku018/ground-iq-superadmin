@@ -1,8 +1,6 @@
 .mobile-shell {
   min-height: 100svh;
-  min-height: 100dvh;
   height: 100svh;
-  height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--bg);
@@ -89,7 +87,6 @@
 }
 
 .ptr-content {
-  will-change: transform;
   min-height: 100%;
   padding: 16px 16px calc(88px + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
@@ -163,7 +160,6 @@
 /* Login */
 .login-screen {
   min-height: 100svh;
-  min-height: 100dvh;
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -1331,9 +1327,9 @@
 
 .hero-card {
   background: linear-gradient(145deg, #d1fae5 0%, #ecfdf5 50%, #e0f2fe 100%);
-  border: 1px solid rgba(5, 150, 105, 0.25);
-  border-radius: 20px;
-  padding: 22px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-box, 20px);
+  padding: var(--pad-box, 16px);
   color: var(--text-h);
   margin-bottom: 14px;
 }
@@ -1413,8 +1409,8 @@
 .stat {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 14px;
+  border-radius: var(--radius-box, 20px);
+  padding: var(--pad-box, 16px);
   min-width: 0;
 }
 
@@ -1456,8 +1452,8 @@
 .info-card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 16px;
+  border-radius: var(--radius-box, 20px);
+  padding: var(--pad-box, 16px);
 }
 
 .info-card h3 {
@@ -1658,8 +1654,8 @@
 .card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 16px;
+  border-radius: var(--radius-box, 20px);
+  padding: var(--pad-box, 16px);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1920,9 +1916,9 @@ textarea:focus,
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 10px var(--pad-box, 16px);
   margin-bottom: 10px;
-  border-radius: 14px;
+  border-radius: var(--radius-box, 20px);
   background: #fff;
   border: 1px solid var(--border);
 }
@@ -1949,8 +1945,8 @@ textarea:focus,
 }
 
 .qa-card {
-  padding: 16px 14px 14px;
-  border-radius: 20px;
+  padding: var(--pad-box, 16px);
+  border-radius: var(--radius-box, 20px);
 }
 
 .qa-progress {

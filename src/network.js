@@ -50,14 +50,14 @@ export function qualityFromLatency(latencyMs, apiReachable) {
   return QUALITY.WEAK
 }
 
-export function labelForQuality(quality, latencyMs) {
+export function labelForQuality(quality, _latencyMs) {
   switch (quality) {
     case QUALITY.STRONG:
-      return latencyMs != null ? `Strong · ${latencyMs}ms` : 'Strong'
+      return 'Strong'
     case QUALITY.OK:
-      return latencyMs != null ? `Online · ${latencyMs}ms` : 'Online'
+      return 'Online'
     case QUALITY.WEAK:
-      return latencyMs != null ? `Weak · ${latencyMs}ms` : 'Weak network'
+      return 'Weak network'
     default:
       return 'Offline'
   }
@@ -187,12 +187,17 @@ export function watchNetwork(onChange, opts = {}) {
   let timer = null
   let inFlight = false
 
+  let lastKey = ''
   const run = async () => {
     if (stopped || inFlight) return
     inFlight = true
     try {
       const status = await checkNetwork()
-      if (!stopped) onChange(status)
+      if (stopped) return
+      const key = `${status.quality}|${status.online ? 1 : 0}`
+      if (key === lastKey) return
+      lastKey = key
+      onChange(status)
     } finally {
       inFlight = false
     }

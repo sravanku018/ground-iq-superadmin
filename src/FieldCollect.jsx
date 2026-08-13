@@ -108,7 +108,7 @@ async function reverseGeocode(lat, lng) {
   }
 }
 
-export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft, draft }) {
+export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft, draft, active = true }) {
   const [step, setStep] = useState(0) // 0 geo, 1 photo, 2 voice+qa, 3 done
   const [formMeta, setFormMeta] = useState(null)
   const [questions, setQuestions] = useState([])
@@ -318,6 +318,15 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
     }
   }, [loadQuestions, draft])
 
+  useEffect(() => {
+    if (active) return undefined
+    if (watchId.current != null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(watchId.current)
+      watchId.current = null
+    }
+    return undefined
+  }, [active])
+
   function clearAudioUrl() {
     if (audioUrl) {
       try {
@@ -423,6 +432,7 @@ export default function FieldCollectScreen({ user, onToast, onDone, onSavedDraft
     // Prefer live watch until accuracy is good
     watchId.current = navigator.geolocation.watchPosition(
       async (pos) => {
+        if (document.visibilityState === 'hidden') return
         const acc = pos.coords.accuracy
         if (acc != null && acc > MAX_ACCURACY_M) {
           // still waiting for better fix

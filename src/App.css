@@ -2164,6 +2164,39 @@ textarea:focus,
   padding: 28px 8px;
 }
 
+.phone-in {
+  display: flex;
+  align-items: stretch;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-btn, 22px);
+  overflow: hidden;
+  background: #fff;
+}
+
+.phone-in.is-disabled {
+  background: #e2e8f0;
+}
+
+.phone-in-cc {
+  display: grid;
+  place-items: center;
+  padding: 0 12px;
+  font-weight: 800;
+  color: #000;
+  background: #f1f5f9;
+  border-right: 1px solid var(--border);
+}
+
+.phone-in input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  border: 0;
+  border-radius: 0;
+  min-height: 48px;
+  box-shadow: none;
+}
+
 /* Desktop preview wider */
 @media (min-width: 900px) {
   .mobile-shell {

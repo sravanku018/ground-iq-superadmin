@@ -19,6 +19,8 @@ import {
   updateUser,
 } from './api'
 import VerifiedBadge from './VerifiedBadge'
+import PhoneIndiaField from './PhoneIndiaField'
+import { digits10, isValidInMobile, toE164In, formatInMobile } from './phoneIn'
 
 /** Compress profile/Aadhaar image file before upload (max 1200px, 0.75 quality) */
 function compressImageFile(file, maxDimension = 1200, quality = 0.75) {
@@ -190,6 +192,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser }) {
     name: '',
     role: 'surveyor',
     target_quota: 20,
+    phone: '',
     surveys: [],
   })
   const [allSurveys, setAllSurveys] = useState([])
@@ -325,9 +328,15 @@ export default function AdminUsersScreen({ onToast, user: portalUser }) {
     const typedPass = form.password
     const typedName = (form.name || form.username).trim()
     const typedQuota = form.target_quota
+    const typedPhone = form.phone ? toE164In(form.phone) : ''
     // Client Admin surveyor creation is always a surveyor — admin accounts are created
     // exclusively by Super Admin in the Super Admin console (Client Admins tab).
     const typedRole = 'surveyor'
+    if (form.phone && !isValidInMobile(form.phone)) {
+      onToast?.('Surveyor phone must be +91 and 10 digits', 'error')
+      setSaving(false)
+      return
+    }
     try {
       const body = {
         username: typedUser,
@@ -335,6 +344,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser }) {
         name: typedName || typedUser,
         role: typedRole,
         target_quota: typedQuota,
+        ...(typedPhone ? { phone: typedPhone } : {}),
       }
       const res = await createUser(body)
       const created = res?.user || {}
@@ -388,6 +398,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser }) {
         name: '',
         role: 'surveyor',
         target_quota: 20,
+        phone: '',
         surveys: [],
       })
       // Scroll credentials into view
@@ -491,10 +502,15 @@ export default function AdminUsersScreen({ onToast, user: portalUser }) {
   async function saveEdit(user) {
     setSaving(true)
     try {
+      if (edit.phone && !isValidInMobile(edit.phone)) {
+        onToast?.('Surveyor phone must be +91 and 10 digits', 'error')
+        setSaving(false)
+        return
+      }
       const body = {
         username: edit.username.trim().toLowerCase(),
         name: edit.name.trim(),
-        phone: edit.phone ? edit.phone.trim() : null,
+        phone: edit.phone ? toE164In(edit.phone) : null,
         target_quota: Number(edit.target_quota) || 0,
       }
       if (edit.password.trim()) {
@@ -780,6 +796,8 @@ export default function AdminUsersScreen({ onToast, user: portalUser }) {
   ]
   const powersOf = (u) => (u.role === 'admin' ? POWER_DEFS.filter((p) => u[p.key]) : [])
   const canVerify = me?.role === 'super_admin' || !!me?.can_verify_surveyors
+  const canSeeIdDocs =
+    me?.role === 'super_admin' || !!me?.can_verify_surveyors || !!me?.can_validate_proof
   const togglePower = async (u, key, label) => {
     setSaving(true)
     try {
@@ -1158,6 +1176,13 @@ export default function AdminUsersScreen({ onToast, user: portalUser }) {
             />
           </label>
           <label className="field">
+            <span>Mobile (+91, 10 digits)</span>
+            <PhoneIndiaField
+              value={form.phone}
+              onChange={(phone) => setForm({ ...form, phone })}
+            />
+          </label>
+          <label className="field">
             <span>Password *</span>
             <input
               required
@@ -1293,9 +1318,37 @@ export default function AdminUsersScreen({ onToast, user: portalUser }) {
                         </span>
                       )}
                       {u.phone && (
-                        <span className="meta" style={{ display: 'block', marginTop: 3, fontSize: 13, color: '#38bdf8', fontWeight: 'bold' }}>
-                          📞 Mobile: {u.phone}
+                        <span className="meta" style={{ display: 'block', marginTop: 3, fontSize: 13, fontWeight: 'bold' }}>
+                          📞 {formatInMobile(u.phone)}
                         </span>
+                      )}
+                      {canSeeIdDocs && (
+                        <div className="id-doc-cols">
+                          <div className="id-doc-col">
+                            <span>Photo</span>
+                            {u.photo ? (
+                              <img src={u.photo} alt="" />
+                            ) : (
+                              <em>None</em>
+                            )}
+                          </div>
+                          <div className="id-doc-col">
+                            <span>Aadhaar front</span>
+                            {u.aadhaar_front ? (
+                              <img src={u.aadhaar_front} alt="" />
+                            ) : (
+                              <em>None</em>
+                            )}
+                          </div>
+                          <div className="id-doc-col">
+                            <span>Aadhaar back</span>
+                            {u.aadhaar_back ? (
+                              <img src={u.aadhaar_back} alt="" />
+                            ) : (
+                              <em>None</em>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
                     <span className={`pill ${statusColor(status)}`}>
@@ -1341,12 +1394,10 @@ export default function AdminUsersScreen({ onToast, user: portalUser }) {
                         />
                       </label>
                       <label className="field compact">
-                        <span>Mobile Phone Number</span>
-                        <input
-                          type="tel"
-                          placeholder="+91 9876543210"
+                        <span>Mobile (+91, 10 digits)</span>
+                        <PhoneIndiaField
                           value={edit.phone || ''}
-                          onChange={(e) => setEdit({ ...edit, phone: e.target.value })}
+                          onChange={(phone) => setEdit({ ...edit, phone })}
                         />
                       </label>
                       <label className="field compact">
@@ -1718,27 +1769,34 @@ export default function AdminUsersScreen({ onToast, user: portalUser }) {
                       @{profileUser.username} · Key ID: <strong style={{ color: '#059669' }}>{profileUser.key_id || '—'}</strong>
                     </p>
                     <div style={{ margin: '5px 0 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 13, color: profileUser.phone ? '#38bdf8' : '#f59e0b', fontWeight: 'bold' }}>
-                        📞 Mobile: {profileUser.phone || 'Not Provided'}
+                      <span style={{ fontSize: 13, fontWeight: 'bold' }}>
+                        📞 {profileUser.phone ? formatInMobile(profileUser.phone) : 'Not provided'}
                       </span>
                       <button
                         type="button"
                         className="btn small"
-                        style={{ fontSize: 11, padding: '2px 8px', background: '#e2e8f0', border: '1px solid #cbd5e1', color: '#334155', borderRadius: 6 }}
+                        style={{ fontSize: 11, padding: '2px 8px' }}
                         onClick={() => {
-                          const next = prompt('Edit Mobile Phone Number for @' + profileUser.username + ':', profileUser.phone || '')
-                          if (next !== null) {
-                            updateUser(profileUser.id, { phone: next.trim() })
-                              .then(() => {
-                                setProfileUser((prev) => (prev ? { ...prev, phone: next.trim() } : null))
-                                onToast?.(`Updated phone for @${profileUser.username} ✓`, 'ok')
-                                load()
-                              })
-                              .catch((err) => onToast?.(err.message || 'Failed to update phone', 'error'))
+                          const next = prompt(
+                            '10-digit mobile for @' + profileUser.username + ' (+91):',
+                            digits10(profileUser.phone || ''),
+                          )
+                          if (next === null) return
+                          if (next.trim() && !isValidInMobile(next)) {
+                            onToast?.('Phone must be +91 and 10 digits', 'error')
+                            return
                           }
+                          const saved = next.trim() ? toE164In(next) : null
+                          updateUser(profileUser.id, { phone: saved })
+                            .then(() => {
+                              setProfileUser((prev) => (prev ? { ...prev, phone: saved } : null))
+                              onToast?.(`Updated phone for @${profileUser.username} ✓`, 'ok')
+                              load()
+                            })
+                            .catch((err) => onToast?.(err.message || 'Failed to update phone', 'error'))
                         }}
                       >
-                        ✏️ Edit Phone
+                        Edit phone
                       </button>
                     </div>
                   </div>
@@ -1789,7 +1847,8 @@ export default function AdminUsersScreen({ onToast, user: portalUser }) {
                   </div>
                 </div>
 
-                {/* Aadhaar Cards */}
+                {/* Aadhaar — only when Super Admin granted verify / proof */}
+                {canSeeIdDocs && (
                 <div style={{ background: '#f1f5f9', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                     <h5 style={{ margin: 0, fontSize: 14, color: '#38bdf8', fontWeight: 'bold' }}>🪪 Aadhaar Identity Verification</h5>
@@ -1859,6 +1918,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser }) {
                     </div>
                   </div>
                 </div>
+                )}
 
                 {/* Filters */}
                 <div

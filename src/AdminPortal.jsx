@@ -12,6 +12,7 @@ import {
 import AdminLogin from './AdminLogin'
 import VerifiedBadge from './VerifiedBadge'
 import { PortalEmpty, PortalSkeleton } from './PortalUI'
+import AdminBell from './AdminBell'
 import { versionLabel } from './version'
 import './App.css'
 import './portal.css'
@@ -822,6 +823,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           <strong>Ground IQ · Admin</strong>
           <span>{activeNavLabel}</span>
         </div>
+        <AdminBell user={user} onGoPage={goPage} />
         <button
           type="button"
           className="btn small"
@@ -865,6 +867,9 @@ export default function AdminPortal({ superAdminOnly = false }) {
           ))}
         </nav>
         <div className="portal-sidebar-foot">
+          <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'flex-end' }}>
+            <AdminBell user={user} onGoPage={goPage} />
+          </div>
           <button
             type="button"
             className="btn small"

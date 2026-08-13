@@ -67,6 +67,8 @@ import {
 } from './localStore'
 import { clearSession, getSurveyForm } from './api'
 import { APP_BUILD, APP_VERSION, APP_VERSION_CODE, versionLabel } from './version'
+import PhoneIndiaField from './PhoneIndiaField'
+import { isValidInMobile, toE164In } from './phoneIn'
 import VerifiedBadge from './VerifiedBadge'
 import './App.css'
 
@@ -443,10 +445,15 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
   }
 
   const handleSavePhone = async () => {
+    if (!isValidInMobile(phone)) {
+      onToast?.('Enter a 10-digit Indian mobile (+91)', 'error')
+      return
+    }
+    const saved = toE164In(phone)
     setSavingPhone(true)
     try {
-      await updateUser(user.id, { phone: phone.trim() })
-      onUserUpdated?.((prev) => ({ ...prev, phone: phone.trim() }))
+      await updateUser(user.id, { phone: saved })
+      onUserUpdated?.((prev) => ({ ...prev, phone: saved }))
       onToast?.('Phone number updated ✓', 'ok')
       me().then((m) => m?.user && onUserUpdated?.(m.user)).catch(() => {})
     } catch (err) {
@@ -558,29 +565,15 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
           ) : null}
         </div>
         <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
-          {user?.verified ? 'Phone cannot be changed.' : 'Registered phone number for contact.'}
+          {user?.verified
+            ? 'Phone cannot be changed.'
+            : 'Indian mobile only — +91 and 10 digits.'}
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <input
-            type="tel"
-            placeholder="+91 9876543210"
+          <PhoneIndiaField
             value={phone}
             disabled={user?.verified === true}
-            onChange={(e) => setPhone(e.target.value)}
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              fontSize: 18,
-              fontWeight: 'bold',
-              letterSpacing: '0.04em',
-              padding: '12px 16px',
-              minHeight: 52,
-              borderRadius: 12,
-              border: user?.verified ? '1px solid #cbd5e1' : '2px solid #059669',
-              background: user?.verified ? '#e2e8f0' : '#ffffff',
-              color: user?.verified ? '#94a3b8' : '#0f172a',
-              cursor: user?.verified ? 'not-allowed' : 'text',
-            }}
+            onChange={setPhone}
           />
           {!user?.verified && (
             <button

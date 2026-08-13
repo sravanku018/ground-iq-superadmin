@@ -324,6 +324,69 @@ function hasPower(
  * request path never slows down. Actor is the specific account (id + username),
  * never just the role.
  */
+function mapInboxRow(r: Record<string, unknown>) {
+  const action = String(r.action || "");
+  let meta: Record<string, unknown> = {};
+  if (r.meta && typeof r.meta === "object") meta = r.meta as Record<string, unknown>;
+  else if (typeof r.meta === "string") {
+    try {
+      meta = JSON.parse(r.meta) as Record<string, unknown>;
+    } catch {
+      meta = {};
+    }
+  }
+  const fields = Array.isArray(meta.fields) ? (meta.fields as unknown[]).map(String) : [];
+  if (action === "profile_media") {
+    return {
+      id: `evt-${r.id}`,
+      seq: Number(r.id) || 0,
+      kind: "docs",
+      page: "users",
+      title: `@${r.actor_name || "surveyor"} uploaded verification docs`,
+      detail: fields.length ? fields.join(" · ") : "photo / Aadhaar",
+      at: r.created_at,
+    };
+  }
+  return {
+    id: `evt-${r.id}`,
+    seq: Number(r.id) || 0,
+    kind: "activity",
+    page: "review",
+    title: `New activity #${r.entity_id || ""}`.trim(),
+    detail: String(r.actor_name || "surveyor"),
+    at: r.created_at,
+  };
+}
+
+async function listAdminInbox(
+  sqlFn: NonNullable<typeof sql>,
+  admin: { id: unknown; role: unknown },
+  afterId = 0,
+) {
+  const after = Math.max(0, Number(afterId) || 0);
+  if (admin.role === "super_admin") {
+    return await sqlFn`
+      SELECT id, actor_id, actor_name, action, entity_type, entity_id, meta, created_at
+      FROM audit_log
+      WHERE action IN ('profile_media', 'submission_create')
+        AND id > ${after}
+      ORDER BY id DESC
+      LIMIT 50
+    `.catch(() => []);
+  }
+  return await sqlFn`
+    SELECT a.id, a.actor_id, a.actor_name, a.action, a.entity_type, a.entity_id, a.meta, a.created_at
+    FROM audit_log a
+    WHERE a.action IN ('profile_media', 'submission_create')
+      AND a.id > ${after}
+      AND a.actor_id IN (
+        SELECT id FROM app_users WHERE role = 'surveyor' AND created_by = ${admin.id}
+      )
+    ORDER BY a.id DESC
+    LIMIT 50
+  `.catch(() => []);
+}
+
 function logAudit(
   actor: { id: unknown; username: unknown; role: unknown } | null,
   action: string,
@@ -4340,6 +4403,13 @@ Deno.serve(async (req) => {
       `;
 
       const u = updated[0] as Record<string, unknown>;
+      const fields: string[] = [];
+      if (photoVal) fields.push("photo");
+      if (aadhaarFrontVal) fields.push("Aadhaar front");
+      if (aadhaarBackVal) fields.push("Aadhaar back");
+      if (me.role === "surveyor" && fields.length) {
+        logAudit(me, "profile_media", "user", targetId, { fields });
+      }
       return json({
         ok: true,
         user_id: u.id,
@@ -4700,6 +4770,63 @@ Deno.serve(async (req) => {
         ORDER BY id DESC LIMIT ${limit}
       `.catch(() => []);
       return json({ entries: rows, count: (rows as unknown[]).length });
+    }
+
+    // Live inbox for Client Admin / Super Admin — events written when a
+    // surveyor uploads verification docs or a field record (not a timer).
+    if (path === "/api/notifications" && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const after = Math.max(0, Number(url.searchParams.get("after")) || 0);
+      const rows = await listAdminInbox(sql, me, after);
+      return json({
+        items: (rows as Record<string, unknown>[]).map(mapInboxRow),
+        count: (rows as unknown[]).length,
+      });
+    }
+
+    if (path === "/api/notifications/stream" && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      let lastId = Math.max(0, Number(url.searchParams.get("after")) || 0);
+      const encoder = new TextEncoder();
+      let timer: number | undefined;
+      const stream = new ReadableStream({
+        start(controller) {
+          const send = (obj: unknown) => {
+            try {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+            } catch {
+              /* closed */
+            }
+          };
+          send({ type: "hello", after: lastId });
+          const tick = async () => {
+            const rows = await listAdminInbox(sql, me, lastId);
+            const list = (rows as Record<string, unknown>[]).slice().reverse();
+            for (const r of list) {
+              const seq = Number(r.id) || 0;
+              if (seq <= lastId) continue;
+              lastId = seq;
+              send({ type: "item", item: mapInboxRow(r) });
+            }
+          };
+          void tick();
+          timer = setInterval(() => void tick(), 2000) as unknown as number;
+        },
+        cancel() {
+          if (timer) clearInterval(timer);
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream; charset=utf-8",
+          "cache-control": "no-cache, no-transform",
+          connection: "keep-alive",
+          ...corsHeaders(),
+        },
+      });
     }
 
     // FR-QB-02: Global Question Bank — Super Admin authors is_global templates;
@@ -7290,6 +7417,11 @@ Deno.serve(async (req) => {
         RETURNING id, payload, created_at
       `;
       const row = rows[0] as { id: number; payload: unknown; created_at: string };
+      if (me.role === "surveyor") {
+        logAudit(me, "submission_create", "submission", row.id, {
+          form_key: payload.form_key || null,
+        });
+      }
       // If package already includes media flags (or later media uploads complete), auto-confirm
       const auto = await autoConfirmIfComplete(sql, Number(row.id)).catch(() => ({
         auto_confirmed: false,

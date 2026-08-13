@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { listSubmissions, listSurveys, listUsers } from './api'
+import { listNotifications, notificationsStreamUrl } from './api'
 
 function seenKey(adminId) {
   return `esurvey_bell_${adminId || 'admin'}`
@@ -24,100 +24,78 @@ function writeSeen(adminId, ids) {
   }
 }
 
-function buildItems({ users, surveys, submissions }) {
-  const items = []
-  for (const u of users || []) {
-    if (u.role !== 'surveyor' && u.role !== 'field') continue
-    const bits = []
-    if (u.photo) bits.push('photo')
-    if (u.aadhaar_front) bits.push('Aadhaar front')
-    if (u.aadhaar_back) bits.push('Aadhaar back')
-    if (bits.length && !u.verified) {
-      items.push({
-        id: `docs-${u.id}`,
-        kind: 'docs',
-        page: 'users',
-        title: `@${u.username} uploaded verification docs`,
-        detail: bits.join(' · '),
-      })
-    }
-  }
-  for (const s of surveys || []) {
-    items.push({
-      id: `survey-${s.id}`,
-      kind: 'survey',
-      page: 'surveys',
-      title: `Survey · ${s.title || s.form_key || s.id}`,
-      detail: 'Ready to assign or collect',
-    })
-  }
-  for (const it of submissions || []) {
-    const st = it.status || 'pending'
-    if (st !== 'pending') continue
-    items.push({
-      id: `sub-${it.id}`,
-      kind: 'activity',
-      page: 'review',
-      title: `New activity #${it.id}`,
-      detail: it.submitted_by || 'surveyor',
-    })
-  }
-  return items
-}
-
 export default function AdminBell({ user, onGoPage, enabled = true }) {
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState([])
   const [seen, setSeen] = useState(() => readSeen(user?.id) || [])
   const seeded = useRef(!!readSeen(user?.id))
+  const maxSeq = useRef(0)
 
-  const load = useCallback(async () => {
-    if (!enabled) return
-    try {
-      const [u, s, sub] = await Promise.all([
-        listUsers().catch(() => ({ users: [] })),
-        listSurveys().catch(() => ({ surveys: [] })),
-        listSubmissions(80, 'pending').catch(() => ({ items: [] })),
-      ])
-      const next = buildItems({
-        users: u.users || [],
-        surveys: s.surveys || s.items || [],
-        submissions: sub.items || [],
+  const addItems = useCallback(
+    (incoming, { seed = false } = {}) => {
+      const list = Array.isArray(incoming) ? incoming : []
+      if (!list.length) return
+      for (const it of list) {
+        const seq = Number(it.seq) || 0
+        if (seq > maxSeq.current) maxSeq.current = seq
+      }
+      setItems((prev) => {
+        const have = new Set(prev.map((p) => p.id))
+        const extra = list.filter((it) => it.id && !have.has(it.id))
+        return extra.length ? [...extra, ...prev].slice(0, 80) : prev
       })
-      setItems(next)
-      if (!seeded.current) {
+      if (seed && !seeded.current) {
         seeded.current = true
-        const ids = next.map((i) => i.id)
+        const ids = list.map((i) => i.id)
         writeSeen(user?.id, ids)
         setSeen(ids)
       }
-    } catch {
-      /* ignore */
-    }
-  }, [enabled, user?.id])
+    },
+    [user?.id],
+  )
 
   useEffect(() => {
     if (!enabled) return undefined
-    void load()
-    const iv = setInterval(load, 45_000)
-    const onVis = () => {
-      if (document.visibilityState === 'visible') void load()
-    }
-    document.addEventListener('visibilitychange', onVis)
+    let es = null
+    let dead = false
+    ;(async () => {
+      try {
+        const d = await listNotifications(0)
+        if (dead) return
+        addItems(d.items || [], { seed: true })
+      } catch {
+        /* ignore */
+      }
+      if (dead) return
+      try {
+        es = new EventSource(notificationsStreamUrl(maxSeq.current))
+        es.onmessage = (ev) => {
+          try {
+            const msg = JSON.parse(ev.data)
+            if (msg?.type === 'item' && msg.item) addItems([msg.item])
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch {
+        /* EventSource unavailable */
+      }
+    })()
     return () => {
-      clearInterval(iv)
-      document.removeEventListener('visibilitychange', onVis)
+      dead = true
+      try {
+        es?.close()
+      } catch {
+        /* ignore */
+      }
     }
-  }, [enabled, load])
+  }, [enabled, addItems])
 
   if (!enabled) return null
 
   const unread = items.filter((i) => !seen.includes(i.id))
   const count = unread.length
-  const shown = [
-    ...items.filter((i) => i.kind === 'docs'),
-    ...items.filter((i) => i.kind !== 'docs' && !seen.includes(i.id)),
-  ]
+  const shown = items.slice(0, 40)
 
   const markAll = () => {
     const ids = items.map((i) => i.id)
@@ -156,7 +134,7 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
           </div>
           {shown.length === 0 ? (
             <p className="muted" style={{ margin: 0, padding: '10px 12px', fontSize: 13 }}>
-              No verification uploads or new activity.
+              No verification uploads or new activity yet.
             </p>
           ) : (
             <ul className="admin-bell-list">
@@ -168,7 +146,7 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
                     onClick={() => openItem(it)}
                   >
                     <span className="admin-bell-kind">
-                      {it.kind === 'docs' ? 'ID' : it.kind === 'survey' ? 'Survey' : 'Activity'}
+                      {it.kind === 'docs' ? 'ID' : 'Activity'}
                     </span>
                     <span className="admin-bell-title">{it.title}</span>
                     <span className="admin-bell-detail">{it.detail}</span>

@@ -132,6 +132,19 @@ export function listUsers() {
   return request('/api/users')
 }
 
+export function listNotifications(after = 0) {
+  const q = after ? `?after=${encodeURIComponent(String(after))}` : ''
+  return request(`/api/notifications${q}`)
+}
+
+export function notificationsStreamUrl(after = 0) {
+  const token = getToken()
+  const q = new URLSearchParams()
+  if (token) q.set('token', token)
+  if (after) q.set('after', String(after))
+  return `${getApiBase()}/api/notifications/stream?${q}`
+}
+
 export function createUser(body) {
   return request('/api/users', {
     method: 'POST',

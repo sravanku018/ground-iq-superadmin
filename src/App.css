@@ -1,3 +1,67 @@
+/* Field app: button size follows the label, not a fixed bar */
+.mobile-shell .btn,
+.mobile-shell .cta.secondary {
+  width: max-content;
+  max-width: 100%;
+  min-height: 0;
+  height: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  line-height: 1.25;
+  white-space: normal;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.mobile-shell .btn.primary {
+  width: max-content;
+  max-width: 100%;
+}
+
+.mobile-shell .btn.small {
+  min-height: 0;
+  padding: 6px 12px;
+}
+
+.mobile-shell .cta {
+  width: 100%;
+  min-height: 0;
+  height: auto;
+  padding: 12px 16px;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.mobile-shell .login-card .btn,
+.mobile-shell .login-screen .btn.primary,
+.mobile-shell .profile-screen .btn.primary,
+.mobile-shell .qa-nav .btn,
+.mobile-shell .qa-back {
+  width: 100%;
+}
+
+.mobile-shell .qa-opt {
+  min-height: 0;
+  height: auto;
+  padding: 10px 12px;
+  white-space: normal;
+}
+
+.mobile-shell .act-actions {
+  grid-template-columns: repeat(3, max-content);
+  justify-content: start;
+}
+
+.mobile-shell .act-actions .btn {
+  width: max-content;
+  max-width: 100%;
+  min-height: 0;
+  padding: 8px 12px;
+}
+
 .mobile-shell {
   min-height: 100svh;
   height: 100svh;

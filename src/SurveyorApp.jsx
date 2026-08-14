@@ -649,11 +649,8 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
               type="button"
               className="btn primary"
               style={{
-                width: '100%',
-                padding: '12px',
                 fontSize: 15,
                 fontWeight: 'bold',
-                minHeight: 48,
                 borderRadius: 12,
                 background: '#059669',
                 color: '#ffffff',

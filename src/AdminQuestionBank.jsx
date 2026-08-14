@@ -105,6 +105,7 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
         id: '',
         label: '',
         speak: '',
+        _uid: `n-${Date.now()}`,
       },
     ])
   }
@@ -248,7 +249,7 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
             : (q.optionsText || '').split(',').map((s) => s.trim()).filter(Boolean)
 
           return (
-            <div key={q.id || i} className="card" style={{ marginBottom: 14, borderLeft: '4px solid #38bdf8' }}>
+            <div key={q._uid || `qi-${i}`} className="card" style={{ marginBottom: 14, borderLeft: '4px solid #38bdf8' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <span className="pill ok" style={{ fontSize: 11, fontWeight: 'bold' }}>
                   Q{i + 1} · {type.toUpperCase().replace('_', ' ')}

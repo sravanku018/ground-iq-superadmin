@@ -8132,31 +8132,57 @@ Deno.serve(async (req) => {
             "latitude", "longitude", "lat", "lng", "form_key", "user_id",
             "submitted_by", "status", "content_type", "mandal", "district",
             "constituency", "state", "respondent_name", "respondent",
+            "client_package_id", "data_collector", "surveyor", "package_id",
           ].includes(s);
         };
         const idToLabel = new Map<string, string>();
+        const questionsByForm = new Map<string, { id: string; label: string }[]>();
         {
           const formRows = await sql`SELECT form_key, questions FROM survey_form`.catch(() => []);
-          for (const f of formRows as { questions?: unknown }[]) {
+          for (const f of formRows as { form_key?: string; questions?: unknown }[]) {
+            const list: { id: string; label: string }[] = [];
             for (const raw of parseQuestionsArray(f.questions)) {
               const q = raw as Record<string, unknown>;
               const qid = String(q.id || "").trim();
               const label = String(q.label || q.speak || qid).trim();
               if (qid && label) idToLabel.set(qid, label);
+              if (label) list.push({ id: qid, label });
             }
+            questionsByForm.set(String(f.form_key || ""), list);
           }
         }
         const qKeys = new Set<string>();
+        const stampKeysByForm = new Map<string, Set<string>>();
         for (const r of rows) {
+          const fk = String(r.formKey || "");
+          if (!stampKeysByForm.has(fk)) stampKeysByForm.set(fk, new Set());
           for (const k of Object.keys(r.answers || {})) {
             if (!skipAnswerKey(k)) qKeys.add(k);
+            if (/^q_\d+$/i.test(k) && !idToLabel.has(k)) stampKeysByForm.get(fk)!.add(k);
           }
         }
-        const qCols = [...qKeys].sort();
+        // Old answers keep q_<timestamp> after Field ID was changed to the
+        // question text. Pair leftover stamp keys with leftover questions
+        // in the same order the survey was built.
+        for (const [fk, stamps] of stampKeysByForm) {
+          const qs = questionsByForm.get(fk) || [];
+          const leftover = qs.filter((q) => !stamps.has(q.id) && !/^q_\d+$/i.test(q.id));
+          const unused = leftover.length ? leftover : qs.filter((q) => !idToLabel.has(q.id) || !qKeys.has(q.id));
+          const keys = [...stamps].sort();
+          for (let i = 0; i < keys.length; i++) {
+            const q = unused[i];
+            if (q?.label) idToLabel.set(keys[i], q.label);
+          }
+        }
+        const qCols = [...qKeys].sort((a, b) => {
+          const na = /^q_(\d+)$/i.exec(a);
+          const nb = /^q_(\d+)$/i.exec(b);
+          if (na && nb) return Number(na[1]) - Number(nb[1]);
+          return a.localeCompare(b);
+        });
         const usedHeads = new Set<string>(fixed);
         const qHeaders = qCols.map((k) => {
-          let head = idToLabel.get(k) || k;
-          if (/^q_\d+$/i.test(head)) head = idToLabel.get(k) || head;
+          const head = idToLabel.get(k) || k;
           let unique = head;
           let n = 2;
           while (usedHeads.has(unique)) {

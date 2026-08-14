@@ -1,4 +1,4 @@
-import { Component, useCallback, useEffect, useState } from 'react'
+import { Component, useCallback, useEffect, useRef, useState } from 'react'
 
 class CollectErrorBoundary extends Component {
   constructor(props) {
@@ -514,6 +514,26 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
 
   return (
     <div className="screen profile-screen" style={{ padding: '12px 14px 110px' }}>
+      {!user?.verified && (
+        <div
+          className="card"
+          role="alert"
+          style={{
+            marginBottom: 14,
+            padding: '14px 16px',
+            border: '2px solid #f59e0b',
+            background: '#fffbeb',
+          }}
+        >
+          <strong style={{ display: 'block', fontSize: 15, color: '#92400e' }}>
+            Profile verification pending
+          </strong>
+          <p style={{ margin: '6px 0 0', fontSize: 13, color: '#78350f' }}>
+            Upload your photo and Aadhaar, then wait for Client Admin to verify you.
+            Home and Collect stay locked until verification is complete.
+          </p>
+        </div>
+      )}
       <div className="card" style={{ marginBottom: 14, textAlign: 'center', padding: '16px 14px' }}>
         <div style={{ position: 'relative', display: 'inline-block', marginBottom: 10 }}>
           {user?.photo ? (
@@ -935,6 +955,16 @@ export default function SurveyorApp() {
   const [collectKey, setCollectKey] = useState(0)
   const [editDraft, setEditDraft] = useState(null)
   const [draftsCount, setDraftsCount] = useState(0)
+  const wasVerified = useRef(false)
+
+  const verified = !!user?.verified
+  const lockForVerify = !!user && user.role === 'surveyor' && !verified
+
+  const alertVerifyPending = useCallback(() => {
+    window.alert(
+      'Surveyor profile verification is pending. Client Admin must verify your profile before you can open Home or collect.',
+    )
+  }, [])
 
   const refreshDraftCount = useCallback(async () => {
     try {
@@ -1010,9 +1040,9 @@ export default function SurveyorApp() {
 
   const onCollectIdleHome = useCallback(() => {
     setEditDraft(null)
-    setTab('home')
+    setTab(lockForVerify ? 'profile' : 'home')
     setCollectKey((k) => k + 1)
-  }, [])
+  }, [lockForVerify])
 
   const handleLogout = useCallback(async () => {
     stopSyncEngine()
@@ -1245,8 +1275,20 @@ export default function SurveyorApp() {
       notify('Surveyor app only — login must be created by Client Admin', 'error')
       return
     }
-    if (!TABS.some((t) => t.id === tab)) setTab('home')
-  }, [user, tab, notify])
+    if (!TABS.some((t) => t.id === tab)) setTab(lockForVerify ? 'profile' : 'home')
+    if (lockForVerify && tab !== 'profile') setTab('profile')
+  }, [user, tab, notify, lockForVerify])
+
+  useEffect(() => {
+    if (!user) {
+      wasVerified.current = false
+      return
+    }
+    if (user.verified && !wasVerified.current) {
+      notify('Profile verified ✓ Home is unlocked', 'ok')
+    }
+    wasVerified.current = !!user.verified
+  }, [user, notify])
 
   if (!authReady) {
     return (
@@ -1284,7 +1326,14 @@ export default function SurveyorApp() {
           onToast={notify}
           onSuccess={(u) => {
             setUser(u)
-            setTab('home')
+            if (u?.role === 'surveyor' && !u.verified) {
+              setTab('profile')
+              window.alert(
+                'Surveyor profile verification is pending. Client Admin must verify your profile before you can open Home or collect.',
+              )
+            } else {
+              setTab('home')
+            }
           }}
         />
       </div>
@@ -1313,7 +1362,14 @@ export default function SurveyorApp() {
               pendingSync={pendingSync}
               myProgress={myProgress}
               questionsMeta={questionsMeta}
-              onNewSurvey={() => setTab('collect')}
+              onNewSurvey={() => {
+                if (lockForVerify) {
+                  alertVerifyPending()
+                  setTab('profile')
+                  return
+                }
+                setTab('collect')
+              }}
               onSync={() => {
                 forceSyncNow().then(() => notify('Syncing device queue…', 'ok'))
               }}
@@ -1339,6 +1395,11 @@ export default function SurveyorApp() {
               user={user}
               onToast={notify}
               onEdit={(d) => {
+                if (lockForVerify) {
+                  alertVerifyPending()
+                  setTab('profile')
+                  return
+                }
                 setEditDraft(d)
                 setCollectKey((k) => k + 1)
                 setTab('collect')
@@ -1367,7 +1428,16 @@ export default function SurveyorApp() {
             key={t.id}
             type="button"
             className={tab === t.id ? 'nav-item active' : 'nav-item'}
-            onClick={() => setTab(t.id)}
+            style={lockForVerify && t.id !== 'profile' ? { opacity: 0.4 } : undefined}
+            aria-disabled={lockForVerify && t.id !== 'profile'}
+            onClick={() => {
+              if (lockForVerify && t.id !== 'profile') {
+                alertVerifyPending()
+                setTab('profile')
+                return
+              }
+              setTab(t.id)
+            }}
           >
             <span className="nav-icon" aria-hidden>
               {t.icon}

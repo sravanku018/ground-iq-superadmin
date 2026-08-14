@@ -92,6 +92,9 @@ writes the audit row.
   `GET /api/notifications/stream?token=&after=` (live).
 - Each item includes `page` plus `userId` (docs) or `submissionId`
   (activity) so the bell can open that surveyor profile or Review row.
+- Docs items include `verified`. Client Admin **Clear** must not dismiss
+  a docs notification until that surveyor is verified.
+- Field-app Home / Collect stay locked until `app_users.verified = true`.
 - Do not add a 45s (or any) full-user-list poll as the source of truth.
 
 ## Field My activity

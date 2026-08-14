@@ -24,6 +24,11 @@ function writeSeen(adminId, ids) {
   }
 }
 
+/** Docs stay in the inbox until Client Admin verifies that surveyor. */
+function isHeldVerify(it) {
+  return it?.kind === 'docs' && it?.verified !== true
+}
+
 export default function AdminBell({ user, onGoPage, enabled = true }) {
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState([])
@@ -40,13 +45,26 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
         if (seq > maxSeq.current) maxSeq.current = seq
       }
       setItems((prev) => {
-        const have = new Set(prev.map((p) => p.id))
-        const extra = list.filter((it) => it.id && !have.has(it.id))
-        return extra.length ? [...extra, ...prev].slice(0, 80) : prev
+        const byId = new Map(prev.map((p) => [p.id, p]))
+        for (const it of list) {
+          if (!it?.id) continue
+          const old = byId.get(it.id)
+          byId.set(it.id, old ? { ...old, ...it } : it)
+        }
+        const extra = list.filter((it) => it.id && !prev.some((p) => p.id === it.id))
+        if (!extra.length && list.every((it) => {
+          const old = prev.find((p) => p.id === it.id)
+          return old && old.verified === it.verified
+        })) {
+          return prev
+        }
+        return [...byId.values()]
+          .sort((a, b) => (Number(b.seq) || 0) - (Number(a.seq) || 0))
+          .slice(0, 80)
       })
       if (seed && !seeded.current) {
         seeded.current = true
-        const ids = list.map((i) => i.id)
+        const ids = list.filter((i) => !isHeldVerify(i)).map((i) => i.id)
         writeSeen(user?.id, ids)
         setSeen(ids)
       }
@@ -91,14 +109,38 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
     }
   }, [enabled, addItems])
 
+  useEffect(() => {
+    if (!enabled || !open) return undefined
+    let dead = false
+    const pull = async () => {
+      try {
+        const d = await listNotifications(0)
+        if (!dead) addItems(d.items || [])
+      } catch {
+        /* ignore */
+      }
+    }
+    void pull()
+    const id = setInterval(pull, 12_000)
+    return () => {
+      dead = true
+      clearInterval(id)
+    }
+  }, [enabled, open, addItems])
+
   if (!enabled) return null
 
-  const unread = items.filter((i) => !seen.includes(i.id))
+  const unread = items.filter((i) => isHeldVerify(i) || !seen.includes(i.id))
   const count = unread.length
   const shown = unread.slice(0, 40)
+  const heldCount = items.filter(isHeldVerify).length
 
   const clearAll = () => {
-    const ids = [...new Set([...seen, ...items.map((i) => i.id)])]
+    const heldIds = new Set(items.filter(isHeldVerify).map((i) => i.id))
+    if (heldCount && heldCount === unread.length) {
+      return
+    }
+    const ids = [...new Set([...seen, ...items.map((i) => i.id)])].filter((id) => !heldIds.has(id))
     writeSeen(user?.id, ids)
     setSeen(ids)
     setOpen(false)
@@ -134,7 +176,7 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
         <div className="admin-bell-panel" role="dialog" aria-label="Notifications">
           <div className="admin-bell-head">
             <strong>Notifications</strong>
-            {count > 0 && (
+            {count > 0 && heldCount < count && (
               <button type="button" className="link-btn" onClick={clearAll}>
                 Clear
               </button>
@@ -157,7 +199,11 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
                       {it.kind === 'docs' ? 'ID' : 'Activity'}
                     </span>
                     <span className="admin-bell-title">{it.title}</span>
-                    <span className="admin-bell-detail">{it.detail}</span>
+                    <span className="admin-bell-detail">
+                      {isHeldVerify(it)
+                        ? 'Verification pending — stays until you verify this surveyor'
+                        : it.detail}
+                    </span>
                   </button>
                 </li>
               ))}

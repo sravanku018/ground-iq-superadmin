@@ -338,6 +338,7 @@ function mapInboxRow(r: Record<string, unknown>) {
   const fields = Array.isArray(meta.fields) ? (meta.fields as unknown[]).map(String) : [];
   const actorId = r.actor_id != null ? Number(r.actor_id) : null;
   const entityId = r.entity_id != null && String(r.entity_id) !== "" ? Number(r.entity_id) : null;
+  const verified = sqlBool((r as { surveyor_verified?: unknown }).surveyor_verified);
   if (action === "profile_media") {
     return {
       id: `evt-${r.id}`,
@@ -346,6 +347,7 @@ function mapInboxRow(r: Record<string, unknown>) {
       page: "users",
       userId: entityId || actorId,
       submissionId: null,
+      verified,
       title: `@${r.actor_name || "surveyor"} uploaded verification docs`,
       detail: fields.length ? fields.join(" · ") : "photo / Aadhaar",
       at: r.created_at,
@@ -358,6 +360,7 @@ function mapInboxRow(r: Record<string, unknown>) {
     page: "review",
     userId: actorId,
     submissionId: entityId,
+    verified,
     title: `New activity #${r.entity_id || ""}`.trim(),
     detail: String(r.actor_name || "surveyor"),
     at: r.created_at,
@@ -372,17 +375,27 @@ async function listAdminInbox(
   const after = Math.max(0, Number(afterId) || 0);
   if (admin.role === "super_admin") {
     return await sqlFn`
-      SELECT id, actor_id, actor_name, action, entity_type, entity_id, meta, created_at
-      FROM audit_log
-      WHERE action IN ('profile_media', 'submission_create')
-        AND id > ${after}
-      ORDER BY id DESC
+      SELECT a.id, a.actor_id, a.actor_name, a.action, a.entity_type, a.entity_id, a.meta, a.created_at,
+             COALESCE(u.verified, FALSE) AS surveyor_verified
+      FROM audit_log a
+      LEFT JOIN app_users u ON u.id = CASE
+        WHEN a.action = 'profile_media' AND a.entity_id ~ '^[0-9]+$' THEN a.entity_id::int
+        ELSE a.actor_id
+      END
+      WHERE a.action IN ('profile_media', 'submission_create')
+        AND a.id > ${after}
+      ORDER BY a.id DESC
       LIMIT 50
     `.catch(() => []);
   }
   return await sqlFn`
-    SELECT a.id, a.actor_id, a.actor_name, a.action, a.entity_type, a.entity_id, a.meta, a.created_at
+    SELECT a.id, a.actor_id, a.actor_name, a.action, a.entity_type, a.entity_id, a.meta, a.created_at,
+           COALESCE(u.verified, FALSE) AS surveyor_verified
     FROM audit_log a
+    LEFT JOIN app_users u ON u.id = CASE
+      WHEN a.action = 'profile_media' THEN COALESCE(a.entity_id, a.actor_id)
+      ELSE a.actor_id
+    END
     WHERE a.action IN ('profile_media', 'submission_create')
       AND a.id > ${after}
       AND a.actor_id IN (

@@ -8088,8 +8088,8 @@ Deno.serve(async (req) => {
         }
 
         // Columns: fixed fields + union of all answer keys
-        const photoName = (id: unknown) => `${id}.jpg`;
-        const audioName = (id: unknown) => `${id}.webm`;
+        const photoName = (id: unknown) => `${id}/${id}.jpg`;
+        const audioName = (id: unknown) => `${id}/${id}.webm`;
         const asMedia = (url.searchParams.get("format") || "").trim().toLowerCase() === "media";
         if (asMedia) {
           const items = rows.map((r) => ({

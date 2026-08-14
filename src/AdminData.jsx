@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import Papa from 'papaparse'
 import {
-  downloadMediaFile,
   exportSubmissionMedia,
   exportSubmissions,
+  fetchMediaBytes,
   getAnalytics,
   getGeoSummary,
   uploadSurveys,
 } from './api'
+import { saveBlob, zipStore } from './zipStore'
 import { FilterSection } from './PortalUI'
 import SurveyMap from './SurveyMap'
 
@@ -52,20 +53,26 @@ export default function AdminDataScreen({ onToast }) {
   async function downloadRawMedia() {
     const d = await exportSubmissionMedia(exportFilters())
     const items = d.items || []
-    let n = 0
+    const files = []
     for (const it of items) {
+      const folder = String(it.id)
       if (it.photo_url) {
-        await downloadMediaFile(it.photo_url, it.photo_file || `${it.id}.jpg`)
-        n += 1
-        await new Promise((r) => setTimeout(r, 160))
+        const data = await fetchMediaBytes(it.photo_url)
+        if (data?.length) {
+          files.push({ name: it.photo_file || `${folder}/${folder}.jpg`, data })
+        }
       }
       if (it.audio_url) {
-        await downloadMediaFile(it.audio_url, it.audio_file || `${it.id}.webm`)
-        n += 1
-        await new Promise((r) => setTimeout(r, 160))
+        const data = await fetchMediaBytes(it.audio_url)
+        if (data?.length) {
+          files.push({ name: it.audio_file || `${folder}/${folder}.webm`, data })
+        }
       }
     }
-    return { files: n, records: items.length }
+    if (!files.length) return { files: 0, records: items.length }
+    const stamp = exp.period === 'day' ? exp.day : exp.period === 'month' ? exp.month : 'total'
+    saveBlob(zipStore(files), `survey-media-${stamp}.zip`)
+    return { files: files.length, records: items.length }
   }
 
   useEffect(() => {
@@ -246,8 +253,8 @@ export default function AdminDataScreen({ onToast }) {
             respondent: r.respondent || '',
             photo_url: r.photo_url || r.photoUrl || '',
             audio_url: r.audio_url || r.audioUrl || '',
-            photo_file: r.id ? `${r.id}.jpg` : '',
-            audio_file: r.id ? `${r.id}.webm` : '',
+            photo_file: r.id ? `${r.id}/${r.id}.jpg` : '',
+            audio_file: r.id ? `${r.id}/${r.id}.webm` : '',
           }
           const row = []
           fixed.forEach((c) => row.push(esc(base[c])))
@@ -776,13 +783,11 @@ export default function AdminDataScreen({ onToast }) {
                 }
               }}
             >
-              {exportingMedia ? 'Downloading media…' : 'Download raw photos & audio (same id)'}
+              {exportingMedia ? 'Packing folder…' : 'Download photos & audio in folders (same record id)'}
             </button>
             <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-              CSV includes photo_url / audio_url plus photo_file / audio_file named{' '}
-              <strong>{'{id}.jpg'}</strong> and <strong>{'{id}.webm'}</strong>. Use the second
-              button to download the raw files with that same id. Allow multiple downloads if the
-              browser asks.
+              CSV and the zip use the same fields: <strong>{'{id}/{id}.jpg'}</strong> and{' '}
+              <strong>{'{id}/{id}.webm'}</strong>. One folder per record, named with that record id.
             </p>
           </div>
         </div>

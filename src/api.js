@@ -747,6 +747,32 @@ export async function fetchMediaBlobUrl(pathOrUrl) {
 /**
  * Helper to download photo, audio, or video files to device with admin auth token.
  */
+/** Fetch media bytes with admin auth (for zip export). */
+export async function fetchMediaBytes(pathOrUrl) {
+  if (!pathOrUrl) return null
+  const token = getToken()
+  let url = pathOrUrl
+  if (!/^https?:\/\//i.test(url)) {
+    const base = getApiBase()
+    url = `${base}${pathOrUrl.startsWith('/') ? '' : '/'}${pathOrUrl}`
+  }
+  let urlObj
+  try {
+    urlObj = new URL(url)
+  } catch {
+    urlObj = new URL(url, window.location.origin)
+  }
+  if (token && !urlObj.searchParams.has('token')) {
+    urlObj.searchParams.set('token', token)
+  }
+  const headers = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await fetch(urlObj.toString(), { headers })
+  if (!res.ok) throw new Error(`Media load failed (${res.status})`)
+  const buf = new Uint8Array(await res.arrayBuffer())
+  return buf
+}
+
 export async function downloadMediaFile(pathOrUrl, filename = 'media-file') {
   if (!pathOrUrl) return
   const token = getToken()

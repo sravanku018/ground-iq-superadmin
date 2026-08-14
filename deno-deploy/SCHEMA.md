@@ -94,17 +94,34 @@ writes the audit row.
   (activity) so the bell can open that surveyor profile or Review row.
 - Do not add a 45s (or any) full-user-list poll as the source of truth.
 
+## Field My activity
+
+The field-app **My activity** tab (`MyRecordsScreen`) lists the
+surveyor's own sent items from `GET /api/submissions/me`. The list is
+**grouped by calendar date only** (IST / `Asia/Kolkata` from
+`created_at`). Each group header is the date plus how many were sent,
+e.g. `13 Aug 2026` · `4 sent`. Then that day's cards.
+
+- Do **not** put daily counts on Home. Home stays overall
+  done/target, queued, questions, status.
+- Do **not** label groups Today / Yesterday / Day before, and do
+  **not** add weekday names. Date is enough.
+- Do **not** add a `by_day` payload to `GET /api/progress/me` for this.
+  Grouping is client-side. `GET /api/progress/me` stays overall
+  `done` / `target` / `status` only.
+
 ## Decisions log
 
 | Decision | Why | Status |
 |---|---|---|
-| No live `company_name`/`company_id` match in `adminFormKeyScope` | Company-wide auto-share means a new admin silently inherits a company's entire history with no grant event or audit trail — unacceptable for this data (caste/party/respondent-level survey answers) | **Settled.** Reverted once already after Grok's edit reintroduced it. Do not reintroduce. |
-| `GET /api/companies/:id/dashboard` is `super_admin`-only | This screen only exists inside the Super-Admin-only `AdminCompaniesScreen`; a Client Admin has no legitimate reason to reach it | **Settled.** Reverted once already after Grok's edit reopened it to any admin. Do not reopen. |
-| `survey_form.company_id` added, backfilled from `company_name` text match | `company_name` is a free-text label with no FK — a company rename silently breaks project↔company grouping unless every dependent row is updated; ID-based linking survives renames | **Done.** Not yet used everywhere it could be (e.g. the company-wide grant lookup in `POST /api/surveys` still partly text-matches) — safe to extend. |
+| No live `company_name`/`company_id` match in `adminFormKeyScope` | Company-wide auto-share means a new admin silently inherits a company's entire history with no grant event or audit trail — unacceptable for this data (caste/party/respondent-level survey answers) | **Settled.** Reintroduced 3 times and removed again. Scope is `created_by = me.id OR id IN survey_admin_access`. Do not reintroduce a company predicate. |
+| `GET /api/companies/:id/dashboard` is `super_admin`-only | This screen only exists inside the Super-Admin-only `AdminCompaniesScreen`; a Client Admin has no legitimate reason to reach it | **Settled.** Reopened to any portal admin twice and locked again. Check is `me.role !== "super_admin"` → 403. |
+| `survey_form.company_id` added, backfilled from `company_name` text match | `company_name` is a free-text label with no FK — a company rename silently breaks project↔company grouping unless every dependent row is updated; ID-based linking survives renames | **Done.** Column + FK + boot backfill + writes on starter project, POST `/api/surveys`, bank-copy, and company remap. Not a live access check. |
 | Every Client Admin gets a starter `survey_form` project at account creation | Removes dependency on the old shared `legacy`/`default` fallback bucket | **Done**, live. |
-| `can_manage_questions` enforcement unified to `hasPower()` | Was 3 inline checks duplicating `hasPower`'s logic — drift risk if `hasPower` ever changes | **Done.** |
-| Submission status stats read `payload->>'status'`, not `fact_status` | Two similarly-named fields, different meanings — `payload.status` is the real review outcome (`confirmed`/`rejected`/`pending`, set by the PATCH/PUT status endpoints, mirrored by `payloadStatus()`); `fact_status` only tracks the fact-materialization pipeline (`materialized`/`failed`/`NULL`) and is set to `NULL` on both rejection and never-touched-pending — filtering by it silently merged "rejected" into "pending" | **Settled rule.** `/api/stats` in `main.ts` still counts `fact_status` (drift). New status-count code must use `payload->>'status'`. `fact_status` is only for "has this confirmed record been materialized into `record_facts` yet." |
+| `can_manage_questions` enforcement unified to `hasPower()` | Was 3 inline `me.role !== "super_admin" && me.can_manage_questions !== true` checks duplicating `hasPower`'s logic — drift risk if `hasPower` ever changes | **Done.** Question-bank POST/PUT/DELETE use `hasPower(me, "can_manage_questions")`. |
+| Submission status stats read `payload->>'status'`, not `fact_status` | Two similarly-named fields, different meanings — `payload.status` is the real review outcome (`confirmed`/`rejected`/`pending`, set by the PATCH/PUT status endpoints, mirrored by `payloadStatus()`); `fact_status` only tracks the fact-materialization pipeline (`materialized`/`failed`/`NULL`) and is set to `NULL` on both rejection and never-touched-pending — filtering by it silently merged "rejected" into "pending" | **Settled rule.** `/api/stats` now counts `COALESCE(payload->>'status', 'pending')`. `fact_status` is only for "has this confirmed record been materialized into `record_facts` yet." |
 | Client Admin bell is event-driven from `audit_log` | A 45s poll of `GET /api/users` + submissions was slow and late. Uploads now write `profile_media` / `submission_create` and the UI streams those rows. | **Done.** Do not go back to interval polling as the inbox source. |
+| Field daily sent counts live on My activity, grouped by date only | Home progress is allotment (done/target), not a diary. Today/Yesterday/weekday labels were tried and rejected — date is enough. | **Settled.** Do not put `by_day` on Home or on `GET /api/progress/me`. |
 
 ## Known open items — not yet fixed, don't assume they are
 
@@ -125,13 +142,14 @@ writes the audit row.
   `survey_admin_access` yet. Also unconfirmed whether `legacy`'s existing
   submissions are real historical respondent data or safe placeholder data
   — check before presenting it as a "demo" to anyone.
-- **`adminFormKeyScope()` still has a live `company_name` match** in
-  committed `main.ts` (owned OR grant OR same `company_name`). The settled
-  rule above forbids that. Treat as drift — do not "fix" by adding
-  `company_id` as a live access check either; remove the company predicate
-  so only `created_by` + `survey_admin_access` remain.
-- **`GET /api/stats` still aggregates `fact_status`**, which buckets
-  rejected rows as pending. Settled rule is `payload->>'status'`.
+- **GET `/api/surveys` (and GET `/api/surveys/:id`) still has a live
+  `company_name` match** for Client Admin listing/open. That is the same
+  class of leak as the old `adminFormKeyScope` company predicate — they
+  can see/open a sibling admin's project title and questions without a
+  `survey_admin_access` row. Record-layer reads that go through
+  `adminFormKeyScope` are already owned+grant only. Do not "fix" those
+  list/open queries by switching the match to `company_id`; drop the
+  company predicate so only `created_by` + `survey_admin_access` remain.
 - **Surveyor profile phone format** is enforced in the UI (`+91` + 10
   digits) but not in `POST`/`PATCH /api/users`.
 - **`GET /api/users` still returns full photo/Aadhaar blobs.** Fine for
@@ -140,8 +158,9 @@ writes the audit row.
 ## Rule for whoever edits this file next (human, Claude, Grok, anyone)
 
 If your change touches `ensureSchema()`, `adminFormKeyScope`, any
-`hasPower()` call site, any `/api/companies*` route, or
-`/api/notifications*`: update the relevant section above **in the same
+`hasPower()` call site, any `/api/companies*` route,
+`/api/notifications*`, field-app **My activity** grouping, or
+`GET /api/progress/me`: update the relevant section above **in the same
 change**. If you're about to reintroduce something listed as "Settled"
 above, stop and re-read the "Why" column first — it was tried and
 reverted for a specific reason, not by accident.

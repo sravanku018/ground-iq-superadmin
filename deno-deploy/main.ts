@@ -648,6 +648,15 @@ async function ensureSchema() {
   `.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS company_id INT`.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_app_users_company ON app_users(company_id)`.catch(() => null);
+  // survey_form.company_id is the reliable company↔project link. company_name
+  // on survey_form is display/back-compat only — never a live access check.
+  await sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_id INT`.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_survey_form_company ON survey_form(company_id)`.catch(() => null);
+  await sql`
+    ALTER TABLE survey_form
+    ADD CONSTRAINT survey_form_company_id_fkey
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
+  `.catch(() => null);
   // Super-Admin-set cap on how many surveyors a Client Admin may create (0 = unlimited)
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveyors INT NOT NULL DEFAULT 0`.catch(() => null);
   // Super-Admin-set cap on total field records under this Client Admin (0 = unlimited)
@@ -1022,6 +1031,15 @@ async function ensureSchema() {
     SET company_id = c.id, company_name = c.name
     FROM companies c
     WHERE LOWER(u.company_name) = LOWER(c.name) AND (u.company_id IS NULL OR u.company_id <> c.id)
+  `.catch(() => null);
+
+  await sql`
+    UPDATE survey_form s
+    SET company_id = c.id
+    FROM companies c
+    WHERE s.company_name IS NOT NULL AND TRIM(s.company_name) <> ''
+      AND LOWER(TRIM(s.company_name)) = LOWER(c.name)
+      AND (s.company_id IS NULL OR s.company_id <> c.id)
   `.catch(() => null);
 }
 
@@ -2235,28 +2253,21 @@ async function backfillFacts(
  * BR-004 record-layer scope: the form_keys a Client Admin may read/write.
  * - Surveys they created (created_by)
  * - Explicit shares (survey_admin_access)
- * - Super Admin projects mapped to their company (company_name match)
  * Super Admin / surveyors: unrestricted (null).
+ * Never match company_name / company_id here — that is company-wide
+ * auto-share with no grant event. Company share happens only as an
+ * explicit Super Admin write of survey_admin_access rows at POST time.
  */
 async function adminFormKeyScope(
   sqlFn: NonNullable<typeof sql>,
-  me: { role: unknown; id: unknown; company_name?: unknown } | null,
+  me: { role: unknown; id: unknown } | null,
 ): Promise<string[] | null> {
   if (!me || me.role !== "admin") return null;
-  const company = String((me as { company_name?: unknown }).company_name || "").trim();
-  const rows = company
-    ? await sqlFn`
-        SELECT form_key FROM survey_form
-        WHERE created_by = ${me.id}
-           OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-           OR (company_name IS NOT NULL AND TRIM(company_name) <> ''
-               AND LOWER(TRIM(company_name)) = LOWER(${company}))
-      `.catch(() => [])
-    : await sqlFn`
-        SELECT form_key FROM survey_form
-        WHERE created_by = ${me.id}
-           OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-      `.catch(() => []);
+  const rows = await sqlFn`
+    SELECT form_key FROM survey_form
+    WHERE created_by = ${me.id}
+       OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+  `.catch(() => []);
   return [...new Set((rows as { form_key: string }[]).map((r) => String(r.form_key)))];
 }
 
@@ -2643,13 +2654,38 @@ async function buildAnalytics(
   // Survey questions → dynamic filter bar (options from defined choices + submitted answers)
   const surveyQuestions: { id: string; label: string; type: string; options: string[] }[] = [];
   {
-    // Selected survey → its questions only; otherwise union of ALL surveys' questions,
-    // so filters/charts follow the Client Admin's question naming everywhere.
-    const formRows = formFilter
-      ? await sqlFn`
-          SELECT questions FROM survey_form WHERE form_key = ${formFilter} LIMIT 1
-        `.catch(() => [])
-      : await sqlFn`SELECT questions FROM survey_form`.catch(() => []);
+    // Never pull platform `legacy` / `default` into a new account's filter bar
+    // unless that survey is explicitly selected (or it is the only scoped key).
+    const PLATFORM_FORM_KEYS = new Set(["default", "legacy"]);
+    const withoutPlatform = (keys: string[]) => keys.filter((k) => k && !PLATFORM_FORM_KEYS.has(k));
+    let formRows: { questions?: unknown }[] = [];
+    if (formFilter) {
+      formRows = await sqlFn`
+        SELECT questions FROM survey_form WHERE form_key = ${formFilter} LIMIT 1
+      `.catch(() => []);
+    } else {
+      const scoped = Array.isArray(scopeKeys)
+        ? scopeKeys.map(String).filter(Boolean)
+        : [];
+      const keysInData = [
+        ...new Set(
+          universe.map((r) => String(r.formKey || "")).filter(Boolean),
+        ),
+      ];
+      let keys = scoped.length ? scoped : keysInData;
+      const owned = withoutPlatform(keys);
+      if (owned.length) keys = owned;
+      if (keys.length) {
+        formRows = await sqlFn`
+          SELECT questions FROM survey_form WHERE form_key = ANY(${keys})
+        `.catch(() => []);
+      } else if (!scopeKeys) {
+        formRows = await sqlFn`
+          SELECT questions FROM survey_form
+          WHERE form_key NOT IN ('default', 'legacy')
+        `.catch(() => []);
+      }
+    }
     const seen = new Set<string>();
     for (const frow of formRows as { questions?: unknown }[]) {
       let qs = frow?.questions;
@@ -3465,20 +3501,22 @@ Deno.serve(async (req) => {
       const surveyDistricts = Number((factGeo as Record<string, unknown>)?.dist_count || dists?.n || 0);
       const surveyAcs = Number((factGeo as Record<string, unknown>)?.ac_count || acs?.n || 0);
 
-      // Fast SQL 1-row status aggregation
+      // Review outcome lives on payload.status. fact_status is the
+      // materialization pipeline only (materialized/failed/NULL) — it is
+      // cleared on reject, so counting it merges rejected into pending.
       const [statusRow] = statsScope
         ? await sql`
             SELECT
-              COUNT(*) FILTER (WHERE fact_status = 'confirmed' OR fact_status = 'materialized')::int AS confirmed,
-              COUNT(*) FILTER (WHERE fact_status = 'rejected')::int AS rejected,
-              COUNT(*) FILTER (WHERE fact_status IS NULL OR (fact_status <> 'confirmed' AND fact_status <> 'materialized' AND fact_status <> 'rejected'))::int AS pending
+              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') = 'confirmed')::int AS confirmed,
+              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') = 'rejected')::int AS rejected,
+              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected'))::int AS pending
             FROM submissions WHERE payload->>'form_key' = ANY(${statsScope})
           `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }])
         : await sql`
             SELECT
-              COUNT(*) FILTER (WHERE fact_status = 'confirmed' OR fact_status = 'materialized')::int AS confirmed,
-              COUNT(*) FILTER (WHERE fact_status = 'rejected')::int AS rejected,
-              COUNT(*) FILTER (WHERE fact_status IS NULL OR (fact_status <> 'confirmed' AND fact_status <> 'materialized' AND fact_status <> 'rejected'))::int AS pending
+              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') = 'confirmed')::int AS confirmed,
+              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') = 'rejected')::int AS rejected,
+              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected'))::int AS pending
             FROM submissions
           `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }]);
 
@@ -4075,8 +4113,8 @@ Deno.serve(async (req) => {
           }
           const starterTitle = `${finalCompanyName || name} — Default Project`;
           await sql`
-            INSERT INTO survey_form (form_key, title, questions, updated_at, created_by, company_name)
-            VALUES (${formKey}, ${starterTitle}, '[]'::jsonb, NOW(), ${u.id}, ${finalCompanyName})
+            INSERT INTO survey_form (form_key, title, questions, updated_at, created_by, company_name, company_id)
+            VALUES (${formKey}, ${starterTitle}, '[]'::jsonb, NOW(), ${u.id}, ${finalCompanyName}, ${companyId})
           `.catch(() => null);
           starterFormKey = formKey;
         }
@@ -4853,7 +4891,7 @@ Deno.serve(async (req) => {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       // FR-QB-02: bank CRUD needs the Super-Admin-granted power (least privilege)
-      if (me.role !== "super_admin" && me.can_manage_questions !== true) {
+      if (!hasPower(me, "can_manage_questions")) {
         return json({
           error: "Super Admin has not granted your account Question Bank edit rights",
         }, 403);
@@ -4883,7 +4921,7 @@ Deno.serve(async (req) => {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       // FR-QB-02: bank CRUD needs the Super-Admin-granted power (least privilege)
-      if (me.role !== "super_admin" && me.can_manage_questions !== true) {
+      if (!hasPower(me, "can_manage_questions")) {
         return json({
           error: "Super Admin has not granted your account Question Bank edit rights",
         }, 403);
@@ -4920,7 +4958,7 @@ Deno.serve(async (req) => {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       // FR-QB-02: bank CRUD needs the Super-Admin-granted power (least privilege)
-      if (me.role !== "super_admin" && me.can_manage_questions !== true) {
+      if (!hasPower(me, "can_manage_questions")) {
         return json({
           error: "Super Admin has not granted your account Question Bank edit rights",
         }, 403);
@@ -4990,9 +5028,15 @@ Deno.serve(async (req) => {
         n += 1;
         formKey = `${base}-${n}`;
       }
+      const copyCompanyId = (me as Record<string, unknown>).company_id != null
+        ? Number((me as Record<string, unknown>).company_id)
+        : null;
+      const copyCompanyName = (me as Record<string, unknown>).company_name
+        ? String((me as Record<string, unknown>).company_name).trim().slice(0, 160) || null
+        : null;
       const ins = await sql`
-        INSERT INTO survey_form (form_key, title, questions, updated_at, created_by)
-        VALUES (${formKey}, ${title}, ${JSON.stringify(questions)}::jsonb, NOW(), ${me.id})
+        INSERT INTO survey_form (form_key, title, questions, updated_at, created_by, company_name, company_id)
+        VALUES (${formKey}, ${title}, ${JSON.stringify(questions)}::jsonb, NOW(), ${me.id}, ${copyCompanyName}, ${copyCompanyId})
         RETURNING id, form_key, title
       `.catch(() => []);
       const created = (ins as Record<string, unknown>[])[0];
@@ -6289,12 +6333,16 @@ Deno.serve(async (req) => {
       // Super Admin registers the company this project is mapped under + the Client
       // Admins who are part of it (they get project access; the Super Admin stays owner).
       let companyName: string | null = null;
+      let companyId: number | null = null;
       let connectedAdminIds: number[] = [];
       if (me.role === "super_admin") {
         companyName = String(body.company_name || "").trim().slice(0, 160) || null;
         if (companyName && sql) {
           const comp = await ensureCompanyExists(sql, companyName, me.id);
-          if (comp) companyName = comp.name;
+          if (comp) {
+            companyName = comp.name;
+            companyId = comp.id;
+          }
         }
         connectedAdminIds = [...new Set(
           (Array.isArray(body.admin_ids) ? body.admin_ids : [])
@@ -6312,9 +6360,15 @@ Deno.serve(async (req) => {
         companyName = (me as Record<string, unknown>).company_name
           ? String((me as Record<string, unknown>).company_name).trim().slice(0, 160)
           : null;
+        if ((me as Record<string, unknown>).company_id != null) {
+          companyId = Number((me as Record<string, unknown>).company_id);
+        }
         if (companyName && sql) {
           const comp = await ensureCompanyExists(sql, companyName, me.id);
-          if (comp) companyName = comp.name;
+          if (comp) {
+            companyName = comp.name;
+            companyId = comp.id;
+          }
         }
       }
       // Super-Admin-set per-survey question cap for this Client Admin (0 = unlimited)
@@ -6356,8 +6410,8 @@ Deno.serve(async (req) => {
         formKey = `${base}-${n}`;
       }
       const rows = await sql`
-        INSERT INTO survey_form (form_key, title, questions, updated_at, created_by, company_name)
-        VALUES (${formKey}, ${title}, ${JSON.stringify(questions)}::jsonb, NOW(), ${me.id}, ${companyName})
+        INSERT INTO survey_form (form_key, title, questions, updated_at, created_by, company_name, company_id)
+        VALUES (${formKey}, ${title}, ${JSON.stringify(questions)}::jsonb, NOW(), ${me.id}, ${companyName}, ${companyId})
         RETURNING id, form_key, title, updated_at
       `;
       const surveyId = (rows[0] as { id?: unknown }).id;
@@ -6679,7 +6733,7 @@ Deno.serve(async (req) => {
     // ── Company Client Dashboard API ───────────────────────
     if (path.match(/^\/api\/companies\/([^/]+)\/dashboard$/) && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
 
       const rawParam = decodeURIComponent(path.split("/")[3]);
       let company: { id: number; name: string; created_at: string } | undefined;
@@ -6900,12 +6954,18 @@ Deno.serve(async (req) => {
       let nextCompanyName: string | null | undefined;
       if (me.role === "super_admin" && body.company_name !== undefined) {
         nextCompanyName = String(body.company_name || "").trim().slice(0, 160) || null;
+        let nextCompanyId: number | null = null;
         if (nextCompanyName && sql) {
           const comp = await ensureCompanyExists(sql, nextCompanyName, me.id);
-          if (comp) nextCompanyName = comp.name;
+          if (comp) {
+            nextCompanyName = comp.name;
+            nextCompanyId = comp.id;
+          }
         }
         await sql`
-          UPDATE survey_form SET company_name = ${nextCompanyName}, updated_at = NOW() WHERE id = ${id}
+          UPDATE survey_form
+          SET company_name = ${nextCompanyName}, company_id = ${nextCompanyId}, updated_at = NOW()
+          WHERE id = ${id}
         `;
       }
       logAudit(me, "survey_update", "survey", id, {

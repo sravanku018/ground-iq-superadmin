@@ -567,188 +567,9 @@ export default function DashboardScreen({ onToast }) {
         </div>
       )}
 
-      {reportReady && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
-            Step by step: pick a <strong>survey</strong> → <strong>surveyor</strong> →{' '}
-            <strong>day / month</strong>. Question filters load from the survey.
-          </p>
+      <div className="dash-split">
+        <div className="dash-split-main">
 
-          {/* Step 1 · Survey name */}
-          <div
-            style={{
-              border: '1px solid #e2e8f0',
-              borderRadius: 10,
-              padding: 10,
-              marginBottom: 10,
-            }}
-          >
-            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
-              1 · Survey name
-            </p>
-            <label className="field compact">
-              <span>By survey</span>
-              <select
-                value={filters.survey}
-                onChange={(e) => {
-                  const survey = e.target.value
-                  // Changing survey clears old per-question + surveyor filters
-                  const drop = Object.fromEntries(
-                    Object.entries(filters).filter(
-                      ([k]) => !k.startsWith('q_') && k !== 'user',
-                    ),
-                  )
-                  setFilters((f) => ({ ...drop, ...f, survey }))
-                }}
-              >
-                <option value="">All surveys</option>
-                {surveys.map((s) => (
-                  <option key={s.id} value={s.form_key}>
-                    {s.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          {/* Step 2 · Surveyor — options load per survey */}
-          <div
-            style={{
-              border: '1px solid #e2e8f0',
-              borderRadius: 10,
-              padding: 10,
-              marginBottom: 10,
-            }}
-          >
-            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
-              2 · Surveyor name
-            </p>
-            <label className="field compact">
-              <span>By surveyor</span>
-              <select
-                value={filters.user}
-                onChange={(e) => setFilters((f) => ({ ...f, user: e.target.value }))}
-              >
-                <option value="">
-                  {data?.dataFilters?.by_user?.length ? 'All surveyors' : 'No surveyors yet'}
-                </option>
-                {(data?.dataFilters?.by_user || []).map((u) => (
-                  <option key={u.name} value={u.name}>
-                    {u.name} ({u.value})
-                  </option>
-                ))}
-              </select>
-            </label>
-            {!filters.survey && (
-              <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
-                Pick a survey first to load its surveyors.
-              </p>
-            )}
-          </div>
-
-          {/* Step 3 · Day / Month */}
-          <div
-            style={{
-              border: '1px solid #e2e8f0',
-              borderRadius: 10,
-              padding: 10,
-              marginBottom: 10,
-            }}
-          >
-            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>3 · Day / Month</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-              {[
-                { id: 'total', label: 'Total data' },
-                { id: 'today', label: 'Today' },
-                { id: 'day', label: 'Day' },
-                { id: 'month', label: 'Month' },
-              ].map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={`chip ${filters.period === p.id ? 'selected' : ''}`}
-                  onClick={() => setFilters((f) => ({ ...f, period: p.id }))}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            {filters.period === 'day' && (
-              <label className="field compact">
-                <span>Day</span>
-                <input
-                  type="date"
-                  value={filters.day}
-                  onChange={(e) => setFilters((f) => ({ ...f, day: e.target.value }))}
-                />
-              </label>
-            )}
-            {filters.period === 'month' && (
-              <label className="field compact">
-                <span>Month</span>
-                <input
-                  type="month"
-                  value={filters.month}
-                  onChange={(e) => setFilters((f) => ({ ...f, month: e.target.value }))}
-                />
-              </label>
-            )}
-          </div>
-
-          {/* Question filters — load per survey */}
-          <div
-            style={{
-              border: '1px solid #e2e8f0',
-              borderRadius: 10,
-              padding: 10,
-              marginBottom: 10,
-            }}
-          >
-            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
-              Question filters (auto from survey)
-            </p>
-            {data?.dataFilters?.questions?.map((q) => {
-              // Merge defined options (q.options) with submitted-value counts
-              // (q.counts) so a question with predefined choices but zero
-              // answers yet still shows its full choice list, and any answer
-              // value not in the defined list (free text) still appears.
-              const countMap = new Map((q.counts || []).map((c) => [c.name, c.value]))
-              const optionNames = [
-                ...new Set([...(q.options || []), ...countMap.keys()]),
-              ]
-              return (
-                <label className="field compact" key={q.id}>
-                  <span>{q.label}</span>
-                  <select
-                    value={filters[`q_${q.id}`] || ''}
-                    onChange={(e) =>
-                      setFilters((f) => ({ ...f, [`q_${q.id}`]: e.target.value }))
-                    }
-                  >
-                    <option value="">All {q.label}</option>
-                    {optionNames.map((name) => (
-                      <option key={name} value={name}>
-                        {countMap.has(name) ? `${name} (${countMap.get(name)})` : name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )
-            })}
-            {!data?.dataFilters?.questions?.length && (
-              <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-                No question filters for this survey yet.
-              </p>
-            )}
-          </div>
-
-          {activeCount > 0 && (
-            <button type="button" className="btn small" onClick={clearFilters}>
-              Clear filters
-            </button>
-          )}
-        </div>
-      )}
 
       {/* After confirmed data: Daily · Monthly · Surveyor daily · Surveyor monthly */}
       {reportReady && data?.dataFilters && (
@@ -1212,32 +1033,6 @@ export default function DashboardScreen({ onToast }) {
         </div>
       )}
 
-      {/* Filters */}
-      <section className="filter-panel">
-        <div className="filter-head">
-          <h3>Filters {activeCount ? `(${activeCount})` : ''}</h3>
-          {activeCount > 0 && (
-            <button type="button" className="link-btn" onClick={clearFilters}>
-              Clear all
-            </button>
-          )}
-        </div>
-
-        <label className="field compact">
-          <span>District</span>
-          <select
-            value={filters.district}
-            onChange={(e) => setFilters((f) => ({ ...f, district: e.target.value, constituency: '' }))}
-          >
-            <option value="">All districts</option>
-            {(opts?.districts || []).map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </label>
-      </section>
 
       {error && !data ? (
         <div className="card" style={{ padding: 16, textAlign: 'center' }} role="alert">
@@ -1415,6 +1210,221 @@ export default function DashboardScreen({ onToast }) {
           </ChartCard>
         </div>
       )}
+
+        </div>
+        {reportReady ? (
+        <aside className="dash-split-filters" aria-label="Dashboard filters">
+      {reportReady && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
+            Step by step: pick a <strong>survey</strong> → <strong>surveyor</strong> →{' '}
+            <strong>day / month</strong>. Question filters follow that survey, not legacy.
+          </p>
+
+          {/* Step 1 · Survey name */}
+          <div
+            style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 10,
+            }}
+          >
+            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
+              1 · Survey name
+            </p>
+            <label className="field compact">
+              <span>By survey</span>
+              <select
+                value={filters.survey}
+                onChange={(e) => {
+                  const survey = e.target.value
+                  // Changing survey clears old per-question + surveyor filters
+                  const drop = Object.fromEntries(
+                    Object.entries(filters).filter(
+                      ([k]) => !k.startsWith('q_') && k !== 'user',
+                    ),
+                  )
+                  setFilters((f) => ({ ...drop, ...f, survey }))
+                }}
+              >
+                <option value="">All surveys</option>
+                {surveys.map((s) => (
+                  <option key={s.id} value={s.form_key}>
+                    {s.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {/* Step 2 · Surveyor — options load per survey */}
+          <div
+            style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 10,
+            }}
+          >
+            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
+              2 · Surveyor name
+            </p>
+            <label className="field compact">
+              <span>By surveyor</span>
+              <select
+                value={filters.user}
+                onChange={(e) => setFilters((f) => ({ ...f, user: e.target.value }))}
+              >
+                <option value="">
+                  {data?.dataFilters?.by_user?.length ? 'All surveyors' : 'No surveyors yet'}
+                </option>
+                {(data?.dataFilters?.by_user || []).map((u) => (
+                  <option key={u.name} value={u.name}>
+                    {u.name} ({u.value})
+                  </option>
+                ))}
+              </select>
+            </label>
+            {!filters.survey && (
+              <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+                Pick a survey first to load its surveyors.
+              </p>
+            )}
+          </div>
+
+          {/* Step 3 · Day / Month */}
+          <div
+            style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 10,
+            }}
+          >
+            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>3 · Day / Month</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+              {[
+                { id: 'total', label: 'Total data' },
+                { id: 'today', label: 'Today' },
+                { id: 'day', label: 'Day' },
+                { id: 'month', label: 'Month' },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`chip ${filters.period === p.id ? 'selected' : ''}`}
+                  onClick={() => setFilters((f) => ({ ...f, period: p.id }))}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            {filters.period === 'day' && (
+              <label className="field compact">
+                <span>Day</span>
+                <input
+                  type="date"
+                  value={filters.day}
+                  onChange={(e) => setFilters((f) => ({ ...f, day: e.target.value }))}
+                />
+              </label>
+            )}
+            {filters.period === 'month' && (
+              <label className="field compact">
+                <span>Month</span>
+                <input
+                  type="month"
+                  value={filters.month}
+                  onChange={(e) => setFilters((f) => ({ ...f, month: e.target.value }))}
+                />
+              </label>
+            )}
+          </div>
+
+          {/* Question filters — load per survey */}
+          <div
+            style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 10,
+            }}
+          >
+            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
+              Question filters (auto from survey)
+            </p>
+            {data?.dataFilters?.questions?.map((q) => {
+              // Merge defined options (q.options) with submitted-value counts
+              // (q.counts) so a question with predefined choices but zero
+              // answers yet still shows its full choice list, and any answer
+              // value not in the defined list (free text) still appears.
+              const countMap = new Map((q.counts || []).map((c) => [c.name, c.value]))
+              const optionNames = [
+                ...new Set([...(q.options || []), ...countMap.keys()]),
+              ]
+              return (
+                <label className="field compact" key={q.id}>
+                  <span>{q.label}</span>
+                  <select
+                    value={filters[`q_${q.id}`] || ''}
+                    onChange={(e) =>
+                      setFilters((f) => ({ ...f, [`q_${q.id}`]: e.target.value }))
+                    }
+                  >
+                    <option value="">All {q.label}</option>
+                    {optionNames.map((name) => (
+                      <option key={name} value={name}>
+                        {countMap.has(name) ? `${name} (${countMap.get(name)})` : name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )
+            })}
+            {!data?.dataFilters?.questions?.length && (
+              <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                No question filters for this survey yet.
+              </p>
+            )}
+          </div>
+
+          {activeCount > 0 && (
+            <button type="button" className="btn small" onClick={clearFilters}>
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
+      {/* Filters */}
+      <section className="filter-panel">
+        <div className="filter-head">
+          <h3>Filters {activeCount ? `(${activeCount})` : ''}</h3>
+          {activeCount > 0 && (
+            <button type="button" className="link-btn" onClick={clearFilters}>
+              Clear all
+            </button>
+          )}
+        </div>
+
+        <label className="field compact">
+          <span>District</span>
+          <select
+            value={filters.district}
+            onChange={(e) => setFilters((f) => ({ ...f, district: e.target.value, constituency: '' }))}
+          >
+            <option value="">All districts</option>
+            {(opts?.districts || []).map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </label>
+      </section>
+        </aside>
+        ) : null}
+      </div>
 
       <p className="dash-foot muted">
         Charts update live from Neon submissions. Click bars/slices to drill down.

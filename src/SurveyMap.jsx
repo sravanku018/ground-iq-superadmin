@@ -153,7 +153,11 @@ export default function SurveyMap({
     mapRef.current = map
 
     return () => {
-      map.remove()
+      try {
+        map.remove()
+      } catch {
+        /* unmount during tile load */
+      }
       mapRef.current = null
       geoLayerRef.current = null
     }

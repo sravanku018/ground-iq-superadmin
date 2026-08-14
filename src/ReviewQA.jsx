@@ -63,9 +63,20 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
   useEffect(() => {
     if (focusSubmissionId == null || loading) return
     const id = Number(focusSubmissionId)
-    if (!id) return
+    if (!id) {
+      onFocusConsumed?.()
+      return
+    }
     const idx = items.findIndex((it) => Number(it.id) === id)
-    if (idx < 0) return
+    if (idx < 0) {
+      if (status !== 'all') {
+        setStatus('all')
+        return
+      }
+      onToast?.('That activity is not in the review list', 'error')
+      onFocusConsumed?.()
+      return
+    }
     setFocusIdx(idx)
     setExpanded(id)
     onFocusConsumed?.()
@@ -73,7 +84,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
       const el = listRef.current?.querySelector?.(`[data-review-id="${id}"]`)
       el?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
     })
-  }, [focusSubmissionId, loading, items, onFocusConsumed])
+  }, [focusSubmissionId, loading, items, status, onFocusConsumed, onToast])
 
   useEffect(() => {
     listSurveys()

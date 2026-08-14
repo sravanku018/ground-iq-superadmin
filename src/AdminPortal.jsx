@@ -587,28 +587,38 @@ export default function AdminPortal({ superAdminOnly = false }) {
     .map((n) => ({ ...n, pages: n.pages.filter(canPage) }))
     .filter((n) => n.pages.length > 0)
 
+  const notify = useCallback((message, type = 'ok') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 3200)
+  }, [])
+
   const goPage = useCallback((p, extra = null) => {
-    const pageId = typeof p === 'string' ? p : p?.page
-    if (!pageId) return
+    const src = typeof p === 'string' ? { page: p } : p && typeof p === 'object' ? p : null
+    const raw = src?.page
+    const pageId = raw && PAGE_LABELS[raw] ? raw : null
+    if (!pageId) {
+      notify('Could not open that notification', 'error')
+      return
+    }
+    if (!canPage(pageId)) {
+      notify('You do not have access to that page', 'error')
+      setPage('overview')
+      setDeepLink(null)
+      setNavOpen(false)
+      return
+    }
     setPage(pageId)
     setNavOpen(false)
-    if (typeof p === 'object' && p) {
-      setDeepLink({
-        page: pageId,
-        userId: p.userId ?? extra?.userId ?? null,
-        submissionId: p.submissionId ?? extra?.submissionId ?? null,
-      })
+    const userId = src.userId ?? extra?.userId ?? null
+    const submissionId = src.submissionId ?? extra?.submissionId ?? null
+    if (userId != null || submissionId != null) {
+      setDeepLink({ page: pageId, userId, submissionId })
     } else if (extra) {
       setDeepLink({ page: pageId, ...extra })
     } else {
       setDeepLink(null)
     }
-  }, [])
-
-  const notify = useCallback((message, type = 'ok') => {
-    setToast({ message, type })
-    setTimeout(() => setToast(null), 3200)
-  }, [])
+  }, [canPage, notify])
 
   const handleLogout = useCallback(async () => {
     await logout()
@@ -946,7 +956,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
         ))}
         <Suspense fallback={<PortalSkeleton rows={6} label="Loading screen…" />}>
           <ChunkErrorBoundary>
-          {(page === 'overview' || !canPage(page)) && (
+          {(page === 'overview' || !canPage(page) || !PAGE_LABELS[page]) && (
             <Overview
               user={user}
               stats={stats}
@@ -955,7 +965,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
               canPage={canPage}
             />
           )}
-          {page === 'users' && (
+          {page === 'users' && canPage('users') && (
             <AdminUsersScreen
               onToast={notify}
               user={user}
@@ -963,12 +973,16 @@ export default function AdminPortal({ superAdminOnly = false }) {
               onFocusConsumed={() => setDeepLink(null)}
             />
           )}
-          {page === 'surveys' && <AdminSurveysScreen onToast={notify} user={user} />}
-          {page === 'questions' && <AdminQuestionsScreen onToast={notify} user={user} />}
+          {page === 'surveys' && canPage('surveys') && (
+            <AdminSurveysScreen onToast={notify} user={user} />
+          )}
+          {page === 'questions' && canPage('questions') && (
+            <AdminQuestionsScreen onToast={notify} user={user} />
+          )}
           {/* Report = tables/boards (AdminAnalyze); Analyze = charts/maps (Dashboard) */}
-          {page === 'report' && <AdminAnalyzeScreen onToast={notify} />}
-          {page === 'analyze' && <DashboardScreen onToast={notify} />}
-          {page === 'review' && (
+          {page === 'report' && canPage('report') && <AdminAnalyzeScreen onToast={notify} />}
+          {page === 'analyze' && canPage('analyze') && <DashboardScreen onToast={notify} />}
+          {page === 'review' && canPage('review') && (
             <ReviewQAScreen
               onToast={notify}
               user={user}
@@ -976,15 +990,19 @@ export default function AdminPortal({ superAdminOnly = false }) {
               onFocusConsumed={() => setDeepLink(null)}
             />
           )}
-          {page === 'upload' && <AdminDataScreen onToast={notify} />}
-          {page === 'audit' && <AdminAuditScreen onToast={notify} />}
-          {page === 'bank' && <AdminQuestionBankScreen onToast={notify} user={user} />}
-          {page === 'seats' && <AdminSeatsScreen onToast={notify} />}
-          {page === 'admins' && <AdminClientAdminsScreen onToast={notify} />}
-          {page === 'companies' && (
+          {page === 'upload' && canPage('upload') && <AdminDataScreen onToast={notify} />}
+          {page === 'audit' && canPage('audit') && <AdminAuditScreen onToast={notify} />}
+          {page === 'bank' && canPage('bank') && (
+            <AdminQuestionBankScreen onToast={notify} user={user} />
+          )}
+          {page === 'seats' && canPage('seats') && <AdminSeatsScreen onToast={notify} />}
+          {page === 'admins' && canPage('admins') && (
+            <AdminClientAdminsScreen onToast={notify} />
+          )}
+          {page === 'companies' && canPage('companies') && (
             <AdminCompaniesScreen onToast={notify} onNav={goPage} />
           )}
-          {page === 'data' && (
+          {page === 'data' && canPage('data') && (
             <DataList
               items={items}
               loading={loadingData}

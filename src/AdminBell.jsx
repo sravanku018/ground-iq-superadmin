@@ -106,7 +106,17 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
 
   const openItem = (it) => {
     setOpen(false)
-    onGoPage?.(it)
+    const page =
+      it?.page === 'users' || it?.kind === 'docs'
+        ? 'users'
+        : it?.page === 'review' || it?.kind === 'activity'
+          ? 'review'
+          : it?.page || ''
+    onGoPage?.({
+      page,
+      userId: it?.userId ?? null,
+      submissionId: it?.submissionId ?? null,
+    })
   }
 
   return (

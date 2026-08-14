@@ -306,8 +306,16 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
   useEffect(() => {
     if (focusUserId == null || !users.length) return
     const u = users.find((x) => Number(x.id) === Number(focusUserId))
-    if (!u) return
-    openProfile(u)
+    if (!u) {
+      onToast?.('That surveyor is not in your list', 'error')
+      onFocusConsumed?.()
+      return
+    }
+    try {
+      openProfile(u)
+    } catch (e) {
+      onToast?.(e?.message || 'Could not open that profile', 'error')
+    }
     onFocusConsumed?.()
   }, [focusUserId, users])
 

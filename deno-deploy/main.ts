@@ -8088,10 +8088,24 @@ Deno.serve(async (req) => {
         }
 
         // Columns: fixed fields + union of all answer keys
+        const photoName = (id: unknown) => `${id}.jpg`;
+        const audioName = (id: unknown) => `${id}.webm`;
+        const asMedia = (url.searchParams.get("format") || "").trim().toLowerCase() === "media";
+        if (asMedia) {
+          const items = rows.map((r) => ({
+            id: r.id,
+            photo_url: photoUrl.get(Number(r.id)) || "",
+            audio_url: audioUrl.get(Number(r.id)) || "",
+            photo_file: photoUrl.has(Number(r.id)) ? photoName(r.id) : "",
+            audio_file: audioUrl.has(Number(r.id)) ? audioName(r.id) : "",
+          }));
+          return json({ items, count: items.length });
+        }
+
         const fixed = [
           "id", "date", "survey", "surveyor", "district", "constituency", "mandal",
           "latitude", "longitude", "party", "gender", "caste", "age", "respondent",
-          "photo_url", "audio_url",
+          "photo_url", "audio_url", "photo_file", "audio_file",
         ];
         const qKeys = new Set<string>();
         for (const r of rows) {
@@ -8123,6 +8137,8 @@ Deno.serve(async (req) => {
             respondent: r.respondent,
             photo_url: photoUrl.get(Number(r.id)) || "",
             audio_url: audioUrl.get(Number(r.id)) || "",
+            photo_file: photoUrl.has(Number(r.id)) ? photoName(r.id) : "",
+            audio_file: audioUrl.has(Number(r.id)) ? audioName(r.id) : "",
           };
           const rec: string[] = [];
           for (const c of fixed) rec.push(esc(base[c]));

@@ -11,6 +11,7 @@ import {
   setSurveySurveyors,
   updateSurvey,
 } from './api'
+import { labelPatch, slugQuestionKey } from './questionKey'
 
 const EMPTY_Q = {
   id: '',
@@ -48,7 +49,7 @@ function QuestionEditor({ questions, onChange }) {
   function addQ() {
     onChange([
       ...questions,
-      { ...EMPTY_Q, id: `q_${Date.now()}`, label: 'New question', speak: 'New question' },
+      { ...EMPTY_Q, id: '', label: '', speak: '' },
     ])
   }
 
@@ -81,15 +82,18 @@ function QuestionEditor({ questions, onChange }) {
               <input
                 value={q.id}
                 onChange={(e) => updateQ(i, { id: e.target.value })}
-                placeholder="e.g. age_range"
+                placeholder="copies the question automatically"
               />
+              <span className="muted" style={{ fontSize: 11 }}>
+                Fills from the question text. Edit only if you need a shorter key.
+              </span>
             </label>
 
             <label className="field">
               <span>Question Text / Label *</span>
               <input
                 value={q.label}
-                onChange={(e) => updateQ(i, { label: e.target.value })}
+                onChange={(e) => updateQ(i, labelPatch(q, e.target.value))}
                 placeholder="What is your age or income bracket?"
               />
             </label>
@@ -285,7 +289,7 @@ function cleanQuestions(questions) {
                     : undefined
 
     return {
-      id: String(q.id || '').trim() || `q_${Math.random().toString(36).slice(2, 8)}`,
+      id: String(q.id || '').trim() || slugQuestionKey(q.label) || `q_${Math.random().toString(36).slice(2, 8)}`,
       label: String(q.label || '').trim() || 'Question',
       type: String(q.type || 'text'),
       options: finalOptions,

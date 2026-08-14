@@ -410,6 +410,17 @@ export function getAnalytics(filters = {}) {
   return request(`/api/analytics${q ? `?${q}` : ''}`)
 }
 
+/** List photo/audio URLs for an export (same filters as CSV). Files are named {id}.jpg / {id}.webm. */
+export function exportSubmissionMedia(filters = {}) {
+  return request(
+    `/api/admin/export?${new URLSearchParams(
+      Object.entries({ ...filters, format: 'media' })
+        .filter(([, v]) => v != null && v !== '')
+        .map(([k, v]) => [k, String(v)]),
+    )}`,
+  )
+}
+
 /** Download collected data as CSV/text with photo + audio links (day/month/surveyor/geo filters) */
 export async function exportSubmissions(filters = {}) {
   const base = getApiBase()

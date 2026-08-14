@@ -8,6 +8,7 @@ import {
   listQuestionBank,
   updateQuestionBank,
 } from './api'
+import { labelPatch, slugQuestionKey } from './questionKey'
 
 const EMPTY_Q = {
   id: '',
@@ -101,9 +102,9 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
       ...list,
       {
         ...EMPTY_Q,
-        id: `q_${Date.now()}`,
-        label: 'New question',
-        speak: 'New question',
+        id: '',
+        label: '',
+        speak: '',
       },
     ])
   }
@@ -128,7 +129,7 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
             ? q.options
             : undefined
       return {
-        id: String(q.id || '').trim() || `q_${Math.random().toString(36).slice(2, 8)}`,
+        id: String(q.id || '').trim() || slugQuestionKey(q.label) || `q_${Math.random().toString(36).slice(2, 8)}`,
         label: String(q.label || '').trim() || 'Question',
         type: String(q.type || 'text'),
         options: finalOptions,
@@ -258,11 +259,12 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
               </div>
               <label className="field">
                 <span>Field ID (Unique Key)</span>
-                <input value={q.id} onChange={(e) => updateQ(i, { id: e.target.value })} placeholder="e.g. age_range" />
+                <input value={q.id} onChange={(e) => updateQ(i, { id: e.target.value })} placeholder="copies the question automatically" />
+                <span className="muted" style={{ fontSize: 11 }}>Fills from the question text. Edit only if you need a shorter key.</span>
               </label>
               <label className="field">
                 <span>Question Text / Label *</span>
-                <input value={q.label} onChange={(e) => updateQ(i, { label: e.target.value })} placeholder="What is the question?" />
+                <input value={q.label} onChange={(e) => updateQ(i, labelPatch(q, e.target.value))} placeholder="What is the question?" />
               </label>
               <label className="field">
                 <span>Voice Prompt (spoken by surveyor)</span>

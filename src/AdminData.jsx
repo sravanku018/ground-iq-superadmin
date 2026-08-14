@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import Papa from 'papaparse'
-import { exportSubmissions, getAnalytics, getGeoSummary, uploadSurveys } from './api'
+import {
+  downloadMediaFile,
+  exportSubmissionMedia,
+  exportSubmissions,
+  getAnalytics,
+  getGeoSummary,
+  uploadSurveys,
+} from './api'
 import { FilterSection } from './PortalUI'
 import SurveyMap from './SurveyMap'
 
@@ -20,6 +27,7 @@ export default function AdminDataScreen({ onToast }) {
   const [surveys, setSurveys] = useState([])
   const [survey, setSurvey] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [exportingMedia, setExportingMedia] = useState(false)
   const [exp, setExp] = useState({
     period: 'total',
     day: new Date().toISOString().slice(0, 10),
@@ -29,6 +37,36 @@ export default function AdminDataScreen({ onToast }) {
     constituency: '',
     status: 'confirmed',
   })
+
+  const exportFilters = () => ({
+    period: exp.period,
+    day: exp.day,
+    month: exp.month,
+    user: exp.user,
+    survey,
+    district: exp.district,
+    constituency: exp.constituency,
+    status: exp.status,
+  })
+
+  async function downloadRawMedia() {
+    const d = await exportSubmissionMedia(exportFilters())
+    const items = d.items || []
+    let n = 0
+    for (const it of items) {
+      if (it.photo_url) {
+        await downloadMediaFile(it.photo_url, it.photo_file || `${it.id}.jpg`)
+        n += 1
+        await new Promise((r) => setTimeout(r, 160))
+      }
+      if (it.audio_url) {
+        await downloadMediaFile(it.audio_url, it.audio_file || `${it.id}.webm`)
+        n += 1
+        await new Promise((r) => setTimeout(r, 160))
+      }
+    }
+    return { files: n, records: items.length }
+  }
 
   useEffect(() => {
     import('./api').then(({ listSurveys }) =>
@@ -152,16 +190,7 @@ export default function AdminDataScreen({ onToast }) {
     try {
       let csv = ''
       try {
-        csv = await exportSubmissions({
-          period: exp.period,
-          day: exp.day,
-          month: exp.month,
-          user: exp.user,
-          survey,
-          district: exp.district,
-          constituency: exp.constituency,
-          status: exp.status,
-        })
+        csv = await exportSubmissions(exportFilters())
       } catch (netErr) {
         console.warn('Backend export route hit network/CORS error, falling back to client CSV generator:', netErr)
         const analyticsData = mapAnalytics || (await getAnalytics().catch(() => ({})))
@@ -184,7 +213,7 @@ export default function AdminDataScreen({ onToast }) {
           filtered = filtered.filter((r) => String(r.formKey || r.form_key || r.survey || '') === survey)
         }
 
-        const fixed = ['id', 'date', 'survey', 'surveyor', 'district', 'constituency', 'mandal', 'latitude', 'longitude', 'party', 'gender', 'caste', 'age', 'respondent', 'photo_url', 'audio_url']
+        const fixed = ['id', 'date', 'survey', 'surveyor', 'district', 'constituency', 'mandal', 'latitude', 'longitude', 'party', 'gender', 'caste', 'age', 'respondent', 'photo_url', 'audio_url', 'photo_file', 'audio_file']
         const qKeys = new Set()
         filtered.forEach((r) => {
           Object.keys(r.answers || {}).forEach((k) => qKeys.add(k))
@@ -217,6 +246,8 @@ export default function AdminDataScreen({ onToast }) {
             respondent: r.respondent || '',
             photo_url: r.photo_url || r.photoUrl || '',
             audio_url: r.audio_url || r.audioUrl || '',
+            photo_file: r.id ? `${r.id}.jpg` : '',
+            audio_file: r.id ? `${r.id}.webm` : '',
           }
           const row = []
           fixed.forEach((c) => row.push(esc(base[c])))
@@ -718,13 +749,40 @@ export default function AdminDataScreen({ onToast }) {
               type="button"
               className="btn primary"
               style={{ marginTop: 12 }}
-              disabled={exporting}
+              disabled={exporting || exportingMedia}
               onClick={doExport}
             >
               {exporting ? 'Exporting…' : 'Download CSV (text file) with photo + audio links'}
             </button>
+            <button
+              type="button"
+              className="btn"
+              style={{ marginTop: 8 }}
+              disabled={exporting || exportingMedia}
+              onClick={async () => {
+                setExportingMedia(true)
+                try {
+                  const { files, records } = await downloadRawMedia()
+                  onToast?.(
+                    files
+                      ? `Downloaded ${files} raw file(s) named with the record id (${records} records)`
+                      : 'No photo or audio in this export',
+                    files ? 'ok' : 'error',
+                  )
+                } catch (e) {
+                  onToast?.(e.message || 'Media download failed', 'error')
+                } finally {
+                  setExportingMedia(false)
+                }
+              }}
+            >
+              {exportingMedia ? 'Downloading media…' : 'Download raw photos & audio (same id)'}
+            </button>
             <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-              Photo/audio appear as links per record (media stored on R2 / free Neon storage).
+              CSV includes photo_url / audio_url plus photo_file / audio_file named{' '}
+              <strong>{'{id}.jpg'}</strong> and <strong>{'{id}.webm'}</strong>. Use the second
+              button to download the raw files with that same id. Allow multiple downloads if the
+              browser asks.
             </p>
           </div>
         </div>

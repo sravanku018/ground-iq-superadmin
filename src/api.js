@@ -751,26 +751,34 @@ export async function fetchMediaBlobUrl(pathOrUrl) {
 export async function fetchMediaBytes(pathOrUrl) {
   if (!pathOrUrl) return null
   const token = getToken()
-  let url = pathOrUrl
-  if (!/^https?:\/\//i.test(url)) {
-    const base = getApiBase()
-    url = `${base}${pathOrUrl.startsWith('/') ? '' : '/'}${pathOrUrl}`
+  const base = getApiBase()
+  // Never fetch R2/storage directly — CORS fails in the browser.
+  // Always go through our API file route when the path is /api/media/:id/file
+  // or when we can rewrite a full API URL.
+  let url = String(pathOrUrl)
+  const mediaMatch = url.match(/\/api\/media\/(\d+)\/file/)
+  if (mediaMatch) {
+    url = `${base}/api/media/${mediaMatch[1]}/file`
+  } else if (!/^https?:\/\//i.test(url)) {
+    url = `${base}${url.startsWith('/') ? '' : '/'}${url}`
+  } else if (!url.includes(new URL(base).host)) {
+    throw new Error('Media must be loaded through the API')
   }
-  let urlObj
-  try {
-    urlObj = new URL(url)
-  } catch {
-    urlObj = new URL(url, window.location.origin)
-  }
-  if (token && !urlObj.searchParams.has('token')) {
-    urlObj.searchParams.set('token', token)
-  }
-  const headers = {}
+  const headers = { Accept: '*/*' }
   if (token) headers.Authorization = `Bearer ${token}`
-  const res = await fetch(urlObj.toString(), { headers })
+  let res
+  try {
+    res = await fetch(url, { headers, redirect: 'manual' })
+  } catch (e) {
+    throw new Error(
+      e?.message || 'NetworkError when fetching media — redeploy the API so files are proxied.',
+    )
+  }
+  if (res.status >= 300 && res.status < 400) {
+    throw new Error('Media is on external storage — redeploy the Deno API so the zip can load it.')
+  }
   if (!res.ok) throw new Error(`Media load failed (${res.status})`)
-  const buf = new Uint8Array(await res.arrayBuffer())
-  return buf
+  return new Uint8Array(await res.arrayBuffer())
 }
 
 export async function downloadMediaFile(pathOrUrl, filename = 'media-file') {

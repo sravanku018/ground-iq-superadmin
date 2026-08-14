@@ -7705,7 +7705,7 @@ Deno.serve(async (req) => {
     if (path.match(/^\/api\/media\/\d+\/file$/) && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      if (!hasPower(me, "can_review_data")) {
+      if (!hasPower(me, "can_review_data") && !hasPower(me, "can_validate_proof")) {
         return json({ error: "You don't have permission to view media — ask your Super Admin to enable it." }, 403);
       }
       const mediaId = Number(path.split("/")[3]);
@@ -7738,23 +7738,35 @@ Deno.serve(async (req) => {
         url?: string;
         storage?: string;
       };
-      // Redirect external URLs
-      if (row.url && /^https?:\/\//i.test(String(row.url))) {
-        return new Response(null, {
-          status: 302,
-          headers: { Location: String(row.url), ...corsHeaders(req) },
-        });
+      // Proxy external/R2 URLs — never 302. Zip/export fetch from the
+      // admin origin cannot follow a storage redirect (CORS NetworkError).
+      const external =
+        row.url && /^https?:\/\//i.test(String(row.url))
+          ? String(row.url)
+          : String(row.data || "").startsWith("url:")
+            ? String(row.data).slice(4)
+            : "";
+      if (external) {
+        try {
+          const up = await fetch(external);
+          if (!up.ok) return json({ error: "Upstream media failed" }, 502);
+          const body = new Uint8Array(await up.arrayBuffer());
+          const mime = row.mime || up.headers.get("content-type") || "application/octet-stream";
+          return new Response(body, {
+            status: 200,
+            headers: {
+              "content-type": mime,
+              "content-length": String(body.length),
+              "cache-control": "private, max-age=3600",
+              ...corsHeaders(req),
+            },
+          });
+        } catch (e) {
+          return json({ error: (e as Error).message || "Upstream media failed" }, 502);
+        }
       }
       const raw = String(row.data || "");
-      if (!raw || raw.startsWith("url:")) {
-        if (raw.startsWith("url:")) {
-          return new Response(null, {
-            status: 302,
-            headers: { Location: raw.slice(4), ...corsHeaders(req) },
-          });
-        }
-        return json({ error: "No media data" }, 404);
-      }
+      if (!raw) return json({ error: "No media data" }, 404);
       let bytes: Uint8Array<ArrayBuffer>;
       try {
         bytes = b64ToBytes(raw);
@@ -8075,14 +8087,19 @@ Deno.serve(async (req) => {
         // absolute and pass through unchanged.
         const origin = `${url.protocol}//${url.host}`;
         const mediaRows = await sql`
-          SELECT submission_id, kind, url FROM survey_media
+          SELECT id, submission_id, kind, url FROM survey_media
         `.catch(() => []);
         const photoUrl = new Map<number, string>();
         const audioUrl = new Map<number, string>();
-        for (const m of mediaRows as { submission_id: number; kind: string; url: string | null }[]) {
+        for (const m of mediaRows as {
+          id: number;
+          submission_id: number;
+          kind: string;
+          url: string | null;
+        }[]) {
           const id = Number(m.submission_id);
-          const raw = m.url || "";
-          const u = raw && !/^https?:\/\//i.test(raw) ? `${origin}${raw}?download=1` : raw;
+          // Always the API file route so the browser never fetches R2 directly.
+          const u = `${origin}/api/media/${Number(m.id)}/file`;
           if (m.kind === "photo" && !photoUrl.has(id)) photoUrl.set(id, u);
           if (m.kind === "audio" && !audioUrl.has(id)) audioUrl.set(id, u);
         }
@@ -8107,17 +8124,54 @@ Deno.serve(async (req) => {
           "latitude", "longitude", "party", "gender", "caste", "age", "respondent",
           "photo_url", "audio_url", "photo_file", "audio_file",
         ];
+        const skipAnswerKey = (k: string) => {
+          const s = String(k || "").toLowerCase();
+          if (!s || s.startsWith("_") || s.startsWith("geo_") || s.startsWith("location_")) return true;
+          return [
+            "draft", "has_photo", "has_audio", "photo_url", "audio_url",
+            "latitude", "longitude", "lat", "lng", "form_key", "user_id",
+            "submitted_by", "status", "content_type", "mandal", "district",
+            "constituency", "state", "respondent_name", "respondent",
+          ].includes(s);
+        };
+        const idToLabel = new Map<string, string>();
+        {
+          const formRows = await sql`SELECT form_key, questions FROM survey_form`.catch(() => []);
+          for (const f of formRows as { questions?: unknown }[]) {
+            for (const raw of parseQuestionsArray(f.questions)) {
+              const q = raw as Record<string, unknown>;
+              const qid = String(q.id || "").trim();
+              const label = String(q.label || q.speak || qid).trim();
+              if (qid && label) idToLabel.set(qid, label);
+            }
+          }
+        }
         const qKeys = new Set<string>();
         for (const r of rows) {
-          for (const k of Object.keys(r.answers || {})) qKeys.add(k);
+          for (const k of Object.keys(r.answers || {})) {
+            if (!skipAnswerKey(k)) qKeys.add(k);
+          }
         }
         const qCols = [...qKeys].sort();
+        const usedHeads = new Set<string>(fixed);
+        const qHeaders = qCols.map((k) => {
+          let head = idToLabel.get(k) || k;
+          if (/^q_\d+$/i.test(head)) head = idToLabel.get(k) || head;
+          let unique = head;
+          let n = 2;
+          while (usedHeads.has(unique)) {
+            unique = `${head} (${n})`;
+            n += 1;
+          }
+          usedHeads.add(unique);
+          return unique;
+        });
         const esc = (v: unknown) => {
           const s = String(v ?? "");
           return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
         };
         const lines: string[] = [];
-        lines.push([...fixed, ...qCols].map(esc).join(","));
+        lines.push([...fixed, ...qHeaders].map(esc).join(","));
         for (const r of rows) {
           const rObj = r as unknown as Record<string, unknown>;
           const base: Record<string, unknown> = {

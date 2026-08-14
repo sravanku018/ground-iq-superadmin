@@ -6,6 +6,7 @@ import {
   fetchMediaBytes,
   getAnalytics,
   getGeoSummary,
+  listSubmissionMedia,
   uploadSurveys,
 } from './api'
 import { saveBlob, zipStore } from './zipStore'
@@ -50,29 +51,56 @@ export default function AdminDataScreen({ onToast }) {
     status: exp.status,
   })
 
+  async function loadKindBytes(it, kind) {
+    const url = kind === 'photo' ? it.photo_url : it.audio_url
+    if (url && String(url).includes('/api/media/')) {
+      try {
+        return await fetchMediaBytes(url)
+      } catch {
+        /* fall through to list */
+      }
+    }
+    const listed = await listSubmissionMedia(it.id).catch(() => null)
+    const m = (listed?.media || []).find((x) => x.kind === kind)
+    if (m?.id) return fetchMediaBytes(`/api/media/${m.id}/file`)
+    if (m?.url && String(m.url).includes('/api/media/')) return fetchMediaBytes(m.url)
+    return null
+  }
+
   async function downloadRawMedia() {
     const d = await exportSubmissionMedia(exportFilters())
     const items = d.items || []
     const files = []
+    let failed = 0
     for (const it of items) {
       const folder = String(it.id)
-      if (it.photo_url) {
-        const data = await fetchMediaBytes(it.photo_url)
-        if (data?.length) {
-          files.push({ name: it.photo_file || `${folder}/${folder}.jpg`, data })
-        }
-      }
-      if (it.audio_url) {
-        const data = await fetchMediaBytes(it.audio_url)
-        if (data?.length) {
-          files.push({ name: it.audio_file || `${folder}/${folder}.webm`, data })
+      for (const kind of ['photo', 'audio']) {
+        const want = kind === 'photo' ? it.photo_url || it.photo_file : it.audio_url || it.audio_file
+        if (!want) continue
+        try {
+          const data = await loadKindBytes(it, kind)
+          if (data?.length) {
+            const name =
+              kind === 'photo'
+                ? it.photo_file || `${folder}/${folder}.jpg`
+                : it.audio_file || `${folder}/${folder}.webm`
+            files.push({ name, data })
+          }
+        } catch {
+          failed += 1
         }
       }
     }
-    if (!files.length) return { files: 0, records: items.length }
+    if (!files.length) {
+      throw new Error(
+        failed
+          ? 'Could not download photos/audio (network). Redeploy the Deno API so media is proxied.'
+          : 'No photo or audio in this export',
+      )
+    }
     const stamp = exp.period === 'day' ? exp.day : exp.period === 'month' ? exp.month : 'total'
     saveBlob(zipStore(files), `survey-media-${stamp}.zip`)
-    return { files: files.length, records: items.length }
+    return { files: files.length, records: items.length, failed }
   }
 
   useEffect(() => {

@@ -1130,19 +1130,93 @@ function ready() {
  * Answer lookup keyed by the Client Admin's question naming — matches
  * question id OR label, case-insensitively (question "Gender" ↔ answer "gender").
  */
-function answerOf(a: Record<string, unknown> | undefined | null, qid: string, qlabel?: string): unknown {
-  if (!a) return undefined;
-  if (a[qid] != null) return a[qid];
-  const low = qid.toLowerCase();
-  for (const [k, v] of Object.entries(a)) {
-    if (k.toLowerCase() === low) return v;
+function slugQuestionKeyServer(label: string) {
+  return String(label || "")
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 64);
+}
+
+function skipAnswerKey(k: string) {
+  const s = String(k || "").toLowerCase();
+  if (!s || s.startsWith("_") || s.startsWith("geo_") || s.startsWith("location_")) return true;
+  return [
+    "draft", "has_photo", "has_audio", "photo_url", "audio_url",
+    "latitude", "longitude", "lat", "lng", "form_key", "user_id",
+    "submitted_by", "status", "content_type", "mandal", "district",
+    "constituency", "state", "respondent_name", "respondent",
+    "client_package_id", "data_collector", "surveyor", "package_id",
+  ].includes(s);
+}
+
+/**
+ * Map leftover answer keys (old q_<time> or a renamed Field ID) onto the
+ * current survey questions, in form order. Used for every survey, including
+ * new ones, so charts/export stay aligned after a question is edited.
+ */
+function aliasesForQuestions(
+  questions: { id: string; label: string }[],
+  answerBags: Record<string, unknown>[],
+): Map<string, string[]> {
+  const aliases = new Map<string, string[]>();
+  const add = (qid: string, key: string) => {
+    if (!qid || !key || qid === key) return;
+    const arr = aliases.get(qid) || [];
+    if (!arr.includes(key)) arr.push(key);
+    aliases.set(qid, arr);
+  };
+  const currentIds = new Set(questions.map((q) => q.id).filter(Boolean));
+  const leftover = new Set<string>();
+  for (const a of answerBags) {
+    for (const k of Object.keys(a || {})) {
+      if (skipAnswerKey(k)) continue;
+      const hit = questions.find((q) => {
+        const id = q.id.toLowerCase();
+        const label = q.label.toLowerCase();
+        const slug = slugQuestionKeyServer(q.label);
+        const kk = k.toLowerCase();
+        return kk === id || kk === label || (slug && kk === slug);
+      });
+      if (hit) add(hit.id, k);
+      else leftover.add(k);
+    }
   }
-  if (qlabel) {
-    const lbl = qlabel.toLowerCase().trim();
-    if (lbl && lbl !== low) {
-      for (const [k, v] of Object.entries(a)) {
-        if (k.toLowerCase() === lbl) return v;
-      }
+  const unusedQs = questions.filter((q) => {
+    const appears = answerBags.some((a) => {
+      if (!a) return false;
+      if (q.id && a[q.id] != null) return true;
+      if (q.label && a[q.label] != null) return true;
+      const slug = slugQuestionKeyServer(q.label);
+      return !!(slug && a[slug] != null);
+    });
+    return !appears;
+  });
+  const stamps = [...leftover].filter((k) => !currentIds.has(k)).sort();
+  for (let i = 0; i < stamps.length; i++) {
+    const q = unusedQs[i];
+    if (q?.id) add(q.id, stamps[i]);
+  }
+  return aliases;
+}
+
+function answerOf(
+  a: Record<string, unknown> | undefined | null,
+  qid: string,
+  qlabel?: string,
+  aliases: string[] = [],
+): unknown {
+  if (!a) return undefined;
+  const keys = [qid, qlabel || "", slugQuestionKeyServer(qlabel || ""), ...aliases]
+    .map((k) => String(k || "").trim())
+    .filter(Boolean);
+  for (const want of keys) {
+    if (a[want] != null) return a[want];
+    const low = want.toLowerCase();
+    for (const [k, v] of Object.entries(a)) {
+      if (k.toLowerCase() === low) return v;
     }
   }
   return undefined;
@@ -2665,16 +2739,21 @@ async function buildAnalytics(
   }
 
   // Survey questions → dynamic filter bar (options from defined choices + submitted answers)
-  const surveyQuestions: { id: string; label: string; type: string; options: string[] }[] = [];
+  const surveyQuestions: {
+    id: string;
+    label: string;
+    type: string;
+    options: string[];
+    aliases: string[];
+  }[] = [];
   {
     // Never pull platform `legacy` / `default` into a new account's filter bar
     // unless that survey is explicitly selected (or it is the only scoped key).
     const PLATFORM_FORM_KEYS = new Set(["default", "legacy"]);
-    const withoutPlatform = (keys: string[]) => keys.filter((k) => k && !PLATFORM_FORM_KEYS.has(k));
     let formRows: { questions?: unknown }[] = [];
     if (formFilter) {
       formRows = await sqlFn`
-        SELECT questions FROM survey_form WHERE form_key = ${formFilter} LIMIT 1
+        SELECT form_key, questions FROM survey_form WHERE form_key = ${formFilter} LIMIT 1
       `.catch(() => []);
     } else {
       const scoped = Array.isArray(scopeKeys)
@@ -2685,38 +2764,64 @@ async function buildAnalytics(
           universe.map((r) => String(r.formKey || "")).filter(Boolean),
         ),
       ];
+      // Keep any survey that actually has rows in this report (including
+      // legacy/default). Only hide platform forms when they have no data —
+      // that is what made Analyze charts disappear after we dropped them.
       let keys = scoped.length ? scoped : keysInData;
-      const owned = withoutPlatform(keys);
-      if (owned.length) keys = owned;
+      if (!keys.length && !scopeKeys) {
+        keys = [];
+      }
+      keys = keys.filter(
+        (k) => !PLATFORM_FORM_KEYS.has(k) || keysInData.includes(k),
+      );
+      if (!keys.length) keys = keysInData;
       if (keys.length) {
         formRows = await sqlFn`
-          SELECT questions FROM survey_form WHERE form_key = ANY(${keys})
-        `.catch(() => []);
-      } else if (!scopeKeys) {
-        formRows = await sqlFn`
-          SELECT questions FROM survey_form
-          WHERE form_key NOT IN ('default', 'legacy')
+          SELECT form_key, questions FROM survey_form WHERE form_key = ANY(${keys})
         `.catch(() => []);
       }
     }
     const seen = new Set<string>();
-    for (const frow of formRows as { questions?: unknown }[]) {
+    const parsedForms: { form_key: string; qs: Record<string, unknown>[] }[] = [];
+    for (const frow of formRows as { form_key?: string; questions?: unknown }[]) {
       let qs = frow?.questions;
       if (typeof qs === "string") {
         try { qs = JSON.parse(qs); } catch { qs = []; }
       }
       if (!Array.isArray(qs)) continue;
-      for (const q of qs as Record<string, unknown>[]) {
+      parsedForms.push({
+        form_key: String(frow.form_key || ""),
+        qs: qs as Record<string, unknown>[],
+      });
+    }
+    const aliasesById = new Map<string, string[]>();
+    for (const form of parsedForms) {
+      const qs = form.qs.map((q) => ({
+        id: String(q.id || q.label || "").trim(),
+        label: String(q.label || q.id || "").trim(),
+      })).filter((q) => q.id);
+      const bags = universe
+        .filter((r) => !form.form_key || String(r.formKey || "") === form.form_key)
+        .map((r) => r.answers || {});
+      for (const [qid, als] of aliasesForQuestions(qs, bags)) {
+        const prev = aliasesById.get(qid) || [];
+        for (const a of als) if (!prev.includes(a)) prev.push(a);
+        aliasesById.set(qid, prev);
+      }
+    }
+    for (const form of parsedForms) {
+      for (const q of form.qs) {
         const id = String(q.id || q.label || "").trim();
         if (!id || seen.has(id)) continue;
         seen.add(id);
         const type = String(q.type || "text");
         const defined = Array.isArray(q.options) ? q.options.map(String) : [];
         const opts = type === "age" ? [...AGE_OPTIONS] : [...defined];
+        const aliases = aliasesById.get(id) || [];
         if (type === "text" || !opts.length) {
           const seenVals = new Set<string>(opts);
           for (const r of universe) {
-            const av = answerOf(r.answers, id, String(q.label || ""));
+            const av = answerOf(r.answers, id, String(q.label || ""), aliases);
             const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
             for (const v of vals) if (v && v !== "Unknown" && v !== "undefined") seenVals.add(v);
           }
@@ -2727,6 +2832,7 @@ async function buildAnalytics(
           label: String(q.label || id),
           type,
           options: [...new Set(opts)].slice(0, 100),
+          aliases,
         });
       }
     }
@@ -2740,8 +2846,8 @@ async function buildAnalytics(
   if (dynFilters.size) {
     universe = universe.filter((r) => {
       for (const [qid, want] of dynFilters) {
-        const q = surveyQuestions.find((sq) => sq.id === qid);
-        const av = answerOf(r.answers, qid, q?.label);
+        const q = surveyQuestions.find((sq) => sq.id === qid || sq.aliases.includes(qid));
+        const av = answerOf(r.answers, qid, q?.label, q?.aliases);
         const hit = q?.type === "age"
           ? ageBucket(av) === want
           : Array.isArray(av)
@@ -2865,7 +2971,7 @@ async function buildAnalytics(
     .map((q) => {
       const map = new Map<string, number>();
       for (const r of rows) {
-        const av = answerOf(r.answers, q.id, q.label);
+        const av = answerOf(r.answers, q.id, q.label, q.aliases);
         const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
         for (const v of vals) {
           const name = q.type === "age" ? ageBucket(v) : String(v).trim();
@@ -3066,7 +3172,7 @@ async function buildAnalytics(
       questions: surveyQuestions.map((q) => {
         const map = new Map<string, number>();
         for (const r of subset) {
-          const av = answerOf(r.answers, q.id, q.label);
+          const av = answerOf(r.answers, q.id, q.label, q.aliases);
           const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
           for (const v of vals) {
             const name = q.type === "age" ? ageBucket(v) : v;
@@ -8124,17 +8230,6 @@ Deno.serve(async (req) => {
           "latitude", "longitude", "party", "gender", "caste", "age", "respondent",
           "photo_url", "audio_url", "photo_file", "audio_file",
         ];
-        const skipAnswerKey = (k: string) => {
-          const s = String(k || "").toLowerCase();
-          if (!s || s.startsWith("_") || s.startsWith("geo_") || s.startsWith("location_")) return true;
-          return [
-            "draft", "has_photo", "has_audio", "photo_url", "audio_url",
-            "latitude", "longitude", "lat", "lng", "form_key", "user_id",
-            "submitted_by", "status", "content_type", "mandal", "district",
-            "constituency", "state", "respondent_name", "respondent",
-            "client_package_id", "data_collector", "surveyor", "package_id",
-          ].includes(s);
-        };
         const idToLabel = new Map<string, string>();
         const questionsByForm = new Map<string, { id: string; label: string }[]>();
         {
@@ -8152,26 +8247,22 @@ Deno.serve(async (req) => {
           }
         }
         const qKeys = new Set<string>();
-        const stampKeysByForm = new Map<string, Set<string>>();
+        const bagsByForm = new Map<string, Record<string, unknown>[]>();
         for (const r of rows) {
           const fk = String(r.formKey || "");
-          if (!stampKeysByForm.has(fk)) stampKeysByForm.set(fk, new Set());
+          if (!bagsByForm.has(fk)) bagsByForm.set(fk, []);
+          bagsByForm.get(fk)!.push(r.answers || {});
           for (const k of Object.keys(r.answers || {})) {
             if (!skipAnswerKey(k)) qKeys.add(k);
-            if (/^q_\d+$/i.test(k) && !idToLabel.has(k)) stampKeysByForm.get(fk)!.add(k);
           }
         }
-        // Old answers keep q_<timestamp> after Field ID was changed to the
-        // question text. Pair leftover stamp keys with leftover questions
-        // in the same order the survey was built.
-        for (const [fk, stamps] of stampKeysByForm) {
+        for (const [fk, bags] of bagsByForm) {
           const qs = questionsByForm.get(fk) || [];
-          const leftover = qs.filter((q) => !stamps.has(q.id) && !/^q_\d+$/i.test(q.id));
-          const unused = leftover.length ? leftover : qs.filter((q) => !idToLabel.has(q.id) || !qKeys.has(q.id));
-          const keys = [...stamps].sort();
-          for (let i = 0; i < keys.length; i++) {
-            const q = unused[i];
-            if (q?.label) idToLabel.set(keys[i], q.label);
+          for (const [qid, als] of aliasesForQuestions(qs, bags)) {
+            const label = qs.find((q) => q.id === qid)?.label;
+            if (label) {
+              for (const a of als) idToLabel.set(a, label);
+            }
           }
         }
         const qCols = [...qKeys].sort((a, b) => {

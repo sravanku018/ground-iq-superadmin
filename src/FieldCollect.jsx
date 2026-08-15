@@ -1,5 +1,42 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getMyProgress, getSurveyForm } from './api'
+import { slugQuestionKey } from './questionKey'
+
+function mapAnswersToQuestions(answers, questions) {
+  const src = answers || {}
+  const out = { ...src }
+  const qs = (questions || []).filter((q) => q && (q.id || q.label))
+  const used = new Set()
+  for (const q of qs) {
+    const id = String(q.id || slugQuestionKey(q.label) || '').trim()
+    if (!id) continue
+    if (src[id] != null && src[id] !== '') {
+      used.add(id)
+      out[id] = src[id]
+      continue
+    }
+    const slug = slugQuestionKey(q.label || '')
+    const hit = [q.label, slug].find((k) => k && src[k] != null && src[k] !== '')
+    if (hit) {
+      out[id] = src[hit]
+      used.add(hit)
+    }
+  }
+  const leftover = Object.keys(src)
+    .filter((k) => /^q_\d+$/i.test(k) && !used.has(k) && src[k] != null && src[k] !== '')
+    .sort()
+  const emptyQs = qs.filter((q) => {
+    const id = String(q.id || slugQuestionKey(q.label) || '').trim()
+    return id && (out[id] == null || out[id] === '')
+  })
+  leftover.forEach((k, i) => {
+    const q = emptyQs[i]
+    if (!q) return
+    const id = String(q.id || slugQuestionKey(q.label) || '').trim()
+    if (id) out[id] = src[k]
+  })
+  return out
+}
 import {
   collapseDuplicateDrafts,
   deleteDraft,
@@ -185,9 +222,10 @@ export default function FieldCollectScreen({
     const d = pkg.qa || pkg
     const init = {}
     for (const q of questions || []) {
-      if (q && q.id) init[q.id] = ''
+      const id = q?.id || slugQuestionKey(q?.label || '')
+      if (id) init[id] = ''
     }
-    setAnswers({ ...init, ...(d.answers || {}) })
+    setAnswers(mapAnswersToQuestions({ ...init, ...(d.answers || {}) }, questions || []))
     const g = d.geo
     if (g && Number.isFinite(Number(g.lat))) {
       setGeo({ lat: Number(g.lat), lng: Number(g.lng), accuracy: g.accuracy ?? 0, at: g.at ?? '', locked: true })
@@ -778,8 +816,9 @@ export default function FieldCollectScreen({
       const cleanAnswers = { ...answers }
       delete cleanAnswers._draft
       delete cleanAnswers.draft
+      const remapped = mapAnswersToQuestions(cleanAnswers, questions || [])
       const lockedAnswers = {
-        ...cleanAnswers,
+        ...remapped,
         _geo_locked: true,
         _photo_locked: true,
         _voice_locked: true,

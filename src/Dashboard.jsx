@@ -223,8 +223,11 @@ function HBar({ data, onBarClick, activeName, colorKey }) {
 
 function StackedParty({ matrix, onRowClick }) {
   if (!matrix?.rows?.length) return <EmptyChart />
-  const cols = (matrix.columns || []).filter((c) => c)
   const data = matrix.rows.slice(0, 10)
+  const cols = (matrix.columns || []).filter(
+    (c) => c && data.some((row) => Number(row[c]) > 0),
+  )
+  if (!cols.length) return <EmptyChart label="No party breakdown in this survey" />
   const height = Math.max(220, data.length * 32 + 50)
   return (
     <ResponsiveContainer width="100%" height={height}>

@@ -146,30 +146,31 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
 
       {/* Summary KPI Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 16 }}>
-        <div className="stat" style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, padding: '10px 12px' }}>
-          <strong style={{ fontSize: 20, color: '#2563eb' }}>{summary?.total_projects ?? 0}</strong>
-          <span style={{ fontSize: 11, color: '#64748b' }}>📋 Projects</span>
-        </div>
-        <div className="stat" style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, padding: '10px 12px' }}>
-          <strong style={{ fontSize: 20, color: '#7c3aed' }}>{summary?.total_questions ?? 0}</strong>
-          <span style={{ fontSize: 11, color: '#64748b' }}>❓ Questions</span>
-        </div>
-        <div className="stat" style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, padding: '10px 12px' }}>
-          <strong style={{ fontSize: 20, color: '#059669' }}>{summary?.total_surveyors ?? 0}</strong>
-          <span style={{ fontSize: 11, color: '#64748b' }}>👥 Surveyors</span>
-        </div>
-        <div className="stat" style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, padding: '10px 12px' }}>
-          <strong style={{ fontSize: 20, color: '#d97706' }}>{summary?.total_submissions ?? 0}</strong>
-          <span style={{ fontSize: 11, color: '#64748b' }}>📝 Submissions</span>
-        </div>
-        <div className="stat" style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, padding: '10px 12px' }}>
-          <strong style={{ fontSize: 20, color: '#0284c7' }}>{summary?.total_locations ?? 0}</strong>
-          <span style={{ fontSize: 11, color: '#64748b' }}>📍 Geo Points</span>
-        </div>
-        <div className="stat" style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, padding: '10px 12px' }}>
-          <strong style={{ fontSize: 20, color: '#10b981' }}>{summary?.confirmed_qa ?? 0}</strong>
-          <span style={{ fontSize: 11, color: '#64748b' }}>✅ Verified QA</span>
-        </div>
+        {[
+          { value: summary?.total_projects, label: 'Projects' },
+          { value: summary?.total_questions, label: 'Questions' },
+          { value: summary?.total_surveyors, label: 'Surveyors' },
+          { value: summary?.total_submissions, label: 'Submissions' },
+          { value: summary?.total_locations, label: 'Geo points' },
+          { value: summary?.confirmed_qa, label: 'Verified QA', accent: true },
+        ].map(({ value, label, accent }) => (
+          <div
+            key={label}
+            className="stat"
+            style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, padding: '10px 12px' }}
+          >
+            {value ? (
+              <strong style={{ fontSize: 20, color: accent ? '#059669' : '#0f172a' }}>
+                {value}
+              </strong>
+            ) : (
+              <strong style={{ fontSize: 13, fontStyle: 'italic', fontWeight: 400, color: '#94a3b8' }}>
+                No data yet
+              </strong>
+            )}
+            <span style={{ fontSize: 11, color: '#64748b' }}>{label}</span>
+          </div>
+        ))}
       </div>
 
       {/* Tabs */}

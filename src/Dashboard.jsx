@@ -956,11 +956,23 @@ export default function DashboardScreen({ onToast }) {
             <span>Confirmed</span>
           </div>
           <div className="kpi">
-            <strong>{charts?.byParty?.[0]?.name || '—'}</strong>
+            {charts?.byParty?.[0]?.name ? (
+              <strong>{charts.byParty[0].name}</strong>
+            ) : (
+              <strong style={{ fontStyle: 'italic', fontWeight: 400, color: '#94a3b8' }}>
+                No data yet
+              </strong>
+            )}
             <span>Lead party</span>
           </div>
           <div className="kpi">
-            <strong>{charts?.issues?.[0]?.name || '—'}</strong>
+            {charts?.issues?.[0]?.name ? (
+              <strong>{charts.issues[0].name}</strong>
+            ) : (
+              <strong style={{ fontStyle: 'italic', fontWeight: 400, color: '#94a3b8' }}>
+                No data yet
+              </strong>
+            )}
             <span>Top issue</span>
           </div>
         </div>

@@ -351,8 +351,17 @@ export default function SurveyMap({
 
       <footer className="map-legend">
         {legend.map((item) => (
-          <span key={item.name} className="legend-item">
-            <i style={{ background: item.color }} />
+          <span
+            key={item.name}
+            className="legend-item"
+            style={{ color: item.color, fontWeight: 500 }}
+          >
+            <i
+              style={{
+                background: item.color,
+                boxShadow: `0 0 0 1px rgba(255,255,255,0.25)`,
+              }}
+            />
             {item.name}
           </span>
         ))}

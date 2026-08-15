@@ -271,28 +271,18 @@ async function peakQuestionsForAdmin(
   adminId: number,
   companyName?: string | null,
 ): Promise<number> {
-  const company = String(companyName || "").trim();
-  const rows = company
-    ? await sqlFn`
-        SELECT questions FROM survey_form
-        WHERE form_key NOT IN ('default', 'legacy')
-          AND (
-            created_by = ${adminId}
-            OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${adminId})
-            OR (
-              company_name IS NOT NULL AND TRIM(company_name) <> ''
-              AND LOWER(TRIM(company_name)) = LOWER(${company})
-            )
-          )
-      `.catch(() => [])
-    : await sqlFn`
-        SELECT questions FROM survey_form
-        WHERE form_key NOT IN ('default', 'legacy')
-          AND (
-            created_by = ${adminId}
-            OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${adminId})
-          )
-      `.catch(() => []);
+  // No company predicate — owned + explicitly-granted surveys only, same
+  // rule as adminFormKeyScope (see SCHEMA.md). companyName kept as a
+  // param for call-site compatibility but intentionally unused here.
+  void companyName;
+  const rows = await sqlFn`
+      SELECT questions FROM survey_form
+      WHERE form_key NOT IN ('default', 'legacy')
+        AND (
+          created_by = ${adminId}
+          OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${adminId})
+        )
+    `.catch(() => []);
   let peak = 0;
   for (const r of rows as { questions?: unknown }[]) {
     peak = Math.max(peak, parseQuestionsArray(r.questions).length);
@@ -5019,6 +5009,20 @@ Deno.serve(async (req) => {
       const name = String(body.name || "").trim();
       const questions = Array.isArray(body.questions) ? body.questions : [];
       if (!name) return json({ error: "Template name required" }, 400);
+      // Reject empty/duplicate question ids at the source — bank templates
+      // get copied verbatim into real surveys, so a bad id here poisons
+      // every survey created from it.
+      {
+        const seenIds = new Set<string>();
+        for (const qq of questions as Record<string, unknown>[]) {
+          const qid = String((qq as { id?: unknown })?.id || "").trim();
+          if (!qid) return json({ error: "Every question needs a non-empty id" }, 422);
+          if (seenIds.has(qid)) {
+            return json({ error: `Duplicate question id "${qid}" — each question needs a unique id` }, 422);
+          }
+          seenIds.add(qid);
+        }
+      }
       // is_global forced true only for super_admin (FR-QB-02)
       const isGlobal = me.role === "super_admin" && body.is_global === true;
       const rows = await sql`
@@ -5062,6 +5066,17 @@ Deno.serve(async (req) => {
       const questions = Array.isArray(body.questions)
         ? body.questions
         : (Array.isArray(t.questions) ? t.questions : []);
+      {
+        const seenIds = new Set<string>();
+        for (const qq of questions as Record<string, unknown>[]) {
+          const qid = String((qq as { id?: unknown })?.id || "").trim();
+          if (!qid) return json({ error: "Every question needs a non-empty id" }, 422);
+          if (seenIds.has(qid)) {
+            return json({ error: `Duplicate question id "${qid}" — each question needs a unique id` }, 422);
+          }
+          seenIds.add(qid);
+        }
+      }
       const isGlobal = t.is_global === true || (me.role === "super_admin" && body.is_global === true);
       await sql`
         UPDATE question_bank
@@ -6303,32 +6318,14 @@ Deno.serve(async (req) => {
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const q = (url.searchParams.get("q") || "").trim().toLowerCase();
       // Super Admin: all projects.
-      // Client Admin: own surveys + explicit shares + Super Admin projects for their company.
-      const meCompany = String((me as { company_name?: unknown }).company_name || "").trim();
+      // Client Admin: own surveys + explicit shares only — no company
+      // predicate (see SCHEMA.md: company is a display label, never a
+      // live access check).
       const rows = me.role === "super_admin"
         ? (q
             ? await sql`SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form WHERE LOWER(title) LIKE ${'%' + q + '%'} ORDER BY title`
             : await sql`SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form ORDER BY title`)
-        : meCompany
-          ? (q
-              ? await sql`
-                  SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
-                  WHERE (
-                    created_by = ${me.id}
-                    OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-                    OR (company_name IS NOT NULL AND TRIM(company_name) <> '' AND LOWER(TRIM(company_name)) = LOWER(${meCompany}))
-                  )
-                    AND LOWER(title) LIKE ${'%' + q + '%'}
-                  ORDER BY title
-                `
-              : await sql`
-                  SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
-                  WHERE created_by = ${me.id}
-                     OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-                     OR (company_name IS NOT NULL AND TRIM(company_name) <> '' AND LOWER(TRIM(company_name)) = LOWER(${meCompany}))
-                  ORDER BY title
-                `)
-          : (q
+        : (q
               ? await sql`
                   SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
                   WHERE (created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
@@ -6449,6 +6446,21 @@ Deno.serve(async (req) => {
         }, 400);
       }
       const questions = Array.isArray(body.questions) ? body.questions : [];
+      // Same validation as PUT /api/surveys/:id — reject empty/duplicate
+      // question ids before they ever reach the database.
+      {
+        const seenIds = new Set<string>();
+        for (const qq of questions as Record<string, unknown>[]) {
+          const qid = String((qq as { id?: unknown })?.id || "").trim();
+          if (!qid) {
+            return json({ error: "Every question needs a non-empty id" }, 422);
+          }
+          if (seenIds.has(qid)) {
+            return json({ error: `Duplicate question id "${qid}" — each question needs a unique id` }, 422);
+          }
+          seenIds.add(qid);
+        }
+      }
       // Super Admin registers the company this project is mapped under + the Client
       // Admins who are part of it (they get project access; the Super Admin stays owner).
       let companyName: string | null = null;
@@ -6599,20 +6611,11 @@ Deno.serve(async (req) => {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const id = Number(path.split("/")[3]);
-      // Client Admin: own survey, explicit share, or Super Admin project for their company.
-      const meCompanyOpen = String((me as { company_name?: unknown }).company_name || "").trim();
+      // Client Admin: own survey or explicit share only — no company
+      // predicate (see SCHEMA.md).
       const rows = me.role === "super_admin"
         ? await sql`SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form WHERE id = ${id}`
-        : meCompanyOpen
-          ? await sql`
-              SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form
-              WHERE id = ${id} AND (
-                created_by = ${me.id}
-                OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-                OR (company_name IS NOT NULL AND TRIM(company_name) <> '' AND LOWER(TRIM(company_name)) = LOWER(${meCompanyOpen}))
-              )
-            `
-          : await sql`
+        : await sql`
               SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form
               WHERE id = ${id} AND (
                 created_by = ${me.id}
@@ -7064,6 +7067,21 @@ Deno.serve(async (req) => {
         `;
       }
       if (Array.isArray(body.questions)) {
+        // Reject malformed question ids before saving — an empty or
+        // duplicate id collapses multiple questions onto one key in every
+        // downstream per-question map (filters, chart counts), which can
+        // break analytics for the whole survey, not just that question.
+        const seenIds = new Set<string>();
+        for (const q of body.questions as Record<string, unknown>[]) {
+          const qid = String((q as { id?: unknown })?.id || "").trim();
+          if (!qid) {
+            return json({ error: "Every question needs a non-empty id" }, 422);
+          }
+          if (seenIds.has(qid)) {
+            return json({ error: `Duplicate question id "${qid}" — each question needs a unique id` }, 422);
+          }
+          seenIds.add(qid);
+        }
         await sql`
           UPDATE survey_form SET questions = ${JSON.stringify(body.questions)}::jsonb, updated_at = NOW()
           WHERE id = ${id}
@@ -7197,22 +7215,11 @@ Deno.serve(async (req) => {
         return json({ error: "You can only assign surveys to surveyors you created" }, 403);
       }
 
-      // Only allow surveys this admin owns or is shared on (or company-scoped SA projects)
-      const meCompany = String((me as { company_name?: unknown }).company_name || "").trim();
+      // Only allow surveys this admin owns or is explicitly shared on — no
+      // company predicate (see SCHEMA.md).
       let allowedSurveyIds: number[] = [];
       if (surveyIds.length) {
-        const okSurveys = meCompany
-          ? await sql`
-              SELECT id FROM survey_form
-              WHERE id = ANY(${surveyIds})
-                AND (
-                  created_by = ${me.id}
-                  OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-                  OR (company_name IS NOT NULL AND TRIM(company_name) <> ''
-                      AND LOWER(TRIM(company_name)) = LOWER(${meCompany}))
-                )
-            `.catch(() => [])
-          : await sql`
+        const okSurveys = await sql`
               SELECT id FROM survey_form
               WHERE id = ANY(${surveyIds})
                 AND (
@@ -7231,11 +7238,6 @@ Deno.serve(async (req) => {
             SELECT id FROM survey_form
             WHERE created_by = ${me.id}
                OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-               OR (
-                 ${meCompany} <> ''
-                 AND company_name IS NOT NULL AND TRIM(company_name) <> ''
-                 AND LOWER(TRIM(company_name)) = LOWER(${meCompany})
-               )
           )
       `.catch(() => null);
 

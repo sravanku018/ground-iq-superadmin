@@ -152,12 +152,7 @@ function bearer(req: Request): string | null {
   if (h.startsWith("Bearer ")) return h.slice(7);
   const x = req.headers.get("x-auth-token");
   if (x) return x;
-  try {
-    const u = new URL(req.url);
-    return u.searchParams.get("token") || u.searchParams.get("auth");
-  } catch {
-    return null;
-  }
+  return null; // Removed URL query token support for security
 }
 
 async function getUser(token: string | null) {
@@ -1735,11 +1730,7 @@ function isImageBytes(bytes: Uint8Array<ArrayBuffer>): boolean {
   if (bytes.length < 8) return false;
   // JPEG: FF D8 FF
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
-    // require end marker so truncated files are rejected
-    for (let i = Math.max(0, bytes.length - 2); i < bytes.length; i++) {
-      if (bytes[i] === 0xff && bytes[i + 1] === 0xd9) return true;
-    }
-    return false;
+    return bytes.length >= 2 && bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9;
   }
   // PNG: 89 50 4E 47 0D 0A 1A 0A
   if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {

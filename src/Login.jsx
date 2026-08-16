@@ -44,7 +44,10 @@ export default function LoginScreen({ onSuccess, onToast }) {
       onToast?.(`Hi ${data.user.name}`, 'ok')
       onSuccess?.(data.user)
     } catch (err) {
-      const msg = err.message || 'Login failed'
+      const msg =
+        err.status === 429
+          ? 'Too many login attempts — please wait 60 seconds.'
+          : err.message || 'Login failed'
       setError(msg)
       onToast?.(msg, 'error')
     } finally {

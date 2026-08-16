@@ -35,7 +35,11 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
       onToast?.(`Welcome ${data.user.name}`, 'ok')
       onSuccess?.(data.user)
     } catch (err) {
-      onToast?.(err.message || 'Login failed', 'error')
+      const msg =
+        err.status === 429
+          ? 'Too many login attempts — please wait 60 seconds.'
+          : err.message || 'Login failed'
+      onToast?.(msg, 'error')
     } finally {
       setLoading(false)
     }

@@ -34,8 +34,21 @@ if (!DATABASE_URL) {
 const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
 const ROLES = ["admin"] as const;
 
+// ── Rate Limiting (In-Memory) ────────────────────────────
+const loginAttempts = new Map<string, { count: number; reset: number }>();
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const a = loginAttempts.get(ip);
+  if (!a || now > a.reset) {
+    loginAttempts.set(ip, { count: 1, reset: now + 60000 });
+    return true;
+  }
+  a.count++;
+  return a.count <= 5;
+}
+
 // ── Crypto helpers (same idea as Node auth) ───────────────
-async function pbkdf2Hash(password: string, saltHex: string): Promise<string> {
+async function pbkdf2Hash(password: string, saltHex: string, iterations = 600_000): Promise<string> {
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
@@ -48,7 +61,7 @@ async function pbkdf2Hash(password: string, saltHex: string): Promise<string> {
     saltHex.match(/.{1,2}/g)!.map((h) => parseInt(h, 16)),
   );
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt, iterations: 100_000, hash: "SHA-256" },
+    { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
     keyMaterial,
     256,
   );
@@ -61,7 +74,7 @@ async function pbkdf2Hash(password: string, saltHex: string): Promise<string> {
 async function hashPasswordAsync(password: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const saltHex = [...salt].map((b) => b.toString(16).padStart(2, "0")).join("");
-  return pbkdf2Hash(password, saltHex);
+  return pbkdf2Hash(password, saltHex, 600_000);
 }
 
 /** Strong random password for Super Admin bootstrap (never committed to the repo). */
@@ -81,7 +94,10 @@ async function verifyPassword(
   // Accept PBKDF2: pbkdf2:salt:hash
   if (stored.startsWith("pbkdf2:")) {
     const [, saltHex, hash] = stored.split(":");
-    const next = await pbkdf2Hash(password, saltHex);
+    // Try 600k iterations first, then fallback to legacy 100k iterations for backward compatibility
+    let next = await pbkdf2Hash(password, saltHex, 600_000);
+    if (next === `pbkdf2:${saltHex}:${hash}`) return true;
+    next = await pbkdf2Hash(password, saltHex, 100_000);
     return next === `pbkdf2:${saltHex}:${hash}`;
   }
   // Fallback: for playground demo, allow plain env seed passwords via re-seed
@@ -122,6 +138,8 @@ function corsPreflight() {
 }
 
 async function readBody(req: Request): Promise<Record<string, unknown>> {
+  const cl = Number(req.headers.get("content-length") || 0);
+  if (cl > 10_000_000) throw new Error("Body too large");
   try {
     return (await req.json()) as Record<string, unknown>;
   } catch {
@@ -415,7 +433,7 @@ function logAudit(
       ${entityId != null ? String(entityId) : null},
       ${JSON.stringify(meta || {})}::jsonb
     )
-  `.catch(() => null);
+  `.catch((e) => console.error("AUDIT LOG FAILED:", (e as Error)?.message || e));
 }
 
 
@@ -3351,6 +3369,10 @@ Deno.serve(async (req) => {
 
     // Login — admin portal OR surveyor field app (accounts created by Client Admin only)
     if (path === "/api/auth/login" && method === "POST") {
+      const ip = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown";
+      if (!checkRateLimit(ip)) {
+        return json({ error: "Too many login attempts. Try again later." }, 429);
+      }
       const body = await readBody(req);
       const username = String(body.username || "").trim().toLowerCase();
       const password = String(body.password || "");

@@ -8316,15 +8316,18 @@ Deno.serve(async (req) => {
           usedHeads.add(unique);
           return unique;
         });
+        const orientation = (url.searchParams.get("orientation") || url.searchParams.get("layout") || "vertical").trim().toLowerCase();
+        const isVertical = orientation !== "horizontal";
+
         const esc = (v: unknown) => {
           const s = String(v ?? "");
           return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
         };
         const lines: string[] = [];
-        lines.push([...fixed, ...qHeaders].map(esc).join(","));
-        for (const r of rows) {
+
+        const getBaseRecord = (r: (typeof rows)[number]) => {
           const rObj = r as unknown as Record<string, unknown>;
-          const base: Record<string, unknown> = {
+          return {
             id: r.id,
             date: dayKey(r.created_at),
             survey: r.formKey,
@@ -8343,14 +8346,47 @@ Deno.serve(async (req) => {
             audio_url: audioUrl.get(Number(r.id)) || "",
             photo_file: photoUrl.has(Number(r.id)) ? photoName(r.id) : "",
             audio_file: audioUrl.has(Number(r.id)) ? audioName(r.id) : "",
-          };
-          const rec: string[] = [];
-          for (const c of fixed) rec.push(esc(base[c]));
-          for (const c of qCols) {
-            const v = (r.answers || {})[c];
-            rec.push(esc(Array.isArray(v) ? v.join(" | ") : v));
+          } as Record<string, unknown>;
+        };
+
+        if (isVertical) {
+          // Vertical Layout: Transposed CSV (Questions / Attributes as Rows, Records as Columns)
+          const headerRow = ["Field / Question", ...rows.map((r, idx) => `Record #${r.id || idx + 1}`)];
+          lines.push(headerRow.map(esc).join(","));
+
+          // Fixed Metadata Fields (Rows)
+          for (const c of fixed) {
+            const rowVals = [c];
+            for (const r of rows) {
+              const base = getBaseRecord(r);
+              rowVals.push(esc(base[c]));
+            }
+            lines.push(rowVals.join(","));
           }
-          lines.push(rec.join(","));
+
+          // Dynamic Survey Questions (Rows)
+          qCols.forEach((c, idx) => {
+            const qHeader = qHeaders[idx] || c;
+            const rowVals = [esc(qHeader)];
+            for (const r of rows) {
+              const v = (r.answers || {})[c];
+              rowVals.push(esc(Array.isArray(v) ? v.join(" | ") : v));
+            }
+            lines.push(rowVals.join(","));
+          });
+        } else {
+          // Horizontal Layout: Standard CSV (One row per record)
+          lines.push([...fixed, ...qHeaders].map(esc).join(","));
+          for (const r of rows) {
+            const base = getBaseRecord(r);
+            const rec: string[] = [];
+            for (const c of fixed) rec.push(esc(base[c]));
+            for (const c of qCols) {
+              const v = (r.answers || {})[c];
+              rec.push(esc(Array.isArray(v) ? v.join(" | ") : v));
+            }
+            lines.push(rec.join(","));
+          }
         }
         logAudit(me, "data_export", "export", null, {
           rows: rows.length,

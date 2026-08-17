@@ -38,6 +38,7 @@ export default function AdminDataScreen({ onToast }) {
     district: '',
     constituency: '',
     status: 'confirmed',
+    orientation: 'vertical',
   })
 
   const exportFilters = () => ({
@@ -49,6 +50,7 @@ export default function AdminDataScreen({ onToast }) {
     district: exp.district,
     constituency: exp.constituency,
     status: exp.status,
+    orientation: exp.orientation || 'vertical',
   })
 
   async function loadKindBytes(it, kind) {
@@ -261,37 +263,61 @@ export default function AdminDataScreen({ onToast }) {
         }
 
         const lines = []
-        lines.push([...fixed, ...qCols].map(esc).join(','))
+        const isVertical = exp.orientation !== 'horizontal'
 
-        filtered.forEach((r) => {
-          const base = {
-            id: r.id || '',
-            date: String(r.created_at || r.date || '').slice(0, 10),
-            survey: r.formKey || r.survey || '',
-            surveyor: r.submitted_by || r.surveyor || '',
-            district: r.district || '',
-            constituency: r.constituency || '',
-            mandal: r.mandal || '',
-            latitude: r.latitude || r.lat || '',
-            longitude: r.longitude || r.lng || '',
-            party: r.party || '',
-            gender: r.gender || '',
-            caste: r.caste || '',
-            age: r.age || '',
-            respondent: r.respondent || '',
-            photo_url: r.photo_url || r.photoUrl || '',
-            audio_url: r.audio_url || r.audioUrl || '',
-            photo_file: r.id ? `${r.id}/${r.id}.jpg` : '',
-            audio_file: r.id ? `${r.id}/${r.id}.webm` : '',
-          }
-          const row = []
-          fixed.forEach((c) => row.push(esc(base[c])))
-          qCols.forEach((c) => {
-            const val = (r.answers || {})[c]
-            row.push(esc(Array.isArray(val) ? val.join(' | ') : val))
-          })
-          lines.push(row.join(','))
+        const getBaseRecord = (r) => ({
+          id: r.id || '',
+          date: String(r.created_at || r.date || '').slice(0, 10),
+          survey: r.formKey || r.survey || '',
+          surveyor: r.submitted_by || r.surveyor || '',
+          district: r.district || '',
+          constituency: r.constituency || '',
+          mandal: r.mandal || '',
+          latitude: r.latitude || r.lat || '',
+          longitude: r.longitude || r.lng || '',
+          party: r.party || '',
+          gender: r.gender || '',
+          caste: r.caste || '',
+          age: r.age || '',
+          respondent: r.respondent || '',
+          photo_url: r.photo_url || r.photoUrl || '',
+          audio_url: r.audio_url || r.audioUrl || '',
+          photo_file: r.id ? `${r.id}/${r.id}.jpg` : '',
+          audio_file: r.id ? `${r.id}/${r.id}.webm` : '',
         })
+
+        if (isVertical) {
+          const headerRow = ['Field / Question', ...filtered.map((r, idx) => `Record #${r.id || idx + 1}`)]
+          lines.push(headerRow.map(esc).join(','))
+          fixed.forEach((c) => {
+            const rowVals = [c]
+            filtered.forEach((r) => {
+              const base = getBaseRecord(r)
+              rowVals.push(esc(base[c]))
+            })
+            lines.push(rowVals.join(','))
+          })
+          qCols.forEach((c) => {
+            const rowVals = [esc(c)]
+            filtered.forEach((r) => {
+              const val = (r.answers || {})[c]
+              rowVals.push(esc(Array.isArray(val) ? val.join(' | ') : val))
+            })
+            lines.push(rowVals.join(','))
+          })
+        } else {
+          lines.push([...fixed, ...qCols].map(esc).join(','))
+          filtered.forEach((r) => {
+            const base = getBaseRecord(r)
+            const row = []
+            fixed.forEach((c) => row.push(esc(base[c])))
+            qCols.forEach((c) => {
+              const val = (r.answers || {})[c]
+              row.push(esc(Array.isArray(val) ? val.join(' | ') : val))
+            })
+            lines.push(row.join(','))
+          })
+        }
         csv = lines.join('\n')
       }
 
@@ -776,6 +802,16 @@ export default function AdminDataScreen({ onToast }) {
                   <option value="confirmed">Confirmed</option>
                   <option value="pending">Pending</option>
                   <option value="all">All</option>
+                </select>
+              </label>
+              <label className="field compact">
+                <span>CSV Layout</span>
+                <select
+                  value={exp.orientation || 'vertical'}
+                  onChange={(e) => setExp((f) => ({ ...f, orientation: e.target.value }))}
+                >
+                  <option value="vertical">Vertical (Questions as Rows — Key/Value per column)</option>
+                  <option value="horizontal">Horizontal (Standard — One row per record)</option>
                 </select>
               </label>
             </FilterSection>

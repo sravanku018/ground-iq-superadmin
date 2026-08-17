@@ -377,15 +377,14 @@ async function listAdminInbox(
 ) {
   const after = Math.max(0, Number(afterId) || 0);
   if (admin.role === "super_admin") {
+    // Surveyor profile verification notifications (profile_media) belong exclusively to the Client Admin
+    // profile who created/manages those surveyors. Exclude profile_media from Super Admin inbox.
     return await sqlFn`
       SELECT a.id, a.actor_id, a.actor_name, a.action, a.entity_type, a.entity_id, a.meta, a.created_at,
              COALESCE(u.verified, FALSE) AS surveyor_verified
       FROM audit_log a
-      LEFT JOIN app_users u ON u.id = CASE
-        WHEN a.action = 'profile_media' AND a.entity_id ~ '^[0-9]+$' THEN a.entity_id::int
-        ELSE a.actor_id
-      END
-      WHERE a.action IN ('profile_media', 'submission_create')
+      LEFT JOIN app_users u ON u.id = a.actor_id
+      WHERE a.action = 'submission_create'
         AND a.id > ${after}
       ORDER BY a.id DESC
       LIMIT 50
@@ -396,13 +395,32 @@ async function listAdminInbox(
            COALESCE(u.verified, FALSE) AS surveyor_verified
     FROM audit_log a
     LEFT JOIN app_users u ON u.id = CASE
-      WHEN a.action = 'profile_media' THEN COALESCE(a.entity_id, a.actor_id)
+      WHEN a.action = 'profile_media' AND a.entity_id ~ '^[0-9]+$' THEN a.entity_id::int
       ELSE a.actor_id
     END
     WHERE a.action IN ('profile_media', 'submission_create')
       AND a.id > ${after}
-      AND a.actor_id IN (
-        SELECT id FROM app_users WHERE role = 'surveyor' AND created_by = ${admin.id}
+      AND (
+        a.actor_id IN (
+          SELECT id FROM app_users
+          WHERE role = 'surveyor'
+            AND (
+              created_by = ${admin.id}
+              OR company_id = (SELECT company_id FROM app_users WHERE id = ${admin.id} AND company_id IS NOT NULL)
+            )
+        )
+        OR (
+          a.action = 'profile_media'
+          AND a.entity_id ~ '^[0-9]+$'
+          AND a.entity_id::int IN (
+            SELECT id FROM app_users
+            WHERE role = 'surveyor'
+              AND (
+                created_by = ${admin.id}
+                OR company_id = (SELECT company_id FROM app_users WHERE id = ${admin.id} AND company_id IS NOT NULL)
+              )
+          )
+        )
       )
     ORDER BY a.id DESC
     LIMIT 50

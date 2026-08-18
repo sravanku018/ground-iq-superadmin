@@ -24,9 +24,10 @@ function writeSeen(adminId, ids) {
   }
 }
 
-/** Docs stay in the inbox until Client Admin verifies that surveyor. */
-function isHeldVerify(it) {
-  return it?.kind === 'docs' && it?.verified !== true
+/** Docs stay in the inbox until Client Admin (user.role === 'admin') verifies that surveyor. */
+function isHeldVerify(it, user) {
+  const isClientAdmin = user?.role === 'admin'
+  return isClientAdmin && it?.kind === 'docs' && it?.verified !== true
 }
 
 export default function AdminBell({ user, onGoPage, enabled = true }) {
@@ -64,12 +65,12 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
       })
       if (seed && !seeded.current) {
         seeded.current = true
-        const ids = list.filter((i) => !isHeldVerify(i)).map((i) => i.id)
+        const ids = list.filter((i) => !isHeldVerify(i, user)).map((i) => i.id)
         writeSeen(user?.id, ids)
         setSeen(ids)
       }
     },
-    [user?.id],
+    [user?.id, user?.role],
   )
 
   useEffect(() => {
@@ -130,13 +131,13 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
 
   if (!enabled) return null
 
-  const unread = items.filter((i) => isHeldVerify(i) || !seen.includes(i.id))
+  const unread = items.filter((i) => isHeldVerify(i, user) || !seen.includes(i.id))
   const count = unread.length
   const shown = unread.slice(0, 40)
-  const clearableCount = unread.filter((i) => !isHeldVerify(i)).length
+  const clearableCount = unread.filter((i) => !isHeldVerify(i, user)).length
 
   const clearAll = () => {
-    const heldIds = new Set(items.filter(isHeldVerify).map((i) => i.id))
+    const heldIds = new Set(items.filter((i) => isHeldVerify(i, user)).map((i) => i.id))
     if (!clearableCount) return
     const ids = [...new Set([...seen, ...items.map((i) => i.id)])].filter((id) => !heldIds.has(id))
     writeSeen(user?.id, ids)
@@ -194,7 +195,7 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
           ) : (
             <ul className="admin-bell-list">
               {shown.map((it) => {
-                const pending = isHeldVerify(it)
+                const pending = isHeldVerify(it, user)
                 return (
                   <li key={it.id} style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
                     <button

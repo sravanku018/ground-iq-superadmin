@@ -133,17 +133,22 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
   const unread = items.filter((i) => isHeldVerify(i) || !seen.includes(i.id))
   const count = unread.length
   const shown = unread.slice(0, 40)
-  const heldCount = items.filter(isHeldVerify).length
+  const clearableCount = unread.filter((i) => !isHeldVerify(i)).length
 
   const clearAll = () => {
     const heldIds = new Set(items.filter(isHeldVerify).map((i) => i.id))
-    if (heldCount && heldCount === unread.length) {
-      return
-    }
+    if (!clearableCount) return
     const ids = [...new Set([...seen, ...items.map((i) => i.id)])].filter((id) => !heldIds.has(id))
     writeSeen(user?.id, ids)
     setSeen(ids)
     setOpen(false)
+  }
+
+  const dismissItem = (e, item) => {
+    e.stopPropagation()
+    const ids = [...new Set([...seen, item.id])]
+    writeSeen(user?.id, ids)
+    setSeen(ids)
   }
 
   const openItem = (it) => {
@@ -176,9 +181,9 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
         <div className="admin-bell-panel" role="dialog" aria-label="Notifications">
           <div className="admin-bell-head">
             <strong>Notifications</strong>
-            {count > 0 && heldCount < count && (
+            {clearableCount > 0 && (
               <button type="button" className="link-btn" onClick={clearAll}>
-                Clear
+                Clear ({clearableCount})
               </button>
             )}
           </div>
@@ -188,25 +193,51 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
             </p>
           ) : (
             <ul className="admin-bell-list">
-              {shown.map((it) => (
-                <li key={it.id}>
-                  <button
-                    type="button"
-                    className={`admin-bell-item${!seen.includes(it.id) ? ' is-new' : ''}`}
-                    onClick={() => openItem(it)}
-                  >
-                    <span className="admin-bell-kind">
-                      {it.kind === 'docs' ? 'ID' : 'Activity'}
-                    </span>
-                    <span className="admin-bell-title">{it.title}</span>
-                    <span className="admin-bell-detail">
-                      {isHeldVerify(it)
-                        ? 'Verification pending — stays until you verify this surveyor'
-                        : it.detail}
-                    </span>
-                  </button>
-                </li>
-              ))}
+              {shown.map((it) => {
+                const pending = isHeldVerify(it)
+                return (
+                  <li key={it.id} style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                    <button
+                      type="button"
+                      className={`admin-bell-item${!seen.includes(it.id) ? ' is-new' : ''}`}
+                      onClick={() => openItem(it)}
+                      style={{ flex: 1, textAlign: 'left' }}
+                    >
+                      <span className="admin-bell-kind">
+                        {it.kind === 'docs' ? (it.verified ? 'ID Verified ✓' : 'ID Pending') : 'Activity'}
+                      </span>
+                      <span className="admin-bell-title">{it.title}</span>
+                      <span className="admin-bell-detail">
+                        {pending
+                          ? 'Verification pending — complete verification in Users tab to unlock clear'
+                          : it.kind === 'docs' && it.verified === true
+                            ? 'Verification complete ✓ — clear notification'
+                            : it.detail}
+                      </span>
+                    </button>
+                    {!pending && (
+                      <button
+                        type="button"
+                        className="admin-bell-dismiss"
+                        title="Clear notification"
+                        aria-label="Clear notification"
+                        onClick={(e) => dismissItem(e, it)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '6px 10px',
+                          color: '#94a3b8',
+                          fontSize: '14px',
+                          borderRadius: '4px',
+                        }}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           )}
         </div>

@@ -32,7 +32,6 @@ if (!DATABASE_URL) {
 }
 
 const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
-const ROLES = ["admin"] as const;
 
 // ── Rate Limiting (In-Memory) ────────────────────────────
 const loginAttempts = new Map<string, { count: number; reset: number }>();
@@ -1114,7 +1113,7 @@ async function ensureCompanyExists(
       `.catch(() => null);
       return comp;
     }
-  } catch (_e) {
+  } catch {
     /* ignore fallback to re-select below */
   }
 
@@ -6966,7 +6965,7 @@ Deno.serve(async (req) => {
         let qList: unknown[] = [];
         try {
           qList = typeof s.questions === "string" ? JSON.parse(s.questions) : (Array.isArray(s.questions) ? s.questions : []);
-        } catch (_) { qList = []; }
+        } catch { qList = []; }
         totalQuestions += qList.length;
         return {
           id: Number(s.id),

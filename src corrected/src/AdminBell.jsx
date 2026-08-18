@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { listNotifications, notificationsStreamUrl } from './api'
 
-function seenKey(adminId) {
-  return `esurvey_bell_${adminId || 'admin'}`
+function dismissedKey(adminId) {
+  return `esurvey_bell_dismissed_${adminId || 'admin'}`
 }
 
-function readSeen(adminId) {
+function readDismissed(adminId) {
   try {
-    const raw = localStorage.getItem(seenKey(adminId))
-    if (!raw) return null
+    const raw = localStorage.getItem(dismissedKey(adminId))
+    if (!raw) return []
     const p = JSON.parse(raw)
-    return Array.isArray(p?.ids) ? p.ids : null
+    return Array.isArray(p?.ids) ? p.ids : []
   } catch {
-    return null
+    return []
   }
 }
 
-function writeSeen(adminId, ids) {
+function writeDismissed(adminId, ids) {
   try {
-    localStorage.setItem(seenKey(adminId), JSON.stringify({ ids, at: Date.now() }))
+    localStorage.setItem(dismissedKey(adminId), JSON.stringify({ ids, at: Date.now() }))
   } catch {
     /* ignore */
   }
@@ -33,45 +33,28 @@ function isHeldVerify(it, user) {
 export default function AdminBell({ user, onGoPage, enabled = true }) {
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState([])
-  const [seen, setSeen] = useState(() => readSeen(user?.id) || [])
-  const seeded = useRef(!!readSeen(user?.id))
+  const [dismissed, setDismissed] = useState(() => readDismissed(user?.id))
   const maxSeq = useRef(0)
 
-  const addItems = useCallback(
-    (incoming, { seed = false } = {}) => {
-      const list = Array.isArray(incoming) ? incoming : []
-      if (!list.length) return
+  const addItems = useCallback((incoming) => {
+    const list = Array.isArray(incoming) ? incoming : []
+    if (!list.length) return
+    for (const it of list) {
+      const seq = Number(it.seq) || 0
+      if (seq > maxSeq.current) maxSeq.current = seq
+    }
+    setItems((prev) => {
+      const byId = new Map(prev.map((p) => [p.id, p]))
       for (const it of list) {
-        const seq = Number(it.seq) || 0
-        if (seq > maxSeq.current) maxSeq.current = seq
+        if (!it?.id) continue
+        const old = byId.get(it.id)
+        byId.set(it.id, old ? { ...old, ...it } : it)
       }
-      setItems((prev) => {
-        const byId = new Map(prev.map((p) => [p.id, p]))
-        for (const it of list) {
-          if (!it?.id) continue
-          const old = byId.get(it.id)
-          byId.set(it.id, old ? { ...old, ...it } : it)
-        }
-        const extra = list.filter((it) => it.id && !prev.some((p) => p.id === it.id))
-        if (!extra.length && list.every((it) => {
-          const old = prev.find((p) => p.id === it.id)
-          return old && old.verified === it.verified
-        })) {
-          return prev
-        }
-        return [...byId.values()]
-          .sort((a, b) => (Number(b.seq) || 0) - (Number(a.seq) || 0))
-          .slice(0, 80)
-      })
-      if (seed && !seeded.current) {
-        seeded.current = true
-        const ids = list.filter((i) => !isHeldVerify(i, user)).map((i) => i.id)
-        writeSeen(user?.id, ids)
-        setSeen(ids)
-      }
-    },
-    [user?.id, user?.role],
-  )
+      return [...byId.values()]
+        .sort((a, b) => (Number(b.seq) || 0) - (Number(a.seq) || 0))
+        .slice(0, 80)
+    })
+  }, [])
 
   useEffect(() => {
     if (!enabled) return undefined
@@ -81,7 +64,7 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
       try {
         const d = await listNotifications(0)
         if (dead) return
-        addItems(d.items || [], { seed: true })
+        addItems(d.items || [])
       } catch {
         /* ignore */
       }
@@ -122,7 +105,7 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
       }
     }
     void pull()
-    const id = setInterval(pull, 12_000)
+    const id = setInterval(pull, 8_000)
     return () => {
       dead = true
       clearInterval(id)
@@ -131,25 +114,27 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
 
   if (!enabled) return null
 
-  const unread = items.filter((i) => isHeldVerify(i, user) || !seen.includes(i.id))
-  const count = unread.length
-  const shown = unread.slice(0, 40)
-  const clearableCount = unread.filter((i) => !isHeldVerify(i, user)).length
+  // Filter out items explicitly dismissed by user
+  const activeItems = items.filter((i) => !dismissed.includes(i.id))
+  const count = activeItems.length
+  const shown = activeItems.slice(0, 40)
+
+  // Clearable items are active items that are NOT held pending verification
+  const clearableItems = activeItems.filter((i) => !isHeldVerify(i, user))
+  const clearableCount = clearableItems.length
 
   const clearAll = () => {
-    const heldIds = new Set(items.filter((i) => isHeldVerify(i, user)).map((i) => i.id))
     if (!clearableCount) return
-    const ids = [...new Set([...seen, ...items.map((i) => i.id)])].filter((id) => !heldIds.has(id))
-    writeSeen(user?.id, ids)
-    setSeen(ids)
-    setOpen(false)
+    const newDismissed = [...new Set([...dismissed, ...clearableItems.map((i) => i.id)])]
+    writeDismissed(user?.id, newDismissed)
+    setDismissed(newDismissed)
   }
 
   const dismissItem = (e, item) => {
     e.stopPropagation()
-    const ids = [...new Set([...seen, item.id])]
-    writeSeen(user?.id, ids)
-    setSeen(ids)
+    const newDismissed = [...new Set([...dismissed, item.id])]
+    writeDismissed(user?.id, newDismissed)
+    setDismissed(newDismissed)
   }
 
   const openItem = (it) => {
@@ -184,7 +169,7 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
             <strong>Notifications</strong>
             {clearableCount > 0 && (
               <button type="button" className="link-btn" onClick={clearAll}>
-                Clear ({clearableCount})
+                Clear All ({clearableCount})
               </button>
             )}
           </div>
@@ -196,27 +181,28 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
             <ul className="admin-bell-list">
               {shown.map((it) => {
                 const pending = isHeldVerify(it, user)
+                const isVerified = it.kind === 'docs' && it.verified === true
                 return (
                   <li key={it.id} style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
                     <button
                       type="button"
-                      className={`admin-bell-item${!seen.includes(it.id) ? ' is-new' : ''}`}
+                      className={`admin-bell-item${isVerified ? ' is-verified' : ''}`}
                       onClick={() => openItem(it)}
                       style={{ flex: 1, textAlign: 'left' }}
                     >
-                      <span className="admin-bell-kind">
-                        {it.kind === 'docs' ? (it.verified ? 'ID Verified ✓' : 'ID Pending') : 'Activity'}
+                      <span className="admin-bell-kind" style={{ color: isVerified ? '#059669' : undefined }}>
+                        {it.kind === 'docs' ? (isVerified ? 'ID Verified ✓' : 'ID Pending ⏳') : 'Activity'}
                       </span>
                       <span className="admin-bell-title">{it.title}</span>
                       <span className="admin-bell-detail">
                         {pending
-                          ? 'Verification pending — complete verification in Users tab to unlock clear'
-                          : it.kind === 'docs' && it.verified === true
-                            ? 'Verification complete ✓ — clear notification'
+                          ? 'Verification pending — complete verification in Users tab'
+                          : isVerified
+                            ? 'Verification complete ✓ — click Clear to dismiss'
                             : it.detail}
                       </span>
                     </button>
-                    {!pending && (
+                    {!pending ? (
                       <button
                         type="button"
                         className="admin-bell-dismiss"
@@ -228,13 +214,21 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
                           border: 'none',
                           cursor: 'pointer',
                           padding: '6px 10px',
-                          color: '#94a3b8',
+                          color: '#059669',
+                          fontWeight: 'bold',
                           fontSize: '14px',
                           borderRadius: '4px',
                         }}
                       >
                         ✕
                       </button>
+                    ) : (
+                      <span
+                        title="Complete verification in Users tab to unlock clear"
+                        style={{ padding: '6px 10px', color: '#94a3b8', fontSize: '12px' }}
+                      >
+                        🔒
+                      </span>
                     )}
                   </li>
                 )

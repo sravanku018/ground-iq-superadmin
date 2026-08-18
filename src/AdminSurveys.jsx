@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Icon from './Icons'
 import OptionPills from './OptionPills'
 import {
   createSurvey,
@@ -572,7 +573,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
               fontSize: 13,
             }}
           >
-            🔒 <strong>{Units} are read-only for you.</strong>{' '}
+            <Icon name="lock" size={13} /> <strong>{Units} are read-only for you.</strong>{' '}
             {isSuper
               ? 'You cannot create projects right now.'
               : (
@@ -599,7 +600,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           </label>
           {!isSuper && user?.company_name ? (
             <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-              🏢 Your company: <strong>{user.company_name}</strong> (set by Super Admin — surveys
+              <Icon name="building" size={12} /> Your company: <strong>{user.company_name}</strong> (set by Super Admin — surveys
               are filed under this company).
             </p>
           ) : null}
@@ -639,7 +640,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
 
         {user?.role === 'super_admin' && (
           <div className="card" style={{ marginBottom: 12 }}>
-            <h3 style={{ marginTop: 0, fontSize: 15 }}>🏢 Register company & Client Admins</h3>
+            <h3 style={{ marginTop: 0, fontSize: 15, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="building" size={15} /> Register company & Client Admins</h3>
             <label className="field">
               <span>Company name (project is mapped under this company)</span>
               <input
@@ -745,7 +746,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         <div className="card" style={{ marginBottom: 12, borderLeft: '4px solid #00e599' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <span style={{ fontSize: 12, color: '#059669', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              🔒 Project Name (Locked / Non-Editable)
+              <Icon name="lock" size={11} /> Project Name (Locked / Non-Editable)
             </span>
             <span style={{ fontSize: 11, color: '#64748b' }}>form_key: {detail.form_key}</span>
           </div>
@@ -766,7 +767,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
             {user?.role === 'super_admin'
               ? `🏢 Home company: ${detail.company_name || ownerCompany || 'No company'} · ${(detail.admins || []).length} client admin(s) — ${(detail.admins || []).map((a) => `${a.company_name || 'No company'} · ${a.name || a.username}`).join(', ') || 'none connected yet'}`
-              : <>👥 <strong>Field Team (People who take survey):</strong>{' '}{(detail.surveyors || []).length > 0
+              : <><Icon name="users" size={13} /> <strong>Field Team (People who take survey):</strong>{' '}{(detail.surveyors || []).length > 0
                 ? (detail.surveyors || []).map((s) => s.username || s.name).join(', ')
                 : 'No surveyors assigned yet'}</>}
           </p>
@@ -834,7 +835,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
                         </span>
                         {on ? (
                           <span style={{ color: '#00a86b', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
-                            ✓
+                            <Icon name="check" size={14} />
                           </span>
                         ) : null}
                       </button>
@@ -910,7 +911,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         </div>
         </>}
 
-        <h3 style={{ fontSize: 14, margin: '14px 0 6px' }}>🏢 Client Admins connected to this project</h3>
+        <h3 style={{ fontSize: 14, margin: '14px 0 6px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="building" size={14} /> Client Admins connected to this project</h3>
         <div className="card" style={{ marginBottom: 12, padding: 12 }}>
           {user?.role === 'super_admin' ? (
             <>
@@ -977,7 +978,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
                           </span>
                           {on ? (
                             <span style={{ color: '#7c3aed', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
-                              ✓
+                              <Icon name="check" size={14} />
                             </span>
                           ) : null}
                         </button>
@@ -1111,22 +1112,22 @@ export default function AdminSurveysScreen({ onToast, user }) {
           </div>
           {user?.role === 'super_admin' && (
             <div style={{ fontSize: 13, color: '#334155', fontWeight: 600, marginTop: 3 }}>
-              🏢 {s.company_name || s.owner_company || 'No company'}
+              <Icon name="building" size={13} /> {s.company_name || s.owner_company || 'No company'}
               {s.owner_name ? ` · owned by ${s.owner_name}` : ''}
             </div>
           )}
           {user?.role !== 'super_admin' && (
             <div style={{ fontSize: 13, color: '#38bdf8', fontWeight: 'bold', marginTop: 3 }}>
-              👥 Field Team: {s.surveyor_names || `${s.surveyors || 0} assigned surveyor(s)`}
+              <Icon name="users" size={13} /> Field Team: {s.surveyor_names || `${s.surveyors || 0} assigned surveyor(s)`}
             </div>
           )}
           <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
-            📊 {s.submissions || 0} Submissions · 📋 {s.question_count || 0} Questions · Updated{' '}
+            <Icon name="chart" size={12} /> {s.submissions || 0} Submissions · <Icon name="clipboard" size={12} /> {s.question_count || 0} Questions · Updated{' '}
             {String(s.updated_at || '').slice(0, 16).replace('T', ' ')}
           </div>
           {isSuper && s.admin_count > 0 && (
             <div className="muted" style={{ fontSize: 12, marginTop: 3, color: '#7c3aed' }}>
-              🏢 {s.admin_count} client admin(s) connected
+              <Icon name="building" size={12} /> {s.admin_count} client admin(s) connected
               {s.admin_names ? ` — ${s.admin_names}` : ''}
             </div>
           )}
@@ -1213,7 +1214,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           ).map(([company, items]) => (
             <div key={company}>
               <h3 style={{ fontSize: 14, margin: '16px 0 8px', color: '#334155' }}>
-                🏢 {company}
+                <Icon name="building" size={14} /> {company}
                 <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>
                   {' '}· {items.length} project{items.length === 1 ? '' : 's'}
                 </span>

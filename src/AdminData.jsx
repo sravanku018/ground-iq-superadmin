@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import Icon from './Icons'
 import Papa from 'papaparse'
 import {
   exportSubmissionMedia,
@@ -672,7 +673,7 @@ export default function AdminDataScreen({ onToast }) {
                         gap: 6,
                       }}
                     >
-                      <span>👥 Field team for &quot;{sel?.title || survey}&quot;:</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="users" size={13} /> Field team for &quot;{sel?.title || survey}&quot;:</span>
                     </div>
                     <div style={{ color: '#0f172a', fontSize: 14, fontWeight: 'bold', marginTop: 4 }}>
                       {teamDisplay}

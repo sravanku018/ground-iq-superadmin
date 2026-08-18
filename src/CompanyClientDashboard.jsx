@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Icon from './Icons'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { getCompanyDashboard } from './api'
@@ -76,7 +77,7 @@ function CompanyGeoMap({ locations = [] }) {
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
       {locations.length === 0 && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: '#64748b', zIndex: 1000 }}>
-          📍 No GPS location points recorded for this company yet
+          <Icon name="pin" size={13} /> No GPS location points recorded for this company yet
         </div>
       )}
     </div>
@@ -131,7 +132,7 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, borderBottom: '1px solid #e2e8f0', paddingBottom: 12, marginBottom: 16 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <h2 style={{ margin: 0, fontSize: 18, color: '#0f172a' }}>🏢 {company.name} — Company Client Dashboard</h2>
+            <h2 style={{ margin: 0, fontSize: 18, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}><Icon name="building" size={18} /> {company.name} — Company Client Dashboard</h2>
             <span className="pill ok" style={{ fontWeight: 'bold' }}>Company Tenant</span>
           </div>
           <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
@@ -176,11 +177,11 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid #cbd5e1', paddingBottom: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         {[
-          { id: 'overview', label: '📊 Overview' },
-          { id: 'projects', label: `📋 Projects & Questions (${projects.length})` },
-          { id: 'surveyors', label: `👥 Surveyors Team (${surveyors.length})` },
-          { id: 'map', label: `📍 Geo Location Map (${locations.length})` },
-          { id: 'qa', label: `✅ QA Status (${qa_stats?.total ?? 0})` },
+          { id: 'overview', icon: 'chart', text: 'Overview' },
+          { id: 'projects', icon: 'clipboard', text: `Projects & Questions (${projects.length})` },
+          { id: 'surveyors', icon: 'users', text: `Surveyors Team (${surveyors.length})` },
+          { id: 'map', icon: 'pin', text: `Geo Location Map (${locations.length})` },
+          { id: 'qa', icon: 'checkCircle', text: `QA Status (${qa_stats?.total ?? 0})` },
         ].map((t) => (
           <button
             key={t.id}
@@ -189,7 +190,7 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
             onClick={() => setTab(t.id)}
             style={{ fontWeight: tab === t.id ? 'bold' : 'normal' }}
           >
-            {t.label}
+            <Icon name={t.icon} size={13} /> {t.text}
           </button>
         ))}
       </div>
@@ -200,7 +201,7 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
             {/* Quick summary box */}
             <div style={{ background: '#fff', padding: 14, borderRadius: 8, border: '1px solid #e2e8f0' }}>
-              <h4 style={{ marginTop: 0, fontSize: 14, color: '#0f172a' }}>🏢 Company Profile</h4>
+              <h4 style={{ marginTop: 0, fontSize: 14, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="building" size={14} /> Company Profile</h4>
               <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
                 <tbody>
                   <tr>
@@ -229,7 +230,7 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
 
             {/* QA Health Box */}
             <div style={{ background: '#fff', padding: 14, borderRadius: 8, border: '1px solid #e2e8f0' }}>
-              <h4 style={{ marginTop: 0, fontSize: 14, color: '#0f172a' }}>✅ Data Quality Assurance</h4>
+              <h4 style={{ marginTop: 0, fontSize: 14, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="checkCircle" size={14} /> Data Quality Assurance</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                   <span>Confirmed & Materialized:</span>
@@ -254,7 +255,7 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
 
           {/* Quick Geo Map preview */}
           <div style={{ marginTop: 16 }}>
-            <h4 style={{ fontSize: 14, margin: '0 0 8px' }}>📍 Geo Location Preview ({locations.length} points)</h4>
+            <h4 style={{ fontSize: 14, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="pin" size={14} /> Geo Location Preview ({locations.length} points)</h4>
             <CompanyGeoMap locations={locations} />
           </div>
         </div>
@@ -263,7 +264,7 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
       {/* Tab 2: Projects & Questions */}
       {tab === 'projects' && (
         <div>
-          <h4 style={{ fontSize: 14, margin: '0 0 10px' }}>📋 Projects & Questionnaire Details</h4>
+          <h4 style={{ fontSize: 14, margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="clipboard" size={14} /> Projects & Questionnaire Details</h4>
           {projects.length === 0 ? (
             <p className="muted" style={{ fontSize: 13 }}>No projects registered under this company yet.</p>
           ) : (
@@ -274,7 +275,7 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
                   <div key={p.id} style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, padding: 12 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                       <div>
-                        <strong style={{ fontSize: 14, color: '#0f172a' }}>📋 {p.title}</strong>
+                        <strong style={{ fontSize: 14, color: '#0f172a', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="clipboard" size={13} /> {p.title}</strong>
                         <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>
                           Key: {p.form_key} · {p.question_count} question(s)
                         </span>
@@ -284,7 +285,7 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
                         className="btn small"
                         onClick={() => setExpandedSurveyId(isOpen ? null : p.id)}
                       >
-                        {isOpen ? '▲ Hide Questions' : '▼ View Questions (' + p.question_count + ')'}
+                        {isOpen ? <><Icon name="chevronUp" size={12} /> Hide Questions</> : <><Icon name="chevronDown" size={12} /> View Questions ({p.question_count})</>}
                       </button>
                     </div>
 
@@ -325,7 +326,7 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
       {/* Tab 3: Surveyors Team */}
       {tab === 'surveyors' && (
         <div>
-          <h4 style={{ fontSize: 14, margin: '0 0 10px' }}>👥 Field Collectors / Surveyors Team ({surveyors.length})</h4>
+          <h4 style={{ fontSize: 14, margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="users" size={14} /> Field Collectors / Surveyors Team ({surveyors.length})</h4>
           {surveyors.length === 0 ? (
             <p className="muted" style={{ fontSize: 13 }}>No surveyors mapped to this company's projects yet.</p>
           ) : (
@@ -367,7 +368,7 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
       {/* Tab 4: Geo Location Map */}
       {tab === 'map' && (
         <div>
-          <h4 style={{ fontSize: 14, margin: '0 0 10px' }}>📍 Geo Location Map ({locations.length} coordinates captured)</h4>
+          <h4 style={{ fontSize: 14, margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="pin" size={14} /> Geo Location Map ({locations.length} coordinates captured)</h4>
           <CompanyGeoMap locations={locations} />
           {locations.length > 0 && (
             <div style={{ marginTop: 12, overflowX: 'auto' }}>
@@ -404,7 +405,7 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
       {/* Tab 5: QA Status */}
       {tab === 'qa' && (
         <div>
-          <h4 style={{ fontSize: 14, margin: '0 0 10px' }}>✅ Data Quality Assurance Breakdown</h4>
+          <h4 style={{ fontSize: 14, margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="checkCircle" size={14} /> Data Quality Assurance Breakdown</h4>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
             <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8, padding: 14 }}>
               <div style={{ fontSize: 12, color: '#047857', fontWeight: 600 }}>CONFIRMED / MATERIALIZED FACTS</div>

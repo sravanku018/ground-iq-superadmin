@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import Icon from './Icons'
 import { getQuestions, getSurvey, listSurveys, saveQuestions, updateSurvey } from './api'
 import OptionPills from './OptionPills'
 import { labelPatch, slugQuestionKey } from './questionKey'
@@ -214,7 +215,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
             fontSize: 13,
           }}
         >
-          🔒 <strong>Survey questions are read-only for you.</strong> Editing is locked until the
+          <Icon name="lock" size={13} /> <strong>Survey questions are read-only for you.</strong> Editing is locked until the
           Super Admin grants your account <strong>Survey questions</strong> power (Surveyors → your
           profile).
         </div>
@@ -374,22 +375,22 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                 onChange={(e) => updateQ(i, { required: e.target.checked })}
               />
               <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#00e599' : '#e2e8f0' }}>
-                {q.required ? '✓ Required Question (Surveyor must answer)' : 'Optional Question'}
+                {q.required ? <><Icon name="check" size={12} /> Required Question (Surveyor must answer)</> : 'Optional Question'}
               </span>
             </label>
 
             {/* Live App Preview */}
             <div style={{ background: 'rgba(15,23,42,0.05)', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, marginTop: 8 }}>
               <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 'bold', color: '#38bdf8' }}>
-                📱 Mobile App Preview for Surveyors:
+                <Icon name="smartphone" size={12} /> Mobile App Preview for Surveyors:
               </p>
               {type === 'yesno' ? (
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button type="button" className="btn" style={{ background: '#059669', color: '#fff', fontWeight: 'bold', padding: '8px 20px', border: 0 }}>
-                    ✓ YES
+                    <Icon name="check" size={13} /> YES
                   </button>
                   <button type="button" className="btn" style={{ background: '#dc2626', color: '#fff', fontWeight: 'bold', padding: '8px 20px', border: 0 }}>
-                    ✕ NO
+                    <Icon name="cross" size={13} /> NO
                   </button>
                 </div>
               ) : type === 'sentiment_text' || type === 'sentiment' ? (
@@ -454,7 +455,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
             + Add Question
           </button>
           <button type="button" className="btn primary" onClick={save} disabled={saving || !canEdit} style={{ marginLeft: 8 }}>
-            {saving ? 'Saving & Pushing…' : 'Save & Push to Mobile App ✓'}
+            {saving ? 'Saving & Pushing…' : <><Icon name="check" size={12} /> Save & Push to Mobile App</>}
           </button>
         </>
       )}

@@ -1,4 +1,5 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import Icon from './Icons'
 import {
   getStats,
   getStoredUser,
@@ -33,17 +34,17 @@ const AdminCompaniesScreen = lazy(() => import('./AdminCompanies'))
 
 // Client Admin nav — they create Surveys (Super Admin creates Projects separately)
 const NAV = [
-  { id: 'dashboard', label: 'Dashboard', icon: '◈', pages: ['overview', 'report', 'analyze'] },
-  { id: 'surveyors', label: 'Surveyors', icon: '👤', pages: ['users'] },
-  { id: 'surveys', label: 'Surveys', icon: '▤', pages: ['surveys'] },
-  { id: 'data', label: 'Data collection', icon: '☰', pages: ['questions', 'bank', 'review', 'upload', 'data'] },
+  { id: 'dashboard', label: 'Dashboard', icon: 'grid', pages: ['overview', 'report', 'analyze'] },
+  { id: 'surveyors', label: 'Surveyors', icon: 'user', pages: ['users'] },
+  { id: 'surveys', label: 'Surveys', icon: 'clipboard', pages: ['surveys'] },
+  { id: 'data', label: 'Data collection', icon: 'menu', pages: ['questions', 'bank', 'review', 'upload', 'data'] },
 ]
 
 // Super Admin console only (01-PRD.md): platform governance group
 const PLATFORM_NAV = {
   id: 'platform',
   label: 'Platform',
-  icon: '✦',
+  icon: 'star',
   pages: ['audit', 'bank', 'seats'],
 }
 
@@ -51,7 +52,7 @@ const PLATFORM_NAV = {
 const CLIENT_ADMINS_NAV = {
   id: 'admins',
   label: 'Client Admins',
-  icon: '🛡',
+  icon: 'shield',
   pages: ['admins'],
 }
 
@@ -59,7 +60,7 @@ const CLIENT_ADMINS_NAV = {
 const COMPANIES_NAV = {
   id: 'companies',
   label: 'Companies',
-  icon: '🏢',
+  icon: 'building',
   pages: ['companies'],
 }
 
@@ -67,7 +68,7 @@ const COMPANIES_NAV = {
 const PROJECTS_NAV = {
   id: 'projects',
   label: 'Projects',
-  icon: '▤',
+  icon: 'clipboard',
   pages: ['surveys'],
 }
 
@@ -242,7 +243,7 @@ function AllocationCard({ user }) {
   if (err && !self) {
     return (
       <div className="card" style={{ marginTop: 14 }}>
-        <h3 style={{ marginTop: 0 }}>📊 My allocation</h3>
+        <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="chart" size={16} /> My allocation</h3>
         <p className="muted" style={{ margin: 0 }}>{err}</p>
       </div>
     )
@@ -250,7 +251,7 @@ function AllocationCard({ user }) {
   if (!self) {
     return (
       <div className="card" style={{ marginTop: 14 }}>
-        <h3 style={{ marginTop: 0 }}>📊 My allocation</h3>
+        <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="chart" size={16} /> My allocation</h3>
         <p className="muted" style={{ margin: 0 }}>
           {resolved ? 'Allocation data not available yet — refresh the page.' : 'Loading…'}
         </p>
@@ -279,7 +280,7 @@ function AllocationCard({ user }) {
 
   return (
     <div className="card" style={{ marginTop: 14 }}>
-      <h3 style={{ marginTop: 0 }}>📊 My allocation (created / Super Admin limit)</h3>
+      <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="chart" size={16} /> My allocation (created / Super Admin limit)</h3>
       <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
         Limits come from your Client Admin profile (set by Super Admin). 0 = unlimited.
       </p>
@@ -356,11 +357,11 @@ function AllocationCard({ user }) {
       )}
       {Array.isArray(self.granted_surveys) && self.granted_surveys.length > 0 && (
         <>
-          <h4 style={{ fontSize: 13, margin: '14px 0 8px' }}>🔗 Connected projects (shared by Super Admin)</h4>
+          <h4 style={{ fontSize: 13, margin: '14px 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="link" size={13} /> Connected projects (shared by Super Admin)</h4>
           <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
             {self.granted_surveys.map((s) => (
               <li key={s.id} style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '8px 10px' }}>
-                <span style={{ fontWeight: 600, fontSize: 13, color: '#5b21b6' }}>🔗 {s.title}</span>
+                <span style={{ fontWeight: 600, fontSize: 13, color: '#5b21b6', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="link" size={13} /> {s.title}</span>
               </li>
             ))}
           </ul>
@@ -845,7 +846,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           aria-expanded={navOpen}
           onClick={() => setNavOpen((o) => !o)}
         >
-          {navOpen ? '✕' : '☰'}
+          {navOpen ? <Icon name="cross" size={18} /> : <Icon name="menu" size={18} />}
         </button>
         <div className="portal-topbar-brand">
           <strong>Ground IQ · Admin</strong>
@@ -888,7 +889,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
               }
               onClick={() => goPage(n.pages[0])}
             >
-              <span aria-hidden>{n.icon}</span>
+              <span aria-hidden><Icon name={n.icon} size={17} /></span>
               {n.label}
             </button>
           ))}
@@ -921,7 +922,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
             <strong>
               {user.name || user.username}{' '}
               {user.verified ? <VerifiedBadge size={16} title="Verified" /> : null}
-              {user.role === 'super_admin' ? ' ★' : ''}
+              {user.role === 'super_admin' ? <Icon name="star" size={13} /> : ''}
             </strong>
             <span>
               @{user.username} · {user.role === 'super_admin' ? 'Super Admin' : 'Client Admin'}

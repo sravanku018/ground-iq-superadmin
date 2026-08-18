@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import Icon from './Icons'
 import CompanyClientDashboard from './CompanyClientDashboard'
 import {
   createUser,
@@ -443,7 +444,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
         </p>
         {created && (
           <div className="card" id="created-credentials" style={{ marginTop: 12, borderColor: '#10b981' }}>
-            <h4 style={{ margin: '0 0 6px' }}>✅ {created.name} created</h4>
+            <h4 style={{ margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="checkCircle" size={14} /> {created.name} created</h4>
             <p style={{ margin: 0, fontSize: 13 }}>
               Portal login → username: <strong>{created.username}</strong> · password:{' '}
               <strong>{created.password}</strong>
@@ -482,9 +483,9 @@ export default function AdminClientAdminsScreen({ onToast }) {
                     )}
                     {u.active !== false && (
                       <span className="meta" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                        <span className="pill" title="Surveys created / allocated">📋 surveys {u.survey_count ?? 0} / {u.max_surveys > 0 ? u.max_surveys : '∞'} allocated</span>
+                        <span className="pill" title="Surveys created / allocated" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="clipboard" size={11} /> surveys {u.survey_count ?? 0} / {u.max_surveys > 0 ? u.max_surveys : '∞'} allocated</span>
                         <span className="pill" title="Peak questions in one survey / max per survey">📝 questions {u.question_count ?? 0} / {u.max_questions_per_survey > 0 ? u.max_questions_per_survey : '∞'} allocated</span>
-                        <span className="pill" title="Surveyors created / allocated">👥 surveyors {u.surveyor_count ?? 0} / {u.max_surveyors > 0 ? u.max_surveyors : '∞'} allocated</span>
+                        <span className="pill" title="Surveyors created / allocated" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="users" size={11} /> surveyors {u.surveyor_count ?? 0} / {u.max_surveyors > 0 ? u.max_surveyors : '∞'} allocated</span>
                         <span className="pill" title="Field records submitted / Super Admin record limit">🗃 records {u.surveyor_record_count ?? u.record_count ?? 0} / {u.max_records > 0 ? u.max_records : '∞'} allocated</span>
                       </span>
                     )}
@@ -496,7 +497,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                     className={`btn small ${Number(profileId) === Number(u.id) ? 'primary' : ''}`}
                     onClick={() => toggleProfile(u)}
                   >
-                    {Number(profileId) === Number(u.id) ? 'Close profile' : '👤 Profile'}
+                    {Number(profileId) === Number(u.id) ? 'Close profile' : <><Icon name="user" size={12} /> Profile</>}
                   </button>
                   <button
                     type="button"
@@ -562,7 +563,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                         </div>
                         <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                           @{u.username}
-                          {u.company_name ? ` · 🏢 ${u.company_name}` : ''}
+                          {u.company_name ? <> · <Icon name="building" size={11} /> {u.company_name}</> : ''}
                           {u.created_at ? ` · created ${String(u.created_at).slice(0, 10)}` : ''}
                           {' · '}
                           {powersOf(u).length > 0
@@ -576,7 +577,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                         onClick={() => setDashboardUserCompany(dashboardUserCompany === u.id ? null : u.id)}
                         style={{ marginLeft: 'auto' }}
                       >
-                        {dashboardUserCompany === u.id ? 'Hide Dashboard' : '📊 Company Dashboard'}
+                        {dashboardUserCompany === u.id ? 'Hide Dashboard' : <><Icon name="chart" size={12} /> Company Dashboard</>}
                       </button>
                     </div>
 
@@ -673,7 +674,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                             <span style={{ lineHeight: 1.3 }}>
                               {p.icon} {p.label}
                               {checked ? (
-                                <span style={{ color: '#059669', marginLeft: 4 }}>✓</span>
+                                <span style={{ color: '#059669', marginLeft: 4 }}><Icon name="check" size={12} /></span>
                               ) : null}
                             </span>
                           </label>
@@ -819,7 +820,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {u.survey_team.map((s) => (
                           <li key={s.id} style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px' }}>
-                            <div style={{ fontWeight: 600, fontSize: 13 }}>📋 {s.title}</div>
+                            <div style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 5 }}><Icon name="clipboard" size={12} /> {s.title}</div>
                             <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                               {Array.isArray(s.surveyors) && s.surveyors.length > 0
                                 ? `👥 ${s.surveyors.map((x) => x.name || x.username).join(', ')}`
@@ -840,14 +841,14 @@ export default function AdminClientAdminsScreen({ onToast }) {
                     </p>
 
                     {/* Projects Super Admin shared with them */}
-                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>
-                      🔗 Super Admin projects (shared with them)
+                    <h4 style={{ fontSize: 13, margin: '16px 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Icon name="link" size={13} /> Super Admin projects (shared with them)
                     </h4>
                     {Array.isArray(u.granted_surveys) && u.granted_surveys.length > 0 ? (
                       <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {u.granted_surveys.map((s) => (
                           <li key={s.id} style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '8px 10px' }}>
-                            <div style={{ fontWeight: 600, fontSize: 13, color: '#5b21b6' }}>🔗 {s.title}</div>
+                            <div style={{ fontWeight: 600, fontSize: 13, color: '#5b21b6', display: 'flex', alignItems: 'center', gap: 5 }}><Icon name="link" size={12} /> {s.title}</div>
                             <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                               {u.company_name ? `${u.company_name} · ` : ''}
                               Project created by Super Admin — Client Admin can open it (not create it).
@@ -869,14 +870,14 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       className={`btn small ${u.verified ? 'ok' : 'primary'}`}
                       onClick={() => void handleToggleVerify(u)}
                     >
-                      {u.verified ? 'Verified ✓ — click to unverify' : 'Verify this Client Admin'}
+                      {u.verified ? <><Icon name="check" size={12} /> Verified — click to unverify</> : 'Verify this Client Admin'}
                     </button>
                     <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
                       Only Super Admin can verify a Client Admin. Verified admins show the ✓ badge in the portal sidebar.
                     </p>
 
                     {/* Account */}
-                    <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>👤 Account</h4>
+                    <h4 style={{ fontSize: 13, margin: '16px 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="user" size={13} /> Account</h4>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>Username</span>

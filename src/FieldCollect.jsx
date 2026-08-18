@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Icon from './Icons'
 import { getMyProgress, getSurveyForm } from './api'
 import { slugQuestionKey } from './questionKey'
 
@@ -1833,7 +1834,7 @@ export default function FieldCollectScreen({
 
         {step === 3 && (
           <div className="card">
-            <h3>{progress?.complete ? 'Target complete ✓' : 'Batch paused'}</h3>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{progress?.complete ? <><Icon name="check" size={15} /> Target complete</> : 'Batch paused'}</h3>
             <p>
               {progress?.complete
                 ? `You finished ${progress.done} / ${progress.target} activities assigned by admin.`

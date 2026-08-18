@@ -1,4 +1,4 @@
-import { digits10, toE164In } from './phoneIn'
+import { digits10 } from './phoneIn'
 
 /** Locked +91 prefix + 10-digit mobile. onChange receives +91XXXXXXXXXX or ''. */
 export default function PhoneIndiaField({ value, onChange, disabled, placeholder = '10-digit mobile' }) {

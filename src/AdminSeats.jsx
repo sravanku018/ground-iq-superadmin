@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import Icon from './Icons'
 import { approveSeatRequest, denySeatRequest, getSeatRequests } from './api'
 
 function fmtTime(v) {
@@ -14,9 +15,9 @@ function fmtTime(v) {
 }
 
 const STATUS_STYLE = {
-  pending: { label: '⏳ Pending', color: '#d97706', bg: 'rgba(217,119,6,0.12)' },
-  approved: { label: '✓ Approved', color: '#059669', bg: 'rgba(5,150,105,0.12)' },
-  denied: { label: '✕ Denied', color: '#dc2626', bg: 'rgba(220,38,38,0.10)' },
+  pending: { icon: 'clock', label: 'Pending', color: '#d97706', bg: 'rgba(217,119,6,0.12)' },
+  approved: { icon: 'check', label: 'Approved', color: '#059669', bg: 'rgba(5,150,105,0.12)' },
+  denied: { icon: 'cross', label: 'Denied', color: '#dc2626', bg: 'rgba(220,38,38,0.10)' },
 }
 
 export default function AdminSeatsScreen({ onToast }) {
@@ -73,7 +74,7 @@ export default function AdminSeatsScreen({ onToast }) {
       <div className="card" style={{ marginBottom: 12, border: '1px solid rgba(245,158,11,0.45)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <div>
-            <h3 style={{ margin: '0 0 4px' }}>🪑 Admin seats (platform)</h3>
+            <h3 style={{ margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="chair" size={16} /> Admin seats (platform)</h3>
             <p className="muted" style={{ margin: 0, fontSize: 12 }}>
               Approved limit raised by Super Admin on request approval (default 5).
             </p>
@@ -95,7 +96,7 @@ export default function AdminSeatsScreen({ onToast }) {
       ) : (
         <>
           <h3 style={{ fontSize: 14, margin: '14px 0 8px' }}>
-            ⏳ Pending requests ({pending.length})
+            <Icon name="clock" size={13} /> Pending requests ({pending.length})
           </h3>
           {pending.length === 0 ? (
             <div className="card">
@@ -142,7 +143,7 @@ export default function AdminSeatsScreen({ onToast }) {
                     disabled={busyId === r.id}
                     onClick={() => void decide(r.id, true)}
                   >
-                    {busyId === r.id ? '…' : '✓ Approve'}
+                    {busyId === r.id ? '…' : <><Icon name="check" size={12} /> Approve</>}
                   </button>
                   <button
                     type="button"
@@ -190,7 +191,7 @@ export default function AdminSeatsScreen({ onToast }) {
                           padding: '2px 10px',
                         }}
                       >
-                        {st.label}
+                        <Icon name={st.icon} size={11} /> {st.label}
                       </span>
                       <span className="pill" style={{ fontSize: 11 }}>limit {r.requested_limit}</span>
                     </div>

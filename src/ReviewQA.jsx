@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Icon from './Icons'
 import {
   confirmAllPending,
   downloadMediaFile,
@@ -423,7 +424,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                             fontSize: 11,
                           }}
                         >
-                          Proof ✓
+                          <span style={{display:'inline-flex',alignItems:'center',gap:3}}>Proof <Icon name="check" size={11} /></span>
                         </span>
                       ) : (
                         <span
@@ -437,7 +438,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                             fontSize: 11,
                           }}
                         >
-                          Proof ✗
+                          <span style={{display:'inline-flex',alignItems:'center',gap:3}}>Proof <Icon name="cross" size={11} /></span>
                         </span>
                       )
                     ) : (
@@ -564,7 +565,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                       >
                         <strong style={{ fontSize: 13 }}>
                           Proof validation{' '}
-                          {item.proof_validated.ok ? '✓' : '✗'}
+                          {item.proof_validated.ok ? <Icon name="check" size={13} /> : <Icon name="cross" size={13} />}
                           <span className="muted" style={{ fontSize: 11, fontWeight: 400 }}>
                             {' '}
                             · by {item.proof_validated.checked_by} ·{' '}
@@ -574,21 +575,21 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                         <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
                           {item.proof_validated.phone && (
                             <span style={{ fontSize: 12 }}>
-                              📞 Phone: <strong>{item.proof_validated.phone.value || '—'}</strong>{' '}
+                              <Icon name="phone" size={12} /> Phone: <strong>{item.proof_validated.phone.value || '—'}</strong>{' '}
                               {item.proof_validated.phone.found
                                 ? item.proof_validated.phone.valid
-                                  ? <span style={{ color: '#0a8f3c' }}>✓ valid</span>
-                                  : <span style={{ color: '#b3261e' }}>✗ invalid format</span>
+                                  ? <span style={{ color: '#0a8f3c', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="check" size={11} /> valid</span>
+                                  : <span style={{ color: '#b3261e', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="cross" size={11} /> invalid format</span>
                                 : <span className="muted">not present</span>}
                             </span>
                           )}
                           {item.proof_validated.aadhaar && (
                             <span style={{ fontSize: 12 }}>
-                              🪪 Aadhaar: <strong>{item.proof_validated.aadhaar.value || '—'}</strong>{' '}
+                              <Icon name="idCard" size={12} /> Aadhaar: <strong>{item.proof_validated.aadhaar.value || '—'}</strong>{' '}
                               {item.proof_validated.aadhaar.found
                                 ? item.proof_validated.aadhaar.valid
-                                  ? <span style={{ color: '#0a8f3c' }}>✓ valid</span>
-                                  : <span style={{ color: '#b3261e' }}>✗ invalid format</span>
+                                  ? <span style={{ color: '#0a8f3c', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="check" size={11} /> valid</span>
+                                  : <span style={{ color: '#b3261e', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="cross" size={11} /> invalid format</span>
                                 : <span className="muted">not present</span>}
                             </span>
                           )}

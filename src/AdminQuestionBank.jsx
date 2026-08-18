@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import Icon from './Icons'
 import OptionPills from './OptionPills'
 import {
   copyQuestionBank,
@@ -233,7 +234,7 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
                   onChange={(e) => setIsGlobal(e.target.checked)}
                 />
                 <span style={{ fontSize: 13, fontWeight: 'bold', color: isGlobal ? '#d97706' : '#475569' }}>
-                  {isGlobal ? '★ Global (all tenants)' : 'Publish as Global template'}
+                  {isGlobal ? <><Icon name="star" size={12} /> Global (all tenants)</> : 'Publish as Global template'}
                 </span>
               </label>
             )}
@@ -366,7 +367,7 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
             fontSize: 13,
           }}
         >
-          🔒 <strong>Question Bank is read-only for you.</strong> You can view and use the ★
+          <Icon name="lock" size={13} /> <strong>Question Bank is read-only for you.</strong> You can view and use the ★
           global templates, but creating or editing templates is locked until the Super Admin
           grants your account <strong>Question Bank CRUD</strong> (Surveyors page → your profile).
         </div>
@@ -409,7 +410,7 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
                   <strong>{t.name}</strong>
                   {t.is_global && (
                     <span className="pill" style={{ fontSize: 11, fontWeight: 'bold', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.5)', color: '#d97706' }}>
-                      ★ GLOBAL
+                      <Icon name="star" size={11} /> GLOBAL
                     </span>
                   )}
                   <span className="pill ok" style={{ fontSize: 11 }}>{qs.length} questions</span>

@@ -1,4 +1,5 @@
 import { Component, useCallback, useEffect, useRef, useState } from 'react'
+import Icon from './Icons'
 
 class CollectErrorBoundary extends Component {
   constructor(props) {
@@ -74,11 +75,11 @@ import './App.css'
 
 /** Surveyor-only field app (mobile / APK) */
 const TABS = [
-  { id: 'home', label: 'Home', icon: '⌂' },
-  { id: 'collect', label: 'Collect', icon: '✎' },
-  { id: 'drafts', label: 'Pending', icon: '📦' },
-  { id: 'records', label: 'Activity', icon: '☰' },
-  { id: 'profile', label: 'Profile', icon: '👤' },
+  { id: 'home', label: 'Home', icon: 'home' },
+  { id: 'collect', label: 'Collect', icon: 'pencil' },
+  { id: 'drafts', label: 'Pending', icon: 'box' },
+  { id: 'records', label: 'Activity', icon: 'menu' },
+  { id: 'profile', label: 'Profile', icon: 'user' },
 ]
 
 /** New install or new APK build must show login — never restore an old session. */
@@ -125,7 +126,7 @@ function ymdInTz(value, tz = FIELD_TZ) {
   }).format(d)
 }
 
-function formatDate(ymd) {
+function formatDayLabel(ymd) {
   const [y, m, d] = String(ymd).split('-').map(Number)
   if (!y || !m || !d) return ymd || 'Unknown date'
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', {
@@ -145,7 +146,7 @@ function groupRecordsByDay(records) {
   }
   return [...map.entries()].map(([date, items]) => ({
     date,
-    pretty: date === 'unknown' ? 'Unknown date' : formatDate(date),
+    pretty: date === 'unknown' ? 'Unknown date' : formatDayLabel(date),
     items,
   }))
 }
@@ -257,7 +258,7 @@ function HomeScreen({
 
       <button type="button" className="cta" onClick={onNewSurvey} disabled={complete}>
         {complete
-          ? 'Target complete ✓'
+          ? <><Icon name="check" size={13} /> Target complete</>
           : done > 0
             ? `Continue activity #${myProgress?.next_record || done + 1}`
             : 'Start collect · GPS → Photo → Q/A'}
@@ -351,7 +352,7 @@ function MyRecordsScreen({ user, onToast }) {
                     <span style={{ fontWeight: 600, fontSize: 14 }}>
                       Activity #{r.id}
                       <span className={`pill ${isConfirmed ? 'ok' : ''}`} style={{ marginLeft: 8 }}>
-                        {isConfirmed ? 'Confirmed ✓' : r.status || 'pending'}
+                        {isConfirmed ? <><Icon name="check" size={11} /> Confirmed</> : r.status || 'pending'}
                       </span>
                     </span>
                     <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
@@ -376,7 +377,7 @@ function MyRecordsScreen({ user, onToast }) {
                             <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
                               <td className="muted" style={{ padding: '6px 8px' }}>Status:</td>
                               <td style={{ textAlign: 'right', fontWeight: 600, padding: '6px 8px', color: isConfirmed ? '#059669' : '#d97706' }}>
-                                {isConfirmed ? 'Confirmed ✓' : r.status || 'pending'}
+                                {isConfirmed ? <><Icon name="check" size={11} /> Confirmed</> : r.status || 'pending'}
                               </td>
                             </tr>
                             {(r.submitted_by || r.payload?.submitted_by) && (
@@ -556,7 +557,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
                 margin: '0 auto',
               }}
             >
-              👤
+              <Icon name="user" size={38} />
             </div>
           )}
           <label
@@ -578,7 +579,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
             }}
             title={user?.verified ? 'Photo locked' : 'Upload photo'}
           >
-            {user?.verified ? '🔒' : '📷'}
+            {user?.verified ? <Icon name="lock" size={16} /> : <Icon name="camera" size={16} />}
             {!user?.verified && (
               <input
                 type="file"
@@ -629,7 +630,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
           <h3 style={{ margin: 0, fontSize: 15 }}>Phone</h3>
           {user?.verified ? (
             <span aria-label="Locked" title="Locked" style={{ fontSize: 14 }}>
-              🔒
+              <Icon name="lock" size={14} />
             </span>
           ) : null}
         </div>
@@ -670,7 +671,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
           <h3 style={{ margin: 0, fontSize: 15 }}>Aadhaar</h3>
           {user?.verified ? (
             <span aria-label="Locked" title="Locked" style={{ fontSize: 14 }}>
-              🔒
+              <Icon name="lock" size={14} />
             </span>
           ) : null}
         </div>
@@ -691,15 +692,15 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
                 style={{ width: '100%', height: 95, objectFit: 'cover', borderRadius: 6, marginBottom: 8, opacity: user?.verified ? 0.7 : 1 }}
               />
             ) : (
-              <div style={{ height: 95, background: 'rgba(15,23,42,0.06)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 8 }}>
-                🪪
+              <div style={{ height: 95, background: 'rgba(15,23,42,0.06)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                <Icon name="idCard" size={26} />
               </div>
             )}
             <label
               className="btn small"
               style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', cursor: user?.verified ? 'not-allowed' : 'pointer', background: user?.verified ? '#e2e8f0' : undefined, color: user?.verified ? '#94a3b8' : undefined, border: user?.verified ? '1px solid #cbd5e1' : undefined }}
             >
-              {uploading.front ? 'Uploading…' : user?.verified ? '🔒' : user?.aadhaar_front ? 'Change Front' : 'Upload Front'}
+              {uploading.front ? 'Uploading…' : user?.verified ? <Icon name="lock" size={12} /> : user?.aadhaar_front ? 'Change Front' : 'Upload Front'}
               {!user?.verified && (
                 <input
                   type="file"
@@ -721,15 +722,15 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
                 style={{ width: '100%', height: 95, objectFit: 'cover', borderRadius: 6, marginBottom: 8, opacity: user?.verified ? 0.7 : 1 }}
               />
             ) : (
-              <div style={{ height: 95, background: 'rgba(15,23,42,0.06)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 8 }}>
-                🪪
+              <div style={{ height: 95, background: 'rgba(15,23,42,0.06)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                <Icon name="idCard" size={26} />
               </div>
             )}
             <label
               className="btn small"
               style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', cursor: user?.verified ? 'not-allowed' : 'pointer', background: user?.verified ? '#e2e8f0' : undefined, color: user?.verified ? '#94a3b8' : undefined, border: user?.verified ? '1px solid #cbd5e1' : undefined }}
             >
-              {uploading.back ? 'Uploading…' : user?.verified ? '🔒' : user?.aadhaar_back ? 'Change Back' : 'Upload Back'}
+              {uploading.back ? 'Uploading…' : user?.verified ? <Icon name="lock" size={12} /> : user?.aadhaar_back ? 'Change Back' : 'Upload Back'}
               {!user?.verified && (
                 <input
                   type="file"
@@ -861,8 +862,8 @@ function DraftsScreen({ user, onToast, onEdit }) {
             </div>
             <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
               {String(d.createdAt || '').slice(0, 16).replace('T', ' ')} · geo{' '}
-              {qa.geo?.lat != null ? '✓' : '✗'} · photo {d.photoDataUrl ? '✓' : '✗'} · voice{' '}
-              {d.audioDataUrl ? '✓' : '✗'}
+              {qa.geo?.lat != null ? <Icon name="check" size={11} /> : <Icon name="cross" size={11} />} · photo {d.photoDataUrl ? <Icon name="check" size={11} /> : <Icon name="cross" size={11} />} · voice{' '}
+              {d.audioDataUrl ? <Icon name="check" size={11} /> : <Icon name="cross" size={11} />}
             </span>
 
             {isDraft && (
@@ -1437,7 +1438,7 @@ export default function SurveyorApp() {
             }}
           >
             <span className="nav-icon" aria-hidden>
-              {t.icon}
+              <Icon name={t.icon} size={20} />
               {t.id === 'drafts' && draftsCount > 0 && (
                 <span className="nav-badge" aria-label={`${draftsCount} pending`}>
                   {draftsCount > 99 ? '99+' : draftsCount}

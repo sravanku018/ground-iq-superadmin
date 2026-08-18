@@ -1,25 +1,26 @@
 import { useCallback, useEffect, useState } from 'react'
+import Icon from './Icons'
 import { getAuditLog } from './api'
 
 const ACTION_LABELS = {
-  login: '🔑 Login',
-  user_create: '👤 User created',
-  users_bulk_create: '👥 Surveyors bulk-created',
-  user_delete: '🗑️ User deleted',
-  super_admin_create: '★ Super Admin created',
-  super_admin_reset: '★ Super Admin password reset',
-  survey_create: '▤ Survey created',
-  survey_update: '▤ Survey updated',
-  survey_delete: '▤ Survey deleted',
-  submission_status: '✓ Review decision',
-  data_export: '⬇ Data export',
-  question_bank_create: '📚 Template created',
-  question_bank_update: '📚 Template updated',
-  question_bank_delete: '📚 Template deleted',
-  question_bank_copy: '📚 Template → survey',
-  seat_request_submit: '🪑 Seat upgrade requested',
-  seat_request_approve: '🪑 Seat upgrade approved',
-  seat_request_deny: '🪑 Seat upgrade denied',
+  login: { icon: 'key', text: 'Login' },
+  user_create: { icon: 'user', text: 'User created' },
+  users_bulk_create: { icon: 'users', text: 'Surveyors bulk-created' },
+  user_delete: { icon: 'trash', text: 'User deleted' },
+  super_admin_create: { icon: 'star', text: 'Super Admin created' },
+  super_admin_reset: { icon: 'star', text: 'Super Admin password reset' },
+  survey_create: { icon: 'clipboard', text: 'Survey created' },
+  survey_update: { icon: 'clipboard', text: 'Survey updated' },
+  survey_delete: { icon: 'clipboard', text: 'Survey deleted' },
+  submission_status: { icon: 'check', text: 'Review decision' },
+  data_export: { icon: 'download', text: 'Data export' },
+  question_bank_create: { icon: 'book', text: 'Template created' },
+  question_bank_update: { icon: 'book', text: 'Template updated' },
+  question_bank_delete: { icon: 'book', text: 'Template deleted' },
+  question_bank_copy: { icon: 'book', text: 'Template → survey' },
+  seat_request_submit: { icon: 'chair', text: 'Seat upgrade requested' },
+  seat_request_approve: { icon: 'chair', text: 'Seat upgrade approved' },
+  seat_request_deny: { icon: 'chair', text: 'Seat upgrade denied' },
 }
 
 const ENTITY_LABELS = {
@@ -99,7 +100,7 @@ export default function AdminAuditScreen({ onToast }) {
               <option value="">All actions</option>
               {Object.entries(ACTION_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>
-                  {v}
+                  {v.text}
                 </option>
               ))}
             </select>
@@ -155,8 +156,15 @@ export default function AdminAuditScreen({ onToast }) {
           >
             <div style={{ minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <strong style={{ fontSize: 13 }}>
-                  {ACTION_LABELS[e.action] || e.action}
+                <strong style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  {ACTION_LABELS[e.action] ? (
+                    <>
+                      <Icon name={ACTION_LABELS[e.action].icon} size={12} />
+                      {ACTION_LABELS[e.action].text}
+                    </>
+                  ) : (
+                    e.action
+                  )}
                 </strong>
                 <span
                   className="pill ok"

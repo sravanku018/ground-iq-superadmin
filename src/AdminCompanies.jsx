@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import Icon from './Icons'
 import CompanyClientDashboard from './CompanyClientDashboard'
 import {
   createCompany,
@@ -204,7 +205,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
   return (
     <div className="screen">
       <header className="screen-head">
-        <h2>🏢 Companies</h2>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Icon name="building" size={20} /> Companies</h2>
         <p>
           1) Create a company → 2) Add Client Admins → 3) Create a project under that company
           (shared with those admins).
@@ -271,16 +272,16 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
                 }}
               >
                 <div>
-                  <strong style={{ fontSize: 15 }}>🏢 {c.name}</strong>
+                  <strong style={{ fontSize: 15, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="building" size={14} /> {c.name}</strong>
                   <span className="meta">
                     {c.created_at ? ` · created ${String(c.created_at).slice(0, 10)}` : ''}
                     {c.created_by_name ? ` · by ${c.created_by_name}` : ''}
                     {' · '}
                     <span className="pill" title="Projects mapped under this company">
-                      📋 {c.project_count ?? 0} project(s)
+                      <Icon name="clipboard" size={11} /> {c.project_count ?? 0} project(s)
                     </span>{' '}
                     <span className="pill" title="Client Admins part of this company">
-                      👥 {c.admin_count ?? 0} client admin(s)
+                      <Icon name="users" size={11} /> {c.admin_count ?? 0} client admin(s)
                     </span>
                   </span>
                   <div className="meta" style={{ fontSize: 12, marginTop: 4 }}>
@@ -295,7 +296,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
                     className={`btn small ${dashboardCompanyId === c.id ? 'primary' : ''}`}
                     onClick={() => setDashboardCompanyId(dashboardCompanyId === c.id ? null : c.id)}
                   >
-                    {dashboardCompanyId === c.id ? 'Hide Dashboard' : '📊 Dashboard'}
+                    {dashboardCompanyId === c.id ? 'Hide Dashboard' : <><Icon name="chart" size={12} /> Dashboard</>}
                   </button>
                   <button
                     type="button"
@@ -330,7 +331,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
                     }}
                   >
                     <h4 style={{ fontSize: 13, margin: '0 0 8px' }}>
-                      👥 Client Admins part of {c.name}
+                      <Icon name="users" size={13} /> Client Admins part of {c.name}
                     </h4>
                     {allAdmins.length === 0 ? (
                       <p className="muted" style={{ fontSize: 12, margin: 0 }}>
@@ -400,7 +401,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
 
                     {/* Create project under this company */}
                     <h4 style={{ fontSize: 13, margin: '16px 0 8px' }}>
-                      📋 Create project under {c.name}
+                      <Icon name="clipboard" size={13} /> Create project under {c.name}
                     </h4>
                     <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
                       Company is fixed to <strong>{c.name}</strong>. Selected Client Admins above
@@ -445,7 +446,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
                         }}
                       >
                         <strong style={{ color: '#059669' }}>
-                          ✓ Project “{createdProject.title}” created
+                          <Icon name="check" size={13} /> Project “{createdProject.title}” created
                         </strong>
                         <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
                           Mapped under company {c.name}. Open Projects to add questions and

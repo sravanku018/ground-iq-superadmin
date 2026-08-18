@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Icon from './Icons'
 import {
   createSeatRequest,
   createSuperAdmin,
@@ -923,7 +924,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
             }}
           >
             <div>
-              <h3 style={{ margin: '0 0 4px' }}>★ Platform Super Admins</h3>
+              <h3 style={{ margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="star" size={16} /> Platform Super Admins</h3>
               <p className="muted" style={{ margin: 0, fontSize: 12 }}>
                 {superAdmins.length} of 3 seats used · Super Admins have full platform access
               </p>
@@ -952,7 +953,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                     border: '1px solid rgba(245,158,11,0.5)',
                   }}
                 >
-                  ★ {sa.name || sa.username} · @{sa.username}
+                  <Icon name="star" size={12} /> {sa.name || sa.username} · @{sa.username}
                 </span>
               ))}
             </div>
@@ -1334,8 +1335,8 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                         </span>
                       )}
                       {u.phone && (
-                        <span className="meta" style={{ display: 'block', marginTop: 3, fontSize: 13, fontWeight: 'bold' }}>
-                          📞 {formatInMobile(u.phone)}
+                        <span className="meta" style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, fontSize: 13, fontWeight: 'bold' }}>
+                          <Icon name="phone" size={12} /> {formatInMobile(u.phone)}
                         </span>
                       )}
                       {canSeeIdDocs && (
@@ -1744,14 +1745,14 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
               >
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h3 style={{ margin: 0, fontSize: 18, color: '#f8fafc' }}>👤 Surveyor Profile & Identity</h3>
+                  <h3 style={{ margin: 0, fontSize: 18, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="user" size={18} /> Surveyor Profile & Identity</h3>
                   <button
                     type="button"
                     className="btn small danger"
                     onClick={() => setProfileUser(null)}
-                    style={{ fontSize: 14, padding: '4px 14px', fontWeight: 'bold' }}
+                    style={{ fontSize: 14, padding: '4px 14px', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                   >
-                    Close ✕
+                    Close <Icon name="cross" size={12} />
                   </button>
                 </div>
 
@@ -1764,8 +1765,8 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: '3px solid #00e599' }}
                     />
                   ) : (
-                    <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>
-                      👤
+                    <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name="user" size={28} />
                     </div>
                   )}
                   <div style={{ flex: 1 }}>
@@ -1867,7 +1868,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                 {canSeeIdDocs && (
                 <div style={{ background: '#f1f5f9', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                    <h5 style={{ margin: 0, fontSize: 14, color: '#38bdf8', fontWeight: 'bold' }}>🪪 Aadhaar Identity Verification</h5>
+                    <h5 style={{ margin: 0, fontSize: 14, color: '#38bdf8', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="idCard" size={14} /> Aadhaar Identity Verification</h5>
                     <span
                       style={{
                         fontSize: 11,
@@ -1896,7 +1897,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                         </a>
                       ) : (
                         <div style={{ height: 100, background: 'rgba(15,23,42,0.04)', borderRadius: 8, border: '1px dashed #cbd5e1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12, marginBottom: 6 }}>
-                          <span style={{ fontSize: 22, marginBottom: 2 }}>🪪</span>
+                          <span style={{ marginBottom: 2 }}><Icon name="idCard" size={22} /></span>
                           <span>No Front Card Uploaded</span>
                         </div>
                       )}
@@ -1918,7 +1919,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                         </a>
                       ) : (
                         <div style={{ height: 100, background: 'rgba(15,23,42,0.04)', borderRadius: 8, border: '1px dashed #cbd5e1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12, marginBottom: 6 }}>
-                          <span style={{ fontSize: 22, marginBottom: 2 }}>🪪</span>
+                          <span style={{ marginBottom: 2 }}><Icon name="idCard" size={22} /></span>
                           <span>No Back Card Uploaded</span>
                         </div>
                       )}

@@ -24,12 +24,6 @@ function writeDismissed(adminId, ids) {
   }
 }
 
-/** Docs stay in the inbox until Client Admin (user.role === 'admin') verifies that surveyor. */
-function isHeldVerify(it, user) {
-  const isClientAdmin = user?.role === 'admin'
-  return isClientAdmin && it?.kind === 'docs' && it?.verified !== true
-}
-
 export default function AdminBell({ user, onGoPage, enabled = true }) {
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState([])
@@ -114,18 +108,14 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
 
   if (!enabled) return null
 
-  // Filter out items explicitly dismissed by user
+  // Active items not dismissed by user
   const activeItems = items.filter((i) => !dismissed.includes(i.id))
   const count = activeItems.length
   const shown = activeItems.slice(0, 40)
 
-  // Clearable items are active items that are NOT held pending verification
-  const clearableItems = activeItems.filter((i) => !isHeldVerify(i, user))
-  const clearableCount = clearableItems.length
-
   const clearAll = () => {
-    if (!clearableCount) return
-    const newDismissed = [...new Set([...dismissed, ...clearableItems.map((i) => i.id)])]
+    if (!count) return
+    const newDismissed = [...new Set([...dismissed, ...activeItems.map((i) => i.id)])]
     writeDismissed(user?.id, newDismissed)
     setDismissed(newDismissed)
   }
@@ -167,9 +157,9 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
         <div className="admin-bell-panel" role="dialog" aria-label="Notifications">
           <div className="admin-bell-head">
             <strong>Notifications</strong>
-            {clearableCount > 0 && (
+            {count > 0 && (
               <button type="button" className="link-btn" onClick={clearAll}>
-                Clear All ({clearableCount})
+                Clear All
               </button>
             )}
           </div>
@@ -180,8 +170,8 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
           ) : (
             <ul className="admin-bell-list">
               {shown.map((it) => {
-                const pending = isHeldVerify(it, user)
-                const isVerified = it.kind === 'docs' && it.verified === true
+                const isDocs = it.kind === 'docs'
+                const isVerified = isDocs && it.verified === true
                 return (
                   <li key={it.id} style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
                     <button
@@ -190,46 +180,36 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
                       onClick={() => openItem(it)}
                       style={{ flex: 1, textAlign: 'left' }}
                     >
-                      <span className="admin-bell-kind" style={{ color: isVerified ? '#059669' : undefined }}>
-                        {it.kind === 'docs' ? (isVerified ? 'ID Verified ✓' : 'ID Pending ⏳') : 'Activity'}
+                      <span className="admin-bell-kind" style={{ color: isVerified ? '#059669' : isDocs ? '#d97706' : undefined }}>
+                        {isDocs ? (isVerified ? 'ID Verified ✓' : 'ID Pending ⏳') : 'Activity'}
                       </span>
                       <span className="admin-bell-title">{it.title}</span>
                       <span className="admin-bell-detail">
-                        {pending
-                          ? 'Verification pending — complete verification in Users tab'
-                          : isVerified
-                            ? 'Verification complete ✓ — click Clear to dismiss'
-                            : it.detail}
+                        {isDocs
+                          ? isVerified
+                            ? 'Verification complete ✓'
+                            : 'Verification pending (click to open Users tab)'
+                          : it.detail}
                       </span>
                     </button>
-                    {!pending ? (
-                      <button
-                        type="button"
-                        className="admin-bell-dismiss"
-                        title="Clear notification"
-                        aria-label="Clear notification"
-                        onClick={(e) => dismissItem(e, it)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          padding: '6px 10px',
-                          color: '#059669',
-                          fontWeight: 'bold',
-                          fontSize: '14px',
-                          borderRadius: '4px',
-                        }}
-                      >
-                        ✕
-                      </button>
-                    ) : (
-                      <span
-                        title="Complete verification in Users tab to unlock clear"
-                        style={{ padding: '6px 10px', color: '#94a3b8', fontSize: '12px' }}
-                      >
-                        🔒
-                      </span>
-                    )}
+                    <button
+                      type="button"
+                      className="admin-bell-dismiss"
+                      title="Clear notification"
+                      aria-label="Clear notification"
+                      onClick={(e) => dismissItem(e, it)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: '6px 10px',
+                        color: '#64748b',
+                        fontSize: '14px',
+                        borderRadius: '4px',
+                      }}
+                    >
+                      ✕
+                    </button>
                   </li>
                 )
               })}

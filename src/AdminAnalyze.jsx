@@ -326,7 +326,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
                 <option value="">All {q.label}</option>
                 {(q.counts || []).map((c) => (
                   <option key={c.name} value={c.name}>
-                    {c.name} ({c.value})
+                    {c.label || c.name} ({c.value})
                   </option>
                 ))}
               </select>
@@ -690,7 +690,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
           <ul className="user-list">
             {analytics.charts.byParty.slice(0, 8).map((p) => (
               <li key={p.name}>
-                <strong>{p.name}</strong>
+                <strong>{p.label || p.name}</strong>
                 <span className="meta">
                   {' '}
                   {p.value} ({p.pct}%)
@@ -704,7 +704,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
               <ul className="user-list">
                 {analytics.charts.byDistrict.slice(0, 8).map((p) => (
                   <li key={p.name}>
-                    <strong>{p.name}</strong>
+                    <strong>{p.label || p.name}</strong>
                     <span className="meta">
                       {' '}
                       {p.value} ({p.pct}%)
@@ -720,7 +720,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
               <ul className="user-list">
                 {analytics.charts.byConstituency.slice(0, 8).map((p) => (
                   <li key={p.name}>
-                    <strong>{p.name}</strong>
+                    <strong>{p.label || p.name}</strong>
                     <span className="meta">
                       {' '}
                       {p.value} ({p.pct}%)

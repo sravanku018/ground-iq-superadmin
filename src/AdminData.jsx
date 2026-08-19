@@ -40,6 +40,7 @@ export default function AdminDataScreen({ onToast }) {
     constituency: '',
     status: 'confirmed',
     orientation: 'vertical',
+    lang: 'te',
   })
 
   const exportFilters = () => ({
@@ -52,6 +53,7 @@ export default function AdminDataScreen({ onToast }) {
     constituency: exp.constituency,
     status: exp.status,
     orientation: exp.orientation || 'vertical',
+    lang: exp.lang || 'te',
   })
 
   async function loadKindBytes(it, kind) {
@@ -324,10 +326,13 @@ export default function AdminDataScreen({ onToast }) {
 
       const rows = csv.split('\n').filter(Boolean)
       const stamp = exp.period === 'day' ? exp.day : exp.period === 'month' ? exp.month : 'total'
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+      const asTe = (exp.lang || 'te') === 'te'
+      const blob = new Blob([asTe && !csv.startsWith('\uFEFF') ? `\uFEFF${csv}` : csv], {
+        type: 'text/csv;charset=utf-8',
+      })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
-      a.download = `survey-export-${stamp}.csv`
+      a.download = asTe ? `survey-export-te-${stamp}.csv` : `survey-export-${stamp}.csv`
       a.click()
       URL.revokeObjectURL(a.href)
       onToast?.(`Exported ${Math.max(0, rows.length - 1)} record(s) to CSV`, 'ok')
@@ -815,6 +820,16 @@ export default function AdminDataScreen({ onToast }) {
                   <option value="horizontal">Horizontal (Standard — One row per record)</option>
                 </select>
               </label>
+              <label className="field compact">
+                <span>Language / భాష</span>
+                <select
+                  value={exp.lang || 'te'}
+                  onChange={(e) => setExp((f) => ({ ...f, lang: e.target.value }))}
+                >
+                  <option value="te">తెలుగు (Telugu)</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
             </FilterSection>
 
             <button
@@ -824,7 +839,11 @@ export default function AdminDataScreen({ onToast }) {
               disabled={exporting || exportingMedia}
               onClick={doExport}
             >
-              {exporting ? 'Exporting…' : 'Download CSV (text file) with photo + audio links'}
+              {exporting
+                ? 'Exporting…'
+                : (exp.lang || 'te') === 'te'
+                  ? 'Download Telugu CSV (ప్రశ్నలు + సమాధానాలు)'
+                  : 'Download CSV (text file) with photo + audio links'}
             </button>
             <button
               type="button"

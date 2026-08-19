@@ -154,20 +154,41 @@ export async function savePackageLocal({
     await idbReq(db.transaction(STORE, 'readwrite').objectStore(STORE).put(pkg))
     db.close()
   } catch {
-    // Fallback: localStorage — replace same id, never append a second copy
+    // Fallback: localStorage (IndexedDB unavailable — private mode / restricted
+    // WebView). This store is small, so media may not fit. Track whether each
+    // required blob actually persisted — if not, fail loudly instead of saving
+    // an unsyncable shell that silently drops the photo/voice.
+    let photoStored = !photoDataUrl
+    let audioStored = !audioDataUrl
     const list = listPackagesMetaFallback().filter((x) => x.id !== id)
     list.push(stripHeavy(pkg))
-    localStorage.setItem('esurvey_packages_fallback', JSON.stringify(list))
-    // keep media separately if small enough
     try {
-      if (photoDataUrl && photoDataUrl.length < 800_000) {
+      localStorage.setItem('esurvey_packages_fallback', JSON.stringify(list))
+      if (photoDataUrl) {
         localStorage.setItem(`esurvey_photo_${id}`, photoDataUrl)
+        photoStored = true
       }
-      if (audioDataUrl && audioDataUrl.length < 600_000) {
+      if (audioDataUrl) {
         localStorage.setItem(`esurvey_audio_${id}`, audioDataUrl)
+        audioStored = true
       }
     } catch {
-      /* quota */
+      /* quota exceeded — handled just below */
+    }
+    if (!draft && (!photoStored || !audioStored)) {
+      // Roll back the meta shell + any partial media so nothing dangling is left,
+      // then surface the failure (FieldCollect shows e.message as an error toast).
+      try {
+        const cleaned = listPackagesMetaFallback().filter((x) => x.id !== id)
+        localStorage.setItem('esurvey_packages_fallback', JSON.stringify(cleaned))
+        localStorage.removeItem(`esurvey_photo_${id}`)
+        localStorage.removeItem(`esurvey_audio_${id}`)
+      } catch {
+        /* ignore */
+      }
+      throw new Error(
+        'Device storage is full or unavailable — could not save photo/voice locally. Free up space and recapture this record.',
+      )
     }
   }
 

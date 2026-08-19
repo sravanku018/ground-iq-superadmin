@@ -199,6 +199,7 @@ async function getUser(token: string | null) {
            COALESCE(u.can_assign_surveyors, FALSE) AS can_assign_surveyors,
            COALESCE(u.can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
            COALESCE(u.can_validate_proof, FALSE) AS can_validate_proof,
+           COALESCE(u.can_web_survey, FALSE) AS can_web_survey,
            COALESCE(u.max_questions_per_survey, 0) AS max_questions_per_survey,
            COALESCE(u.max_surveys, 0) AS max_surveys,
            COALESCE(u.max_surveyors, 0) AS max_surveyors,
@@ -217,7 +218,7 @@ async function getUser(token: string | null) {
              NULL AS key_id, NULL AS phone, NULL AS photo, NULL AS aadhaar_front, NULL AS aadhaar_back,
              FALSE AS verified, FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
              FALSE AS can_review_data, FALSE AS can_verify_surveyors, FALSE AS can_assign_surveyors, FALSE AS can_crud_questionnaire,
-             FALSE AS can_validate_proof, 0 AS max_questions_per_survey, 0 AS max_surveys,
+             FALSE AS can_validate_proof, FALSE AS can_web_survey, 0 AS max_questions_per_survey, 0 AS max_surveys,
              0 AS max_surveyors, 0 AS max_records
       FROM app_sessions s
       JOIN app_users u ON u.id = s.user_id
@@ -249,6 +250,7 @@ async function getUser(token: string | null) {
     can_assign_surveyors: sqlBool((u as Record<string, unknown>).can_assign_surveyors),
     can_crud_questionnaire: sqlBool((u as Record<string, unknown>).can_crud_questionnaire),
     can_validate_proof: sqlBool((u as Record<string, unknown>).can_validate_proof),
+    can_web_survey: sqlBool((u as Record<string, unknown>).can_web_survey),
     max_questions_per_survey: Number((u as Record<string, unknown>).max_questions_per_survey) || 0,
     max_surveys: Number((u as Record<string, unknown>).max_surveys) || 0,
     max_surveyors: Number((u as Record<string, unknown>).max_surveyors) || 0,
@@ -350,6 +352,89 @@ function hasPower(
   key: string,
 ): boolean {
   return !!me && (me.role === "super_admin" || sqlBool(me[key]));
+}
+
+/** Telugu add / type / auto-translate — question-management powers only (no separate grant). */
+function canQuestionCopy(
+  me: { role: unknown } & Record<string, unknown> | null,
+): boolean {
+  return hasPower(me, "can_manage_questions") || hasPower(me, "can_crud_questionnaire");
+}
+
+function stripTeluguUnlessAllowed(
+  me: { role: unknown } & Record<string, unknown> | null,
+  questions: unknown[],
+): unknown[] {
+  if (canQuestionCopy(me)) return questions;
+  return questions.map((q) => {
+    if (!q || typeof q !== "object") return q;
+    const rec = { ...(q as Record<string, unknown>) };
+    delete rec.label_te;
+    delete rec.options_te;
+    delete rec.options_te_text;
+    return rec;
+  });
+}
+
+async function translateQuestionToTelugu(
+  text: string,
+  options: string[],
+): Promise<{ text_te: string; options_te: string[] }> {
+  const key = Deno.env.get("XAI_API_KEY") || "";
+  if (!key) {
+    const err = new Error(
+      "Translation API is not configured (set XAI_API_KEY on Deno Deploy)",
+    );
+    (err as { status?: number }).status = 503;
+    throw err;
+  }
+  const res = await fetch("https://api.x.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${key}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "grok-4.5",
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content:
+            'Translate English survey questions into Telugu (te-IN). Reply with JSON only: {"text_te":"...","options_te":[...]}. options_te must match the input options in length and order. Keep numbers and party names readable.',
+        },
+        { role: "user", content: JSON.stringify({ text, options }) },
+      ],
+    }),
+  });
+  const raw = await res.text();
+  if (!res.ok) {
+    const err = new Error(`Translate failed (${res.status})`);
+    (err as { status?: number }).status = 502;
+    throw err;
+  }
+  let parsed: { choices?: { message?: { content?: string } }[] } = {};
+  try {
+    parsed = JSON.parse(raw) as typeof parsed;
+  } catch {
+    const err = new Error("Translate returned invalid JSON");
+    (err as { status?: number }).status = 502;
+    throw err;
+  }
+  let content = String(parsed.choices?.[0]?.message?.content || "").trim();
+  content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  let out: { text_te?: string; options_te?: unknown } = {};
+  try {
+    out = JSON.parse(content) as typeof out;
+  } catch {
+    const err = new Error("Translate did not return Telugu JSON");
+    (err as { status?: number }).status = 502;
+    throw err;
+  }
+  const optionsTe = Array.isArray(out.options_te)
+    ? out.options_te.map((s) => String(s ?? ""))
+    : [];
+  return { text_te: String(out.text_te || "").trim(), options_te: optionsTe };
 }
 
 /**
@@ -693,6 +778,7 @@ async function ensureSchema() {
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_assign_surveyors BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_crud_questionnaire BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_validate_proof BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_web_survey BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   // Super-Admin-set cap on how many questions a Client Admin may put into one survey (0 = unlimited)
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_questions_per_survey INT NOT NULL DEFAULT 0`.catch(() => null);
   // Super-Admin-set cap on how many surveys a Client Admin may create (0 = unlimited)
@@ -1698,6 +1784,102 @@ const TELUGU_ALIAS: Record<string, string> = (GEO_ALIASES as {
   telugu?: Record<string, string>;
 }).telugu || {};
 const TELUGU_SCRIPT = /[\u0C00-\u0C7F]/;
+
+/** English canonical place → Telugu (longest alias wins). */
+const EN_TO_TE_PLACE = (() => {
+  const m = new Map<string, string>();
+  for (const [te, en] of Object.entries(TELUGU_ALIAS)) {
+    const key = String(en || "").trim().toLowerCase();
+    if (!key) continue;
+    const prev = m.get(key);
+    if (!prev || te.length > prev.length) m.set(key, te);
+  }
+  return m;
+})();
+
+const EXPORT_FIXED_TE: Record<string, string> = {
+  id: "ఐడి",
+  date: "తేదీ",
+  survey: "సర్వే",
+  surveyor: "సర్వేయర్",
+  district: "జిల్లా",
+  constituency: "అసెంబ్లీ",
+  mandal: "మండలం",
+  latitude: "అక్షాంశం",
+  longitude: "రేఖాంశం",
+  party: "పార్టీ",
+  gender: "లింగం",
+  caste: "కులం",
+  age: "వయస్సు",
+  respondent: "ప్రతివాది",
+  photo_url: "ఫోటో లింక్",
+  audio_url: "ఆడియో లింక్",
+  photo_file: "ఫోటో ఫైల్",
+  audio_file: "ఆడియో ఫైల్",
+};
+
+const EXPORT_VALUE_TE: Record<string, string> = {
+  yes: "అవును",
+  no: "కాదు",
+  male: "పురుషుడు",
+  female: "స్త్రీ",
+  other: "ఇతరులు",
+  others: "ఇతరులు",
+  positive: "సానుకూలం",
+  neutral: "తటస్థం",
+  negative: "ప్రతికూలం",
+  congress: "కాంగ్రెస్",
+  bjp: "బీజేపీ",
+  brs: "బీఆర్ఎస్",
+  undecided: "నిర్ణయం కాలేదు",
+  unknown: "తెలియదు",
+};
+
+function toTeluguPlace(v: unknown): string {
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  if (TELUGU_SCRIPT.test(s)) return s;
+  return EN_TO_TE_PLACE.get(s.toLowerCase()) || s;
+}
+
+function toTeluguValue(v: unknown, optTe?: Map<string, string>): string {
+  if (v == null) return "";
+  if (Array.isArray(v)) return v.map((x) => toTeluguValue(x, optTe)).join(" | ");
+  const s = String(v).trim();
+  if (!s) return "";
+  if (TELUGU_SCRIPT.test(s)) return s;
+  const hit = optTe?.get(s) || optTe?.get(s.toLowerCase());
+  if (hit) return hit;
+  const common = EXPORT_VALUE_TE[s.toLowerCase()];
+  if (common) return common;
+  return toTeluguPlace(s);
+}
+
+/** Keep `name` (English, used for filters/maps/colors) and add `label` for Telugu UI. */
+function withTeLabels<T extends { name: string }>(
+  arr: T[],
+  kind: "place" | "value" = "value",
+  optTe?: Map<string, string>,
+): (T & { label: string })[] {
+  return arr.map((d) => ({
+    ...d,
+    label: kind === "place" ? toTeluguPlace(d.name) : toTeluguValue(d.name, optTe),
+  }));
+}
+
+function optionTeMap(options: unknown, optionsTe: unknown): Map<string, string> {
+  const opts = Array.isArray(options) ? options.map((x) => String(x ?? "")) : [];
+  const tes = Array.isArray(optionsTe) ? optionsTe.map((x) => String(x ?? "")) : [];
+  const m = new Map<string, string>();
+  opts.forEach((en, i) => {
+    const te = String(tes[i] || "").trim();
+    if (en && te) {
+      m.set(en, te);
+      m.set(en.toLowerCase(), te);
+    }
+  });
+  return m;
+}
 
 function translateGeoEnglish(
   payload: Record<string, unknown>,
@@ -2789,9 +2971,12 @@ async function buildAnalytics(
   const surveyQuestions: {
     id: string;
     label: string;
+    label_te: string;
     type: string;
     options: string[];
+    options_te: string[];
     aliases: string[];
+    optTe: Map<string, string>;
   }[] = [];
   {
     // Never pull platform `legacy` / `default` into a new account's filter bar
@@ -2874,12 +3059,17 @@ async function buildAnalytics(
           }
           opts.push(...seenVals);
         }
+        const optionsTe = Array.isArray(q.options_te) ? q.options_te.map(String) : [];
+        const optTe = optionTeMap(defined, optionsTe);
         surveyQuestions.push({
           id,
           label: String(q.label || id),
+          label_te: String(q.label_te || "").trim(),
           type,
           options: [...new Set(opts)].slice(0, 100),
+          options_te: optionsTe,
           aliases,
+          optTe,
         });
       }
     }
@@ -2956,34 +3146,41 @@ async function buildAnalytics(
       ),
     );
 
-  const byParty = countKey(rows, "party");
+  const byParty = withTeLabels(countKey(rows, "party"), "value");
   // ALL districts with data for maps (no artificial top-N cut that hides small districts)
   const byDistrictRaw = countBy(
     rows.map((r) => ({ key: r.district })),
     (r) => r.key,
   );
-  const byDistrict = withPct(
-    byDistrictRaw.filter((d) => d.name !== "Unknown"),
+  const byDistrict = withTeLabels(
+    withPct(byDistrictRaw.filter((d) => d.name !== "Unknown")),
+    "place",
   );
-  const byGender = countKey(rows, "gender");
-  const byCaste = countKey(rows, "caste");
-  const byPm = countKey(rows, "pm");
-  const byPerformance = countKey(rows, "performance").slice(0, 10);
-  const byEducation = countKey(rows, "education").slice(0, 10);
-  const byEmployment = countKey(rows, "employment").slice(0, 10);
+  const byGender = withTeLabels(countKey(rows, "gender"), "value");
+  const byCaste = withTeLabels(countKey(rows, "caste"), "value");
+  const byPm = withTeLabels(countKey(rows, "pm"), "value");
+  const byPerformance = withTeLabels(countKey(rows, "performance").slice(0, 10), "value");
+  const byEducation = withTeLabels(countKey(rows, "education").slice(0, 10), "value");
+  const byEmployment = withTeLabels(countKey(rows, "employment").slice(0, 10), "value");
   // Full AC list for assembly map coloring (not just top 12)
-  const byConstituency = withPct(
-    countBy(
-      rows.filter((r) => r.constituency !== "Unknown").map((r) => ({ key: r.constituency })),
-      (r) => r.key,
+  const byConstituency = withTeLabels(
+    withPct(
+      countBy(
+        rows.filter((r) => r.constituency !== "Unknown").map((r) => ({ key: r.constituency })),
+        (r) => r.key,
+      ),
     ),
+    "place",
   );
-  const byAge = countKey(rows, "age");
-  const byMp = withPct(
-    countBy(
-      rows.filter((r) => r.mp).map((r) => ({ key: r.mp })),
-      (r) => r.key,
+  const byAge = withTeLabels(countKey(rows, "age"), "value");
+  const byMp = withTeLabels(
+    withPct(
+      countBy(
+        rows.filter((r) => r.mp).map((r) => ({ key: r.mp })),
+        (r) => r.key,
+      ),
     ),
+    "place",
   );
 
   const issueMap = new Map<string, number>();
@@ -2994,11 +3191,14 @@ async function buildAnalytics(
       issueMap.set(name, (issueMap.get(name) || 0) + 1);
     }
   }
-  const issues = withPct(
-    [...issueMap.entries()]
-      .map(([name, value]) => ({ name, value, pct: 0 }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 12),
+  const issues = withTeLabels(
+    withPct(
+      [...issueMap.entries()]
+        .map(([name, value]) => ({ name, value, pct: 0 }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 12),
+    ),
+    "value",
   );
 
   const dayMap = new Map<string, number>();
@@ -3028,13 +3228,18 @@ async function buildAnalytics(
       }
       return {
         id: q.id,
-        label: q.label,
+        label: q.label_te || q.label,
+        label_en: q.label,
         type: q.type,
-        counts: withPct(
-          [...map.entries()]
-            .map(([name, value]) => ({ name, value, pct: 0 }))
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 12),
+        counts: withTeLabels(
+          withPct(
+            [...map.entries()]
+              .map(([name, value]) => ({ name, value, pct: 0 }))
+              .sort((a, b) => b.value - a.value)
+              .slice(0, 12),
+          ),
+          "value",
+          q.optTe,
         ),
       };
     })
@@ -3065,7 +3270,13 @@ async function buildAnalytics(
   const partyByDistrict = crossTab(rows, "district", "party");
   const partyByDistrictChart = {
     columns: partyByDistrict.columns,
-    rows: partyByDistrict.rows.slice(0, 12),
+    column_labels: Object.fromEntries(
+      partyByDistrict.columns.map((c) => [c, toTeluguValue(c)]),
+    ),
+    rows: partyByDistrict.rows.slice(0, 12).map((r) => ({
+      ...r,
+      label: toTeluguPlace(String(r.name || "")),
+    })),
   };
   const partyByCaste = crossTab(rows, "caste", "party");
   const partyByGender = crossTab(rows, "gender", "party");
@@ -3081,36 +3292,45 @@ async function buildAnalytics(
   );
 
   const contrastParty = isFiltered
-    ? compareSets(pctDist(subset, "party"), pctDist(restRows, "party"), pctDist(universe, "party"))
+    ? withTeLabels(compareSets(pctDist(subset, "party"), pctDist(restRows, "party"), pctDist(universe, "party")), "value")
     : [];
   const contrastGender = isFiltered
-    ? compareSets(pctDist(subset, "gender"), pctDist(restRows, "gender"), pctDist(universe, "gender"))
+    ? withTeLabels(compareSets(pctDist(subset, "gender"), pctDist(restRows, "gender"), pctDist(universe, "gender")), "value")
     : [];
   const contrastCaste = isFiltered
-    ? compareSets(pctDist(subset, "caste"), pctDist(restRows, "caste"), pctDist(universe, "caste"))
+    ? withTeLabels(compareSets(pctDist(subset, "caste"), pctDist(restRows, "caste"), pctDist(universe, "caste")), "value")
     : [];
   const contrastPm = isFiltered
-    ? compareSets(pctDist(subset, "pm"), pctDist(restRows, "pm"), pctDist(universe, "pm"))
+    ? withTeLabels(compareSets(pctDist(subset, "pm"), pctDist(restRows, "pm"), pctDist(universe, "pm")), "value")
     : [];
   const contrastConstituency = isFiltered
-    ? compareSets(
-        pctDist(subset.filter((r) => r.constituency && r.constituency !== "Unknown"), "constituency"),
-        pctDist(restRows.filter((r) => r.constituency && r.constituency !== "Unknown"), "constituency"),
-        pctDist(universe.filter((r) => r.constituency && r.constituency !== "Unknown"), "constituency"),
-      ).slice(0, 25)
+    ? withTeLabels(
+        compareSets(
+          pctDist(subset.filter((r) => r.constituency && r.constituency !== "Unknown"), "constituency"),
+          pctDist(restRows.filter((r) => r.constituency && r.constituency !== "Unknown"), "constituency"),
+          pctDist(universe.filter((r) => r.constituency && r.constituency !== "Unknown"), "constituency"),
+        ).slice(0, 25),
+        "place",
+      )
     : [];
   const contrastDistrict = isFiltered
-    ? compareSets(
-        pctDist(subset.filter((r) => r.district && r.district !== "Unknown"), "district"),
-        pctDist(restRows.filter((r) => r.district && r.district !== "Unknown"), "district"),
-        pctDist(universe.filter((r) => r.district && r.district !== "Unknown"), "district"),
+    ? withTeLabels(
+        compareSets(
+          pctDist(subset.filter((r) => r.district && r.district !== "Unknown"), "district"),
+          pctDist(restRows.filter((r) => r.district && r.district !== "Unknown"), "district"),
+          pctDist(universe.filter((r) => r.district && r.district !== "Unknown"), "district"),
+        ),
+        "place",
       )
     : [];
   const contrastMp = isFiltered
-    ? compareSets(
-        pctDist(subset.filter((r) => r.mp), "mp"),
-        pctDist(restRows.filter((r) => r.mp), "mp"),
-        pctDist(universe.filter((r) => r.mp), "mp"),
+    ? withTeLabels(
+        compareSets(
+          pctDist(subset.filter((r) => r.mp), "mp"),
+          pctDist(restRows.filter((r) => r.mp), "mp"),
+          pctDist(universe.filter((r) => r.mp), "mp"),
+        ),
+        "place",
       )
     : [];
 
@@ -3233,10 +3453,12 @@ async function buildAnalytics(
           .slice(0, 100);
         return {
           id: q.id,
-          label: q.label,
+          label: q.label_te || q.label,
+          label_en: q.label,
           type: q.type,
           options: q.options,
-          counts,
+          options_te: q.options_te,
+          counts: withTeLabels(counts, "value", q.optTe),
         };
       }),
       // Surveyor × month (each surveyor's monthly totals)
@@ -3301,6 +3523,23 @@ async function buildAnalytics(
       })(),
     },
     filterOptions,
+    filterLabels: {
+      districts: Object.fromEntries(
+        (filterOptions.districts as string[]).map((n) => [n, toTeluguPlace(n)]),
+      ),
+      parties: Object.fromEntries(
+        (filterOptions.parties as string[]).map((n) => [n, toTeluguValue(n)]),
+      ),
+      genders: Object.fromEntries(
+        (filterOptions.genders as string[]).map((n) => [n, toTeluguValue(n)]),
+      ),
+      castes: Object.fromEntries(
+        (filterOptions.castes as string[]).map((n) => [n, toTeluguValue(n)]),
+      ),
+      constituencies: Object.fromEntries(
+        (filterOptions.constituencies as string[]).map((n) => [n, toTeluguPlace(n)]),
+      ),
+    },
     formula: {
       name: "Super-set / Sub-set",
       description:
@@ -3430,6 +3669,7 @@ async function rawHandler(req: Request): Promise<Response> {
                COALESCE(can_assign_surveyors, FALSE) AS can_assign_surveyors,
                COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
                COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
+               COALESCE(can_web_survey, FALSE) AS can_web_survey,
                COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                COALESCE(max_surveys, 0) AS max_surveys,
                COALESCE(max_surveyors, 0) AS max_surveyors,
@@ -3532,6 +3772,7 @@ async function rawHandler(req: Request): Promise<Response> {
           can_assign_surveyors: sqlBool(uu.can_assign_surveyors),
           can_crud_questionnaire: sqlBool(uu.can_crud_questionnaire),
           can_validate_proof: sqlBool(uu.can_validate_proof),
+          can_web_survey: sqlBool(uu.can_web_survey),
           max_questions_per_survey: Number(uu.max_questions_per_survey) || 0,
           max_surveys: Number(uu.max_surveys) || 0,
           max_surveyors: Number(uu.max_surveyors) || 0,
@@ -3986,6 +4227,7 @@ async function rawHandler(req: Request): Promise<Response> {
                    COALESCE(can_assign_surveyors, FALSE) AS can_assign_surveyors,
                    COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
                    COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
+               COALESCE(can_web_survey, FALSE) AS can_web_survey,
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                    COALESCE(max_surveys, 0) AS max_surveys,
                    COALESCE(max_surveyors, 0) AS max_surveyors,
@@ -3998,7 +4240,7 @@ async function rawHandler(req: Request): Promise<Response> {
                      FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
                      FALSE AS can_assign_surveyors,
-                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof,
+                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey,
                      0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records
               FROM app_users ORDER BY id
             `
@@ -4015,6 +4257,7 @@ async function rawHandler(req: Request): Promise<Response> {
                    COALESCE(can_assign_surveyors, FALSE) AS can_assign_surveyors,
                    COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
                    COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
+               COALESCE(can_web_survey, FALSE) AS can_web_survey,
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                    COALESCE(max_surveys, 0) AS max_surveys,
                    COALESCE(max_surveyors, 0) AS max_surveyors,
@@ -4028,7 +4271,7 @@ async function rawHandler(req: Request): Promise<Response> {
                      FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
                      FALSE AS can_assign_surveyors,
-                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof,
+                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey,
                      0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records
               FROM app_users
               WHERE (id = ${me.id} OR created_by = ${me.id})
@@ -4130,6 +4373,7 @@ async function rawHandler(req: Request): Promise<Response> {
           can_assign_surveyors: sqlBool(r.can_assign_surveyors),
           can_crud_questionnaire: sqlBool(r.can_crud_questionnaire),
           can_validate_proof: sqlBool(r.can_validate_proof),
+          can_web_survey: sqlBool(r.can_web_survey),
           max_questions_per_survey: Number(r.max_questions_per_survey) || 0,
           max_surveys: Number(r.max_surveys) || 0,
           max_surveyors: Number(r.max_surveyors) || 0,
@@ -4203,6 +4447,7 @@ async function rawHandler(req: Request): Promise<Response> {
         const canAssignSurveyors = canSuper && body.can_assign_surveyors === true;
         const canCrudQuestionnaire = canSuper && body.can_crud_questionnaire === true;
         const canValidateProof = canSuper && body.can_validate_proof === true;
+        const canWebSurvey = canSuper && body.can_web_survey === true;
         const maxQuestionsPerSurvey = canSuper
           ? Math.max(0, Math.min(Number(body.max_questions_per_survey) || 0, 100000))
           : 0;      const maxSurveysCreate = canSuper
@@ -4238,9 +4483,9 @@ async function rawHandler(req: Request): Promise<Response> {
           }
         }
         const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, company_name, company_id, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors, max_records, created_by)
-          VALUES (${username}, ${password_hash}, ${name}, ${finalCompanyName}, ${companyId}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canAssignSurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${maxRecordsCreate}, ${me.id})
-          RETURNING id, username, display_name, company_name, company_id, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors, max_records
+          INSERT INTO app_users (username, password_hash, display_name, company_name, company_id, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, max_questions_per_survey, max_surveys, max_surveyors, max_records, created_by)
+          VALUES (${username}, ${password_hash}, ${name}, ${finalCompanyName}, ${companyId}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canAssignSurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${canWebSurvey}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${maxRecordsCreate}, ${me.id})
+          RETURNING id, username, display_name, company_name, company_id, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, max_questions_per_survey, max_surveys, max_surveyors, max_records
         `;
         const u = inserted[0] as Record<string, unknown>;
 
@@ -4300,6 +4545,7 @@ async function rawHandler(req: Request): Promise<Response> {
           can_assign_surveyors: canAssignSurveyors,
           can_crud_questionnaire: canCrudQuestionnaire,
           can_validate_proof: canValidateProof,
+          can_web_survey: canWebSurvey,
           max_questions_per_survey: maxQuestionsPerSurvey,
           max_surveys: maxSurveysCreate,
           max_surveyors: maxSurveyorsCreate,
@@ -4323,6 +4569,9 @@ async function rawHandler(req: Request): Promise<Response> {
             can_review_data: u.can_review_data === true,
             can_verify_surveyors: u.can_verify_surveyors === true,
             can_assign_surveyors: u.can_assign_surveyors === true,
+            can_crud_questionnaire: u.can_crud_questionnaire === true,
+            can_validate_proof: u.can_validate_proof === true,
+            can_web_survey: u.can_web_survey === true,
             starter_form_key: starterFormKey,
           },
           field_app_access: role === "surveyor",
@@ -4788,6 +5037,7 @@ async function rawHandler(req: Request): Promise<Response> {
         "can_assign_surveyors",
         "can_crud_questionnaire",
         "can_validate_proof",
+        "can_web_survey",
       ] as const;
       const nextPowers: Record<string, boolean> = {};
       for (const k of POWER_KEYS) {
@@ -4839,12 +5089,13 @@ async function rawHandler(req: Request): Promise<Response> {
               can_assign_surveyors = ${nextPowers.can_assign_surveyors},
               can_crud_questionnaire = ${nextPowers.can_crud_questionnaire},
               can_validate_proof = ${nextPowers.can_validate_proof},
+              can_web_survey = ${nextPowers.can_web_survey},
               max_questions_per_survey = ${nextMaxQuestionsPerSurvey},
               max_surveys = ${nextMaxSurveys},
               max_surveyors = ${nextMaxSurveyors},
               max_records = ${nextMaxRecords}
           WHERE id = ${id}
-          RETURNING id, username, display_name, company_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors, max_records
+          RETURNING id, username, display_name, company_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, max_questions_per_survey, max_surveys, max_surveyors, max_records
         `;
       } catch (e) {
         const msg = (e as Error).message || "";
@@ -4925,6 +5176,7 @@ async function rawHandler(req: Request): Promise<Response> {
           can_assign_surveyors: sqlBool(u.can_assign_surveyors),
           can_crud_questionnaire: sqlBool(u.can_crud_questionnaire),
           can_validate_proof: sqlBool(u.can_validate_proof),
+          can_web_survey: sqlBool(u.can_web_survey),
           max_questions_per_survey: Number(u.max_questions_per_survey) || 0,
           max_surveys: Number(u.max_surveys) || 0,
           max_surveyors: Number(u.max_surveyors) || 0,
@@ -5045,6 +5297,29 @@ async function rawHandler(req: Request): Promise<Response> {
 
     // FR-QB-02: Global Question Bank — Super Admin authors is_global templates;
     // Client Admins see global + their own, and can copy any into a survey.
+    if (path === "/api/questions/translate" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!canQuestionCopy(me)) {
+        return json({
+          error: "Super Admin has not granted question-management rights (needed for Telugu translate)",
+        }, 403);
+      }
+      const body = await readBody(req);
+      const text = String(body.text || "").trim();
+      const options = Array.isArray(body.options)
+        ? body.options.map((s: unknown) => String(s ?? "").trim()).filter(Boolean)
+        : [];
+      if (!text) return json({ error: "Question text required" }, 400);
+      try {
+        const out = await translateQuestionToTelugu(text, options);
+        return json(out);
+      } catch (e) {
+        const status = Number((e as { status?: number }).status) || 502;
+        return json({ error: (e as Error).message || "Translate failed" }, status);
+      }
+    }
+
     if (path === "/api/question-bank" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
@@ -6506,7 +6781,10 @@ async function rawHandler(req: Request): Promise<Response> {
           error: me.role === "super_admin" ? "Project name required" : "Survey name required",
         }, 400);
       }
-      const questions = Array.isArray(body.questions) ? body.questions : [];
+      const questions = stripTeluguUnlessAllowed(
+        me,
+        Array.isArray(body.questions) ? body.questions : [],
+      );
       // Same validation as PUT /api/surveys/:id — reject empty/duplicate
       // question ids before they ever reach the database.
       {
@@ -7128,6 +7406,7 @@ async function rawHandler(req: Request): Promise<Response> {
         `;
       }
       if (Array.isArray(body.questions)) {
+        body.questions = stripTeluguUnlessAllowed(me, body.questions);
         // Reject malformed question ids before saving — an empty or
         // duplicate id collapses multiple questions onto one key in every
         // downstream per-question map (filters, chart counts), which can
@@ -7514,12 +7793,82 @@ async function rawHandler(req: Request): Promise<Response> {
       return json({ items, count: items.length });
     }
 
+    if (path === "/api/web-survey" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!hasPower(me, "can_web_survey")) {
+        return json({
+          error: "Super Admin has not granted web survey fill",
+        }, 403);
+      }
+      const body = await readBody(req);
+      const answers = (body.answers || {}) as Record<string, unknown>;
+      const agent =
+        String(body.submitted_by || "").trim() || me.name || me.username;
+      const formKey = String(body.form_key || body.form_id || "").trim();
+      if (!formKey || formKey === "default" || formKey === "legacy") {
+        return json({ error: "Pick a real survey" }, 400);
+      }
+      if (me.role === "admin") {
+        const writeScope = await adminFormKeyScope(sql, me);
+        if (writeScope && !writeScope.includes(formKey)) {
+          return json({
+            error: `You can only submit to your own surveys (${writeScope.length ? writeScope.join(", ") : "none"})`,
+          }, 403);
+        }
+      }
+      const payload = {
+        form_key: formKey,
+        form_id: body.form_id || formKey,
+        source: "web-survey",
+        submitted_by: agent,
+        user_id: me.id,
+        user_role: me.role,
+        status: "pending",
+        geo: null,
+        location_details: null,
+        locks: { geo: false, web: true },
+        has_photo: false,
+        has_audio: false,
+        answers: { ...answers, data_collector: agent },
+        content_type: "qa",
+        app_version: body.app_version ? String(body.app_version) : null,
+      };
+      const rows = await sql`
+        INSERT INTO submissions (payload)
+        VALUES (${JSON.stringify(payload)}::jsonb)
+        RETURNING id, payload, created_at
+      `;
+      const row = rows[0] as { id: number; created_at: string };
+      logAudit(me, "submission_create", "submission", row.id, {
+        form_key: formKey,
+        source: "web-survey",
+      });
+      return json({
+        ok: true,
+        id: row.id,
+        form_id: payload.form_id,
+        source: "web-survey",
+        submitted_by: agent,
+        status: "pending",
+        created_at: row.created_at,
+      }, 201);
+    }
+
     if (path === "/api/submissions" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
       if (me.role !== "admin" && me.role !== "surveyor") {
         return json({ error: "Login required as admin or surveyor" }, 403);
       }
       const body = await readBody(req);
+      const incomingSource = String(body.source || "");
+      if (incomingSource === "web-survey" || incomingSource === "web") {
+        if (!hasPower(me, "can_web_survey")) {
+          return json({
+            error: "Super Admin has not granted web survey fill",
+          }, 403);
+        }
+      }
       // Q/A only — media uploaded separately to /api/submissions/:id/media
       const answers = (body.answers || body) as Record<string, unknown>;
       const geo = body.geo || null;
@@ -7570,20 +7919,24 @@ async function rawHandler(req: Request): Promise<Response> {
         }
       }
 
-      // Require geo lock on every field submission
-      if (!geo || typeof geo !== "object") {
+      // Require geo lock on every field submission. Web-survey fill (power-gated
+      // above) is desk entry and has no GPS.
+      const isWebFill = incomingSource === "web-survey" || incomingSource === "web";
+      if (!isWebFill && (!geo || typeof geo !== "object")) {
         return json({
           error: "GPS lock required — lat/lng missing",
           code: "geo_lock_required",
         }, 422);
       }
-      const gLat = Number((geo as Record<string, unknown>).lat ?? (geo as Record<string, unknown>).latitude);
-      const gLng = Number((geo as Record<string, unknown>).lng ?? (geo as Record<string, unknown>).longitude);
-      if (!Number.isFinite(gLat) || !Number.isFinite(gLng) || (gLat === 0 && gLng === 0)) {
-        return json({
-          error: "GPS lock invalid",
-          code: "geo_lock_invalid",
-        }, 422);
+      if (!isWebFill) {
+        const gLat = Number((geo as Record<string, unknown>).lat ?? (geo as Record<string, unknown>).latitude);
+        const gLng = Number((geo as Record<string, unknown>).lng ?? (geo as Record<string, unknown>).longitude);
+        if (!Number.isFinite(gLat) || !Number.isFinite(gLng) || (gLat === 0 && gLng === 0)) {
+          return json({
+            error: "GPS lock invalid",
+            code: "geo_lock_invalid",
+          }, 422);
+        }
       }
 
       const payload = {
@@ -8229,6 +8582,10 @@ async function rawHandler(req: Request): Promise<Response> {
         const districtQ = (url.searchParams.get("district") || "").trim().toLowerCase();
         const constituencyQ = (url.searchParams.get("constituency") || "").trim().toLowerCase();
         const statusQ = (url.searchParams.get("status") || "confirmed").trim().toLowerCase();
+        const langQ = (url.searchParams.get("lang") || url.searchParams.get("locale") || "en")
+          .trim()
+          .toLowerCase();
+        const asTe = langQ === "te" || langQ === "telugu" || langQ === "te-in";
 
         const allRows = await loadAnalyticsRows(sql, 20000, await adminFormKeyScope(sql, me));
         let rows = allRows;
@@ -8294,6 +8651,7 @@ async function rawHandler(req: Request): Promise<Response> {
           "photo_url", "audio_url", "photo_file", "audio_file",
         ];
         const idToLabel = new Map<string, string>();
+        const optTeByKey = new Map<string, Map<string, string>>();
         const questionsByForm = new Map<string, { id: string; label: string }[]>();
         {
           const formRows = await sql`SELECT form_key, questions FROM survey_form`.catch(() => []);
@@ -8302,9 +8660,22 @@ async function rawHandler(req: Request): Promise<Response> {
             for (const raw of parseQuestionsArray(f.questions)) {
               const q = raw as Record<string, unknown>;
               const qid = String(q.id || "").trim();
-              const label = String(q.label || q.speak || qid).trim();
+              const labelEn = String(q.label || q.speak || qid).trim();
+              const labelTe = String(q.label_te || "").trim();
+              const label = asTe ? (labelTe || labelEn) : labelEn;
+              const opts = Array.isArray(q.options) ? q.options.map((x) => String(x ?? "")) : [];
+              const optsTe = Array.isArray(q.options_te) ? q.options_te.map((x) => String(x ?? "")) : [];
+              const optMap = new Map<string, string>();
+              opts.forEach((en, i) => {
+                const te = String(optsTe[i] || "").trim();
+                if (en && te) {
+                  optMap.set(en, te);
+                  optMap.set(en.toLowerCase(), te);
+                }
+              });
               if (qid && label) idToLabel.set(qid, label);
-              if (label) list.push({ id: qid, label });
+              if (qid && optMap.size) optTeByKey.set(qid, optMap);
+              if (labelEn) list.push({ id: qid, label: labelEn });
             }
             questionsByForm.set(String(f.form_key || ""), list);
           }
@@ -8322,9 +8693,13 @@ async function rawHandler(req: Request): Promise<Response> {
         for (const [fk, bags] of bagsByForm) {
           const qs = questionsByForm.get(fk) || [];
           for (const [qid, als] of aliasesForQuestions(qs, bags)) {
-            const label = qs.find((q) => q.id === qid)?.label;
+            const label = idToLabel.get(qid) || qs.find((q) => q.id === qid)?.label;
+            const optMap = optTeByKey.get(qid);
             if (label) {
               for (const a of als) idToLabel.set(a, label);
+            }
+            if (optMap) {
+              for (const a of als) optTeByKey.set(a, optMap);
             }
           }
         }
@@ -8355,6 +8730,24 @@ async function rawHandler(req: Request): Promise<Response> {
         };
         const lines: string[] = [];
 
+        const locVal = (key: string, v: unknown) => {
+          if (!asTe) return Array.isArray(v) ? v.join(" | ") : v;
+          if (
+            key === "id" || key === "date" || key === "latitude" || key === "longitude" ||
+            key === "photo_url" || key === "audio_url" || key === "photo_file" ||
+            key === "audio_file" || key === "age"
+          ) {
+            return v;
+          }
+          if (key === "district" || key === "constituency" || key === "mandal" || key === "survey") {
+            return toTeluguPlace(v);
+          }
+          return toTeluguValue(v);
+        };
+        const locAns = (c: string, v: unknown) =>
+          asTe ? toTeluguValue(v, optTeByKey.get(c)) : (Array.isArray(v) ? v.join(" | ") : v);
+        const fixedHead = (c: string) => (asTe ? EXPORT_FIXED_TE[c] || c : c);
+
         const getBaseRecord = (r: (typeof rows)[number]) => {
           const rObj = r as unknown as Record<string, unknown>;
           return {
@@ -8381,15 +8774,19 @@ async function rawHandler(req: Request): Promise<Response> {
 
         if (isVertical) {
           // Vertical Layout: Transposed CSV (Questions / Attributes as Rows, Records as Columns)
-          const headerRow = ["Field / Question", ...rows.map((r, idx) => `Record #${r.id || idx + 1}`)];
+          const recLabel = asTe ? "రికార్డ్" : "Record";
+          const headerRow = [
+            asTe ? "ఫీల్డ్ / ప్రశ్న" : "Field / Question",
+            ...rows.map((r, idx) => `${recLabel} #${r.id || idx + 1}`),
+          ];
           lines.push(headerRow.map(esc).join(","));
 
           // Fixed Metadata Fields (Rows)
           for (const c of fixed) {
-            const rowVals = [c];
+            const rowVals = [fixedHead(c)];
             for (const r of rows) {
               const base = getBaseRecord(r);
-              rowVals.push(esc(base[c]));
+              rowVals.push(esc(locVal(c, base[c])));
             }
             lines.push(rowVals.join(","));
           }
@@ -8400,20 +8797,20 @@ async function rawHandler(req: Request): Promise<Response> {
             const rowVals = [esc(qHeader)];
             for (const r of rows) {
               const v = (r.answers || {})[c];
-              rowVals.push(esc(Array.isArray(v) ? v.join(" | ") : v));
+              rowVals.push(esc(locAns(c, v)));
             }
             lines.push(rowVals.join(","));
           });
         } else {
           // Horizontal Layout: Standard CSV (One row per record)
-          lines.push([...fixed, ...qHeaders].map(esc).join(","));
+          lines.push([...fixed.map(fixedHead), ...qHeaders].map(esc).join(","));
           for (const r of rows) {
             const base = getBaseRecord(r);
             const rec: string[] = [];
-            for (const c of fixed) rec.push(esc(base[c]));
+            for (const c of fixed) rec.push(esc(locVal(c, base[c])));
             for (const c of qCols) {
               const v = (r.answers || {})[c];
-              rec.push(esc(Array.isArray(v) ? v.join(" | ") : v));
+              rec.push(esc(locAns(c, v)));
             }
             lines.push(rec.join(","));
           }
@@ -8423,12 +8820,16 @@ async function rawHandler(req: Request): Promise<Response> {
           status: statusQ,
           from: dateFrom,
           to: dateTo,
+          lang: asTe ? "te" : "en",
         });
-        return new Response(lines.join("\n"), {
+        const stamp = dayParam || monthParam || "total";
+        const fname = asTe ? `survey-export-te-${stamp}.csv` : `survey-export-${stamp}.csv`;
+        const csvBody = (asTe ? "\uFEFF" : "") + lines.join("\n");
+        return new Response(csvBody, {
           status: 200,
           headers: {
             "Content-Type": "text/csv; charset=utf-8",
-            "Content-Disposition": `attachment; filename="survey-export-${dayParam || monthParam || "total"}.csv"`,
+            "Content-Disposition": `attachment; filename="${fname}"`,
             ...corsHeaders(req),
           },
         });

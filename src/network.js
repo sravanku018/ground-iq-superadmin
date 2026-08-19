@@ -176,6 +176,15 @@ export function isStrongEnoughToSync(status) {
 }
 
 /**
+ * Reachable at all — weak included. Used by manual "Sync now" and the
+ * stale-queue fallback so packages aren't stranded forever on a persistently
+ * weak link. Automatic drains still prefer isStrongEnoughToSync.
+ */
+export function isUsableForSync(status) {
+  return !!status?.apiReachable && status.quality !== QUALITY.OFFLINE
+}
+
+/**
  * Continuous watcher: device online/offline events + periodic health probe.
  * @param {(status: NetworkStatus) => void} onChange
  * @param {{ intervalMs?: number }} [opts]

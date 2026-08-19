@@ -487,6 +487,30 @@ export function createSubmission({ form_id, source, submitted_by, answers }) {
   })
 }
 
+/** Portal web fill — requires can_web_survey on the server. */
+export function createWebSurvey({ form_key, form_id, submitted_by, answers }) {
+  return request('/api/web-survey', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      form_key,
+      form_id: form_id || form_key,
+      source: 'web-survey',
+      submitted_by: submitted_by || null,
+      answers,
+    }),
+  })
+}
+
+/** Telugu auto-translate — requires can_manage_questions or can_crud_questionnaire. */
+export function translateQuestion({ text, options }) {
+  return request('/api/questions/translate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, options: options || [] }),
+  })
+}
+
 /** Load questions from admin dashboard (auto for field app) */
 export function getQuestions() {
   return request('/api/questions')

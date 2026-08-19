@@ -71,6 +71,7 @@ function writeStoredOpenDraft(user, data) {
   }
 }
 import { forceSyncNow, getQueueSnapshot } from './syncEngine'
+import { getNavMode } from './prefs'
 /**
  * LOCKED collect flow — surveyor cannot skip:
  * (Pull-to-refresh is provided by SurveyorApp shell.)
@@ -166,7 +167,11 @@ export default function FieldCollectScreen({
   onIdleHome,
   draft,
   active = true,
+  navMode: navModeProp,
 }) {
+  // Device-local question-navigation preference (Settings tab). The prop is the
+  // live source; fall back to localStorage if this screen is rendered without it.
+  const navMode = navModeProp || getNavMode()
   const [step, setStep] = useState(0) // 0 geo, 1 photo, 2 voice+qa, 3 done
   const [formMeta, setFormMeta] = useState(null)
   const [questions, setQuestions] = useState([])
@@ -222,6 +227,9 @@ export default function FieldCollectScreen({
   const watchId = useRef(null)
   const streamRef = useRef(null)
   const audioStartedAt = useRef(null)
+  // Swipe-navigation gesture tracking (only used when navMode === 'swipe')
+  const touchStartX = useRef(null)
+  const touchStartY = useRef(null)
   const storedOpen = readStoredOpenDraft(user)
   const workingDraftIdRef = useRef(draft?.id || storedOpen?.id || null)
   const draftCreatedAtRef = useRef(draft?.createdAt || storedOpen?.createdAt || null)
@@ -316,6 +324,21 @@ export default function FieldCollectScreen({
       onToast?.('Lock GPS and photo before the survey', 'error')
     }
   }, [step, surveyUnlocked, geoLocked, onToast])
+
+  // Scroll mode has no per-question Next tap, so quietly checkpoint the draft as
+  // answers change (debounced) — otherwise leaving mid-scroll loses everything
+  // since the last save. Next/swipe modes already checkpoint on each advance.
+  useEffect(() => {
+    if (navMode !== 'scroll') return
+    if (step !== 2 || !voiceActivated || !questions.length || saving) return
+    const t = setTimeout(() => {
+      void saveDraft({ mode: 'checkpoint', silent: true })
+    }, 1500)
+    return () => clearTimeout(t)
+    // saveDraft is a stable in-component declaration; deps intentionally track
+    // only the inputs that should (re)arm the autosave timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answers, navMode, step, voiceActivated, questions.length, saving])
 
   // Survey status saved with the draft: answered questions out of total (meta keys excluded)
   const answeredCount = useMemo(() => {
@@ -709,7 +732,7 @@ export default function FieldCollectScreen({
   }
 
   /** Speech recognition fills current question (requires voice activated) */
-  function startSpeechFill() {
+  function startSpeechFill(targetQ) {
     if (!voiceActivated) {
       onToast?.('Activate voice first', 'error')
       return
@@ -719,7 +742,9 @@ export default function FieldCollectScreen({
       onToast?.('Speech recognition not available — type answers', 'error')
       return
     }
-    const q = questions[activeQ]
+    // Accept an explicit target (scroll mode fills a specific card); default to
+    // the active question. Guard against a stray event object being passed in.
+    const q = targetQ && targetQ.id ? targetQ : questions[activeQ]
     if (!q) return
     if (window.speechSynthesis && q.speak) {
       const u = new SpeechSynthesisUtterance(q.speak)
@@ -800,6 +825,17 @@ export default function FieldCollectScreen({
         onToast?.(`Required: ${q.label}`, 'error')
         setStep(2)
         setActiveQ(questions.indexOf(q))
+        // In scroll mode activeQ isn't the visible position, so bring the
+        // missing question into view by its stable id.
+        if (navMode === 'scroll' && typeof document !== 'undefined' && q.id) {
+          try {
+            document
+              .getElementById(`qa-q-${q.id}`)
+              ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          } catch {
+            /* ignore */
+          }
+        }
         return
       }
     }
@@ -970,7 +1006,7 @@ export default function FieldCollectScreen({
    * mode 'checkpoint' → Next button: upsert the same draft and stay on Collect.
    * autoNext → stay on Collect and start the next record.
    */
-  async function saveDraft({ autoNext = false, mode = 'finish', questionIndex } = {}) {
+  async function saveDraft({ autoNext = false, mode = 'finish', questionIndex, silent = false } = {}) {
     const checkpoint = mode === 'checkpoint'
     if (!checkpoint) {
       if (!geoLocked) {
@@ -1102,7 +1138,9 @@ export default function FieldCollectScreen({
       }
       await collapseDuplicateDrafts().catch(() => {})
       if (checkpoint) {
-        onToast?.(`Saved as draft · Q${(Number.isInteger(questionIndex) ? questionIndex : activeQ) + 1}`, 'ok')
+        if (!silent) {
+          onToast?.(`Saved as draft · Q${(Number.isInteger(questionIndex) ? questionIndex : activeQ) + 1}`, 'ok')
+        }
         return true
       }
       if (autoNext) {
@@ -1148,6 +1186,432 @@ export default function FieldCollectScreen({
   }
 
   const q = questions[activeQ]
+
+  // ── Survey question navigation (Settings → "survey loading" mode) ────────
+  // Shared advance/retreat used by the Prev/Next buttons and swipe gestures.
+  function goPrev() {
+    setActiveQ((i) => Math.max(0, i - 1))
+  }
+  function goNext() {
+    if (activeQ < questions.length - 1) {
+      const nextQ = activeQ + 1
+      setActiveQ(nextQ)
+      void saveDraft({ mode: 'checkpoint', questionIndex: nextQ })
+    }
+  }
+  function onSwipeStart(e) {
+    // Don't hijack a gesture that starts on an interactive control (slider,
+    // text field, option button) — those handle their own touches.
+    const el = e.target
+    if (
+      el &&
+      el.closest &&
+      el.closest('input, textarea, select, button, a, [contenteditable], .qa-meter')
+    ) {
+      touchStartX.current = null
+      return
+    }
+    const t = e.changedTouches?.[0]
+    touchStartX.current = t ? t.clientX : null
+    touchStartY.current = t ? t.clientY : null
+  }
+  function onSwipeEnd(e) {
+    if (touchStartX.current == null) return
+    const t = e.changedTouches?.[0]
+    const startX = touchStartX.current
+    const startY = touchStartY.current
+    touchStartX.current = null
+    touchStartY.current = null
+    if (!t) return
+    const dx = t.clientX - startX
+    const dy = t.clientY - startY
+    // Require a deliberate, mostly-horizontal swipe.
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return
+    if (dx < 0) goNext()
+    else goPrev()
+  }
+
+  // Answer inputs for one question — identical markup in every nav mode.
+  function renderAnswerBody(qq) {
+    return qq.type === 'yesno' ? (
+      <div className="qa-options">
+        <button
+          type="button"
+          className={`qa-opt yes${answers[qq.id] === 'Yes' ? ' selected' : ''}`}
+          onClick={() => setAnswers((a) => ({ ...a, [qq.id]: 'Yes' }))}
+        >
+          Yes
+        </button>
+        <button
+          type="button"
+          className={`qa-opt no${answers[qq.id] === 'No' ? ' selected' : ''}`}
+          onClick={() => setAnswers((a) => ({ ...a, [qq.id]: 'No' }))}
+        >
+          No
+        </button>
+      </div>
+    ) : qq.type === 'sentiment_text' ? (
+      <div style={{ marginTop: 10 }}>
+        <label className="field" style={{ marginBottom: 8 }}>
+          <span>Response Text</span>
+          <textarea
+            rows={3}
+            value={answers[qq.id] || ''}
+            onChange={(e) => setAnswers((a) => ({ ...a, [qq.id]: e.target.value }))}
+            placeholder="Type respondent feedback or opinion…"
+            style={{ width: '100%', resize: 'vertical' }}
+          />
+        </label>
+        <p style={{ margin: '4px 0 6px', fontSize: 12, fontWeight: 'bold', color: '#38bdf8' }}>
+          Tag Sentiment Filler:
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {[
+            { label: '😀 Positive', val: 'Positive', color: '#059669' },
+            { label: '😐 Neutral', val: 'Neutral', color: '#d97706' },
+            { label: '🙁 Negative', val: 'Negative', color: '#dc2626' },
+          ].map((item) => {
+            const active = (answers[qq.id] || '').includes(`[${item.val}]`)
+            return (
+              <button
+                key={item.val}
+                type="button"
+                style={{
+                  background: item.color,
+                  color: '#fff',
+                  border: 0,
+                  borderRadius: 20,
+                  padding: '8px 16px',
+                  fontSize: 13,
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  outline: active ? '2px solid #fff' : 'none',
+                  outlineOffset: 2,
+                  opacity: answers[qq.id] && !active ? 0.7 : 1,
+                }}
+                onClick={() => {
+                  setAnswers((a) => {
+                    const prev = a[qq.id] || ''
+                    const cleaned = prev.replace(/\s*\[(Positive|Neutral|Negative)\]/g, '').trim()
+                    return { ...a, [qq.id]: `${cleaned} [${item.val}]`.trim() }
+                  })
+                }}
+              >
+                {item.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    ) : qq.type === 'meter' ? (
+      <div className="qa-meter">
+        {(() => {
+          const raw = String(answers[qq.id] || '').replace('%', '').trim()
+          const n = Number(raw)
+          const val = n >= 1 && n <= 100 ? n : 50
+          const mood = val <= 33 ? 'Negative' : val <= 66 ? 'Neutral' : 'Positive'
+          const moodClass = val <= 33 ? 'neg' : val <= 66 ? 'neu' : 'pos'
+          return (
+            <>
+              <div className="qa-meter-track">
+                <input
+                  type="range"
+                  min="1"
+                  max="100"
+                  step="1"
+                  value={val}
+                  onChange={(e) =>
+                    setAnswers((a) => ({
+                      ...a,
+                      [qq.id]: `${Number(e.target.value)}%`,
+                    }))
+                  }
+                  aria-label="Sentiment 1 to 100"
+                />
+              </div>
+              <div className="qa-meter-scale">
+                <span>Negative</span>
+                <span>Neutral</span>
+                <span>Positive</span>
+              </div>
+              <div className="qa-meter-value">
+                <strong>{answers[qq.id] ? `${val}%` : '—'}</strong>
+                {answers[qq.id] ? (
+                  <span className={`qa-opt selected ${moodClass}`} style={{ minHeight: 32, padding: '4px 12px' }}>
+                    {mood}
+                  </span>
+                ) : (
+                  <span className="muted">Tap the bar</span>
+                )}
+              </div>
+            </>
+          )
+        })()}
+      </div>
+    ) : (Array.isArray(qq.options) && qq.options.length > 0) || (qq.type === 'range' || qq.type === 'numeric_range' || qq.type === 'age') ? (
+      <div>
+        <div
+          className={`qa-options${
+            (Array.isArray(qq.options) ? qq.options.length : 5) === 1 ? ' cols-1' : ''
+          }`}
+        >
+          {(Array.isArray(qq.options) && qq.options.length > 0
+            ? qq.options
+            : ['10-20', '21-30', '31-40', '41-50', '50+']
+          ).map((opt, oi) => {
+            const sel = answers[qq.id] === opt
+            const optKey = String(opt || '').trim().toLowerCase()
+            const sent =
+              qq.type === 'sentiment' || SENTIMENT_COLORS[String(opt || '').trim()]
+                ? optKey.startsWith('pos')
+                  ? 'pos'
+                  : optKey.startsWith('neg')
+                    ? 'neg'
+                    : 'neu'
+                : ''
+            const te = Array.isArray(qq.options_te) ? qq.options_te[oi] : ''
+            return (
+              <button
+                key={opt}
+                type="button"
+                className={`qa-opt${sel ? ' selected' : ''}${sent ? ` ${sent}` : ''}`}
+                onClick={() => setAnswers((a) => ({ ...a, [qq.id]: opt }))}
+              >
+                {opt}
+                {te ? (
+                  <span className="muted" style={{ display: 'block', fontSize: 11, fontWeight: 500 }}>
+                    {te}
+                  </span>
+                ) : null}
+              </button>
+            )
+          })}
+        </div>
+        {(qq.type === 'range' || qq.type === 'numeric_range' || qq.type === 'age') && (
+          <label className="field" style={{ marginTop: 12 }}>
+            <span>Or type exact number / age</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={answers[qq.id] || ''}
+              onChange={(e) => setAnswers((a) => ({ ...a, [qq.id]: e.target.value }))}
+              placeholder="e.g. 25"
+            />
+          </label>
+        )}
+        {qq.type === 'choice' && (
+          <label className="field" style={{ marginTop: 12 }}>
+            <span>Or type your own answer (not listed above)</span>
+            <input
+              type="text"
+              value={(() => {
+                const v = answers[qq.id]
+                const opts = Array.isArray(qq.options) ? qq.options : []
+                return v != null && String(v).trim() !== '' && !opts.includes(String(v))
+                  ? String(v)
+                  : ''
+              })()}
+              onChange={(e) =>
+                setAnswers((a) => ({
+                  ...a,
+                  [qq.id]: e.target.value.trim() || '',
+                }))
+              }
+              placeholder="Type a custom answer…"
+            />
+          </label>
+        )}
+      </div>
+    ) : (
+      <label className="field" style={{ marginTop: 10 }}>
+        <span>Answer{qq.type === 'age' ? ' (number)' : ''}</span>
+        <input
+          value={answers[qq.id] || ''}
+          inputMode={qq.type === 'age' ? 'numeric' : undefined}
+          onChange={(e) => setAnswers((a) => ({ ...a, [qq.id]: e.target.value }))}
+        />
+      </label>
+    )
+  }
+
+  // Title + optional speak prompt + answer body (+ optional per-card Speak-fill).
+  function renderQuestionCard(qq, { speakFill = false } = {}) {
+    return (
+      <>
+        <h3 className="qa-title">{qq.label}</h3>
+        {qq.label_te ? (
+          <p className="muted" style={{ fontSize: 14, marginTop: -6, marginBottom: 10 }}>
+            {qq.label_te}
+          </p>
+        ) : null}
+        {qq.speak &&
+          String(qq.speak).trim() &&
+          String(qq.speak).trim().toLowerCase() !== 'new question' &&
+          String(qq.speak).trim() !== String(qq.label || '').trim() && (
+            <p className="muted" style={{ fontSize: 12, marginTop: -8, marginBottom: 12 }}>
+              {qq.speak}
+            </p>
+          )}
+        {renderAnswerBody(qq)}
+        {speakFill && (
+          <div className="qa-tools">
+            {!listening ? (
+              <button type="button" className="btn secondary" onClick={() => startSpeechFill(qq)}>
+                Speak fill
+              </button>
+            ) : (
+              <button type="button" className="btn danger" onClick={stopSpeechFill}>
+                Stop speech
+              </button>
+            )}
+          </div>
+        )}
+      </>
+    )
+  }
+
+  // Bottom action row shared by 'next' + 'swipe' (Prev / Next / Finish / Send).
+  function renderNavButtons() {
+    return (
+      <div className="qa-nav">
+        <button type="button" className="btn secondary" disabled={activeQ === 0} onClick={goPrev}>
+          Prev
+        </button>
+        {activeQ < questions.length - 1 ? (
+          <button type="button" className="btn primary" disabled={saving} onClick={goNext}>
+            Next
+          </button>
+        ) : !editingDraft ? (
+          <button
+            type="button"
+            className="btn primary"
+            disabled={saving}
+            onClick={() => saveDraft({ autoNext: true })}
+          >
+            {saving ? 'Saving…' : 'Finish'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn primary"
+            disabled={saving || !allHardLocks}
+            onClick={finishUpload}
+          >
+            {saving ? 'Saving…' : allHardLocks ? 'Send' : 'Locks incomplete'}
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  // Editing-a-draft footer tools (Keep as draft / Delete draft).
+  function renderDraftTools() {
+    if (!editingDraft) return null
+    return (
+      <div className="qa-tools">
+        <button
+          type="button"
+          className="btn secondary"
+          disabled={saving}
+          onClick={() => saveDraft({ autoNext: false })}
+        >
+          Keep as draft
+        </button>
+        <button
+          type="button"
+          className="btn secondary danger-cta"
+          disabled={saving}
+          onClick={removeCurrentDraft}
+        >
+          Delete draft
+        </button>
+      </div>
+    )
+  }
+
+  // 'next' (default) + 'swipe': one question at a time. Swipe adds gesture
+  // handlers + a hint and position dots, but keeps the Prev/Next buttons.
+  function renderSingleCard({ swipe = false } = {}) {
+    return (
+      <div
+        className={`card qa-card${swipe ? ' qa-swipe' : ''}`}
+        {...(swipe ? { onTouchStart: onSwipeStart, onTouchEnd: onSwipeEnd } : {})}
+      >
+        <div className="qa-progress">
+          <div className="qa-progress-bar" aria-hidden>
+            <i style={{ width: `${Math.round(((activeQ + 1) / Math.max(1, questions.length)) * 100)}%` }} />
+          </div>
+          <span className="qa-progress-n">
+            {activeQ + 1} / {questions.length}
+          </span>
+        </div>
+        {renderQuestionCard(q)}
+        <div className="qa-tools">
+          {!listening ? (
+            <button type="button" className="btn secondary" onClick={() => startSpeechFill()}>
+              Speak fill
+            </button>
+          ) : (
+            <button type="button" className="btn danger" onClick={stopSpeechFill}>
+              Stop speech
+            </button>
+          )}
+        </div>
+        {swipe && (
+          <div className="qa-swipe-hint" aria-hidden>
+            <span className="muted" style={{ fontSize: 11 }}>← swipe →</span>
+            <div className="qa-dots">
+              {questions.map((_, i) => (
+                <span key={i} className={`qa-dot${i === activeQ ? ' on' : ''}`} />
+              ))}
+            </div>
+          </div>
+        )}
+        {renderNavButtons()}
+        {renderDraftTools()}
+      </div>
+    )
+  }
+
+  // 'scroll': every question stacked in one column; one Finish/Send at the end.
+  function renderScrollList() {
+    return (
+      <div className="qa-scroll-list">
+        {questions.map((qq, i) => (
+          <div className="card qa-card" key={qq.id || i} id={`qa-q-${qq.id}`}>
+            <div className="qa-progress-n" style={{ display: 'block', marginBottom: 6 }}>
+              {i + 1} / {questions.length}
+            </div>
+            {renderQuestionCard(qq, { speakFill: true })}
+          </div>
+        ))}
+        <div className="card qa-card">
+          <div className="qa-nav">
+            {!editingDraft ? (
+              <button
+                type="button"
+                className="btn primary"
+                disabled={saving}
+                onClick={() => saveDraft({ autoNext: true })}
+              >
+                {saving ? 'Saving…' : 'Finish'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn primary"
+                disabled={saving || !allHardLocks}
+                onClick={finishUpload}
+              >
+                {saving ? 'Saving…' : allHardLocks ? 'Send' : 'Locks incomplete'}
+              </button>
+            )}
+          </div>
+          {renderDraftTools()}
+        </div>
+      </div>
+    )
+  }
 
   if (loadErr) {
     return (
@@ -1559,307 +2023,10 @@ export default function FieldCollectScreen({
                       🔄 Refresh survey questions
                     </button>
                   </div>
+                ) : navMode === 'scroll' ? (
+                  renderScrollList()
                 ) : (
-                  <div className="card qa-card">
-                    <div className="qa-progress">
-                      <div className="qa-progress-bar" aria-hidden>
-                        <i style={{ width: `${Math.round(((activeQ + 1) / Math.max(1, questions.length)) * 100)}%` }} />
-                      </div>
-                      <span className="qa-progress-n">
-                        {activeQ + 1} / {questions.length}
-                      </span>
-                    </div>
-                    <h3 className="qa-title">{q.label}</h3>
-                    {q.speak &&
-                      String(q.speak).trim() &&
-                      String(q.speak).trim().toLowerCase() !== 'new question' &&
-                      String(q.speak).trim() !== String(q.label || '').trim() && (
-                        <p className="muted" style={{ fontSize: 12, marginTop: -8, marginBottom: 12 }}>
-                          {q.speak}
-                        </p>
-                      )}
-
-                    {q.type === 'yesno' ? (
-                      <div className="qa-options">
-                        <button
-                          type="button"
-                          className={`qa-opt yes${answers[q.id] === 'Yes' ? ' selected' : ''}`}
-                          onClick={() => setAnswers((a) => ({ ...a, [q.id]: 'Yes' }))}
-                        >
-                          Yes
-                        </button>
-                        <button
-                          type="button"
-                          className={`qa-opt no${answers[q.id] === 'No' ? ' selected' : ''}`}
-                          onClick={() => setAnswers((a) => ({ ...a, [q.id]: 'No' }))}
-                        >
-                          No
-                        </button>
-                      </div>
-                    ) : q.type === 'sentiment_text' ? (
-                      <div style={{ marginTop: 10 }}>
-                        <label className="field" style={{ marginBottom: 8 }}>
-                          <span>Response Text</span>
-                          <textarea
-                            rows={3}
-                            value={answers[q.id] || ''}
-                            onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
-                            placeholder="Type respondent feedback or opinion…"
-                            style={{ width: '100%', resize: 'vertical' }}
-                          />
-                        </label>
-                        <p style={{ margin: '4px 0 6px', fontSize: 12, fontWeight: 'bold', color: '#38bdf8' }}>
-                          Tag Sentiment Filler:
-                        </p>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {[
-                            { label: '😀 Positive', val: 'Positive', color: '#059669' },
-                            { label: '😐 Neutral', val: 'Neutral', color: '#d97706' },
-                            { label: '🙁 Negative', val: 'Negative', color: '#dc2626' },
-                          ].map((item) => {
-                            const active = (answers[q.id] || '').includes(`[${item.val}]`)
-                            return (
-                              <button
-                                key={item.val}
-                                type="button"
-                                style={{
-                                  background: item.color,
-                                  color: '#fff',
-                                  border: 0,
-                                  borderRadius: 20,
-                                  padding: '8px 16px',
-                                  fontSize: 13,
-                                  fontWeight: 'bold',
-                                  cursor: 'pointer',
-                                  outline: active ? '2px solid #fff' : 'none',
-                                  outlineOffset: 2,
-                                  opacity: answers[q.id] && !active ? 0.7 : 1,
-                                }}
-                                onClick={() => {
-                                  setAnswers((a) => {
-                                    const prev = a[q.id] || ''
-                                    const cleaned = prev.replace(/\s*\[(Positive|Neutral|Negative)\]/g, '').trim()
-                                    return { ...a, [q.id]: `${cleaned} [${item.val}]`.trim() }
-                                  })
-                                }}
-                              >
-                                {item.label}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    ) : q.type === 'meter' ? (
-                      <div className="qa-meter">
-                        {(() => {
-                          const raw = String(answers[q.id] || '').replace('%', '').trim()
-                          const n = Number(raw)
-                          const val = n >= 1 && n <= 100 ? n : 50
-                          const mood =
-                            val <= 33 ? 'Negative' : val <= 66 ? 'Neutral' : 'Positive'
-                          const moodClass =
-                            val <= 33 ? 'neg' : val <= 66 ? 'neu' : 'pos'
-                          return (
-                            <>
-                              <div className="qa-meter-track">
-                                <input
-                                  type="range"
-                                  min="1"
-                                  max="100"
-                                  step="1"
-                                  value={val}
-                                  onChange={(e) =>
-                                    setAnswers((a) => ({
-                                      ...a,
-                                      [q.id]: `${Number(e.target.value)}%`,
-                                    }))
-                                  }
-                                  aria-label="Sentiment 1 to 100"
-                                />
-                              </div>
-                              <div className="qa-meter-scale">
-                                <span>Negative</span>
-                                <span>Neutral</span>
-                                <span>Positive</span>
-                              </div>
-                              <div className="qa-meter-value">
-                                <strong>{answers[q.id] ? `${val}%` : '—'}</strong>
-                                {answers[q.id] ? (
-                                  <span className={`qa-opt selected ${moodClass}`} style={{ minHeight: 32, padding: '4px 12px' }}>
-                                    {mood}
-                                  </span>
-                                ) : (
-                                  <span className="muted">Tap the bar</span>
-                                )}
-                              </div>
-                            </>
-                          )
-                        })()}
-                      </div>
-                    ) : (Array.isArray(q.options) && q.options.length > 0) || (q.type === 'range' || q.type === 'numeric_range' || q.type === 'age') ? (
-                      <div>
-                        <div
-                          className={`qa-options${
-                            (Array.isArray(q.options) ? q.options.length : 5) === 1
-                              ? ' cols-1'
-                              : ''
-                          }`}
-                        >
-                          {(Array.isArray(q.options) && q.options.length > 0
-                            ? q.options
-                            : ['10-20', '21-30', '31-40', '41-50', '50+']
-                          ).map((opt) => {
-                            const sel = answers[q.id] === opt
-                            const optKey = String(opt || '').trim().toLowerCase()
-                            const sent =
-                              q.type === 'sentiment' || SENTIMENT_COLORS[String(opt || '').trim()]
-                                ? optKey.startsWith('pos')
-                                  ? 'pos'
-                                  : optKey.startsWith('neg')
-                                    ? 'neg'
-                                    : 'neu'
-                                : ''
-                            return (
-                              <button
-                                key={opt}
-                                type="button"
-                                className={`qa-opt${sel ? ' selected' : ''}${sent ? ` ${sent}` : ''}`}
-                                onClick={() => setAnswers((a) => ({ ...a, [q.id]: opt }))}
-                              >
-                                {opt}
-                              </button>
-                            )
-                          })}
-                        </div>
-                        {(q.type === 'range' || q.type === 'numeric_range' || q.type === 'age') && (
-                          <label className="field" style={{ marginTop: 12 }}>
-                            <span>Or type exact number / age</span>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={answers[q.id] || ''}
-                              onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
-                              placeholder="e.g. 25"
-                            />
-                          </label>
-                        )}
-                        {q.type === 'choice' && (
-                          <label className="field" style={{ marginTop: 12 }}>
-                            <span>Or type your own answer (not listed above)</span>
-                            <input
-                              type="text"
-                              value={
-                                (() => {
-                                  const v = answers[q.id]
-                                  const opts = Array.isArray(q.options) ? q.options : []
-                                  return v != null && String(v).trim() !== '' && !opts.includes(String(v))
-                                    ? String(v)
-                                    : ''
-                                })()
-                              }
-                              onChange={(e) =>
-                                setAnswers((a) => ({
-                                  ...a,
-                                  [q.id]: e.target.value.trim() || '',
-                                }))
-                              }
-                              placeholder="Type a custom answer…"
-                            />
-                          </label>
-                        )}
-                      </div>
-                    ) : (
-                      <label className="field" style={{ marginTop: 10 }}>
-                        <span>Answer{q.type === 'age' ? ' (number)' : ''}</span>
-                        <input
-                          value={answers[q.id] || ''}
-                          inputMode={q.type === 'age' ? 'numeric' : undefined}
-                          onChange={(e) =>
-                            setAnswers((a) => ({ ...a, [q.id]: e.target.value }))
-                          }
-                        />
-                      </label>
-                    )}
-
-                    <div className="qa-tools">
-                      {!listening ? (
-                        <button type="button" className="btn secondary" onClick={startSpeechFill}>
-                          Speak fill
-                        </button>
-                      ) : (
-                        <button type="button" className="btn danger" onClick={stopSpeechFill}>
-                          Stop speech
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="qa-nav">
-                      <button
-                        type="button"
-                        className="btn secondary"
-                        disabled={activeQ === 0}
-                        onClick={() => setActiveQ((i) => Math.max(0, i - 1))}
-                      >
-                        Prev
-                      </button>
-                      {activeQ < questions.length - 1 ? (
-                        <button
-                          type="button"
-                          className="btn primary"
-                          disabled={saving}
-                          onClick={() => {
-                            const nextQ = activeQ + 1
-                            setActiveQ(nextQ)
-                            void saveDraft({ mode: 'checkpoint', questionIndex: nextQ })
-                          }}
-                        >
-                          Next
-                        </button>
-                      ) : !editingDraft ? (
-                        <button
-                          type="button"
-                          className="btn primary"
-                          disabled={saving}
-                          onClick={() => saveDraft({ autoNext: true })}
-                        >
-                          {saving ? 'Saving…' : 'Finish'}
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn primary"
-                          disabled={saving || !allHardLocks}
-                          onClick={finishUpload}
-                        >
-                          {saving
-                            ? 'Saving…'
-                            : allHardLocks
-                              ? 'Send'
-                              : 'Locks incomplete'}
-                        </button>
-                      )}
-                    </div>
-                    {editingDraft && (
-                      <div className="qa-tools">
-                        <button
-                          type="button"
-                          className="btn secondary"
-                          disabled={saving}
-                          onClick={() => saveDraft({ autoNext: false })}
-                        >
-                          Keep as draft
-                        </button>
-                        <button
-                          type="button"
-                          className="btn secondary danger-cta"
-                          disabled={saving}
-                          onClick={removeCurrentDraft}
-                        >
-                          Delete draft
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  renderSingleCard({ swipe: navMode === 'swipe' })
                 )}
 
                 {!questions.length && (

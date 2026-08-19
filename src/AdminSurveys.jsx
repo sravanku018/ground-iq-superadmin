@@ -12,7 +12,8 @@ import {
   setSurveySurveyors,
   updateSurvey,
 } from './api'
-import { labelPatch, slugQuestionKey } from './questionKey'
+import QuestionTelugu from './QuestionTelugu'
+import { canTeluguQuestions, labelPatch, slugQuestionKey, teluguFields } from './questionKey'
 
 const EMPTY_Q = {
   id: '',
@@ -33,7 +34,7 @@ const defaultOptionsForType = (t) => {
 }
 
 /** Shared question editor with rich question types, interactive options & live app preview */
-function QuestionEditor({ questions, onChange }) {
+function QuestionEditor({ questions, onChange, onToast, canTelugu }) {
   function updateQ(i, patch) {
     onChange(questions.map((q, idx) => (idx === i ? { ...q, ...patch } : q)))
   }
@@ -98,6 +99,9 @@ function QuestionEditor({ questions, onChange }) {
                 placeholder="What is your age or income bracket?"
               />
             </label>
+            {canTelugu ? (
+              <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} onToast={onToast} />
+            ) : null}
 
             <label className="field">
               <span>Voice Prompt (spoken by surveyor / speech fill)</span>
@@ -296,6 +300,7 @@ function cleanQuestions(questions) {
       options: finalOptions,
       required: !!q.required,
       speak: String(q.speak || q.label || '').trim(),
+      ...teluguFields(q),
     }
   })
 }
@@ -1034,6 +1039,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           questions={detail.questions || []}
           onChange={(qs) => setDetail({ ...detail, questions: qs })}
           onToast={onToast}
+          canTelugu={canTeluguQuestions(user)}
         />
 
         <button

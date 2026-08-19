@@ -52,6 +52,19 @@ function colorFor(name, i = 0) {
   return PARTY_COLORS[name] || PALETTE[i % PALETTE.length]
 }
 
+/** Telugu display from analytics (`label`) — `name` stays English for filters/maps. */
+function shown(d, fallback = '') {
+  if (d && typeof d === 'object') return d.label || d.name || fallback
+  return fallback
+}
+
+function tickShown(data) {
+  return (v) => {
+    const row = (data || []).find((d) => d.name === v)
+    return row?.label || v
+  }
+}
+
 /** Relative freshness — 09-ANALYTICS-SPEC §7: "Data as of {relative time}" */
 function timeAgo(iso) {
   const t = new Date(iso).getTime()
@@ -91,7 +104,7 @@ const ContrastBars = memo(function ContrastBars({ data }) {
       {data.slice(0, 10).map((d) => (
         <div key={d.name} className="contrast-row">
           <div className="contrast-head">
-            <span className="contrast-name">{d.name}</span>
+            <span className="contrast-name">{shown(d)}</span>
             <span
               className={`contrast-delta ${d.delta > 0 ? 'up' : d.delta < 0 ? 'down' : ''}`}
             >
@@ -138,7 +151,7 @@ function PctTooltip({ active, payload, label }) {
   const p = payload[0]?.payload
   return (
     <div className="recharts-custom-tip" style={{ ...tipStyle, padding: '8px 10px' }}>
-      <div style={{ color: '#e2e8f0', fontWeight: 700 }}>{label || p?.name}</div>
+      <div style={{ color: '#e2e8f0', fontWeight: 700 }}>{p?.label || label || p?.name}</div>
       {payload.map((item) => (
         <div key={item.dataKey} style={{ color: item.color || '#94a3b8' }}>
           {item.name}: {item.value}
@@ -180,7 +193,11 @@ const InteractivePie = memo(function InteractivePie({ data, onSelect, selectKey,
         <Legend
           verticalAlign="bottom"
           height={36}
-          formatter={(v) => <span style={{ color: '#94a3b8', fontSize: 11 }}>{v}</span>}
+          formatter={(v, entry) => (
+            <span style={{ color: '#94a3b8', fontSize: 11 }}>
+              {entry?.payload?.label || v}
+            </span>
+          )}
         />
       </PieChart>
     </ResponsiveContainer>
@@ -202,6 +219,7 @@ const HBar = memo(function HBar({ data, onSelect, selectKey, extra, activeName, 
           stroke="#94a3b8"
           fontSize={11}
           tickLine={false}
+          tickFormatter={tickShown(data)}
         />
         <Tooltip content={<PctTooltip />} />
         <Bar
@@ -243,14 +261,24 @@ const StackedParty = memo(function StackedParty({ matrix, onSelect, selectKey, e
           stroke="#94a3b8"
           fontSize={11}
           tickLine={false}
+          tickFormatter={tickShown(data)}
         />
         <Tooltip
           contentStyle={tipStyle}
           labelStyle={{ color: '#e2e8f0' }}
           itemStyle={{ fontSize: 12 }}
+          formatter={(value, name) => [value, matrix.column_labels?.[name] || name]}
+          labelFormatter={(v) => {
+            const row = data.find((d) => d.name === v)
+            return row?.label || v
+          }}
         />
         <Legend
-          formatter={(v) => <span style={{ color: '#94a3b8', fontSize: 11 }}>{v}</span>}
+          formatter={(v) => (
+            <span style={{ color: '#94a3b8', fontSize: 11 }}>
+              {matrix.column_labels?.[v] || v}
+            </span>
+          )}
         />
         {cols.map((col) => (
           <Bar
@@ -331,7 +359,11 @@ const RadialIssues = memo(function RadialIssues({ data, onClick }) {
           layout="vertical"
           verticalAlign="middle"
           align="right"
-          formatter={(v) => <span style={{ color: '#94a3b8', fontSize: 10 }}>{v}</span>}
+          formatter={(v, entry) => (
+            <span style={{ color: '#94a3b8', fontSize: 10 }}>
+              {entry?.payload?.label || v}
+            </span>
+          )}
         />
         <Tooltip content={<PctTooltip />} />
       </RadialBarChart>
@@ -984,7 +1016,7 @@ export default function DashboardScreen({ onToast }) {
           </div>
           <div className="kpi">
             {charts?.byParty?.[0]?.name ? (
-              <strong>{charts.byParty[0].name}</strong>
+              <strong>{shown(charts.byParty[0])}</strong>
             ) : (
               <strong style={{ fontStyle: 'italic', fontWeight: 400, color: '#94a3b8' }}>
                 No data yet
@@ -994,7 +1026,7 @@ export default function DashboardScreen({ onToast }) {
           </div>
           <div className="kpi">
             {charts?.issues?.[0]?.name ? (
-              <strong>{charts.issues[0].name}</strong>
+              <strong>{shown(charts.issues[0])}</strong>
             ) : (
               <strong style={{ fontStyle: 'italic', fontWeight: 400, color: '#94a3b8' }}>
                 No data yet
@@ -1066,7 +1098,9 @@ export default function DashboardScreen({ onToast }) {
               onClick={() => removeFilter(chip.key)}
               title={`Remove ${chip.label} filter`}
             >
-              {chip.label}: {chip.value} ✕
+              {chip.label}: {data?.filterLabels?.[
+                { district: 'districts', party: 'parties', gender: 'genders', caste: 'castes', constituency: 'constituencies' }[chip.key]
+              ]?.[chip.value] || chip.value} ✕
             </button>
           ))}
           <button type="button" className="link-btn" onClick={clearFilters}>
@@ -1375,6 +1409,10 @@ export default function DashboardScreen({ onToast }) {
               // answers yet still shows its full choice list, and any answer
               // value not in the defined list (free text) still appears.
               const countMap = new Map((q.counts || []).map((c) => [c.name, c.value]))
+              const labelMap = new Map((q.counts || []).map((c) => [c.name, c.label || c.name]))
+              ;(q.options || []).forEach((name, i) => {
+                if (!labelMap.has(name) && q.options_te?.[i]) labelMap.set(name, q.options_te[i])
+              })
               const optionNames = [
                 ...new Set([...(q.options || []), ...countMap.keys()]),
               ]
@@ -1388,11 +1426,14 @@ export default function DashboardScreen({ onToast }) {
                     }
                   >
                     <option value="">All {q.label}</option>
-                    {optionNames.map((name) => (
+                    {optionNames.map((name) => {
+                      const shownName = labelMap.get(name) || name
+                      return (
                       <option key={name} value={name}>
-                        {countMap.has(name) ? `${name} (${countMap.get(name)})` : name}
+                        {countMap.has(name) ? `${shownName} (${countMap.get(name)})` : shownName}
                       </option>
-                    ))}
+                      )
+                    })}
                   </select>
                 </label>
               )
@@ -1431,7 +1472,7 @@ export default function DashboardScreen({ onToast }) {
             <option value="">All districts</option>
             {(opts?.districts || []).map((d) => (
               <option key={d} value={d}>
-                {d}
+                {data?.filterLabels?.districts?.[d] || d}
               </option>
             ))}
           </select>

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import Icon from './Icons'
 import { getQuestions, getSurvey, listSurveys, saveQuestions, updateSurvey } from './api'
 import OptionPills from './OptionPills'
-import { labelPatch, slugQuestionKey } from './questionKey'
+import QuestionTelugu from './QuestionTelugu'
+import { canTeluguQuestions, labelPatch, slugQuestionKey, teluguFields } from './questionKey'
 
 const EMPTY_Q = {
   id: '',
@@ -26,6 +27,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
   const isSuperAdmin = user?.role === 'super_admin'
   // Survey-question editing power — Super Admin grants it (least privilege)
   const canEdit = isSuperAdmin || !!user?.can_edit_surveys
+  const canTelugu = canTeluguQuestions(user)
   const [title, setTitle] = useState('')
   const [questions, setQuestions] = useState([])
   const [loading, setLoading] = useState(true)
@@ -171,6 +173,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
           options: finalOptions,
           required: !!q.required,
           speak: String(q.speak || q.label || '').trim(),
+          ...teluguFields(q),
         }
       })
       if (surveyId) {
@@ -295,6 +298,9 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                 placeholder="What is your age or income bracket?"
               />
             </label>
+            {canTelugu ? (
+              <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} onToast={onToast} />
+            ) : null}
 
             <label className="field">
               <span>Voice Prompt (spoken by surveyor / speech fill)</span>

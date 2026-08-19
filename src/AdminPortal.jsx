@@ -32,13 +32,14 @@ const AdminQuestionBankScreen = lazy(() => import('./AdminQuestionBank'))
 const AdminSeatsScreen = lazy(() => import('./AdminSeats'))
 const AdminClientAdminsScreen = lazy(() => import('./AdminClientAdmins'))
 const AdminCompaniesScreen = lazy(() => import('./AdminCompanies'))
+const AdminWebSurveyScreen = lazy(() => import('./AdminWebSurvey'))
 
 // Client Admin nav — they create Surveys (Super Admin creates Projects separately)
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: 'grid', pages: ['overview', 'report', 'analyze'] },
   { id: 'surveyors', label: 'Surveyors', icon: 'user', pages: ['users'] },
   { id: 'surveys', label: 'Surveys', icon: 'clipboard', pages: ['surveys'] },
-  { id: 'data', label: 'Data collection', icon: 'menu', pages: ['questions', 'bank', 'review', 'upload', 'data'] },
+  { id: 'data', label: 'Data collection', icon: 'menu', pages: ['questions', 'bank', 'web', 'review', 'upload', 'data'] },
 ]
 
 // Super Admin console only (01-PRD.md): platform governance group
@@ -86,6 +87,7 @@ const PAGE_LABELS = {
   data: 'Data',
   audit: 'Audit Log',
   bank: 'Question Bank',
+  web: 'Web survey',
   seats: 'Seat Requests',
   admins: 'Client Admins',
   companies: 'Companies',
@@ -99,6 +101,7 @@ const PAGE_POWER = {
   surveys: ['can_crud_questionnaire', 'can_edit_surveys'],
   questions: 'can_edit_surveys',
   bank: 'can_manage_questions',
+  web: 'can_web_survey',
   review: 'can_review_data',
   upload: 'can_validate_proof',
   data: 'can_validate_proof',
@@ -277,6 +280,7 @@ function AllocationCard({ user }) {
     self.can_review_data && 'Review data',
     self.can_verify_surveyors && 'Verify surveyors',
     self.can_validate_proof && 'Validate proof',
+    self.can_web_survey && 'Web survey',
   ].filter(Boolean)
 
   return (
@@ -999,6 +1003,9 @@ export default function AdminPortal({ superAdminOnly = false }) {
           {page === 'audit' && canPage('audit') && <AdminAuditScreen onToast={notify} />}
           {page === 'bank' && canPage('bank') && (
             <AdminQuestionBankScreen onToast={notify} user={user} />
+          )}
+          {page === 'web' && canPage('web') && (
+            <AdminWebSurveyScreen onToast={notify} user={user} />
           )}
           {page === 'seats' && canPage('seats') && <AdminSeatsScreen onToast={notify} />}
           {page === 'admins' && canPage('admins') && (

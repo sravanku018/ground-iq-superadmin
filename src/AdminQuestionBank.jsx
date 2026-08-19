@@ -9,7 +9,8 @@ import {
   listQuestionBank,
   updateQuestionBank,
 } from './api'
-import { labelPatch, slugQuestionKey } from './questionKey'
+import QuestionTelugu from './QuestionTelugu'
+import { canTeluguQuestions, labelPatch, slugQuestionKey, teluguFields } from './questionKey'
 
 const EMPTY_Q = {
   id: '',
@@ -137,6 +138,7 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
         options: finalOptions,
         required: !!q.required,
         speak: String(q.speak || q.label || '').trim(),
+        ...teluguFields(q),
       }
     })
   }
@@ -268,6 +270,9 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
                 <span>Question Text / Label *</span>
                 <input value={q.label} onChange={(e) => updateQ(i, labelPatch(q, e.target.value))} placeholder="What is the question?" />
               </label>
+              {canTeluguQuestions(user || me) && canCrud ? (
+                <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} onToast={onToast} />
+              ) : null}
               <label className="field">
                 <span>Voice Prompt (spoken by surveyor)</span>
                 <input value={q.speak || ''} onChange={(e) => updateQ(i, { speak: e.target.value })} placeholder="Ask respondent…" />

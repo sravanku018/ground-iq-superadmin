@@ -12,10 +12,20 @@ import {
   removePackage,
   updatePackage,
 } from './localStore'
-import { checkNetwork, isStrongEnoughToSync, watchNetwork } from './network'
+import { checkNetwork, isStrongEnoughToSync, isUsableForSync, watchNetwork } from './network'
 
 const TICK_MS = 60_000
 const POST_TIMEOUT = 45_000
+const MAX_ATTEMPTS = 8
+// Oldest pending item older than this → drain even on a weak link, so data is
+// never stranded forever when the connection is persistently poor.
+const STALE_MS = 15 * 60_000
+
+/** Exponential backoff for a failed package: 30s, 60s, 2m … capped at 30m. */
+function backoffMs(attempts) {
+  const n = Math.max(1, attempts || 1)
+  return Math.min(30_000 * 2 ** (n - 1), 30 * 60_000)
+}
 
 let running = false
 let started = false
@@ -190,10 +200,13 @@ export async function syncOnePackage(id) {
     emit({ type: 'package-done', id, serverId })
     return { ok: true, id, serverId }
   } catch (e) {
+    const attempts = (pkg.attempts || 0) + 1
     await updatePackage(id, {
       phase: 'failed',
-      attempts: (pkg.attempts || 0) + 1,
+      attempts,
       lastError: e.message || 'sync failed',
+      // Back off before this package is eligible for auto-retry again (B3).
+      nextAttemptAt: Date.now() + backoffMs(attempts),
     })
     emit({ type: 'package-fail', id, error: e.message })
     throw e
@@ -201,9 +214,13 @@ export async function syncOnePackage(id) {
 }
 
 /** Drain queue FIFO, one package fully before next */
-export async function drainQueue(reason = 'tick') {
+export async function drainQueue(reason = 'tick', opts = {}) {
   if (running) return { skipped: true, reason: 'busy' }
   if (!getToken()) return { skipped: true, reason: 'no-auth' }
+
+  // Manual runs (the "Sync now" button) bypass the weak-network gate and the
+  // per-package backoff/attempt cap — the user explicitly asked to push now.
+  const manual = !!opts.manual || reason === 'manual'
 
   // Claim the lock synchronously — before any await — so overlapping triggers
   // (interval / network-strong / enqueue / foreground) can't both pass the
@@ -211,15 +228,23 @@ export async function drainQueue(reason = 'tick') {
   running = true
   try {
     const net = await checkNetwork()
-    if (!isStrongEnoughToSync(net)) {
-      emit({ type: 'wait-network', quality: net.quality, reason })
-      return { skipped: true, reason: 'weak-network', net }
-    }
 
     const pending = await listPendingPackages()
     if (!pending.length) {
       emit({ type: 'empty', reason })
       return { skipped: true, reason: 'empty' }
+    }
+
+    // Network gate. Automatic drains prefer a strong/ok link; but a manual run,
+    // or a queue whose oldest item has been stranded past STALE_MS, drains on
+    // any reachable link (weak included) so data is never stuck forever.
+    const oldest = pending[0] // sorted ascending by createdAt
+    const oldestAgeMs = Date.now() - new Date(oldest?.createdAt || 0).getTime()
+    const allowWeak = manual || oldestAgeMs >= STALE_MS
+    const gate = allowWeak ? isUsableForSync : isStrongEnoughToSync
+    if (!gate(net)) {
+      emit({ type: 'wait-network', quality: net.quality, reason })
+      return { skipped: true, reason: 'weak-network', net }
     }
 
     emit({
@@ -231,11 +256,21 @@ export async function drainQueue(reason = 'tick') {
 
     let ok = 0
     let fail = 0
+    let blocked = 0
     // Systematic: one full package at a time
     for (const p of pending) {
-      // re-check network between packages
+      // B3: don't hammer a failed package — honour its attempt cap + backoff
+      // window, unless this is a manual run.
+      if (!manual) {
+        if ((p.attempts || 0) >= MAX_ATTEMPTS) {
+          blocked += 1
+          continue
+        }
+        if (p.nextAttemptAt && p.nextAttemptAt > Date.now()) continue
+      }
+      // re-check network between packages (same gate as above)
       const n2 = await checkNetwork()
-      if (!isStrongEnoughToSync(n2)) {
+      if (!gate(n2)) {
         emit({ type: 'wait-network', quality: n2.quality, reason: 'mid-drain' })
         break
       }
@@ -252,8 +287,8 @@ export async function drainQueue(reason = 'tick') {
     }
 
     const stats = await queueStats()
-    emit({ type: 'drain-done', ok, fail, pending: stats.pending, reason })
-    return { ok, fail, pending: stats.pending }
+    emit({ type: 'drain-done', ok, fail, blocked, pending: stats.pending, reason })
+    return { ok, fail, blocked, pending: stats.pending }
   } finally {
     // Always release the lock — including the weak-network / empty early
     // returns and any thrown error — so the engine can never deadlock.
@@ -328,5 +363,6 @@ export async function getQueueSnapshot() {
 
 /** Force sync now (button) */
 export function forceSyncNow() {
-  return drainQueue('manual')
+  // Manual: bypass the weak-network gate and the per-package backoff/attempt cap.
+  return drainQueue('manual', { manual: true })
 }

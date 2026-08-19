@@ -71,6 +71,15 @@ import { APP_BUILD, APP_VERSION, APP_VERSION_CODE, versionLabel } from './versio
 import PhoneIndiaField from './PhoneIndiaField'
 import { isValidInMobile, toE164In } from './phoneIn'
 import VerifiedBadge from './VerifiedBadge'
+import {
+  getNavMode,
+  setNavMode as persistNavMode,
+  getFontScale,
+  setFontScale as persistFontScale,
+  applyFontScale,
+  NAV_MODES,
+  FONT_SCALES,
+} from './prefs'
 import './App.css'
 
 /** Surveyor-only field app (mobile / APK) */
@@ -80,6 +89,7 @@ const TABS = [
   { id: 'drafts', label: 'Pending', icon: 'box' },
   { id: 'records', label: 'Activity', icon: 'menu' },
   { id: 'profile', label: 'Profile', icon: 'user' },
+  { id: 'settings', label: 'Settings', icon: 'settings' },
 ]
 
 /** New install or new APK build must show login — never restore an old session. */
@@ -941,6 +951,102 @@ function DraftsScreen({ user, onToast, onEdit }) {
   )
 }
 
+const NAV_MODE_INFO = {
+  next: { title: 'Next button', desc: 'One question at a time, with Prev / Next buttons.' },
+  swipe: { title: 'Swipe', desc: 'One question at a time — swipe left or right to move.' },
+  scroll: { title: 'Vertical scroll', desc: 'All questions in one scrollable page.' },
+}
+const FONT_SCALE_LABELS = ['Normal', 'Large', 'Larger', 'Largest']
+
+/** Device-local UI preferences: survey question layout + app display size. */
+function SurveyorSettingsScreen({ navMode, onNavModeChange, fontScale, onFontScaleChange }) {
+  return (
+    <div className="screen settings-screen" style={{ padding: '12px 14px 110px' }}>
+      <div className="card" style={{ marginBottom: 14, padding: 16 }}>
+        <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 16 }}>Survey question layout</h3>
+        <p className="muted" style={{ marginTop: 0, marginBottom: 14, fontSize: 13 }}>
+          Choose how questions appear while collecting a survey. Saved on this device only.
+        </p>
+        <div style={{ display: 'grid', gap: 10 }}>
+          {NAV_MODES.map((mode) => {
+            const info = NAV_MODE_INFO[mode]
+            const selected = navMode === mode
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => onNavModeChange(mode)}
+                aria-pressed={selected}
+                style={{
+                  textAlign: 'left',
+                  padding: '12px 14px',
+                  borderRadius: 12,
+                  border: selected ? '2px solid #00e599' : '2px solid #e2e8f0',
+                  background: selected ? 'rgba(0,229,153,0.10)' : '#fff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: '50%',
+                    flexShrink: 0,
+                    boxSizing: 'border-box',
+                    border: selected ? '6px solid #00e599' : '2px solid #cbd5e1',
+                  }}
+                />
+                <span>
+                  <strong style={{ display: 'block', fontSize: 15 }}>{info.title}</strong>
+                  <span className="muted" style={{ fontSize: 12.5 }}>{info.desc}</span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 16 }}>
+        <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 16 }}>Display size</h3>
+        <p className="muted" style={{ marginTop: 0, marginBottom: 14, fontSize: 13 }}>
+          Make the whole app bigger for easier reading outdoors.
+        </p>
+        <div
+          className="qa-options"
+          style={{ display: 'grid', gridTemplateColumns: `repeat(${FONT_SCALES.length}, 1fr)`, gap: 8 }}
+        >
+          {FONT_SCALES.map((scale, i) => {
+            const selected = fontScale === scale
+            return (
+              <button
+                key={scale}
+                type="button"
+                className={`qa-opt${selected ? ' selected' : ''}`}
+                onClick={() => onFontScaleChange(scale)}
+                aria-pressed={selected}
+                style={{ display: 'flex', flexDirection: 'column', gap: 2, minHeight: 52 }}
+              >
+                <span style={{ fontSize: `${Math.round(13 * scale)}px`, fontWeight: 700, lineHeight: 1 }}>A</span>
+                <span style={{ fontSize: 10.5 }}>{FONT_SCALE_LABELS[i]}</span>
+              </button>
+            )
+          })}
+        </div>
+        <div className="card" style={{ marginTop: 14, background: '#f8fafc', padding: '12px 14px' }}>
+          <span className="muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            Preview
+          </span>
+          <p style={{ margin: '6px 0 0' }}>The quick brown fox jumps — 1234567890</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function SurveyorApp() {
   const [user, setUser] = useState(null)
   const [authReady, setAuthReady] = useState(false)
@@ -953,7 +1059,24 @@ export default function SurveyorApp() {
   const [collectKey, setCollectKey] = useState(0)
   const [editDraft, setEditDraft] = useState(null)
   const [draftsCount, setDraftsCount] = useState(0)
+  // Device-local UI prefs (per-phone, not synced to the account).
+  const [navMode, setNavModeState] = useState(getNavMode)
+  const [fontScale, setFontScaleState] = useState(getFontScale)
   const wasVerified = useRef(false)
+
+  const changeNavMode = useCallback((mode) => {
+    setNavModeState(persistNavMode(mode))
+  }, [])
+
+  const changeFontScale = useCallback((scale) => {
+    setFontScaleState(persistFontScale(scale))
+  }, [])
+
+  // Apply the display-size zoom to the whole app on mount and whenever it
+  // changes, so the scale is live on every tab — not just Settings.
+  useEffect(() => {
+    applyFontScale(fontScale)
+  }, [fontScale])
 
   const verified = !!user?.verified
   const lockForVerify = !!user && user.role === 'surveyor' && !verified
@@ -1384,6 +1507,7 @@ export default function SurveyorApp() {
                 active={tab === 'collect'}
                 user={user}
                 draft={editDraft}
+                navMode={navMode}
                 onToast={notify}
                 onDone={onCollectDone}
                 onSavedDraft={onCollectSavedDraft}
@@ -1414,6 +1538,14 @@ export default function SurveyorApp() {
               user={user}
               onToast={notify}
               onUserUpdated={setUser}
+            />
+          )}
+          {tab === 'settings' && (
+            <SurveyorSettingsScreen
+              navMode={navMode}
+              onNavModeChange={changeNavMode}
+              fontScale={fontScale}
+              onFontScaleChange={changeFontScale}
             />
           )}
         </PullToRefresh>

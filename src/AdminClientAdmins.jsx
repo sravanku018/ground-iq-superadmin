@@ -26,6 +26,7 @@ const POWER_DEFS = [
   { key: 'can_verify_surveyors', label: 'Verify surveyors', icon: '🛡', hint: 'Verify surveyor identity' },
   { key: 'can_assign_surveyors', label: 'Assign surveyors', icon: '👥', hint: 'Map surveyors onto surveys' },
   { key: 'can_validate_proof', label: 'Proof validation', icon: '📞', hint: 'Phone + Aadhaar format checks' },
+  { key: 'can_web_survey', label: 'Web survey', icon: '✎', hint: 'Fill surveys in the portal (desk / web)' },
 ]
 
 function powersFromUser(u) {

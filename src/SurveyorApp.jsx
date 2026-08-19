@@ -972,10 +972,13 @@ export default function SurveyorApp() {
     }
   }, [])
 
+  const toastTimer = useRef(0)
   const notify = useCallback((message, type = 'ok') => {
     setToast({ message, type })
-    setTimeout(() => setToast(null), 3200)
+    window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToast(null), 3200)
   }, [])
+  useEffect(() => () => window.clearTimeout(toastTimer.current), [])
 
   /** App-wide pull-to-refresh: tab-aware — refreshes right data for active tab */
   const pullRefreshAll = useCallback(async () => {
@@ -1027,7 +1030,7 @@ export default function SurveyorApp() {
     setEditDraft(null)
     if (prog) setMyProgress(prog)
     else getMyProgress().then(setMyProgress).catch(() => {})
-    void getQueueSnapshot().then((s) => setPendingSync(s.pending))
+    void getQueueSnapshot().then((s) => setPendingSync(s.pending)).catch(() => {})
   }, [])
 
   const onCollectSavedDraft = useCallback(() => {
@@ -1211,7 +1214,7 @@ export default function SurveyorApp() {
   }, [notify])
 
   // Account revalidation — a disabled/inactive user must never stay logged in or auto-login:
-  // re-check every 60 seconds and whenever the app returns to foreground. 401/disabled → force
+  // re-check every 120 seconds and whenever the app returns to foreground. 401/disabled → force
   // logout (clears the stored session). Transient network errors keep the session so a
   // surveyor in the field is never logged out by a bad connection.
   useEffect(() => {
@@ -1410,7 +1413,7 @@ export default function SurveyorApp() {
             <SurveyorProfileScreen
               user={user}
               onToast={notify}
-              onUserUpdated={(updater) => setUser(updater)}
+              onUserUpdated={setUser}
             />
           )}
         </PullToRefresh>

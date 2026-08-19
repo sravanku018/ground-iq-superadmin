@@ -238,8 +238,8 @@ function QuestionEditor({ questions, onChange }) {
                 </div>
               ) : hasOptions ? (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {(currentOpts.length > 0 ? currentOpts : ['10-20', '21-30', '31-40', '41-50', '50+']).map((opt, idx) => (
-                    <span key={idx} style={{ background: '#38bdf8', color: '#111', padding: '6px 14px', borderRadius: 16, fontSize: 13, fontWeight: 'bold' }}>
+                  {(currentOpts.length > 0 ? currentOpts : ['10-20', '21-30', '31-40', '41-50', '50+']).map((opt, idx, list) => (
+                    <span key={`${String(opt)}:${list.slice(0, idx).filter((o) => o === opt).length}`} style={{ background: '#38bdf8', color: '#111', padding: '6px 14px', borderRadius: 16, fontSize: 13, fontWeight: 'bold' }}>
                       {opt}
                     </span>
                   ))}

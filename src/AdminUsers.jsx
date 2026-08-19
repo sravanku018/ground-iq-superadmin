@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './Icons'
 import {
   createSeatRequest,
@@ -199,6 +199,8 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
   const [profileUser, setProfileUser] = useState(null)
   const [profileData, setProfileData] = useState(null)
   const [profileLoading, setProfileLoading] = useState(false)
+  const drawerRef = useRef(null)
+  const drawerPrevFocus = useRef(null)
   const [profileFilters, setProfileFilters] = useState({
     period: 'total',
     day: new Date().toISOString().slice(0, 10),
@@ -248,6 +250,54 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
       document.removeEventListener('visibilitychange', onVis)
     }
   }, [load])
+
+  const closeProfile = useCallback(() => setProfileUser(null), [])
+
+  const profileId = profileUser?.id
+  useEffect(() => {
+    if (!profileId) return undefined
+    drawerPrevFocus.current = document.activeElement
+    const panel = drawerRef.current
+    const getFocusable = () =>
+      panel
+        ? [...panel.querySelectorAll(
+            'a[href], button:not([disabled]), textarea, input:not([disabled]), select, [tabindex]:not([tabindex="-1"])',
+          )]
+        : []
+    const first = getFocusable()[0]
+    first?.focus()
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setProfileUser(null)
+        return
+      }
+      if (e.key !== 'Tab' || !panel) return
+      const items = getFocusable()
+      if (!items.length) return
+      const firstEl = items[0]
+      const lastEl = items[items.length - 1]
+      if (e.shiftKey && document.activeElement === firstEl) {
+        e.preventDefault()
+        lastEl.focus()
+      } else if (!e.shiftKey && document.activeElement === lastEl) {
+        e.preventDefault()
+        firstEl.focus()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      const prev = drawerPrevFocus.current
+      if (prev && typeof prev.focus === 'function') {
+        try {
+          prev.focus()
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }, [profileId])
 
   async function loadProfile(u, filters = profileFilters) {
     if (!u) return
@@ -692,46 +742,48 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
   }
 
   // Always build list from /api/users so newly created usernames always appear
-  const surveyorsFromUsers = users.filter(
-    (u) => u.role === 'surveyor' || u.role === 'field',
-  )
-  const surveyorRows = surveyorsFromUsers
-    .map((u) => {
-      const fromBoard = (board?.surveyors || []).find(
-        (b) => b.id === u.id || String(b.username).toLowerCase() === String(u.username).toLowerCase(),
-      )
-      const username = String(u.username || fromBoard?.username || '').trim()
-      return {
-        ...u,
-        // progress only from board — never wipe username/name from users API
-        done: fromBoard?.done ?? u.done ?? 0,
-        target: fromBoard?.target ?? u.target_quota ?? 0,
-        target_quota: u.target_quota ?? fromBoard?.target ?? 0,
-        pct: fromBoard?.pct,
-        status:
-          u.active === false
-            ? 'disabled'
-            : fromBoard?.status || u.status || 'not_started',
-        progress_label:
-          fromBoard?.label ||
-          fromBoard?.progress_label ||
-          u.progress_label ||
-          `${fromBoard?.done ?? u.done ?? 0}/${u.target_quota || fromBoard?.target || '—'}`,
-        username,
-        name: u.name || fromBoard?.name || username,
-        id: u.id,
-        active: u.active !== false,
-        role: u.role || 'surveyor',
-      }
-    })
-    // Newest first so create/generate shows at the top
-    .sort((a, b) => Number(b.id) - Number(a.id))
+  const surveyorRows = useMemo(() => {
+    return users
+      .filter((u) => u.role === 'surveyor' || u.role === 'field')
+      .map((u) => {
+        const fromBoard = (board?.surveyors || []).find(
+          (b) => b.id === u.id || String(b.username).toLowerCase() === String(u.username).toLowerCase(),
+        )
+        const username = String(u.username || fromBoard?.username || '').trim()
+        return {
+          ...u,
+          // progress only from board — never wipe username/name from users API
+          done: fromBoard?.done ?? u.done ?? 0,
+          target: fromBoard?.target ?? u.target_quota ?? 0,
+          target_quota: u.target_quota ?? fromBoard?.target ?? 0,
+          pct: fromBoard?.pct,
+          status:
+            u.active === false
+              ? 'disabled'
+              : fromBoard?.status || u.status || 'not_started',
+          progress_label:
+            fromBoard?.label ||
+            fromBoard?.progress_label ||
+            u.progress_label ||
+            `${fromBoard?.done ?? u.done ?? 0}/${u.target_quota || fromBoard?.target || '—'}`,
+          username,
+          name: u.name || fromBoard?.name || username,
+          id: u.id,
+          active: u.active !== false,
+          role: u.role || 'surveyor',
+        }
+      })
+      .sort((a, b) => Number(b.id) - Number(a.id))
+  }, [users, board])
 
-  const me = portalUser || getStoredUser()
+  const me = useMemo(() => portalUser || getStoredUser(), [portalUser])
   const allotCap = Number(me?.max_records) || 0
   const allotUsed = Number(me?.record_count ?? me?.surveyor_record_count) || 0
   const allotLeft = allotCap > 0 ? Math.max(0, allotCap - allotUsed) : null
-  const admins = users.filter((u) => u.role === 'admin' || u.role === 'super_admin')
+  const admins = useMemo(
+    () => users.filter((u) => u.role === 'admin' || u.role === 'super_admin'),
+    [users],
+  )
 
   /** Create a Super Admin (max 3 platform-wide). First-setup form uses inline inputs;
    *  the Super Admin panel falls back to prompts. */
@@ -1637,7 +1689,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                           placeholder="Leave blank to keep"
                         />
                       </label>
-                      {(user.role === 'surveyor' || user.role === 'field') && (
+                      {(u.role === 'surveyor' || u.role === 'field') && (
                         <div className="field compact">
                           <span>Assign surveys (optional)</span>
                           <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
@@ -1708,9 +1760,13 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                 display: 'flex',
                 justifyContent: 'flex-end',
               }}
-              onClick={() => setProfileUser(null)}
+              onClick={closeProfile}
             >
               <div
+                ref={drawerRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="surveyor-profile-title"
                 style={{
                   width: '100%',
                   maxWidth: 580,
@@ -1725,11 +1781,11 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
               >
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h3 style={{ margin: 0, fontSize: 18, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="user" size={18} /> Surveyor Profile & Identity</h3>
+                  <h3 id="surveyor-profile-title" style={{ margin: 0, fontSize: 18, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="user" size={18} /> Surveyor Profile & Identity</h3>
                   <button
                     type="button"
                     className="btn small danger"
-                    onClick={() => setProfileUser(null)}
+                    onClick={closeProfile}
                     style={{ fontSize: 14, padding: '4px 14px', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                   >
                     Close <Icon name="cross" size={12} />

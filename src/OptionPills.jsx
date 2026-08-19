@@ -1,5 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 
+let optIdSeq = 0
+function newOptId() {
+  optIdSeq += 1
+  return `opt-${optIdSeq}`
+}
+
+/** Keep pill keys stable across reorder/edit/delete so React does not reuse the wrong chip. */
+function reconcileOptIds(prevOpts, prevIds, nextOpts) {
+  if (!prevIds?.length || !prevOpts) return nextOpts.map(() => newOptId())
+  const used = new Set()
+  return nextOpts.map((opt) => {
+    const j = prevOpts.findIndex((p, i) => !used.has(i) && p === opt)
+    if (j >= 0) {
+      used.add(j)
+      return prevIds[j] || newOptId()
+    }
+    return newOptId()
+  })
+}
+
 /**
  * Editable + reorderable option pills for question editors.
  * - Drag a pill to reorder (HTML5 drag & drop).
@@ -21,6 +41,11 @@ export default function OptionPills({
   const [dragIdx, setDragIdx] = useState(null)
   const [overIdx, setOverIdx] = useState(null)
   const inputRef = useRef(null)
+  const idsRef = useRef([])
+  const lastOptsRef = useRef(null)
+  const pillIds = reconcileOptIds(lastOptsRef.current, idsRef.current, options)
+  idsRef.current = pillIds
+  lastOptsRef.current = options
 
   useEffect(() => {
     if (editingIdx != null) {
@@ -93,7 +118,7 @@ export default function OptionPills({
         const hovered = overIdx === idx && dragIdx != null && overIdx !== dragIdx
         return (
           <span
-            key={idx}
+            key={pillIds[idx]}
             draggable
             onDragStart={(e) => onDragStart(e, idx)}
             onDragOver={(e) => onDragOver(e, idx)}

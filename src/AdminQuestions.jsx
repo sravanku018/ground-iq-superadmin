@@ -435,8 +435,8 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                 </div>
               ) : hasOptions ? (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {(currentOpts.length > 0 ? currentOpts : ['Option 1', 'Option 2', 'Option 3']).map((opt, idx) => (
-                    <span key={idx} style={{ background: '#38bdf8', color: '#111', padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 'bold' }}>
+                  {(currentOpts.length > 0 ? currentOpts : ['Option 1', 'Option 2', 'Option 3']).map((opt, idx, list) => (
+                    <span key={`${String(opt)}:${list.slice(0, idx).filter((o) => o === opt).length}`} style={{ background: '#38bdf8', color: '#111', padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 'bold' }}>
                       {opt}
                     </span>
                   ))}

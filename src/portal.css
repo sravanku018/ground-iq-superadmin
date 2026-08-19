@@ -40,6 +40,17 @@
   animation: fadeIn var(--transition-base) ease-out;
 }
 
+.login-alert {
+  margin: 0 0 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .portal-brand {
   display: flex;
   align-items: center;

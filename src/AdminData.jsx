@@ -535,7 +535,7 @@ export default function AdminDataScreen({ onToast }) {
                   </thead>
                   <tbody>
                     {preview.slice(0, 8).map((r, i) => (
-                      <tr key={i}>
+                      <tr key={`${r.respondent_name}|${r.phone || ''}|${r.district}|${r.constituency}|${i}`}>
                         <td>{r.respondent_name || '—'}</td>
                         <td>{r.district || '—'}</td>
                         <td>{r.constituency || '—'}</td>

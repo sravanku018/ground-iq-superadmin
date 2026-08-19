@@ -8,11 +8,15 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   async function handleLogin(e) {
     e.preventDefault()
+    setError('')
     if (!username.trim() || !password) {
-      onToast?.('Enter username and password', 'error')
+      const msg = 'Enter username and password'
+      setError(msg)
+      onToast?.(msg, 'error')
       return
     }
     setLoading(true)
@@ -39,6 +43,7 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
         err.status === 429
           ? 'Too many login attempts — please wait 60 seconds.'
           : err.message || 'Login failed'
+      setError(msg)
       onToast?.(msg, 'error')
     } finally {
       setLoading(false)
@@ -82,6 +87,11 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
               placeholder="Password"
             />
           </label>
+          {error ? (
+            <div className="login-alert" role="alert">
+              {error}
+            </div>
+          ) : null}
           <button type="submit" className="btn primary" disabled={loading}>
             {loading ? 'Signing in…' : 'Sign in'}
           </button>

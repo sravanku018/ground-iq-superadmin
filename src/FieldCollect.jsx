@@ -148,6 +148,16 @@ async function reverseGeocode(lat, lng) {
 
 const IDLE_HOME_MS = 3 * 60 * 1000
 
+function revokeBlobUrl(url) {
+  if (url && String(url).startsWith('blob:')) {
+    try {
+      URL.revokeObjectURL(url)
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 export default function FieldCollectScreen({
   user,
   onToast,
@@ -207,6 +217,7 @@ export default function FieldCollectScreen({
   const mediaRec = useRef(null)
   const chunks = useRef([])
   const recognitionRef = useRef(null)
+  const audioUrlRef = useRef('')
   const fileRef = useRef(null)
   const watchId = useRef(null)
   const streamRef = useRef(null)
@@ -234,7 +245,7 @@ export default function FieldCollectScreen({
     }
     if (pkg.photoDataUrl) setPhotoDataUrl(pkg.photoDataUrl)
     if (pkg.audioDataUrl) {
-      setAudioUrl(pkg.audioDataUrl)
+      assignAudioUrl(pkg.audioDataUrl)
       setVoiceActivated(true)
       try {
         fetch(pkg.audioDataUrl)
@@ -374,10 +385,30 @@ export default function FieldCollectScreen({
         navigator.geolocation.clearWatch(watchId.current)
       }
       try {
+        if (mediaRec.current) {
+          mediaRec.current.ondataavailable = null
+          mediaRec.current.onstop = null
+          mediaRec.current.stop()
+        }
+      } catch {
+        /* ignore */
+      }
+      mediaRec.current = null
+      try {
+        recognitionRef.current?.abort()
+      } catch {
+        /* ignore */
+      }
+      recognitionRef.current = null
+      try {
         streamRef.current?.getTracks?.().forEach((t) => t.stop())
       } catch {
         /* ignore */
       }
+      streamRef.current = null
+      revokeBlobUrl(audioUrlRef.current)
+      audioUrlRef.current = ''
+      setAudioUrl('')
     }
   }, [loadQuestions, draft])
 
@@ -387,6 +418,26 @@ export default function FieldCollectScreen({
       navigator.geolocation.clearWatch(watchId.current)
       watchId.current = null
     }
+    // Hidden via display:none — still mounted. Stop mic + speech so leaving
+    // Collect does not leave the recorder / recognition running.
+    try {
+      mediaRec.current?.stop()
+    } catch {
+      /* ignore */
+    }
+    try {
+      recognitionRef.current?.abort()
+    } catch {
+      /* ignore */
+    }
+    recognitionRef.current = null
+    try {
+      streamRef.current?.getTracks?.().forEach((t) => t.stop())
+    } catch {
+      /* ignore */
+    }
+    setRecording(false)
+    setListening(false)
     return undefined
   }, [active])
 
@@ -409,14 +460,16 @@ export default function FieldCollectScreen({
     }
   }, [active, onIdleHome, onToast])
 
+  function assignAudioUrl(next) {
+    const url = next || ''
+    const prev = audioUrlRef.current
+    if (prev && prev !== url) revokeBlobUrl(prev)
+    audioUrlRef.current = url
+    setAudioUrl(url)
+  }
+
   function clearAudioUrl() {
-    if (audioUrl) {
-      try {
-        URL.revokeObjectURL(audioUrl)
-      } catch {
-        /* ignore */
-      }
-    }
+    assignAudioUrl('')
   }
 
   function resetForNextRecord() {
@@ -426,7 +479,6 @@ export default function FieldCollectScreen({
     setPhotoDataUrl('')
     setAudioBlob(null)
     clearAudioUrl()
-    setAudioUrl('')
     setRecording(false)
     setVoiceActivated(false)
     setListening(false)
@@ -631,7 +683,7 @@ export default function FieldCollectScreen({
       rec.onstop = () => {
         const blob = new Blob(chunks.current, { type: rec.mimeType || 'audio/webm' })
         setAudioBlob(blob)
-        setAudioUrl(URL.createObjectURL(blob))
+        assignAudioUrl(URL.createObjectURL(blob))
         try {
           stream.getTracks().forEach((t) => t.stop())
         } catch {
@@ -766,7 +818,7 @@ export default function FieldCollectScreen({
           }
           const b = new Blob(chunks.current, { type: rec.mimeType || 'audio/webm' })
           setAudioBlob(b)
-          setAudioUrl(URL.createObjectURL(b))
+          assignAudioUrl(URL.createObjectURL(b))
           try {
             streamRef.current?.getTracks?.().forEach((t) => t.stop())
           } catch {

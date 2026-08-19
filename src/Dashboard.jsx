@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ResponsiveContainer,
   PieChart,
@@ -46,6 +46,8 @@ const PALETTE = [
   '#e879f9',
 ]
 
+const CLEAR_AC = { constituency: '' }
+
 function colorFor(name, i = 0) {
   return PARTY_COLORS[name] || PALETTE[i % PALETTE.length]
 }
@@ -77,12 +79,12 @@ function ChartCard({ title, subtitle, children, tall }) {
   )
 }
 
-function EmptyChart({ label = 'No data for current filters' }) {
+const EmptyChart = memo(function EmptyChart({ label = 'No data for current filters' }) {
   return <div className="chart-empty">{label}</div>
-}
+})
 
 /** Super-set / Sub-set dual bars */
-function ContrastBars({ data }) {
+const ContrastBars = memo(function ContrastBars({ data }) {
   if (!data?.length) return <EmptyChart label="Apply a filter to see Subset vs Rest" />
   return (
     <div className="contrast-list">
@@ -122,7 +124,7 @@ function ContrastBars({ data }) {
       ))}
     </div>
   )
-}
+})
 
 const tipStyle = {
   background: '#0f1720',
@@ -147,7 +149,7 @@ function PctTooltip({ active, payload, label }) {
   )
 }
 
-function InteractivePie({ data, onSliceClick, activeName }) {
+const InteractivePie = memo(function InteractivePie({ data, onSelect, selectKey, extra, activeName }) {
   if (!data?.length) return <EmptyChart />
   return (
     <ResponsiveContainer width="100%" height={240}>
@@ -161,8 +163,8 @@ function InteractivePie({ data, onSliceClick, activeName }) {
           innerRadius={52}
           outerRadius={86}
           paddingAngle={2}
-          onClick={(entry) => onSliceClick?.(entry?.name)}
-          style={{ cursor: onSliceClick ? 'pointer' : 'default' }}
+          onClick={(entry) => onSelect?.(selectKey, entry?.name, extra)}
+          style={{ cursor: onSelect ? 'pointer' : 'default' }}
         >
           {data.map((d, i) => (
             <Cell
@@ -183,9 +185,9 @@ function InteractivePie({ data, onSliceClick, activeName }) {
       </PieChart>
     </ResponsiveContainer>
   )
-}
+})
 
-function HBar({ data, onBarClick, activeName, colorKey }) {
+const HBar = memo(function HBar({ data, onSelect, selectKey, extra, activeName, colorKey }) {
   if (!data?.length) return <EmptyChart />
   const height = Math.max(200, data.length * 28 + 40)
   return (
@@ -205,8 +207,8 @@ function HBar({ data, onBarClick, activeName, colorKey }) {
         <Bar
           dataKey="value"
           radius={[0, 6, 6, 0]}
-          onClick={(entry) => onBarClick?.(entry?.name || entry?.payload?.name)}
-          cursor={onBarClick ? 'pointer' : 'default'}
+          onClick={(entry) => onSelect?.(selectKey, entry?.name || entry?.payload?.name, extra)}
+          cursor={onSelect ? 'pointer' : 'default'}
         >
           {data.map((d, i) => (
             <Cell
@@ -219,9 +221,9 @@ function HBar({ data, onBarClick, activeName, colorKey }) {
       </BarChart>
     </ResponsiveContainer>
   )
-}
+})
 
-function StackedParty({ matrix, onRowClick }) {
+const StackedParty = memo(function StackedParty({ matrix, onSelect, selectKey, extra }) {
   if (!matrix?.rows?.length) return <EmptyChart />
   const data = matrix.rows.slice(0, 10)
   const cols = (matrix.columns || []).filter(
@@ -256,16 +258,16 @@ function StackedParty({ matrix, onRowClick }) {
             dataKey={col}
             stackId="p"
             fill={colorFor(col)}
-            onClick={(entry) => onRowClick?.(entry?.payload?.name)}
-            cursor={onRowClick ? 'pointer' : 'default'}
+            onClick={(entry) => onSelect?.(selectKey, entry?.payload?.name, extra)}
+            cursor={onSelect ? 'pointer' : 'default'}
           />
         ))}
       </BarChart>
     </ResponsiveContainer>
   )
-}
+})
 
-function Timeline({ data }) {
+const Timeline = memo(function Timeline({ data }) {
   if (!data?.length) return <EmptyChart label="No timeline data yet" />
   return (
     <ResponsiveContainer width="100%" height={220}>
@@ -297,9 +299,9 @@ function Timeline({ data }) {
       </AreaChart>
     </ResponsiveContainer>
   )
-}
+})
 
-function RadialIssues({ data, onClick }) {
+const RadialIssues = memo(function RadialIssues({ data, onClick }) {
   if (!data?.length) return <EmptyChart />
   const chartData = data.slice(0, 7).map((d, i) => ({
     ...d,
@@ -335,7 +337,7 @@ function RadialIssues({ data, onClick }) {
       </RadialBarChart>
     </ResponsiveContainer>
   )
-}
+})
 
 export default function DashboardScreen({ onToast }) {
   // Report is LOCKED to Client Admin confirmed data only — never pending/raw
@@ -407,16 +409,40 @@ export default function DashboardScreen({ onToast }) {
     return () => clearTimeout(t)
   }, [load])
 
-  const clearFilters = () =>
-    setFilters({
-      district: '',
-      constituency: '',
-      user: '',
-      survey: '',
-      period: 'total',
-      day: new Date().toISOString().slice(0, 10),
-      month: new Date().toISOString().slice(0, 7),
-    })
+  const onToggleFilter = useCallback((key, name, extra) => {
+    setFilters((f) => ({
+      ...f,
+      [key]: f[key] === name ? '' : name,
+      ...(extra || {}),
+    }))
+  }, [])
+
+  const onSelectDistrict = useCallback(
+    (name) => onToggleFilter('district', name, CLEAR_AC),
+    [onToggleFilter],
+  )
+
+  const onSelectConstituency = useCallback(
+    (name) => onToggleFilter('constituency', name),
+    [onToggleFilter],
+  )
+
+  const clearFilters = useCallback(
+    () =>
+      setFilters({
+        district: '',
+        party: '',
+        gender: '',
+        caste: '',
+        constituency: '',
+        user: '',
+        survey: '',
+        period: 'total',
+        day: new Date().toISOString().slice(0, 10),
+        month: new Date().toISOString().slice(0, 7),
+      }),
+    [],
+  )
 
   // Active-filter chips (08-UXUI-SPEC §4.1: filter bar chips, accent-tinted when active)
   const filterChipLabels = {
@@ -451,12 +477,13 @@ export default function DashboardScreen({ onToast }) {
     }
     return chips
   }, [filters, data])
-  const removeFilter = (key) =>
+  const removeFilter = useCallback((key) => {
     setFilters((f) => {
       const next = { ...f, [key]: '' }
       if (key === 'district') next.constituency = ''
       return next
     })
+  }, [])
 
   const activeCount = useMemo(
     () =>
@@ -1077,19 +1104,8 @@ export default function DashboardScreen({ onToast }) {
               <SurveyMap
                 analytics={data}
                 filters={filters}
-                onSelectDistrict={(name) =>
-                  setFilters((f) => ({
-                    ...f,
-                    district: f.district === name ? '' : name,
-                    constituency: '',
-                  }))
-                }
-                onSelectConstituency={(name) =>
-                  setFilters((f) => ({
-                    ...f,
-                    constituency: f.constituency === name ? '' : name,
-                  }))
-                }
+                onSelectDistrict={onSelectDistrict}
+                onSelectConstituency={onSelectConstituency}
               />
             </div>
           )}
@@ -1157,13 +1173,9 @@ export default function DashboardScreen({ onToast }) {
             <HBar
               data={charts?.byDistrict}
               activeName={filters.district}
-              onBarClick={(name) =>
-                setFilters((f) => ({
-                  ...f,
-                  district: f.district === name ? '' : name,
-                  constituency: '',
-                }))
-              }
+              onSelect={onToggleFilter}
+              selectKey="district"
+              extra={CLEAR_AC}
             />
           </ChartCard>
 
@@ -1171,13 +1183,9 @@ export default function DashboardScreen({ onToast }) {
             <ChartCard title="Party × District" subtitle="Stacked share" tall>
               <StackedParty
                 matrix={charts.partyByDistrict}
-                onRowClick={(name) =>
-                  setFilters((f) => ({
-                    ...f,
-                    district: f.district === name ? '' : name,
-                    constituency: '',
-                  }))
-                }
+                onSelect={onToggleFilter}
+                selectKey="district"
+                extra={CLEAR_AC}
               />
             </ChartCard>
           )}
@@ -1198,23 +1206,15 @@ export default function DashboardScreen({ onToast }) {
                 <InteractivePie
                   data={q.counts}
                   activeName={filters[`q_${q.id}`] || ''}
-                  onSliceClick={(name) =>
-                    setFilters((f) => ({
-                      ...f,
-                      [`q_${q.id}`]: f[`q_${q.id}`] === name ? '' : name,
-                    }))
-                  }
+                  onSelect={onToggleFilter}
+                  selectKey={`q_${q.id}`}
                 />
               ) : (
                 <HBar
                   data={q.counts}
                   activeName={filters[`q_${q.id}`] || ''}
-                  onBarClick={(name) =>
-                    setFilters((f) => ({
-                      ...f,
-                      [`q_${q.id}`]: f[`q_${q.id}`] === name ? '' : name,
-                    }))
-                  }
+                  onSelect={onToggleFilter}
+                  selectKey={`q_${q.id}`}
                 />
               )}
             </ChartCard>

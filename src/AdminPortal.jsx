@@ -1,6 +1,7 @@
-import { Component, lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { Component, lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import Icon from './Icons'
 import {
+  clearSession,
   getStats,
   getStoredUser,
   getToken,
@@ -588,10 +589,13 @@ export default function AdminPortal({ superAdminOnly = false }) {
     .map((n) => ({ ...n, pages: n.pages.filter(canPage) }))
     .filter((n) => n.pages.length > 0)
 
+  const toastTimer = useRef(0)
   const notify = useCallback((message, type = 'ok') => {
     setToast({ message, type })
-    setTimeout(() => setToast(null), 3200)
+    window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToast(null), 3200)
   }, [])
+  useEffect(() => () => window.clearTimeout(toastTimer.current), [])
 
   const goPage = useCallback((p, extra = null) => {
     const src = typeof p === 'string' ? { page: p } : p && typeof p === 'object' ? p : null

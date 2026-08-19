@@ -58,6 +58,16 @@ async function fetchJson(url, { method = 'GET', token, body } = {}) {
     if (!res.ok) {
       const err = new Error(data.error || data.message || `HTTP ${res.status}`)
       err.status = res.status
+      // A token that expires mid-drain must trigger the same re-login flow as
+      // interactive calls (api.js dispatches this too) — otherwise packages
+      // silently pile up as "failed" and the user is never prompted to sign in.
+      if (res.status === 401 && typeof window !== 'undefined') {
+        try {
+          window.dispatchEvent(new CustomEvent('esurvey-unauthorized', { detail: data }))
+        } catch {
+          /* non-DOM context */
+        }
+      }
       throw err
     }
     return data
@@ -195,49 +205,60 @@ export async function drainQueue(reason = 'tick') {
   if (running) return { skipped: true, reason: 'busy' }
   if (!getToken()) return { skipped: true, reason: 'no-auth' }
 
-  const net = await checkNetwork()
-  if (!isStrongEnoughToSync(net)) {
-    emit({ type: 'wait-network', quality: net.quality, reason })
-    return { skipped: true, reason: 'weak-network', net }
-  }
-
-  const pending = await listPendingPackages()
-  if (!pending.length) {
-    emit({ type: 'empty', reason })
-    return { skipped: true, reason: 'empty' }
-  }
-
+  // Claim the lock synchronously — before any await — so overlapping triggers
+  // (interval / network-strong / enqueue / foreground) can't both pass the
+  // `if (running)` guard and start a second drain over the same pending list.
   running = true
-  emit({
-    type: 'drain-start',
-    count: pending.length,
-    reason,
-    quality: net.quality,
-  })
+  try {
+    const net = await checkNetwork()
+    if (!isStrongEnoughToSync(net)) {
+      emit({ type: 'wait-network', quality: net.quality, reason })
+      return { skipped: true, reason: 'weak-network', net }
+    }
 
-  let ok = 0
-  let fail = 0
-  // Systematic: one full package at a time
-  for (const p of pending) {
-    // re-check network between packages
-    const n2 = await checkNetwork()
-    if (!isStrongEnoughToSync(n2)) {
-      emit({ type: 'wait-network', quality: n2.quality, reason: 'mid-drain' })
-      break
+    const pending = await listPendingPackages()
+    if (!pending.length) {
+      emit({ type: 'empty', reason })
+      return { skipped: true, reason: 'empty' }
     }
-    try {
-      await syncOnePackage(p.id)
-      ok += 1
-    } catch {
-      fail += 1
-      // continue next package (don't block whole queue on one fail)
+
+    emit({
+      type: 'drain-start',
+      count: pending.length,
+      reason,
+      quality: net.quality,
+    })
+
+    let ok = 0
+    let fail = 0
+    // Systematic: one full package at a time
+    for (const p of pending) {
+      // re-check network between packages
+      const n2 = await checkNetwork()
+      if (!isStrongEnoughToSync(n2)) {
+        emit({ type: 'wait-network', quality: n2.quality, reason: 'mid-drain' })
+        break
+      }
+      try {
+        await syncOnePackage(p.id)
+        ok += 1
+      } catch (e) {
+        fail += 1
+        // A 401 will hit every remaining package — stop the drain and let the
+        // esurvey-unauthorized handler prompt re-login instead of hammering.
+        if (e?.status === 401) break
+        // otherwise continue next package (don't block the queue on one fail)
+      }
     }
+
+    const stats = await queueStats()
+    emit({ type: 'drain-done', ok, fail, pending: stats.pending, reason })
+    return { ok, fail, pending: stats.pending }
+  } finally {
+    // Always release the lock — including the weak-network / empty early
+    // returns and any thrown error — so the engine can never deadlock.
+    running = false
   }
-
-  running = false
-  const stats = await queueStats()
-  emit({ type: 'drain-done', ok, fail, pending: stats.pending, reason })
-  return { ok, fail, pending: stats.pending }
 }
 
 export function startSyncEngine() {

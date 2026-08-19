@@ -108,6 +108,103 @@ function newToken(): string {
   return [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 
+// ── Super Admin TOTP (RFC 6238, SHA-1, 30s, 6 digits) ────────────────────
+const TOTP_B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+const SUPER_ADMIN_SLOTS = 3;
+
+function bytesToBase32(bytes: Uint8Array): string {
+  let bits = 0;
+  let value = 0;
+  let out = "";
+  for (const b of bytes) {
+    value = (value << 8) | b;
+    bits += 8;
+    while (bits >= 5) {
+      out += TOTP_B32[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) out += TOTP_B32[(value << (5 - bits)) & 31];
+  return out;
+}
+
+function base32ToBytes(s: string): Uint8Array {
+  const clean = String(s || "").toUpperCase().replace(/=+$/g, "").replace(/[^A-Z2-7]/g, "");
+  let bits = 0;
+  let value = 0;
+  const out: number[] = [];
+  for (const c of clean) {
+    const i = TOTP_B32.indexOf(c);
+    if (i < 0) continue;
+    value = (value << 5) | i;
+    bits += 5;
+    if (bits >= 8) {
+      out.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  return new Uint8Array(out);
+}
+
+function newTotpSecret(): string {
+  const b = new Uint8Array(20);
+  crypto.getRandomValues(b);
+  return bytesToBase32(b);
+}
+
+function otpauthUrl(username: string, secret: string): string {
+  const label = encodeURIComponent(`Ground IQ:${username}`);
+  const issuer = encodeURIComponent("Ground IQ");
+  return `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
+}
+
+async function hotpSha1(secret: Uint8Array, counter: number): Promise<string> {
+  const buf = new ArrayBuffer(8);
+  const view = new DataView(buf);
+  // 64-bit big-endian counter (high then low)
+  view.setUint32(0, Math.floor(counter / 0x100000000));
+  view.setUint32(4, counter >>> 0);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    secret,
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"],
+  );
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, buf));
+  const off = sig[sig.length - 1] & 0xf;
+  const code =
+    ((sig[off] & 0x7f) << 24) |
+    ((sig[off + 1] & 0xff) << 16) |
+    ((sig[off + 2] & 0xff) << 8) |
+    (sig[off + 3] & 0xff);
+  return String(code % 1_000_000).padStart(6, "0");
+}
+
+async function verifyTotp(secretB32: string, code: unknown): Promise<boolean> {
+  const digits = String(code || "").replace(/\s/g, "");
+  if (!/^\d{6}$/.test(digits) || !secretB32) return false;
+  const secret = base32ToBytes(secretB32);
+  if (secret.length < 10) return false;
+  const step = Math.floor(Date.now() / 1000 / 30);
+  for (const d of [-1, 0, 1]) {
+    if ((await hotpSha1(secret, step + d)) === digits) return true;
+  }
+  return false;
+}
+
+function totpSetupPayload(username: string, secret: string) {
+  return {
+    totp_setup: true,
+    totp_secret: secret,
+    otpauth_url: otpauthUrl(username, secret),
+    issuer: "Ground IQ",
+    account: username,
+    digits: 6,
+    period: 30,
+  };
+}
+
 // ── CORS allowlist ────────────────────────────────────────────────────────
 // The API (Deno) is called cross-origin by the Vercel-hosted portals and by the
 // Capacitor Android app (origin https://localhost, from androidScheme: "https").
@@ -779,6 +876,9 @@ async function ensureSchema() {
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_crud_questionnaire BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_validate_proof BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_web_survey BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
+  // Super Admin TOTP (3 seats). Secret never returned after confirm except on reset/setup.
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_secret TEXT`.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   // Super-Admin-set cap on how many questions a Client Admin may put into one survey (0 = unlimited)
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_questions_per_survey INT NOT NULL DEFAULT 0`.catch(() => null);
   // Super-Admin-set cap on how many surveys a Client Admin may create (0 = unlimited)
@@ -3670,6 +3770,8 @@ async function rawHandler(req: Request): Promise<Response> {
                COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
                COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
                COALESCE(can_web_survey, FALSE) AS can_web_survey,
+               COALESCE(totp_enabled, FALSE) AS totp_enabled,
+               totp_secret,
                COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                COALESCE(max_surveys, 0) AS max_surveys,
                COALESCE(max_surveyors, 0) AS max_surveyors,
@@ -3737,6 +3839,33 @@ async function rawHandler(req: Request): Promise<Response> {
         }, 401);
       }
 
+      // Super Admin: password + authenticator TOTP (3 slots). Client Admin / surveyor unchanged.
+      if (user.role === "super_admin") {
+        const totpCode = (body as { totp?: unknown }).totp ?? (body as { otp?: unknown }).otp;
+        const rec = user as Record<string, unknown>;
+        let secret = String(rec.totp_secret || "").trim();
+        const enabled = sqlBool(rec.totp_enabled);
+        if (!secret) {
+          secret = newTotpSecret();
+          await sql`UPDATE app_users SET totp_secret = ${secret}, totp_enabled = FALSE WHERE id = ${user.id}`
+            .catch(() => null);
+        }
+        const totpOk = await verifyTotp(secret, totpCode);
+        if (!totpOk) {
+          return json({
+            error: enabled
+              ? "Enter the 6-digit code from your authenticator app."
+              : "Scan the authenticator QR / secret, then enter the 6-digit code.",
+            totp_required: true,
+            totp_setup: !enabled,
+            ...(enabled ? {} : totpSetupPayload(user.username, secret)),
+          }, 401);
+        }
+        if (!enabled) {
+          await sql`UPDATE app_users SET totp_enabled = TRUE WHERE id = ${user.id}`.catch(() => null);
+        }
+      }
+
       const token = newToken();
       const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       await sql`
@@ -3773,6 +3902,7 @@ async function rawHandler(req: Request): Promise<Response> {
           can_crud_questionnaire: sqlBool(uu.can_crud_questionnaire),
           can_validate_proof: sqlBool(uu.can_validate_proof),
           can_web_survey: sqlBool(uu.can_web_survey),
+          totp_enabled: uu.role === "super_admin" ? sqlBool(uu.totp_enabled) : undefined,
           max_questions_per_survey: Number(uu.max_questions_per_survey) || 0,
           max_surveys: Number(uu.max_surveys) || 0,
           max_surveyors: Number(uu.max_surveyors) || 0,
@@ -4228,6 +4358,7 @@ async function rawHandler(req: Request): Promise<Response> {
                    COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
                    COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
                COALESCE(can_web_survey, FALSE) AS can_web_survey,
+                   COALESCE(totp_enabled, FALSE) AS totp_enabled,
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                    COALESCE(max_surveys, 0) AS max_surveys,
                    COALESCE(max_surveyors, 0) AS max_surveyors,
@@ -4258,6 +4389,7 @@ async function rawHandler(req: Request): Promise<Response> {
                    COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
                    COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
                COALESCE(can_web_survey, FALSE) AS can_web_survey,
+                   COALESCE(totp_enabled, FALSE) AS totp_enabled,
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                    COALESCE(max_surveys, 0) AS max_surveys,
                    COALESCE(max_surveyors, 0) AS max_surveyors,
@@ -4374,6 +4506,7 @@ async function rawHandler(req: Request): Promise<Response> {
           can_crud_questionnaire: sqlBool(r.can_crud_questionnaire),
           can_validate_proof: sqlBool(r.can_validate_proof),
           can_web_survey: sqlBool(r.can_web_survey),
+          totp_enabled: r.role === "super_admin" ? sqlBool(r.totp_enabled) : undefined,
           max_questions_per_survey: Number(r.max_questions_per_survey) || 0,
           max_surveys: Number(r.max_surveys) || 0,
           max_surveyors: Number(r.max_surveyors) || 0,
@@ -4611,13 +4744,14 @@ async function rawHandler(req: Request): Promise<Response> {
       try {
         const password_hash = await hashPasswordAsync(password);
         const key_id = await uniqueUserKeyId();
+        const totpSecret = newTotpSecret();
         const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, role, active, key_id)
-          VALUES (${username}, ${password_hash}, ${name}, 'super_admin', TRUE, ${key_id})
+          INSERT INTO app_users (username, password_hash, display_name, role, active, key_id, totp_secret, totp_enabled)
+          VALUES (${username}, ${password_hash}, ${name}, 'super_admin', TRUE, ${key_id}, ${totpSecret}, FALSE)
           RETURNING id, username, display_name, role, active, created_at, key_id
         `;
         const u = inserted[0] as Record<string, unknown>;
-        logAudit(me, "super_admin_create", "user", u.id, { username: u.username });
+        logAudit(me, "super_admin_create", "user", u.id, { username: u.username, totp: true });
         return json({
           user: {
             id: u.id,
@@ -4627,7 +4761,9 @@ async function rawHandler(req: Request): Promise<Response> {
             active: u.active !== false,
             created_at: u.created_at,
             key_id: u.key_id || key_id,
+            totp_enabled: false,
           },
+          ...totpSetupPayload(String(u.username), totpSecret),
         }, 201);
       } catch (e) {
         const msg = (e as Error).message || "";
@@ -4636,6 +4772,30 @@ async function rawHandler(req: Request): Promise<Response> {
         }
         return json({ error: msg || "Could not create super admin" }, 500);
       }
+    }
+
+    // Reset TOTP for a Super Admin slot — Super Admin console only. New secret shown once.
+    if (path.match(/^\/api\/super-admin\/\d+\/totp\/reset$/) && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") {
+        return json({ error: "Super Admin only" }, 403);
+      }
+      const id = Number(path.split("/")[3]);
+      const rows = await sql`
+        SELECT id, username, role FROM app_users WHERE id = ${id} AND role = 'super_admin' LIMIT 1
+      `.catch(() => []);
+      const u = rows[0] as { id: number; username: string } | undefined;
+      if (!u) return json({ error: "Super Admin slot not found" }, 404);
+      const secret = newTotpSecret();
+      await sql`
+        UPDATE app_users SET totp_secret = ${secret}, totp_enabled = FALSE WHERE id = ${u.id}
+      `;
+      logAudit(me, "super_admin_totp_reset", "user", u.id, { username: u.username });
+      return json({
+        ok: true,
+        user: { id: u.id, username: u.username, totp_enabled: false },
+        ...totpSetupPayload(u.username, secret),
+      });
     }
 
     // Super Admin password reset — Super Admin console only (not Client Admin).
@@ -7857,8 +8017,8 @@ async function rawHandler(req: Request): Promise<Response> {
 
     if (path === "/api/submissions" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin" && me.role !== "surveyor") {
-        return json({ error: "Login required as admin or surveyor" }, 403);
+      if (!isPortalAdmin(me.role) && me.role !== "surveyor") {
+        return json({ error: "Login required as admin, super admin, or surveyor" }, 403);
       }
       const body = await readBody(req);
       const incomingSource = String(body.source || "");

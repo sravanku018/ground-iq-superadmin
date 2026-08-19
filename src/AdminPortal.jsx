@@ -33,6 +33,7 @@ const AdminSeatsScreen = lazy(() => import('./AdminSeats'))
 const AdminClientAdminsScreen = lazy(() => import('./AdminClientAdmins'))
 const AdminCompaniesScreen = lazy(() => import('./AdminCompanies'))
 const AdminWebSurveyScreen = lazy(() => import('./AdminWebSurvey'))
+const AdminProfileScreen = lazy(() => import('./AdminProfile'))
 
 // Client Admin nav — they create Surveys (Super Admin creates Projects separately)
 const NAV = [
@@ -47,7 +48,7 @@ const PLATFORM_NAV = {
   id: 'platform',
   label: 'Platform',
   icon: 'star',
-  pages: ['audit', 'bank', 'seats'],
+  pages: ['audit', 'bank', 'seats', 'profile'],
 }
 
 // Super Admin console only: dedicated Client Admin account management
@@ -89,6 +90,7 @@ const PAGE_LABELS = {
   bank: 'Question Bank',
   web: 'Web survey',
   seats: 'Seat Requests',
+  profile: 'Profile',
   admins: 'Client Admins',
   companies: 'Companies',
 }
@@ -105,6 +107,8 @@ const PAGE_POWER = {
   review: 'can_review_data',
   upload: 'can_validate_proof',
   data: 'can_validate_proof',
+  // Super Admin console only — Client Admins never have this key
+  profile: '__super_admin_only__',
 }
 
 /**
@@ -1006,6 +1010,13 @@ export default function AdminPortal({ superAdminOnly = false }) {
           )}
           {page === 'web' && canPage('web') && (
             <AdminWebSurveyScreen onToast={notify} user={user} />
+          )}
+          {page === 'profile' && canPage('profile') && (
+            <AdminProfileScreen
+              user={user}
+              onToast={notify}
+              onUserUpdated={(u) => setUser((prev) => ({ ...prev, ...u }))}
+            />
           )}
           {page === 'seats' && canPage('seats') && <AdminSeatsScreen onToast={notify} />}
           {page === 'admins' && canPage('admins') && (

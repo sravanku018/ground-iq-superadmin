@@ -7,6 +7,8 @@ import { versionLabel } from './version'
 export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [totp, setTotp] = useState('')
+  const [totpStep, setTotpStep] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -19,6 +21,12 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
       onToast?.(msg, 'error')
       return
     }
+    if (totpStep && !String(totp).replace(/\s/g, '').match(/^\d{6}$/)) {
+      const msg = 'Enter the 6-digit authenticator code'
+      setError(msg)
+      onToast?.(msg, 'error')
+      return
+    }
     setLoading(true)
     try {
       clearSession()
@@ -26,6 +34,7 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
         username.trim(),
         password,
         superAdminOnly ? 'super_admin' : 'admin',
+        totpStep ? totp.replace(/\s/g, '') : undefined,
       )
       const okRole = superAdminOnly
         ? data.user?.role === 'super_admin'
@@ -39,6 +48,15 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
       onToast?.(`Welcome ${data.user.name}`, 'ok')
       onSuccess?.(data.user)
     } catch (err) {
+      if (err.totp_required || err.data?.totp_required) {
+        setTotpStep(err.data || { totp_required: true })
+        setTotp('')
+        const msg = err.message || 'Authenticator code required'
+        setError(msg)
+        onToast?.(msg, 'error')
+        setLoading(false)
+        return
+      }
       const msg =
         err.status === 429
           ? 'Too many login attempts — please wait 60 seconds.'
@@ -87,13 +105,47 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
               placeholder="Password"
             />
           </label>
+          {totpStep ? (
+            <label className="field">
+              <span>Authenticator code</span>
+              <input
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={totp}
+                onChange={(e) => setTotp(e.target.value.replace(/[^\d]/g, '').slice(0, 6))}
+                placeholder="6-digit code"
+                autoFocus
+              />
+            </label>
+          ) : null}
+          {totpStep?.totp_setup && totpStep.totp_secret ? (
+            <div className="card" style={{ margin: '0 0 10px', padding: 12, background: '#fffbeb' }}>
+              <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
+                Add this slot to Google Authenticator / Authy
+              </p>
+              <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
+                Issuer <strong>Ground IQ</strong> · account <strong>{totpStep.account || username}</strong>
+              </p>
+              <code style={{ display: 'block', wordBreak: 'break-all', fontSize: 13, fontWeight: 700 }}>
+                {totpStep.totp_secret}
+              </code>
+              {totpStep.otpauth_url ? (
+                <a
+                  href={totpStep.otpauth_url}
+                  style={{ display: 'inline-block', marginTop: 8, fontSize: 12 }}
+                >
+                  Open in authenticator app
+                </a>
+              ) : null}
+            </div>
+          ) : null}
           {error ? (
             <div className="login-alert" role="alert">
               {error}
             </div>
           ) : null}
           <button type="submit" className="btn primary" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading ? 'Signing in…' : totpStep ? 'Verify & sign in' : 'Sign in'}
           </button>
         </form>
         <p className="app-version-foot" aria-label="App version">

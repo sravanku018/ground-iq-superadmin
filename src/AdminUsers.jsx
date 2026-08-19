@@ -3,6 +3,7 @@ import Icon from './Icons'
 import {
   createSeatRequest,
   createSuperAdmin,
+  resetSuperAdminTotp,
   createUser,
   deleteUser,
   disableUser,
@@ -164,6 +165,8 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
   const [saBusy, setSaBusy] = useState(false)
   const [saUsername, setSaUsername] = useState('')
   const [saPassword, setSaPassword] = useState('')
+  const [saName, setSaName] = useState('')
+  const [totpSetup, setTotpSetup] = useState(null)
   const [seatData, setSeatData] = useState(null)
   const [seatRequestedLimit, setSeatRequestedLimit] = useState(10)
   const [seatReason, setSeatReason] = useState('')
@@ -793,14 +796,30 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     if (!username || !password) return
     setSaBusy(true)
     try {
-      await createSuperAdmin({
+      const res = await createSuperAdmin({
         username: username.trim().toLowerCase(),
         password,
-        name: 'Super Admin',
+        name: saName.trim() || 'Super Admin',
       })
-      onToast?.('Super Admin created ✓', 'ok')
+      setTotpSetup(res)
+      onToast?.('Slot created — scan TOTP before that account signs in', 'ok')
       setSaUsername('')
       setSaPassword('')
+      setSaName('')
+      await load()
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setSaBusy(false)
+    }
+  }
+  const resetSlotTotp = async (sa) => {
+    if (!window.confirm(`Reset authenticator for @${sa.username}? They must scan a new secret.`)) return
+    setSaBusy(true)
+    try {
+      const res = await resetSuperAdminTotp(sa.id)
+      setTotpSetup(res)
+      onToast?.('New TOTP secret — save it now', 'ok')
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -809,6 +828,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     }
   }
   const superAdmins = users.filter((u) => u.role === 'super_admin')
+  const saSlots = [0, 1, 2].map((i) => superAdmins[i] || null)
 
   const submitSeatRequest = async () => {
     setSeatBusy(true)
@@ -947,50 +967,94 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
       {/* Super Admin management only on Super Admin console — never in Client Admin portal */}
       {me?.role === 'super_admin' && (
         <div className="card" style={{ marginBottom: 14, border: '1px solid rgba(245,158,11,0.45)' }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 8,
-            }}
-          >
-            <div>
-              <h3 style={{ margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="star" size={16} /> Platform Super Admins</h3>
-              <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-                {superAdmins.length} of 3 seats used · Super Admins have full platform access
-              </p>
-            </div>
-            <button
-              type="button"
-              className="btn small"
-              disabled={saBusy || superAdmins.length >= 3}
-              onClick={createSuperAdminAcct}
-            >
-              {saBusy
-                ? 'Creating…'
-                : superAdmins.length >= 3
-                  ? 'Cap reached (3 of 3)'
-                  : '＋ Create Super Admin'}
-            </button>
+          <h3 style={{ margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Icon name="star" size={16} /> Super Admin slots (3) · TOTP
+          </h3>
+          <p className="muted" style={{ margin: '0 0 12px', fontSize: 12 }}>
+            {superAdmins.length} of 3 seats used. Each slot signs in with password + 6-digit authenticator code.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+            {saSlots.map((sa, i) => (
+              <div
+                key={sa?.id || `empty-${i}`}
+                style={{
+                  border: '1px solid #fde68a',
+                  borderRadius: 10,
+                  padding: 12,
+                  background: sa ? 'rgba(245,158,11,0.08)' : '#fffbeb',
+                }}
+              >
+                <strong style={{ fontSize: 13 }}>Slot {i + 1}</strong>
+                {sa ? (
+                  <>
+                    <p style={{ margin: '6px 0 4px', fontSize: 14 }}>
+                      {sa.name || sa.username}
+                    </p>
+                    <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                      @{sa.username}
+                      {sa.totp_enabled ? ' · TOTP on' : ' · TOTP pending first login'}
+                    </p>
+                    <button
+                      type="button"
+                      className="btn small"
+                      style={{ marginTop: 8 }}
+                      disabled={saBusy}
+                      onClick={() => void resetSlotTotp(sa)}
+                    >
+                      Reset TOTP
+                    </button>
+                  </>
+                ) : (
+                  <p className="muted" style={{ margin: '6px 0 0', fontSize: 12 }}>Empty</p>
+                )}
+              </div>
+            ))}
           </div>
-          {superAdmins.length > 0 && (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-              {superAdmins.map((sa) => (
-                <span
-                  key={sa.id}
-                  className="chip selected"
-                  style={{
-                    background: 'rgba(245,158,11,0.15)',
-                    border: '1px solid rgba(245,158,11,0.5)',
-                  }}
-                >
-                  <Icon name="star" size={12} /> {sa.name || sa.username} · @{sa.username}
-                </span>
-              ))}
+          {superAdmins.length < 3 && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12, alignItems: 'flex-end' }}>
+              <label className="field compact">
+                <span>Username</span>
+                <input value={saUsername} onChange={(e) => setSaUsername(e.target.value)} placeholder="slot username" />
+              </label>
+              <label className="field compact">
+                <span>Name</span>
+                <input value={saName} onChange={(e) => setSaName(e.target.value)} placeholder="Super Admin" />
+              </label>
+              <label className="field compact">
+                <span>Password</span>
+                <input type="password" value={saPassword} onChange={(e) => setSaPassword(e.target.value)} placeholder="min 8 chars" />
+              </label>
+              <button
+                type="button"
+                className="btn small primary"
+                disabled={saBusy || !saUsername.trim() || saPassword.length < 8}
+                onClick={() => void createSuperAdminAcct()}
+              >
+                {saBusy ? 'Creating…' : `Fill slot ${superAdmins.length + 1}`}
+              </button>
             </div>
           )}
+          {totpSetup?.totp_secret ? (
+            <div className="card" style={{ marginTop: 12, background: '#fffbeb', border: '1px solid #fbbf24' }}>
+              <p style={{ margin: '0 0 6px', fontWeight: 700 }}>
+                Save this authenticator secret now — it is not shown again
+              </p>
+              <p className="muted" style={{ margin: '0 0 6px', fontSize: 12 }}>
+                @{totpSetup.account || totpSetup.user?.username} · add in Google Authenticator / Authy as Ground IQ
+              </p>
+              <code style={{ display: 'block', wordBreak: 'break-all', fontWeight: 700 }}>
+                {totpSetup.totp_secret}
+              </code>
+              {totpSetup.otpauth_url ? (
+                <a href={totpSetup.otpauth_url} style={{ display: 'inline-block', marginTop: 8, fontSize: 12 }}>
+                  Open otpauth link
+                </a>
+              ) : null}
+              <button type="button" className="btn small" style={{ marginTop: 8, marginLeft: 8 }} onClick={() => setTotpSetup(null)}>
+                Dismiss
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
 

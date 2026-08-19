@@ -68,6 +68,13 @@ async function request(path, options = {}) {
   const data = await res.json().catch(() => ({}))
 
   if (res.status === 401) {
+    if (data.totp_required) {
+      const err = new Error(data.error || 'Authenticator code required')
+      err.status = 401
+      err.data = data
+      err.totp_required = true
+      throw err
+    }
     clearSession()
     try {
       window.dispatchEvent(
@@ -96,7 +103,7 @@ export function health() {
 }
 
 /** Login as admin or surveyor (created in admin dashboard) */
-export async function login(username, password, expected_role) {
+export async function login(username, password, expected_role, totp) {
   const data = await request('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -104,6 +111,7 @@ export async function login(username, password, expected_role) {
       username,
       password,
       ...(expected_role ? { expected_role } : {}),
+      ...(totp ? { totp } : {}),
     }),
   })
   setSession(data.token, data.user)
@@ -194,6 +202,10 @@ export function createSuperAdmin(body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
+}
+
+export function resetSuperAdminTotp(id) {
+  return request(`/api/super-admin/${id}/totp/reset`, { method: 'POST' })
 }
 
 /** Reset the ONLY existing Super Admin's password (bootstrap escape hatch) — portal admin */

@@ -205,6 +205,42 @@ function totpSetupPayload(username: string, secret: string) {
   };
 }
 
+const SA_SLOT_USERNAMES = ["superadmin", "superadmin2", "superadmin3"] as const;
+const SA_SLOT_STARTER_PASSWORD = "admin123";
+
+/** Create only missing Super Admin usernames. Never updates an existing row. */
+async function seedMissingSuperAdminSlots(
+  sqlFn: NonNullable<typeof sql>,
+): Promise<{ created: string[] }> {
+  const created: string[] = [];
+  const countRows = await sqlFn`SELECT COUNT(*)::int AS n FROM app_users WHERE role = 'super_admin'`.catch(() => [{ n: 0 }]);
+  let count = sqlCountN(countRows[0]);
+  if (count >= SUPER_ADMIN_SLOTS) return { created };
+
+  await sqlFn`ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_role_check`.catch(() => null);
+  await sqlFn`ALTER TABLE app_users ADD CONSTRAINT app_users_role_check CHECK (role IN ('super_admin','admin','field','user','surveyor'))`.catch(() => null);
+
+  const starterHash = await hashPasswordAsync(SA_SLOT_STARTER_PASSWORD);
+  for (let i = 0; i < SA_SLOT_USERNAMES.length && count < SUPER_ADMIN_SLOTS; i++) {
+    const username = SA_SLOT_USERNAMES[i];
+    const exists = await sqlFn`SELECT id FROM app_users WHERE LOWER(username) = ${username} LIMIT 1`.catch(() => []);
+    if (exists.length) continue;
+    const totpSecret = newTotpSecret();
+    const name = i === 0 ? "Super Admin" : `Super Admin ${i + 1}`;
+    const ins = await sqlFn`
+      INSERT INTO app_users (username, password_hash, display_name, role, active, key_id, totp_secret, totp_enabled)
+      VALUES (${username}, ${starterHash}, ${name}, 'super_admin', TRUE, ${await uniqueUserKeyId()}, ${totpSecret}, FALSE)
+      ON CONFLICT (username) DO NOTHING
+      RETURNING id
+    `.catch(() => []);
+    if ((ins as { id?: unknown }[]).length) {
+      created.push(username);
+      count += 1;
+    }
+  }
+  return { created };
+}
+
 // ── CORS allowlist ────────────────────────────────────────────────────────
 // The API (Deno) is called cross-origin by the Vercel-hosted portals and by the
 // Capacitor Android app (origin https://localhost, from androidScheme: "https").
@@ -958,6 +994,13 @@ async function ensureSchema() {
     console.log("super admin bootstrap skipped:", (e as Error).message);
   }
   }
+
+  // Fill empty Super Admin seats as superadmin2 / superadmin3 with starter
+  // password admin123. Never overwrites an existing account (so a changed
+  // superadmin password stays). Each new slot must enroll TOTP on first login.
+  await seedMissingSuperAdminSlots(sql).catch((e) => {
+    console.log("super admin slot seed skipped:", (e as Error).message);
+  });
 
   await sql`
     CREATE TABLE IF NOT EXISTS app_sessions (
@@ -4772,6 +4815,23 @@ async function rawHandler(req: Request): Promise<Response> {
         }
         return json({ error: msg || "Could not create super admin" }, 500);
       }
+    }
+
+    // Fill remaining Super Admin seats (superadmin2 / superadmin3, starter password).
+    // Does not change existing accounts — the first slot's changed password is kept.
+    if (path === "/api/super-admin/seed-slots" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+      const out = await seedMissingSuperAdminSlots(sql);
+      logAudit(me, "super_admin_seed_slots", "user", null, { created: out.created });
+      return json({
+        ok: true,
+        created: out.created,
+        starter_password: out.created.length ? SA_SLOT_STARTER_PASSWORD : null,
+        note: out.created.length
+          ? "New slots: username + admin123 + TOTP on first login. Existing accounts were not changed."
+          : "All 3 slots already exist — nothing created.",
+      });
     }
 
     // Reset TOTP for a Super Admin slot — Super Admin console only. New secret shown once.

@@ -48,7 +48,14 @@ const PLATFORM_NAV = {
   id: 'platform',
   label: 'Platform',
   icon: 'star',
-  pages: ['audit', 'bank', 'seats', 'profile'],
+  pages: ['audit', 'bank', 'seats'],
+}
+
+const PROFILE_NAV = {
+  id: 'sa-profile',
+  label: 'Profile',
+  icon: 'user',
+  pages: ['profile'],
 }
 
 // Super Admin console only: dedicated Client Admin account management
@@ -475,6 +482,13 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
             <span>CSV &amp; geography inventory</span>
           </button>
         )}
+        {(superAdminOnly || user?.role === 'super_admin') && (
+          <button type="button" className="portal-action" onClick={() => onNav('profile')}>
+            <span className="portal-action-n">★</span>
+            <strong>Super Admin profile</strong>
+            <span>Name, password, TOTP for this slot</span>
+          </button>
+        )}
       </div>
 
       {!superAdminOnly && user?.role !== 'super_admin' && <AllocationCard user={user} />}
@@ -587,12 +601,15 @@ export default function AdminPortal({ superAdminOnly = false }) {
         COMPANIES_NAV,
         PROJECTS_NAV,
         PLATFORM_NAV,
+        PROFILE_NAV,
         // console keeps Question Bank under Platform only — avoid duplicate subtabs
         ...NAV
           .filter((n) => n.id !== 'surveys')
           .map((n) => (n.id === 'data' ? { ...n, pages: n.pages.filter((p) => p !== 'bank') } : n)),
       ]
-    : NAV
+    : user?.role === 'super_admin'
+      ? [...NAV, PROFILE_NAV]
+      : NAV
   const nav = baseNav
     .map((n) => ({ ...n, pages: n.pages.filter(canPage) }))
     .filter((n) => n.pages.length > 0)
@@ -930,7 +947,22 @@ export default function AdminPortal({ superAdminOnly = false }) {
           >
             {loadingData ? 'Refreshing…' : '🔄 Refresh Data'}
           </button>
-          <div className="portal-user">
+          <button
+            type="button"
+            className="portal-user"
+            onClick={() => (user.role === 'super_admin' ? goPage('profile') : undefined)}
+            disabled={user.role !== 'super_admin'}
+            title={user.role === 'super_admin' ? 'Open Super Admin profile' : undefined}
+            style={{
+              display: 'block',
+              width: '100%',
+              textAlign: 'left',
+              background: 'none',
+              border: 0,
+              padding: 0,
+              cursor: user.role === 'super_admin' ? 'pointer' : 'default',
+            }}
+          >
             <strong>
               {user.name || user.username}{' '}
               {user.verified ? <VerifiedBadge size={16} title="Verified" /> : null}
@@ -938,8 +970,9 @@ export default function AdminPortal({ superAdminOnly = false }) {
             </strong>
             <span>
               @{user.username} · {user.role === 'super_admin' ? 'Super Admin' : 'Client Admin'}
+              {user.role === 'super_admin' ? ' · Profile' : ''}
             </span>
-          </div>
+          </button>
           <p className="app-version-foot portal-version" aria-label="App version">
             {versionLabel()}
           </p>

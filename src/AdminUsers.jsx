@@ -4,6 +4,7 @@ import {
   createSeatRequest,
   createSuperAdmin,
   resetSuperAdminTotp,
+  seedSuperAdminSlots,
   createUser,
   deleteUser,
   disableUser,
@@ -971,8 +972,33 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
             <Icon name="star" size={16} /> Super Admin slots (3) · TOTP
           </h3>
           <p className="muted" style={{ margin: '0 0 12px', fontSize: 12 }}>
-            {superAdmins.length} of 3 seats used. Each slot signs in with password + 6-digit authenticator code.
+            {superAdmins.length} of 3 seats used. Logins: <strong>superadmin</strong>,{' '}
+            <strong>superadmin2</strong>, <strong>superadmin3</strong>. New seats start as{' '}
+            <code>admin123</code> + TOTP — they change password in Profile. Your existing
+            password is never overwritten.
           </p>
+          {superAdmins.length < 3 && (
+            <button
+              type="button"
+              className="btn small primary"
+              style={{ marginBottom: 10 }}
+              disabled={saBusy}
+              onClick={async () => {
+                setSaBusy(true)
+                try {
+                  const res = await seedSuperAdminSlots()
+                  onToast?.(res.note || `Created ${(res.created || []).join(', ') || 'none'}`, 'ok')
+                  await load()
+                } catch (e) {
+                  onToast?.(e.message, 'error')
+                } finally {
+                  setSaBusy(false)
+                }
+              }}
+            >
+              {saBusy ? 'Creating…' : 'Create remaining slots (admin123)'}
+            </button>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
             {saSlots.map((sa, i) => (
               <div

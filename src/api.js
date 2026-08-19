@@ -208,6 +208,10 @@ export function resetSuperAdminTotp(id) {
   return request(`/api/super-admin/${id}/totp/reset`, { method: 'POST' })
 }
 
+export function seedSuperAdminSlots() {
+  return request('/api/super-admin/seed-slots', { method: 'POST' })
+}
+
 /** Reset the ONLY existing Super Admin's password (bootstrap escape hatch) — portal admin */
 export function resetSuperAdminPassword(password) {
   return request('/api/super-admin/reset', {

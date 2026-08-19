@@ -108,12 +108,43 @@ function newToken(): string {
   return [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 
+// ── CORS allowlist ────────────────────────────────────────────────────────
+// The API (Deno) is called cross-origin by the Vercel-hosted portals and by the
+// Capacitor Android app (origin https://localhost, from androidScheme: "https").
+// Override the list at runtime with an ALLOWED_ORIGINS env var (comma-separated).
+const ALLOWED_ORIGINS = new Set(
+  Deno.env.get("ALLOWED_ORIGINS")
+    ?.split(",").map((s) => s.trim()).filter(Boolean) ?? [
+      "https://ground-iq-web-lake.vercel.app",   // Client Admin portal
+      "https://ground-iq-superadmin.vercel.app", // Super Admin console
+      "https://localhost",                       // Android APK
+      "http://localhost",                        // Android cleartext fallback
+      "http://localhost:5173",                   // vite dev
+      "http://localhost:4173",                   // vite preview
+    ],
+);
+/** The request's Origin iff it is allow-listed, else null. */
+function resolveAllowedOrigin(req?: Request): string | null {
+  const origin = req?.headers.get("origin");
+  if (!origin) return null; // non-browser client (curl / server-to-server): CORS N/A
+  return ALLOWED_ORIGINS.has(origin) ? origin : null;
+}
+/** Single choke point: stamp the correct CORS origin on every outgoing response. */
+function withCors(req: Request, res: Response): Response {
+  try {
+    const allowed = resolveAllowedOrigin(req);
+    if (allowed) res.headers.set("access-control-allow-origin", allowed);
+    else res.headers.delete("access-control-allow-origin"); // block disallowed origins
+    res.headers.append("vary", "Origin");
+  } catch { /* streamed/guarded headers — leave as-is */ }
+  return res;
+}
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "access-control-allow-origin": "*",
       "access-control-allow-headers": "authorization, content-type, x-auth-token",
       "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
     },
@@ -121,8 +152,8 @@ function json(data: unknown, status = 200) {
 }
 
 function corsHeaders(_req?: Request): Record<string, string> {
+  // access-control-allow-origin is applied centrally by withCors().
   return {
-    "access-control-allow-origin": "*",
     "access-control-allow-headers": "authorization, content-type, x-auth-token, accept, origin, range, content-disposition",
     "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
     "access-control-expose-headers": "content-disposition, content-type, content-length, location",
@@ -3334,7 +3365,7 @@ async function buildAnalytics(
 }
 
 // ── Router ────────────────────────────────────────────────
-Deno.serve(async (req) => {
+async function rawHandler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return corsPreflight();
 
   const url = new URL(req.url);
@@ -8411,4 +8442,6 @@ Deno.serve(async (req) => {
     console.error(err);
     return json({ error: (err as Error).message || "Server error" }, 500);
   }
-});
+}
+
+Deno.serve(async (req) => withCors(req, await rawHandler(req)));

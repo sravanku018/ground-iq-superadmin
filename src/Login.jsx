@@ -60,9 +60,9 @@ export default function LoginScreen({ onSuccess, onToast }) {
       <div className="fl-bg" aria-hidden />
 
       <header className="fl-header">
-        <div className="fl-logo">G</div>
+        <div className="fl-logo">S</div>
         <div>
-          <p className="fl-brand">Ground IQ</p>
+          <p className="fl-brand">smartsuveyx</p>
           <p className="fl-tag">Field Survey App</p>
         </div>
       </header>

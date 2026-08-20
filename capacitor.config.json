@@ -1,6 +1,6 @@
 {
   "appId": "com.groundiq.electionsurvey",
-  "appName": "Election Survey",
+  "appName": "smartsuveyx",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",

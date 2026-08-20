@@ -53,10 +53,10 @@ export default function App() {
   useEffect(() => {
     const info = reloadOnceIfUpgraded()
     if (typeof document !== 'undefined') {
-      document.title = `Ground IQ ${versionLabel()}`
+      document.title = `smartsuveyx ${versionLabel()}`
     }
     if (info.upgraded) {
-      console.info(`[Ground IQ] upgraded ${info.prev} → ${info.current}`)
+      console.info(`[smartsuveyx] upgraded ${info.prev} → ${info.current}`)
     }
   }, [])
 

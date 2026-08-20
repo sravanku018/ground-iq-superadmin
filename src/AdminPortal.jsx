@@ -878,7 +878,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           {navOpen ? <Icon name="cross" size={18} /> : <Icon name="menu" size={18} />}
         </button>
         <div className="portal-topbar-brand">
-          <strong>smartsuveyx · Admin</strong>
+          <strong>Smart Survey X · Admin</strong>
           <span>{activeNavLabel}</span>
         </div>
         <button
@@ -904,7 +904,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
         <div className="portal-sidebar-brand">
           <span className="portal-logo">◆</span>
           <div>
-            <strong>smartsuveyx</strong>
+            <strong>Smart Survey X</strong>
             <span>{superAdminOnly ? 'Super Admin' : 'Client Admin'}</span>
           </div>
         </div>

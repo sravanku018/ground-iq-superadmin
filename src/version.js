@@ -3,7 +3,7 @@
  * Stored in localStorage so UI always shows the running build.
  */
 
-export const APP_NAME = 'smartsuveyx'
+export const APP_NAME = 'Smart Survey X'
 export const APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0-dev'
 export const APP_BUILD =

@@ -62,7 +62,7 @@ export default function LoginScreen({ onSuccess, onToast }) {
       <header className="fl-header">
         <div className="fl-logo">S</div>
         <div>
-          <p className="fl-brand">smartsuveyx</p>
+          <p className="fl-brand">Smart Survey X</p>
           <p className="fl-tag">Field Survey App</p>
         </div>
       </header>

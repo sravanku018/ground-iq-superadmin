@@ -153,8 +153,8 @@ function newTotpSecret(): string {
 }
 
 function otpauthUrl(username: string, secret: string): string {
-  const label = encodeURIComponent(`smartsuveyx:${username}`);
-  const issuer = encodeURIComponent("smartsuveyx");
+  const label = encodeURIComponent(`Smart Survey X:${username}`);
+  const issuer = encodeURIComponent("Smart Survey X");
   return `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
 }
 
@@ -198,7 +198,7 @@ function totpSetupPayload(username: string, secret: string) {
     totp_setup: true,
     totp_secret: secret,
     otpauth_url: otpauthUrl(username, secret),
-    issuer: "smartsuveyx",
+    issuer: "Smart Survey X",
     account: username,
     digits: 6,
     period: 30,
@@ -3819,7 +3819,7 @@ async function rawHandler(req: Request): Promise<Response> {
       };
       if (path === "/") {
         return json({
-          message: "smartsuveyx API on Deno Deploy",
+          message: "Smart Survey X API on Deno Deploy",
           platform: "deno",
           auth: true,
           r2: r2Status,

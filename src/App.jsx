@@ -53,10 +53,10 @@ export default function App() {
   useEffect(() => {
     const info = reloadOnceIfUpgraded()
     if (typeof document !== 'undefined') {
-      document.title = `smartsuveyx ${versionLabel()}`
+      document.title = `Smart Survey X ${versionLabel()}`
     }
     if (info.upgraded) {
-      console.info(`[smartsuveyx] upgraded ${info.prev} → ${info.current}`)
+      console.info(`[Smart Survey X] upgraded ${info.prev} → ${info.current}`)
     }
   }, [])
 

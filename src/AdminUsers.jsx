@@ -1066,7 +1066,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                 Save this authenticator secret now — it is not shown again
               </p>
               <p className="muted" style={{ margin: '0 0 6px', fontSize: 12 }}>
-                @{totpSetup.account || totpSetup.user?.username} · add in Google Authenticator / Authy as smartsuveyx
+                @{totpSetup.account || totpSetup.user?.username} · add in Google Authenticator / Authy as Smart Survey X
               </p>
               <code style={{ display: 'block', wordBreak: 'break-all', fontWeight: 700 }}>
                 {totpSetup.totp_secret}

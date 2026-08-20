@@ -74,7 +74,7 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
         <div className="portal-brand">
           <span className="portal-logo">◆</span>
           <div>
-            <p className="eyebrow">smartsuveyx</p>
+            <p className="eyebrow">Smart Survey X</p>
             <h1>{superAdminOnly ? 'Super Admin Console' : 'Client Admin'}</h1>
           </div>
         </div>
@@ -124,7 +124,7 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
                 Add this slot to Google Authenticator / Authy
               </p>
               <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
-                Issuer <strong>smartsuveyx</strong> · account <strong>{totpStep.account || username}</strong>
+                Issuer <strong>Smart Survey X</strong> · account <strong>{totpStep.account || username}</strong>
               </p>
               <code style={{ display: 'block', wordBreak: 'break-all', fontSize: 13, fontWeight: 700 }}>
                 {totpStep.totp_secret}

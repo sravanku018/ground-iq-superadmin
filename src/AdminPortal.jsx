@@ -190,6 +190,21 @@ function formatDate(v) {
   }
 }
 
+function formatIstStamp(v) {
+  if (!v) return '—'
+  const d = v instanceof Date ? v : new Date(v)
+  if (Number.isNaN(d.getTime())) return String(v)
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(d)
+}
+
 /**
  * Client Admin allocation card — shows the logged-in admin's own usage vs the
  * caps Super Admin set on their profile (surveys / surveyors / questions per survey).
@@ -397,6 +412,22 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
     if (superAdminOnly || user?.role === 'super_admin') return true
     return canPage(p)
   }
+  const [pendingItems, setPendingItems] = useState(null)
+
+  useEffect(() => {
+    let alive = true
+    listSubmissions(30, 'pending')
+      .then((d) => {
+        if (alive) setPendingItems(d.items || [])
+      })
+      .catch(() => {
+        if (alive) setPendingItems([])
+      })
+    return () => {
+      alive = false
+    }
+  }, [stats?.pending])
+
   return (
     <div className="portal-page">
       <header className="portal-page-head">
@@ -411,18 +442,22 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
       </header>
 
       <div className="portal-kpi-grid">
-        <div className="portal-kpi">
+        <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
           <strong>{stats?.pending?.toLocaleString?.() ?? '—'}</strong>
           <span>Pending review</span>
-        </div>
-        <div className="portal-kpi">
+        </button>
+        <button
+          type="button"
+          className="portal-kpi"
+          onClick={() => onNav(gated('review') ? 'review' : 'analyze')}
+        >
           <strong>{stats?.confirmed?.toLocaleString?.() ?? '—'}</strong>
           <span>Confirmed</span>
-        </div>
-        <div className="portal-kpi">
+        </button>
+        <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
           <strong>{stats?.submissions?.toLocaleString?.() ?? '—'}</strong>
           <span>All submissions</span>
-        </div>
+        </button>
         <div className="portal-kpi">
           <strong>{stats?.districts ?? '—'}</strong>
           <span>Districts in data</span>
@@ -438,6 +473,57 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           </div>
         )}
       </div>
+
+      {gated('review') && (
+        <div className="card" style={{ marginBottom: 16, padding: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <strong style={{ fontSize: 14 }}>Pending review</strong>
+            <button type="button" className="btn small" onClick={() => onNav('review')}>
+              Open Review
+            </button>
+          </div>
+          {pendingItems == null ? (
+            <p className="muted" style={{ margin: 0, fontSize: 13 }}>Loading pending records…</p>
+          ) : pendingItems.length === 0 ? (
+            <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+              {Number(stats?.pending) > 0
+                ? 'Count is on the tile — tap Open Review if the list is empty after API refresh.'
+                : 'No pending records.'}
+            </p>
+          ) : (
+            <ul className="user-list" style={{ margin: 0 }}>
+              {pendingItems.map((it) => (
+                <li
+                  key={it.id}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    padding: '8px 10px',
+                    background: '#f1f5f9',
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <strong>#{it.record_index ?? it.id}</strong>
+                    <span className="meta" style={{ display: 'block', marginTop: 2 }}>
+                      {formatIstStamp(it.created_at)}
+                      {it.submitted_by ? ` · ${it.submitted_by}` : ''}
+                      {it.form_key ? ` · ${it.form_key}` : ''}
+                    </span>
+                    <span className="meta" style={{ display: 'block' }}>
+                      {it.answers?.district || it.answers?.respondent_name || '—'}
+                    </span>
+                  </div>
+                  <span style={{ color: '#d97706', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
+                    Pending
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="portal-action-grid">
         {gated('users') && (

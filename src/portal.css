@@ -576,6 +576,19 @@
   padding: var(--pad-box, 16px);
 }
 
+button.portal-kpi {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button.portal-kpi:hover {
+  border-color: #059669;
+}
+
 .portal-kpi strong {
   display: block;
   font-size: 28px;

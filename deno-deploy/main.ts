@@ -6430,7 +6430,15 @@ async function rawHandler(req: Request): Promise<Response> {
       });
 
       if (statusQ && statusQ !== "all") {
-        items = items.filter((x) => x.status === statusQ);
+        if (statusQ === "pending") {
+          // Same as Overview "Pending review": not confirmed work, including
+          // rows still tagged _draft after Send from the field app.
+          items = items.filter((x) => x.work === "pending" || x.status === "pending");
+        } else if (statusQ === "confirmed") {
+          items = items.filter((x) => x.work === "completed");
+        } else {
+          items = items.filter((x) => x.status === statusQ);
+        }
       }
       if (qFilters.length) {
         // question id → type, so age-type filters bucket-match ranges

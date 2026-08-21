@@ -1036,11 +1036,17 @@ export default function AdminSurveysScreen({ onToast, user }) {
           )}
           {user?.role !== 'super_admin' && (
             <div style={{ fontSize: 13, color: '#38bdf8', fontWeight: 'bold', marginTop: 3 }}>
-              <Icon name="users" size={13} /> Field team: {s.surveyor_names || `${s.surveyors || 0} assigned`} · assign from Surveyors → profile
+              <Icon name="users" size={13} /> Field team: {s.surveyor_names || 'none'} ·
+              assign from Surveyors → profile
             </div>
           )}
           <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
-            <Icon name="chart" size={12} /> {s.submissions || 0} Submissions · <Icon name="clipboard" size={12} /> {s.question_count || 0} Questions · Updated{' '}
+            {Number(s.submissions) > 0 ? (
+              <>
+                <Icon name="chart" size={12} /> {s.submissions} Submissions ·{' '}
+              </>
+            ) : null}
+            <Icon name="clipboard" size={12} /> {s.question_count || 0} Questions · Updated{' '}
             {String(s.updated_at || '').slice(0, 16).replace('T', ' ')}
           </div>
           {isSuper && s.admin_count > 0 && (
@@ -1060,6 +1066,16 @@ export default function AdminSurveysScreen({ onToast, user }) {
     </div>
     )
   }
+
+  const visibleSurveys = surveys.filter((s) => {
+    if (isSuper) return true
+    const questions = Number(s.question_count) || 0
+    const subs = Number(s.submissions) || 0
+    const team = Number(s.surveyors) || 0
+    const names = String(s.surveyor_names || '').trim()
+    if (!questions && !subs && !team && !names) return false
+    return true
+  })
 
   return (
     <div className="screen">
@@ -1113,7 +1129,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
 
       {loading && <p className="muted">Loading projects…</p>}
 
-      {!loading && surveys.length === 0 && (
+      {!loading && visibleSurveys.length === 0 && (
         <p className="muted">
           {search
             ? `No ${unit}s match that name.`
@@ -1121,10 +1137,10 @@ export default function AdminSurveysScreen({ onToast, user }) {
         </p>
       )}
 
-      {user?.role === 'super_admin' && surveys.length > 0 ? (
+      {user?.role === 'super_admin' && visibleSurveys.length > 0 ? (
         <>
           {Object.entries(
-            surveys.reduce((acc, s) => {
+            visibleSurveys.reduce((acc, s) => {
               const c = s.company_name || s.owner_company || 'No company'
               ;(acc[c] = acc[c] || []).push(s)
               return acc
@@ -1142,7 +1158,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           ))}
         </>
       ) : (
-        surveys.map(renderCard)
+        visibleSurveys.map(renderCard)
       )}
     </div>
   )

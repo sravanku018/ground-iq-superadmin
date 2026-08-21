@@ -862,17 +862,41 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     for (const s of allSurveys) {
       const id = Number(s?.id)
       if (!Number.isFinite(id)) continue
-      byId.set(id, { id, title: s.title, form_key: s.form_key })
+      byId.set(id, {
+        id,
+        title: s.title,
+        form_key: s.form_key,
+        question_count: Number(s.question_count) || 0,
+        submissions: Number(s.submissions) || 0,
+      })
     }
     for (const u of users) {
       for (const s of u.surveys || []) {
         const id = Number(s?.id)
         if (!Number.isFinite(id) || byId.has(id)) continue
-        byId.set(id, { id, title: s.title, form_key: s.form_key })
+        byId.set(id, {
+          id,
+          title: s.title,
+          form_key: s.form_key,
+          question_count: Number(s.question_count) || 0,
+          submissions: Number(s.submissions) || 0,
+        })
       }
     }
     return [...byId.values()]
   }, [allSurveys, users])
+
+  const surveysForAssign = (selected = []) => {
+    const sel = new Set((selected || []).map(String))
+    return surveyChoices.filter(
+      (s) => (Number(s.question_count) || 0) > 0 || sel.has(String(s.id)),
+    )
+  }
+
+  const surveysWithSubmissions = useMemo(
+    () => surveyChoices.filter((s) => (Number(s.submissions) || 0) > 0),
+    [surveyChoices],
+  )
 
   const superAdmins = users.filter((u) => u.role === 'super_admin')
   const saSlots = [0, 1, 2].map((i) => superAdmins[i] || null)
@@ -1341,7 +1365,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
             <SurveySelect
               value={gen.surveys}
               onChange={(ids) => setGen((g) => ({ ...g, surveys: ids }))}
-              all={surveyChoices}
+              all={surveysForAssign(gen.surveys)}
             />
           </div>
           <button type="submit" className="btn primary" disabled={saving}>
@@ -1376,7 +1400,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
             <SurveySelect
               value={form.surveys}
               onChange={(ids) => setForm((f) => ({ ...f, surveys: ids }))}
-              all={surveyChoices}
+              all={surveysForAssign(form.surveys)}
             />
           </div>
           <label className="field">
@@ -1872,7 +1896,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                           <SurveySelect
                             value={edit.surveys}
                             onChange={(ids) => setEdit((ed) => ({ ...ed, surveys: ids }))}
-                            all={surveyChoices}
+                            all={surveysForAssign(edit.surveys)}
                           />
                         </div>
                       )}
@@ -2083,7 +2107,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                           onChange={(ids) => {
                             void saveProfileSurveys(ids)
                           }}
-                          all={surveyChoices}
+                          all={surveysForAssign(profileSurveys)}
                           inline
                         />
                         {profileSurveyBusy ? (
@@ -2267,7 +2291,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       }
                     >
                       <option value="active">All Active Surveys (Excludes Legacy)</option>
-                      {surveyChoices.map((s) => (
+                      {surveysWithSubmissions.map((s) => (
                         <option key={s.id} value={s.form_key}>
                           {s.title}
                         </option>

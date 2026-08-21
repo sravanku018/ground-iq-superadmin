@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Icon from './Icons'
 import { getQuestions, getSurvey, listSurveys, saveQuestions, updateSurvey } from './api'
 import OptionPills from './OptionPills'
-import QuestionTelugu from './QuestionTelugu'
+import QuestionTelugu, { fillTeluguFromEnglish } from './QuestionTelugu'
 import { canTeluguQuestions, isQuestionVisible, labelPatch, nextQuestionId, teluguFields } from './questionKey'
 
 const EMPTY_Q = {
@@ -38,6 +38,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
   const [surveyId, setSurveyId] = useState('')
   const [surveysReady, setSurveysReady] = useState(false)
   const [displayLang, setDisplayLang] = useState('en')
+  const [translatingAll, setTranslatingAll] = useState(false)
 
   const load = useCallback(async () => {
     if (!surveysReady) return
@@ -133,6 +134,26 @@ export default function AdminQuestionsScreen({ onToast, user }) {
 
   function removeQ(i) {
     setQuestions((list) => list.filter((_, idx) => idx !== i))
+  }
+
+  async function translateAll() {
+    setTranslatingAll(true)
+    try {
+      const next = []
+      for (const q of questions) {
+        try {
+          next.push({ ...q, ...(await fillTeluguFromEnglish(q)) })
+        } catch {
+          next.push(q)
+        }
+      }
+      setQuestions(next)
+      onToast?.('Telugu filled for all questions and options', 'ok')
+    } catch (e) {
+      onToast?.(e.message || 'Translate failed', 'error')
+    } finally {
+      setTranslatingAll(false)
+    }
   }
 
   async function save() {
@@ -284,6 +305,13 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       </div>
       )}
 
+      {canTelugu && displayLang === 'te' && questions.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <button type="button" className="btn small" disabled={translatingAll || !canEdit} onClick={() => void translateAll()}>
+            {translatingAll ? 'Translating all…' : 'Auto-translate all questions + options'}
+          </button>
+        </div>
+      )}
       {questions.map((q, i) => {
         const type = q.type || 'text'
         const hasOptions = ['choice', 'yesno', 'abc', 'sentiment', 'sentiment_text', 'range', 'numeric_range', 'age'].includes(type)
@@ -311,7 +339,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
               />
             </label>
             {canTelugu && displayLang === 'te' ? (
-              <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} />
+              <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} onToast={onToast} />
             ) : null}
 
             <label className="field">

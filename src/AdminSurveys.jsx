@@ -12,7 +12,7 @@ import {
   setSurveySurveyors,
   updateSurvey,
 } from './api'
-import QuestionTelugu from './QuestionTelugu'
+import QuestionTelugu, { fillTeluguFromEnglish } from './QuestionTelugu'
 import { canTeluguQuestions, isQuestionVisible, labelPatch, nextQuestionId, teluguFields } from './questionKey'
 
 const EMPTY_Q = {
@@ -36,8 +36,29 @@ const defaultOptionsForType = (t) => {
 
 /** Shared question editor with rich question types, interactive options & live app preview */
 function QuestionEditor({ questions, onChange, onToast, canTelugu, displayLang = 'en' }) {
+  const [translatingAll, setTranslatingAll] = useState(false)
   function updateQ(i, patch) {
     onChange(questions.map((q, idx) => (idx === i ? { ...q, ...patch } : q)))
+  }
+
+  async function translateAll() {
+    setTranslatingAll(true)
+    try {
+      const next = []
+      for (const q of questions) {
+        try {
+          next.push({ ...q, ...(await fillTeluguFromEnglish(q)) })
+        } catch {
+          next.push(q)
+        }
+      }
+      onChange(next)
+      onToast?.('Telugu filled for all questions and options', 'ok')
+    } catch (e) {
+      onToast?.(e.message || 'Translate failed', 'error')
+    } finally {
+      setTranslatingAll(false)
+    }
   }
 
   function handleTypeChange(i, newType) {
@@ -62,6 +83,13 @@ function QuestionEditor({ questions, onChange, onToast, canTelugu, displayLang =
 
   return (
     <>
+      {canTelugu && displayLang === 'te' && questions.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <button type="button" className="btn small" disabled={translatingAll} onClick={() => void translateAll()}>
+            {translatingAll ? 'Translating all…' : 'Auto-translate all questions + options'}
+          </button>
+        </div>
+      )}
       {questions.map((q, i) => {
         const type = q.type || 'text'
         const hasOptions = ['choice', 'yesno', 'abc', 'sentiment', 'sentiment_text', 'range', 'numeric_range', 'age'].includes(type)
@@ -89,7 +117,7 @@ function QuestionEditor({ questions, onChange, onToast, canTelugu, displayLang =
               />
             </label>
             {canTelugu && displayLang === 'te' ? (
-              <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} />
+              <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} onToast={onToast} />
             ) : null}
 
             <label className="field">

@@ -1,7 +1,7 @@
 /** Field media size: 16 kHz speech + canvas WebP/JPEG. No extra codec library. */
 
 export const AUDIO_SAMPLE_RATE = 16000
-export const AUDIO_BITRATE = 16000
+export const AUDIO_BITRATE = 24000
 export const PHOTO_MAX_EDGE = 800
 export const PHOTO_JPEG_QUALITY = 0.58
 export const PHOTO_WEBP_QUALITY = 0.62
@@ -82,9 +82,16 @@ function encodeWav16kMono(float32) {
   return new Blob([bytes], { type: 'audio/wav' })
 }
 
-/** Decode any recorded blob, downsample to 16 kHz mono WAV. Falls back to the original blob. */
+/**
+ * Keep Opus/WebM at 24 kbps when MediaRecorder produced it.
+ * WAV 16 kHz is only a fallback (much larger) if the blob is not a speech codec.
+ */
 export async function toSpeechWav16k(blob) {
   if (!blob || !blob.size) return blob
+  const mime = String(blob.type || '').toLowerCase()
+  if (mime.includes('opus') || mime.includes('webm') || mime.includes('ogg')) {
+    return blob
+  }
   try {
     const ctx = new AudioContext()
     const buf = await blob.arrayBuffer()
@@ -93,7 +100,6 @@ export async function toSpeechWav16k(blob) {
     const mono = mixToMono(decoded)
     const speech = downsampleMono(mono, decoded.sampleRate, AUDIO_SAMPLE_RATE)
     const wav = encodeWav16kMono(speech)
-    // 16 kHz 16-bit mono is 32 KB/s. Prefer it when it fits the ~700KB store cap.
     if (wav.size > 680_000 && blob.size < wav.size) return blob
     return wav
   } catch {

@@ -797,7 +797,7 @@ export default function FieldCollectScreen({
       audioStartedAt.current = Date.now()
       setRecording(true)
       setVoiceActivated(true)
-      onToast?.('Voice activated · 16 kHz', 'ok')
+      onToast?.('Voice activated · Opus 24 kbps', 'ok')
     } catch (e) {
       setVoiceActivated(false)
       onToast?.(e.message || 'Microphone permission required — voice is locked mandatory', 'error')
@@ -980,7 +980,7 @@ export default function FieldCollectScreen({
     setSaving(true)
     try {
       const audioDataUrl = await blobToBase64(blob)
-      const audioMime = blob.type || 'audio/wav'
+      const audioMime = blob.type || 'audio/webm'
 
       // Locked location + geo stamped into answers (immutable client fields).
       // Draft markers are stripped — a confirmed record is finished work.
@@ -1137,18 +1137,16 @@ export default function FieldCollectScreen({
       })
 
       let audioDataUrl = null
-      let audioMime = 'audio/wav'
+      let audioMime = 'audio/webm'
       let blob = audioBlob
       if ((!blob || blob.size < MIN_AUDIO_BYTES) && chunks.current.length) {
-        blob = await toSpeechWav16k(new Blob(chunks.current, { type: 'audio/webm' }))
+        blob = await toSpeechWav16k(new Blob(chunks.current, { type: 'audio/webm;codecs=opus' }))
         if (!checkpoint) setAudioBlob(blob)
       }
       if (blob && blob.size >= MIN_AUDIO_BYTES) {
-        if (blob.type && !blob.type.includes('wav')) {
-          blob = await toSpeechWav16k(blob)
-        }
+        blob = await toSpeechWav16k(blob)
         audioDataUrl = await blobToBase64(blob)
-        audioMime = blob.type || 'audio/wav'
+        audioMime = blob.type || 'audio/webm'
       } else if (!checkpoint) {
         onToast?.('Voice recording required to save a draft — activate voice and record', 'error')
         setStep(2)

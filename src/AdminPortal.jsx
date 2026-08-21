@@ -326,7 +326,7 @@ function AllocationCard({ user }) {
         </div>
         <div className="stat">
           <strong>{fmt(self.question_count, maxQ)}</strong>
-          <span>Questions in largest survey</span>
+          <span>Questions used / total</span>
         </div>
         <div className="stat">
           <strong>{fmt(recordUsed, maxRecords)}</strong>
@@ -369,7 +369,8 @@ function AllocationCard({ user }) {
                 📋 {s.title}
                 {s.question_count != null ? (
                   <span className="muted" style={{ fontWeight: 500, marginLeft: 8 }}>
-                    · {s.question_count} Q
+                    · {s.question_count}
+                    {maxQ > 0 ? ` / ${maxQ}` : ''} Q
                   </span>
                 ) : null}
               </div>
@@ -463,14 +464,30 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           <span>Districts in data</span>
         </div>
         {!superAdminOnly && user?.role !== 'super_admin' && (
-          <div className="portal-kpi">
-            <strong>
-              {Number(user?.record_count ?? user?.surveyor_record_count) || 0}
-              {' / '}
-              {Number(user?.max_records) > 0 ? Number(user.max_records) : '∞'}
-            </strong>
-            <span>Records allotted</span>
-          </div>
+          <>
+            <button
+              type="button"
+              className="portal-kpi"
+              onClick={() => onNav(gated('surveys') ? 'surveys' : 'questions')}
+            >
+              <strong>
+                {Number(user?.question_count) || 0}
+                {' / '}
+                {Number(user?.max_questions_per_survey) > 0
+                  ? Number(user.max_questions_per_survey)
+                  : '∞'}
+              </strong>
+              <span>Questions used / total</span>
+            </button>
+            <div className="portal-kpi">
+              <strong>
+                {Number(user?.record_count ?? user?.surveyor_record_count) || 0}
+                {' / '}
+                {Number(user?.max_records) > 0 ? Number(user.max_records) : '∞'}
+              </strong>
+              <span>Records allotted</span>
+            </div>
+          </>
         )}
       </div>
 

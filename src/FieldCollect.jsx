@@ -1439,7 +1439,7 @@ export default function FieldCollectScreen({
   function renderQuestionCard(qq, { speakFill = false } = {}) {
     return (
       <>
-        <h3 className="qa-title">{qq.label && qq.label !== qq.id ? qq.label : qq.speak || qq.label || 'Question'}</h3>
+        <h3 className="qa-title">{(qq.label && qq.label !== qq.id ? qq.label : qq.speak) || 'Question'}</h3>
         {qq.label_te ? (
           <p className="muted" style={{ fontSize: 14, marginTop: -6, marginBottom: 10 }}>
             {qq.label_te}

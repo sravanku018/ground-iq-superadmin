@@ -35,11 +35,15 @@ export function canTeluguQuestions(user) {
   )
 }
 
+/** Question text stays exactly as typed. Field ID is a separate storage key. */
 export function labelPatch(q, label) {
   const next = String(label || '')
-  const auto = slugQuestionKey(next)
   const patch = { label: next }
-  if (auto) patch.id = auto
+  const existingId = String(q?.id || '').trim()
+  if (!existingId) {
+    const auto = slugQuestionKey(next)
+    if (auto) patch.id = auto
+  }
   if (!q?.speak || q.speak === q.label) patch.speak = next
   return patch
 }

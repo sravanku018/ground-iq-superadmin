@@ -163,8 +163,8 @@ function labelForAnswerKey(key, questions) {
     return id === k || label === k || slugQuestionKey(label) === k
   })
   if (hit?.label && hit.label !== hit.id) return hit.label
-  if (hit?.label) return hit.label
-  return k.includes('_') ? k.replace(/_/g, ' ') : k
+  if (hit?.label_en && hit.label_en !== hit.id) return hit.label_en
+  return 'Question'
 }
 
 function groupRecordsByDay(records) {

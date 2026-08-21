@@ -76,9 +76,9 @@ function questionFilterTitle(q, lang) {
   const te = String(q.label_te || '').trim()
   const any = String(q.label || '').trim()
   const id = String(q.id || '').trim()
-  const real = (s) => s && s !== id
-  if (lang === 'te') return (real(te) && te) || (real(any) && any) || (real(en) && en) || any || en || id
-  return (real(en) && en) || (real(any) && any) || (real(te) && te) || en || any || id
+  const notId = (s) => s && s !== id
+  if (lang === 'te') return notId(te) ? te : notId(any) ? any : notId(en) ? en : any || en || 'Question'
+  return notId(en) ? en : notId(any) ? any : notId(te) ? te : any || en || 'Question'
 }
 
 function optionFilterText(name, q, countRow, lang) {
@@ -117,11 +117,48 @@ function tickShown(data, lang = 'en') {
   }
 }
 
-/** Authored choices (incl. 0) plus any extra answers that actually appear. */
-function visibleAnswerRows(q) {
-  const counts = q?.counts || []
-  const authored = new Set((q.authored || q.options || []).map((n) => String(n)))
-  return counts.filter((c) => authored.has(String(c.name)) || Number(c.value) > 0)
+/** Options as created on the survey, in that order — never drop a choice because it has 0 answers. */
+function createdOptions(q) {
+  if (q?.authored?.length) return q.authored.map(String)
+  if (q?.options?.length) return q.options.map(String)
+  const t = String(q?.type || '')
+  if (t === 'yesno') return ['Yes', 'No']
+  if (t === 'abc') return ['A', 'B', 'C', 'D']
+  if (t === 'sentiment' || t === 'sentiment_text' || t === 'meter' || t === 'tapometer') {
+    return ['Negative', 'Neutral', 'Positive']
+  }
+  if (t === 'range' || t === 'numeric_range' || t === 'age') {
+    return ['10-20', '21-30', '31-40', '41-50', '50+']
+  }
+  return []
+}
+
+function rowsFromSurveyQuestion(q) {
+  const countMap = new Map((q?.counts || []).map((c) => [String(c.name), c]))
+  const seen = new Set()
+  const rows = []
+  for (const name of createdOptions(q)) {
+    const key = String(name)
+    const low = key.toLowerCase()
+    if (!key || seen.has(low)) continue
+    seen.add(low)
+    const c =
+      countMap.get(key) ||
+      [...countMap.values()].find((x) => String(x.name).toLowerCase() === low)
+    rows.push({
+      name: key,
+      value: Number(c?.value || 0),
+      pct: Number(c?.pct || 0),
+      label: c?.label || key,
+    })
+  }
+  for (const c of q?.counts || []) {
+    const low = String(c.name).toLowerCase()
+    if (seen.has(low) || Number(c.value) <= 0) continue
+    seen.add(low)
+    rows.push({ ...c, value: Number(c.value || 0) })
+  }
+  return rows
 }
 
 /**
@@ -290,7 +327,13 @@ const HBar = memo(function HBar({ data, onSelect, selectKey, extra, activeName, 
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16, top: 8, bottom: 8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-        <XAxis type="number" stroke="#64748b" fontSize={11} />
+        <XAxis
+          type="number"
+          stroke="#64748b"
+          fontSize={11}
+          allowDecimals={false}
+          domain={[0, (max) => (Number(max) > 0 ? max : 1)]}
+        />
         <YAxis
           type="category"
           dataKey="name"
@@ -405,6 +448,60 @@ const Timeline = memo(function Timeline({ data }) {
         />
       </AreaChart>
     </ResponsiveContainer>
+  )
+})
+
+const MeterChart = memo(function MeterChart({ q, rows, lang = 'en', onSelect, selectKey, activeName }) {
+  const bandRows = rowsFromSurveyQuestion({
+    ...q,
+    type: 'meter',
+    authored: ['Negative', 'Neutral', 'Positive'],
+    options: ['Negative', 'Neutral', 'Positive'],
+    counts: rows,
+  })
+  const answered = bandRows.reduce((s, r) => s + Number(r.value || 0), 0)
+  const avgDirect = Number(q?.meter?.avg)
+  const weighted =
+    answered > 0
+      ? bandRows.reduce((s, r) => {
+          const mid = r.name === 'Negative' ? 17 : r.name === 'Positive' ? 83 : 50
+          return s + mid * Number(r.value || 0)
+        }, 0) / answered
+      : 50
+  const val = Number.isFinite(avgDirect) && avgDirect > 0 ? avgDirect : weighted
+  const shownVal = Math.round(val)
+  const mood = shownVal <= 33 ? 'Negative' : shownVal <= 66 ? 'Neutral' : 'Positive'
+  const moodClass = shownVal <= 33 ? 'neg' : shownVal <= 66 ? 'neu' : 'pos'
+  return (
+    <div>
+      <div className="qa-meter" style={{ marginBottom: 12 }}>
+        <div className="qa-meter-track">
+          <input type="range" min="1" max="100" step="1" value={shownVal} readOnly aria-label="Tapometer average" />
+        </div>
+        <div className="qa-meter-scale">
+          <span>Negative</span>
+          <span>Neutral</span>
+          <span>Positive</span>
+        </div>
+        <div className="qa-meter-value">
+          <strong>{answered ? `${shownVal}%` : '—'}</strong>
+          {answered ? (
+            <span className={`qa-opt selected ${moodClass}`} style={{ minHeight: 32, padding: '4px 12px' }}>
+              {mood} · {answered} answer{answered === 1 ? '' : 's'}
+            </span>
+          ) : (
+            <span className="muted">No tapometer answers yet</span>
+          )}
+        </div>
+      </div>
+      <HBar
+        data={bandRows}
+        lang={lang}
+        onSelect={onSelect}
+        selectKey={selectKey}
+        activeName={activeName}
+      />
+    </div>
   )
 })
 
@@ -1342,16 +1439,54 @@ export default function DashboardScreen({ onToast }) {
             </ChartCard>
           )}
 
-          {(charts?.questionCharts || []).map((q) => {
-            const counts = visibleAnswerRows(q)
-            const pieOk = chartShouldUsePie(counts)
+          {(() => {
+            const fromCharts = charts?.questionCharts || []
+            const fromFilters = data?.dataFilters?.questions || []
+            const byId = new Map(fromCharts.map((q) => [q.id, q]))
+            const merged = []
+            const seen = new Set()
+            for (const fq of fromFilters) {
+              const cq = byId.get(fq.id) || {}
+              merged.push({
+                ...fq,
+                ...cq,
+                id: fq.id,
+                type: cq.type || fq.type,
+                authored: cq.authored || fq.authored || fq.options || cq.options,
+                options: fq.options?.length ? fq.options : cq.options,
+                options_te: fq.options_te || cq.options_te,
+                counts: cq.counts || fq.counts,
+                meter: cq.meter || fq.meter,
+                label_en: cq.label_en || fq.label_en,
+                label_te: cq.label_te || fq.label_te,
+                label: cq.label || fq.label,
+              })
+              seen.add(fq.id)
+            }
+            for (const cq of fromCharts) {
+              if (!seen.has(cq.id)) merged.push(cq)
+            }
+            return merged
+          })().map((q) => {
+            const counts = rowsFromSurveyQuestion(q)
+            const isMeter = q.type === 'meter' || q.type === 'tapometer'
+            const pieOk = !isMeter && chartShouldUsePie(counts)
             return (
             <ChartCard
               key={q.id}
               title={questionFilterTitle(q, filterLang)}
               subtitle="Every option for this question — tap to filter"
             >
-              {pieOk ? (
+              {isMeter ? (
+                <MeterChart
+                  q={q}
+                  rows={counts}
+                  lang={filterLang}
+                  onSelect={onToggleFilter}
+                  selectKey={`q_${q.id}`}
+                  activeName={filters[`q_${q.id}`] || ''}
+                />
+              ) : pieOk ? (
                 <InteractivePie
                   data={counts}
                   activeName={filters[`q_${q.id}`] || ''}
@@ -1532,7 +1667,7 @@ export default function DashboardScreen({ onToast }) {
             {data?.dataFilters?.questions?.map((q) => {
               const countMap = new Map((q.counts || []).map((c) => [c.name, c]))
               const optionNames = [
-                ...new Set([...(q.options || []), ...countMap.keys()]),
+                ...new Set([...createdOptions(q), ...countMap.keys()]),
               ]
               const title = questionFilterTitle(q, filterLang)
               return (
@@ -1550,7 +1685,7 @@ export default function DashboardScreen({ onToast }) {
                       const n = countMap.get(name)?.value
                       return (
                       <option key={name} value={name}>
-                        {n != null ? `${shownName} (${n})` : shownName}
+                        {`${shownName} (${n != null ? n : 0})`}
                       </option>
                       )
                     })}

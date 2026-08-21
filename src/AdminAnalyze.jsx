@@ -350,11 +350,10 @@ export default function AdminAnalyzeScreen({ onToast }) {
           {analytics?.dataFilters?.questions?.map((q) => {
             const countMap = new Map((q.counts || []).map((c) => [c.name, c]))
             const optionNames = [...new Set([...(q.options || []), ...countMap.keys()])]
-            const title =
+            const titleShown =
               filterLang === 'te'
-                ? q.label_te || q.label || q.label_en || q.id
-                : q.label_en || q.label || q.id
-            const titleShown = title && title !== q.id ? title : q.label_en || q.label || title
+                ? q.label_te || q.label || q.label_en || 'Question'
+                : q.label_en || q.label || q.label_te || 'Question'
             return (
             <label className="field" key={q.id}>
               <span>{titleShown}</span>

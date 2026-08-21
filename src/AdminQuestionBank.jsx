@@ -262,12 +262,12 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
                 </button>
               </div>
               <label className="field">
-                <span>Field ID (Unique Key)</span>
-                <input value={q.id} onChange={(e) => updateQ(i, { id: e.target.value })} placeholder="copies the question automatically" />
-                <span className="muted" style={{ fontSize: 11 }}>Fills from the question text. Edit only if you need a shorter key.</span>
+                <span>Field ID (storage key — not shown to surveyors)</span>
+                <input value={q.id} onChange={(e) => updateQ(i, { id: e.target.value.replace(/\s+/g, '_') })} placeholder="auto from question text" />
+                <span className="muted" style={{ fontSize: 11 }}>Separate from the question. Auto-fills once; do not change after answers exist.</span>
               </label>
               <label className="field">
-                <span>Question Text / Label *</span>
+                <span>Question (exactly as typed)</span>
                 <input value={q.label} onChange={(e) => updateQ(i, labelPatch(q, e.target.value))} placeholder="What is the question?" />
               </label>
               {canTeluguQuestions(user || me) && canCrud ? (

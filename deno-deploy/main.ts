@@ -1520,10 +1520,39 @@ function aliasesForQuestions(
     });
     return !appears;
   });
-  const stamps = [...leftover].filter((k) => !currentIds.has(k)).sort();
-  for (let i = 0; i < stamps.length; i++) {
-    const q = unusedQs[i];
-    if (q?.id) add(q.id, stamps[i]);
+  // Only map old q_<timestamp> keys by order. Never attach a leftover slug
+  // to the next unused question — that dumped MSP/other answers onto the wrong Q.
+  const stamps = [...leftover].filter((k) => /^q_\d+$/i.test(k)).sort();
+  const stillUnused = unusedQs.filter((q) => q?.id);
+  for (let i = 0; i < stamps.length && i < stillUnused.length; i++) {
+    add(stillUnused[i].id, stamps[i]);
+  }
+  for (const k of leftover) {
+    if (/^q_\d+$/i.test(k)) continue;
+    const kk = k.toLowerCase();
+    let best: { id: string } | null = null;
+    let bestScore = Infinity;
+    for (const q of stillUnused) {
+      const slug = slugQuestionKeyServer(q.label).toLowerCase();
+      const id = String(q.id || "").toLowerCase();
+      for (const c of [id, slug]) {
+        if (!c) continue;
+        if (c === kk) {
+          best = q;
+          bestScore = 0;
+          break;
+        }
+        if (c.startsWith(kk) || kk.startsWith(c)) {
+          const score = Math.abs(c.length - kk.length);
+          if (score < bestScore && score <= 24) {
+            bestScore = score;
+            best = q;
+          }
+        }
+      }
+      if (bestScore === 0) break;
+    }
+    if (best?.id) add(best.id, k);
   }
   return aliases;
 }
@@ -3360,7 +3389,7 @@ async function buildAnalytics(
         const optTe = optionTeMap(defined.length ? defined : authored, optionsTe);
         surveyQuestions.push({
           id,
-          label: String(q.label || id),
+          label: String(q.label || "").trim() || "Question",
           label_te: String(q.label_te || "").trim(),
           type,
           options: opts,
@@ -3508,6 +3537,22 @@ async function buildAnalytics(
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-60);
 
+  function meterStatsForQuestion(
+    q: (typeof surveyQuestions)[number],
+    list: Row[],
+  ): { avg: number; n: number } | null {
+    if (q.type !== "meter" && q.type !== "tapometer") return null;
+    const nums: number[] = [];
+    for (const r of list) {
+      const av = answerOf(r.answers, q.id, q.label, q.aliases);
+      const n = Number(String(av ?? "").replace("%", "").replace(/[^0-9.+-]/g, ""));
+      if (Number.isFinite(n) && n > 0) nums.push(Math.min(100, Math.max(1, n)));
+    }
+    if (!nums.length) return { avg: 0, n: 0 };
+    const avg = Math.round((nums.reduce((s, x) => s + x, 0) / nums.length) * 10) / 10;
+    return { avg, n: nums.length };
+  }
+
   function countsForQuestion(
     q: (typeof surveyQuestions)[number],
     list: Row[],
@@ -3554,6 +3599,7 @@ async function buildAnalytics(
     options: q.options,
     authored: q.authored,
     counts: countsForQuestion(q, rows),
+    meter: meterStatsForQuestion(q, rows),
   }));
 
   // Cross-tabs for maps
@@ -3757,6 +3803,7 @@ async function buildAnalytics(
         authored: q.authored,
         options_te: q.options_te,
         counts: countsForQuestion(q, subset),
+        meter: meterStatsForQuestion(q, subset),
       })),
       // Surveyor × month (each surveyor's monthly totals)
       by_surveyor_month: (() => {

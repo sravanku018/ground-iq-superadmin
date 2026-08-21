@@ -3338,8 +3338,13 @@ async function buildAnalytics(
           if (!n) return;
           if (!opts.some((o) => o.toLowerCase() === n.toLowerCase())) opts.push(n);
         };
-        for (const d of defaultQuestionOptions(type)) pushOpt(d);
-        for (const d of defined) pushOpt(d);
+        // Use the question's own choices. Type defaults (A/B/C/D, Yes/No…)
+        // only fill in when the author did not set options.
+        if (defined.length) {
+          for (const d of defined) pushOpt(d);
+        } else {
+          for (const d of defaultQuestionOptions(type)) pushOpt(d);
+        }
         for (const r of universe) {
           const av = answerOf(r.answers, id, String(q.label || ""), aliases);
           for (const n of chartNamesFromAnswer(type, av, opts)) pushOpt(n);

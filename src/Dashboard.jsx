@@ -52,9 +52,12 @@ function colorFor(name, i = 0) {
   return PARTY_COLORS[name] || PALETTE[i % PALETTE.length]
 }
 
-/** Telugu display from analytics (`label`) — `name` stays English for filters/maps. */
-function shown(d, fallback = '') {
-  if (d && typeof d === 'object') return d.label || d.name || fallback
+/** `name` is English (filters/maps). `label` is Telugu. Never mix in one list. */
+function shown(d, fallback = '', lang = 'en') {
+  if (d && typeof d === 'object') {
+    if (lang === 'te') return d.label || d.name || fallback
+    return d.name || fallback
+  }
   return fallback
 }
 
@@ -106,11 +109,21 @@ function FilterLangToggle({ value, onChange }) {
   )
 }
 
-function tickShown(data) {
+function tickShown(data, lang = 'en') {
   return (v) => {
     const row = (data || []).find((d) => d.name === v)
-    return row?.label || v
+    if (!row) return v
+    return lang === 'te' ? row.label || v : row.name || v
   }
+}
+
+/** Drop leftover A/B/C/D rows when the question already has real named answers. */
+function chartOptionRows(counts) {
+  const rows = counts || []
+  const letters = new Set(['A', 'B', 'C', 'D'])
+  const hasNamed = rows.some((c) => !letters.has(String(c.name)) && Number(c.value) > 0)
+  if (!hasNamed) return rows
+  return rows.filter((c) => !letters.has(String(c.name)) || Number(c.value) > 0)
 }
 
 /** Relative freshness — 09-ANALYTICS-SPEC §7: "Data as of {relative time}" */
@@ -194,15 +207,16 @@ const tipStyle = {
   fontSize: 12,
 }
 
-function PctTooltip({ active, payload, label }) {
+function PctTooltip({ active, payload, label, lang = 'en' }) {
   if (!active || !payload?.length) return null
   const p = payload[0]?.payload
+  const title = lang === 'te' ? p?.label || label || p?.name : p?.name || label
   return (
     <div className="recharts-custom-tip" style={{ ...tipStyle, padding: '8px 10px' }}>
-      <div style={{ color: '#e2e8f0', fontWeight: 700 }}>{p?.label || label || p?.name}</div>
+      <div style={{ color: '#e2e8f0', fontWeight: 700 }}>{title}</div>
       {payload.map((item) => (
         <div key={item.dataKey} style={{ color: item.color || '#94a3b8' }}>
-          {item.name}: {item.value}
+          {lang === 'te' && item.payload?.label ? item.payload.label : item.name}: {item.value}
           {p?.pct != null && item.dataKey === 'value' ? ` (${p.pct}%)` : ''}
         </div>
       ))}
@@ -210,7 +224,7 @@ function PctTooltip({ active, payload, label }) {
   )
 }
 
-const InteractivePie = memo(function InteractivePie({ data, onSelect, selectKey, extra, activeName }) {
+const InteractivePie = memo(function InteractivePie({ data, onSelect, selectKey, extra, activeName, lang = 'en' }) {
   if (!data?.length) return <EmptyChart />
   return (
     <ResponsiveContainer width="100%" height={240}>
@@ -237,13 +251,13 @@ const InteractivePie = memo(function InteractivePie({ data, onSelect, selectKey,
             />
           ))}
         </Pie>
-        <Tooltip content={<PctTooltip />} />
+        <Tooltip content={(props) => <PctTooltip {...props} lang={lang} />} />
         <Legend
           verticalAlign="bottom"
           height={36}
           formatter={(v, entry) => (
             <span style={{ color: '#94a3b8', fontSize: 11 }}>
-              {entry?.payload?.label || v}
+              {lang === 'te' ? entry?.payload?.label || v : entry?.payload?.name || v}
             </span>
           )}
         />
@@ -252,7 +266,7 @@ const InteractivePie = memo(function InteractivePie({ data, onSelect, selectKey,
   )
 })
 
-const HBar = memo(function HBar({ data, onSelect, selectKey, extra, activeName, colorKey }) {
+const HBar = memo(function HBar({ data, onSelect, selectKey, extra, activeName, colorKey, lang = 'en' }) {
   if (!data?.length) return <EmptyChart />
   const height = Math.max(200, data.length * 28 + 40)
   return (
@@ -263,13 +277,13 @@ const HBar = memo(function HBar({ data, onSelect, selectKey, extra, activeName, 
         <YAxis
           type="category"
           dataKey="name"
-          width={92}
+          width={lang === 'te' ? 110 : 92}
           stroke="#94a3b8"
           fontSize={11}
           tickLine={false}
-          tickFormatter={tickShown(data)}
+          tickFormatter={tickShown(data, lang)}
         />
-        <Tooltip content={<PctTooltip />} />
+        <Tooltip content={(props) => <PctTooltip {...props} lang={lang} />} />
         <Bar
           dataKey="value"
           radius={[0, 6, 6, 0]}
@@ -309,7 +323,7 @@ const StackedParty = memo(function StackedParty({ matrix, onSelect, selectKey, e
           stroke="#94a3b8"
           fontSize={11}
           tickLine={false}
-          tickFormatter={tickShown(data)}
+          tickFormatter={tickShown(data, 'en')}
         />
         <Tooltip
           contentStyle={tipStyle}
@@ -377,7 +391,7 @@ const Timeline = memo(function Timeline({ data }) {
   )
 })
 
-const RadialIssues = memo(function RadialIssues({ data, onClick }) {
+const RadialIssues = memo(function RadialIssues({ data, onClick, lang = 'en' }) {
   if (!data?.length) return <EmptyChart />
   const chartData = data.slice(0, 7).map((d, i) => ({
     ...d,
@@ -409,11 +423,11 @@ const RadialIssues = memo(function RadialIssues({ data, onClick }) {
           align="right"
           formatter={(v, entry) => (
             <span style={{ color: '#94a3b8', fontSize: 10 }}>
-              {entry?.payload?.label || v}
+              {lang === 'te' ? entry?.payload?.label || v : entry?.payload?.name || v}
             </span>
           )}
         />
-        <Tooltip content={<PctTooltip />} />
+        <Tooltip content={(props) => <PctTooltip {...props} lang={lang} />} />
       </RadialBarChart>
     </ResponsiveContainer>
   )
@@ -1097,7 +1111,7 @@ export default function DashboardScreen({ onToast }) {
           </div>
           <div className="kpi">
             {charts?.byParty?.[0]?.name ? (
-              <strong>{shown(charts.byParty[0])}</strong>
+              <strong>{shown(charts.byParty[0], '', filterLang)}</strong>
             ) : (
               <strong style={{ fontStyle: 'italic', fontWeight: 400, color: '#94a3b8' }}>
                 No data yet
@@ -1107,7 +1121,7 @@ export default function DashboardScreen({ onToast }) {
           </div>
           <div className="kpi">
             {charts?.issues?.[0]?.name ? (
-              <strong>{shown(charts.issues[0])}</strong>
+              <strong>{shown(charts.issues[0], '', filterLang)}</strong>
             ) : (
               <strong style={{ fontStyle: 'italic', fontWeight: 400, color: '#94a3b8' }}>
                 No data yet
@@ -1289,6 +1303,7 @@ export default function DashboardScreen({ onToast }) {
               onSelect={onToggleFilter}
               selectKey="district"
               extra={CLEAR_AC}
+              lang={filterLang}
             />
           </ChartCard>
 
@@ -1305,17 +1320,18 @@ export default function DashboardScreen({ onToast }) {
 
           {charts?.issues?.length > 0 && (
             <ChartCard title="Local issues" subtitle="Most mentioned">
-              <RadialIssues data={charts.issues} />
+              <RadialIssues data={charts.issues} lang={filterLang} />
             </ChartCard>
           )}
 
           {(charts?.questionCharts || []).map((q) => {
-            const n = (q.counts || []).length
+            const counts = chartOptionRows(q.counts)
+            const n = counts.length
             const pieOk =
               ['yesno', 'sentiment', 'sentiment_text', 'abc', 'meter'].includes(q.type) &&
               n > 0 &&
               n <= 6 &&
-              (q.counts || []).some((c) => Number(c.value) > 0)
+              counts.some((c) => Number(c.value) > 0)
             return (
             <ChartCard
               key={q.id}
@@ -1324,17 +1340,19 @@ export default function DashboardScreen({ onToast }) {
             >
               {pieOk ? (
                 <InteractivePie
-                  data={q.counts}
+                  data={counts}
                   activeName={filters[`q_${q.id}`] || ''}
                   onSelect={onToggleFilter}
                   selectKey={`q_${q.id}`}
+                  lang={filterLang}
                 />
               ) : (
                 <HBar
-                  data={q.counts}
+                  data={counts}
                   activeName={filters[`q_${q.id}`] || ''}
                   onSelect={onToggleFilter}
                   selectKey={`q_${q.id}`}
+                  lang={filterLang}
                 />
               )}
             </ChartCard>
@@ -1342,7 +1360,7 @@ export default function DashboardScreen({ onToast }) {
           })}
 
           <ChartCard title="Top constituencies" subtitle="By response count" tall>
-            <HBar data={charts?.byConstituency} />
+            <HBar data={charts?.byConstituency} lang={filterLang} />
           </ChartCard>
         </div>
       )}

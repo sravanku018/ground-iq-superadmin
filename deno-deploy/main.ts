@@ -4356,15 +4356,23 @@ async function rawHandler(req: Request): Promise<Response> {
     if (path === "/api/auth/me" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
       // Profile photos live on /me only — never on login or every session lookup.
+      // If this SELECT fails, omit the keys so the app does not replace a
+      // displayed photo with null.
       const mediaRows = await sql`
         SELECT photo, aadhaar_front, aadhaar_back FROM app_users WHERE id = ${me.id} LIMIT 1
-      `.catch(() => []);
-      const media = (mediaRows[0] || {}) as Record<string, unknown>;
+      `.catch(() => null);
+      const media = Array.isArray(mediaRows) && mediaRows[0]
+        ? (mediaRows[0] as Record<string, unknown>)
+        : null;
       const withMedia = {
         ...me,
-        photo: media.photo || null,
-        aadhaar_front: media.aadhaar_front || null,
-        aadhaar_back: media.aadhaar_back || null,
+        ...(media
+          ? {
+              photo: media.photo || null,
+              aadhaar_front: media.aadhaar_front || null,
+              aadhaar_back: media.aadhaar_back || null,
+            }
+          : {}),
       };
       // Client Admin: attach live usage vs Super-Admin-set caps so Overview "My allocation" works
       // without relying only on GET /api/users (which can be filtered / slow).

@@ -85,6 +85,17 @@ import {
 } from './prefs'
 import './App.css'
 
+function mergeUserKeepMedia(prev, next) {
+  if (!next) return prev || null
+  return {
+    ...(prev || {}),
+    ...next,
+    photo: next.photo || prev?.photo || null,
+    aadhaar_front: next.aadhaar_front || prev?.aadhaar_front || null,
+    aadhaar_back: next.aadhaar_back || prev?.aadhaar_back || null,
+  }
+}
+
 /** Surveyor-only field app (mobile / APK) */
 const TABS = [
   { id: 'home', label: 'Home', icon: 'home' },
@@ -1217,7 +1228,7 @@ export default function SurveyorApp() {
     try {
       // Always fetch fresh user profile (catches admin verification, phone changes)
       const meRes = await me().catch(() => null)
-      if (meRes?.user) setUser(meRes.user)
+      if (meRes?.user) setUser((prev) => mergeUserKeepMedia(prev, meRes.user))
 
       if (tab === 'profile') {
         // Profile tab: just user refresh + feedback
@@ -1473,7 +1484,9 @@ export default function SurveyorApp() {
           throw err
         }
         // Only re-set when something actually changed (avoids effect churn on identical objects)
-        if (!dead && res.user.verified !== user.verified) setUser(res.user)
+        if (!dead && res.user.verified !== user.verified) {
+          setUser((prev) => mergeUserKeepMedia(prev, res.user))
+        }
       } catch (e) {
         if (dead) return
         if (e?.status === 401 || e?.disabled) {
@@ -1665,7 +1678,9 @@ export default function SurveyorApp() {
             <SurveyorProfileScreen
               user={user}
               onToast={notify}
-              onUserUpdated={setUser}
+              onUserUpdated={(next) =>
+                setUser((prev) => mergeUserKeepMedia(prev, typeof next === 'function' ? next(prev) : next))
+              }
             />
           )}
           {tab === 'settings' && (

@@ -148,8 +148,11 @@ export async function syncOnePackage(id) {
     const serverId = pkg.serverSubmissionId
     if (!serverId) throw new Error('No server submission id after Q/A')
 
-    // 2) Photo
-    if (pkg.photoDataUrl && !pkg.flags?.photo) {
+    // 2) Photo — never mark uploaded if the blob is missing (that deleted it).
+    if (!pkg.flags?.photo) {
+      if (!pkg.photoDataUrl) {
+        throw new Error('Photo missing from device — recapture this record')
+      }
       await fetchJson(`${base}/api/submissions/${serverId}/media`, {
         method: 'POST',
         token,
@@ -163,18 +166,15 @@ export async function syncOnePackage(id) {
       pkg = await updatePackage(id, {
         phase: 'photo_done',
         flags: { ...pkg.flags, photo: true },
-        // free memory after successful photo sync
-        photoDataUrl: null,
       })
       emit({ type: 'phase', id, phase: 'photo_done' })
-    } else if (!pkg.photoDataUrl) {
-      pkg = await updatePackage(id, {
-        flags: { ...pkg.flags, photo: true },
-      })
     }
 
     // 3) Audio
-    if (pkg.audioDataUrl && !pkg.flags?.audio) {
+    if (!pkg.flags?.audio) {
+      if (!pkg.audioDataUrl) {
+        throw new Error('Voice missing from device — recapture this record')
+      }
       await fetchJson(`${base}/api/submissions/${serverId}/media`, {
         method: 'POST',
         token,
@@ -187,13 +187,8 @@ export async function syncOnePackage(id) {
       })
       pkg = await updatePackage(id, {
         flags: { ...pkg.flags, audio: true },
-        audioDataUrl: null,
       })
       emit({ type: 'phase', id, phase: 'audio_done' })
-    } else {
-      pkg = await updatePackage(id, {
-        flags: { ...pkg.flags, audio: true },
-      })
     }
 
     // 4) Complete — remove heavy package or mark done

@@ -108,6 +108,15 @@ export async function savePackageLocal({
   }
 
   const id = existingId || newId()
+  let prev = null
+  if (existingId) {
+    prev = await getPackage(existingId).catch(() => null)
+  }
+  // Never overwrite a stored photo/voice with empty on draft checkpoint /
+  // remount — that was deleting the capture in the app.
+  const photoKeep = photoDataUrl || prev?.photoDataUrl || null
+  const audioKeep = audioDataUrl || prev?.audioDataUrl || null
+  const mimeKeep = audioMime || prev?.audioMime || 'audio/webm'
   const pkg = {
     id,
     phase: /** @type {PackagePhase} */ (draft ? 'draft' : 'queued'),
@@ -142,9 +151,9 @@ export async function savePackageLocal({
       locks: locks || { geo: true, photo: true, voice: true, location: true },
     },
     // Media kept on device until sync
-    photoDataUrl: photoDataUrl || null,
-    audioDataUrl: audioDataUrl || null,
-    audioMime: audioMime || 'audio/webm',
+    photoDataUrl: photoKeep,
+    audioDataUrl: audioKeep,
+    audioMime: mimeKeep,
     // phase flags for systematic upload
     flags: { qa: false, photo: false, audio: false },
   }
@@ -242,6 +251,8 @@ export async function updatePackage(id, patch) {
     flags: { ...pkg.flags, ...patch.flags },
     updatedAt: new Date().toISOString(),
   }
+  if (!next.photoDataUrl && pkg.photoDataUrl) next.photoDataUrl = pkg.photoDataUrl
+  if (!next.audioDataUrl && pkg.audioDataUrl) next.audioDataUrl = pkg.audioDataUrl
   try {
     const db = await openDb()
     await idbReq(db.transaction(STORE, 'readwrite').objectStore(STORE).put(next))
@@ -250,7 +261,13 @@ export async function updatePackage(id, patch) {
     const list = listPackagesMetaFallback().map((x) =>
       x.id === id ? stripHeavy(next) : x,
     )
-    localStorage.setItem('esurvey_packages_fallback', JSON.stringify(list))
+    try {
+      localStorage.setItem('esurvey_packages_fallback', JSON.stringify(list))
+      if (next.photoDataUrl) localStorage.setItem(`esurvey_photo_${id}`, next.photoDataUrl)
+      if (next.audioDataUrl) localStorage.setItem(`esurvey_audio_${id}`, next.audioDataUrl)
+    } catch {
+      /* quota */
+    }
   }
   emitChange({ type: 'updated', id, phase: next.phase })
   return next
@@ -321,14 +338,28 @@ export async function collapseDuplicateDrafts() {
       continue
     }
     const newer = String(d.updatedAt || d.createdAt || '') > String(prev.updatedAt || prev.createdAt || '')
-    if (newer) {
-      extras.push(prev)
-      best.set(key, d)
-    } else {
-      extras.push(d)
+    const keep = newer ? d : prev
+    const other = newer ? prev : d
+    best.set(key, {
+      ...keep,
+      photoDataUrl: keep.photoDataUrl || other.photoDataUrl,
+      audioDataUrl: keep.audioDataUrl || other.audioDataUrl,
+      audioMime: keep.audioMime || other.audioMime,
+    })
+    extras.push(other)
+  }
+  for (const kept of best.values()) {
+    if (kept.photoDataUrl || kept.audioDataUrl) {
+      await updatePackage(kept.id, {
+        photoDataUrl: kept.photoDataUrl,
+        audioDataUrl: kept.audioDataUrl,
+        audioMime: kept.audioMime,
+      }).catch(() => {})
     }
   }
+  const keepIds = new Set([...best.values()].map((p) => p.id))
   for (const d of extras) {
+    if (keepIds.has(d.id)) continue
     await removePackage(d.id).catch(() => {})
   }
   return extras.length

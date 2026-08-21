@@ -232,6 +232,7 @@ export default function FieldCollectScreen({
   const chunks = useRef([])
   const recognitionRef = useRef(null)
   const audioUrlRef = useRef('')
+  const saveDraftRef = useRef(null)
   const fileRef = useRef(null)
   const watchId = useRef(null)
   const streamRef = useRef(null)
@@ -479,8 +480,16 @@ export default function FieldCollectScreen({
     const arm = () => {
       window.clearTimeout(timer)
       timer = window.setTimeout(() => {
-        onToast?.('Idle 3 minutes — back to Home', 'ok')
-        onIdleHome()
+        const go = () => {
+          onToast?.('Idle 3 minutes — back to Home', 'ok')
+          onIdleHome()
+        }
+        const persist = saveDraftRef.current
+        if (typeof persist === 'function') {
+          persist({ mode: 'checkpoint', silent: true }).catch(() => {}).finally(go)
+        } else {
+          go()
+        }
       }, IDLE_HOME_MS)
     }
     arm()
@@ -683,6 +692,7 @@ export default function FieldCollectScreen({
         }
         setPhotoDataUrl(dataUrl)
         onToast?.('Photo locked', 'ok')
+        void saveDraftRef.current?.({ mode: 'checkpoint', silent: true }).catch(() => {})
       }
       img.onerror = () => onToast?.('Could not read photo', 'error')
       img.src = reader.result
@@ -1177,6 +1187,7 @@ export default function FieldCollectScreen({
       if (!checkpoint) setSaving(false)
     }
   }
+  saveDraftRef.current = saveDraft
 
   /** Discard the draft being edited (drafts never reach the server on their own) */
   async function removeCurrentDraft() {

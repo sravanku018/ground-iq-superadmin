@@ -9,7 +9,6 @@ import {
   listSurveys,
   listUsers,
   setSurveyAdmins,
-  setSurveySurveyors,
   updateSurvey,
 } from './api'
 import QuestionTelugu, { fillTeluguFromEnglish } from './QuestionTelugu'
@@ -373,10 +372,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
 
   // detail mode
   const [detail, setDetail] = useState(null)
-  const [allSurveyors, setAllSurveyors] = useState([])
-  const [checked, setChecked] = useState({})
   const [busy, setBusy] = useState(false)
-  const [teamOpen, setTeamOpen] = useState(false)
   // shared access: client admins granted access to this survey (super admin only)
   const [allAdmins, setAllAdmins] = useState([])
   const [adminsOpen, setAdminsOpen] = useState(false)
@@ -438,36 +434,16 @@ export default function AdminSurveysScreen({ onToast, user }) {
     setBusy(true)
     try {
       const d = await getSurvey(id)
-      const survey = d.survey
-      setDetail(survey)
-      const team = new Set((survey.surveyors || []).map((s) => Number(s.id)))
-      let collect = allSurveyors.filter((u) => u.role === 'surveyor' || u.role === 'field')
-      try {
-        const users = await listUsers()
-        collect = (users.surveyors || users.users || users || [])
-          .filter((u) => u.role === 'surveyor' || u.role === 'field')
-        const admins = (users.users || users.surveyors || users || []).filter((u) => u.role === 'admin')
-        setAllAdmins(admins)
-      } catch {
-        /* keep the previous surveyor list if GET /api/users is slow */
-      }
-      const byId = new Map()
-      for (const u of collect) byId.set(Number(u.id), u)
-      for (const s of survey.surveyors || []) {
-        const sid = Number(s.id)
-        if (!byId.has(sid)) {
-          byId.set(sid, {
-            id: sid,
-            username: s.username,
-            display_name: s.display_name || s.name,
-            name: s.name || s.display_name || s.username,
-            role: 'surveyor',
-          })
+      setDetail(d.survey)
+      if (user?.role === 'super_admin') {
+        try {
+          const users = await listUsers()
+          const admins = (users.users || users.surveyors || users || []).filter((u) => u.role === 'admin')
+          setAllAdmins(admins)
+        } catch {
+          /* ignore */
         }
       }
-      collect = [...byId.values()]
-      setAllSurveyors(collect)
-      setChecked(Object.fromEntries(collect.map((u) => [String(u.id), team.has(Number(u.id))])))
       setAdminsOpen(false)
       setMode('detail')
     } catch (e) {
@@ -579,34 +555,6 @@ export default function AdminSurveysScreen({ onToast, user }) {
       setDetail({ ...detail, admins: next, admin_count: next.length })
       onToast?.(`${u.username} ${on ? 'removed from' : 'granted'} access to this project`, 'ok')
       setAdminsOpen(false)
-    } catch (e) {
-      onToast?.(e.message, 'error')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function toggleTeamMember(u) {
-    if (!detail) return
-    const uid = Number(u.id)
-    if (!Number.isFinite(uid)) return
-    const current = [
-      ...new Set(
-        (detail.surveyors || []).map((s) => Number(s.id)).filter((n) => Number.isFinite(n)),
-      ),
-    ]
-    const on = current.includes(uid)
-    const nextIds = on ? current.filter((id) => id !== uid) : [...current, uid]
-    setBusy(true)
-    try {
-      const res = await setSurveySurveyors(detail.id, nextIds)
-      if (nextIds.length > 0 && Number(res?.assigned) === 0) {
-        throw new Error('Server did not save the surveyor on this survey')
-      }
-      onToast?.(on ? `Removed ${u.username} from team` : `Added ${u.username} to team`, 'ok')
-      setChecked((c) => ({ ...c, [String(uid)]: !on }))
-      setTeamOpen(false)
-      await openDetail(detail.id)
     } catch (e) {
       onToast?.(e.message, 'error')
     } finally {
@@ -789,7 +737,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         )}
 
         <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
-          Questions are added after creating — open the project to edit them (name, questions, team).
+          Questions are added after creating — open the project to edit them (name, questions). Assign surveyors from Surveyors → profile.
         </p>
 
         <button
@@ -849,149 +797,11 @@ export default function AdminSurveysScreen({ onToast, user }) {
           <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
             {user?.role === 'super_admin'
               ? `🏢 Home company: ${detail.company_name || ownerCompany || 'No company'} · ${(detail.admins || []).length} client admin(s) — ${(detail.admins || []).map((a) => `${a.company_name || 'No company'} · ${a.name || a.username}`).join(', ') || 'none connected yet'}`
-              : <><Icon name="users" size={13} /> <strong>Field Team (People who take survey):</strong>{' '}{(detail.surveyors || []).length > 0
+              : <><Icon name="users" size={13} /> <strong>Field team:</strong>{' '}{(detail.surveyors || []).length > 0
                 ? (detail.surveyors || []).map((s) => s.username || s.name).join(', ')
-                : 'No surveyors assigned yet'}</>}
+                : 'None yet — assign from Surveyors → open their profile'}</>}
           </p>
         </div>
-
-        {user?.role !== 'super_admin' && <>
-        <h3 style={{ fontSize: 14, margin: '10px 0 6px' }}>Survey people — field team</h3>
-        <div className="card" style={{ marginBottom: 12, padding: 12 }}>
-          {allSurveyors.length === 0 ? (
-            <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-              No surveyor accounts yet — create them in the Surveyors tab first.
-            </p>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="btn small primary"
-                style={{ width: '100%', textAlign: 'left' }}
-                onClick={() => setTeamOpen((o) => !o)}
-              >
-                {Object.keys(checked).filter((k) => checked[k]).length > 0
-                  ? `${Object.keys(checked).filter((k) => checked[k]).length} surveyor(s) in team — tap to edit`
-                  : 'Add surveyors…'}
-              </button>
-              {teamOpen && (
-                <div
-                  style={{
-                    background: '#fff',
-                    color: '#111',
-                    border: '1px solid rgba(0,0,0,0.2)',
-                    borderRadius: 12,
-                    padding: 6,
-                    maxHeight: 220,
-                    overflowY: 'auto',
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-                  }}
-                >
-                  {allSurveyors.map((u) => {
-                    const on = checked[String(u.id)]
-                    return (
-                      <button
-                        key={u.id}
-                        type="button"
-                        disabled={busy}
-                        onClick={() => toggleTeamMember(u)}
-                        style={{
-                          display: 'flex',
-                          width: '100%',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 8,
-                          padding: '10px 12px',
-                          border: 'none',
-                          borderRadius: 8,
-                          background: on ? '#c8f5df' : 'transparent',
-                          color: '#111',
-                          fontSize: 14,
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                        }}
-                      >
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {u.username}
-                        </span>
-                        {on ? (
-                          <span style={{ color: '#00a86b', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
-                            <Icon name="check" size={14} />
-                          </span>
-                        ) : null}
-                      </button>
-                    )
-                  })}
-                  <button
-                    type="button"
-                    onClick={() => setTeamOpen(false)}
-                    style={{
-                      width: '100%',
-                      marginTop: 4,
-                      padding: '8px',
-                      border: 'none',
-                      borderRadius: 8,
-                      background: 'rgba(0,0,0,0.06)',
-                      color: '#111',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Done
-                  </button>
-                </div>
-              )}
-              {Object.keys(checked).filter((k) => checked[k]).length === 0 && (
-                <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-                  No surveyors assigned yet — open the dropdown above.
-                </p>
-              )}
-              {Object.keys(checked)
-                .filter((k) => checked[k])
-                .map((k) => {
-                  const u = allSurveyors.find((x) => String(x.id) === k)
-                  if (!u) return null
-                  return (
-                    <div
-                      key={k}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        padding: '5px 0',
-                        borderTop: '1px solid rgba(128,128,128,0.15)',
-                        fontSize: 13,
-                      }}
-                    >
-                      <span style={{ flex: 1, minWidth: 0 }}>
-                        {u.username}
-                        {u.display_name ? ` (${u.display_name})` : ''}
-                      </span>
-                      <button
-                        type="button"
-                        className="btn small danger"
-                        onClick={() => toggleTeamMember(u)}
-                        disabled={busy}
-                        style={{
-                          color: '#ff6b6b',
-                          borderColor: 'rgba(255,107,107,0.4)',
-                          background: 'transparent',
-                          minHeight: 0,
-                          padding: '6px 10px',
-                          fontSize: 13,
-                        }}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  )
-                })}
-            </>
-          )}
-        </div>
-        </>}
 
         <h3 style={{ fontSize: 14, margin: '14px 0 6px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="building" size={14} /> Client Admins connected to this project</h3>
         <div className="card" style={{ marginBottom: 12, padding: 12 }}>
@@ -1226,7 +1036,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           )}
           {user?.role !== 'super_admin' && (
             <div style={{ fontSize: 13, color: '#38bdf8', fontWeight: 'bold', marginTop: 3 }}>
-              <Icon name="users" size={13} /> Field Team: {s.surveyor_names || `${s.surveyors || 0} assigned surveyor(s)`}
+              <Icon name="users" size={13} /> Field team: {s.surveyor_names || `${s.surveyors || 0} assigned`} · assign from Surveyors → profile
             </div>
           )}
           <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>

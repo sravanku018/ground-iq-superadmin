@@ -203,6 +203,8 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
   const [profileUser, setProfileUser] = useState(null)
   const [profileData, setProfileData] = useState(null)
   const [profileLoading, setProfileLoading] = useState(false)
+  const [profileSurveys, setProfileSurveys] = useState([])
+  const [profileSurveyBusy, setProfileSurveyBusy] = useState(false)
   const drawerRef = useRef(null)
   const drawerPrevFocus = useRef(null)
   const [profileFilters, setProfileFilters] = useState({
@@ -264,7 +266,10 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     }
   }, [load, loadSurveyList])
 
-  const closeProfile = useCallback(() => setProfileUser(null), [])
+  const closeProfile = useCallback(() => {
+    setProfileUser(null)
+    setProfileSurveys([])
+  }, [])
 
   const profileId = profileUser?.id
   useEffect(() => {
@@ -358,6 +363,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
   function openProfile(u) {
     if (!u) return
     setProfileUser(u)
+    setProfileSurveys((u.surveys || []).map((s) => String(s.id)))
     setProfileData(null)
     const initialFilters = { period: 'total', district: '', survey: 'active', day: '', month: '' }
     setProfileFilters(initialFilters)
@@ -887,6 +893,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     { key: 'can_edit_surveys', label: 'Survey questions', icon: '▤' },
     { key: 'can_review_data', label: 'Data review', icon: '✓' },
     { key: 'can_verify_surveyors', label: 'Verify surveyors', icon: '🛡' },
+    { key: 'can_assign_surveyors', label: 'Assign surveys', icon: '👥' },
     { key: 'can_crud_questionnaire', label: 'CRUD questionnaire', icon: '🗂' },
     { key: 'can_validate_proof', label: 'Proof validation', icon: '📞' },
     { key: 'can_web_survey', label: 'Web survey', icon: '✎' },
@@ -895,6 +902,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
   const canVerify = me?.role === 'super_admin' || !!me?.can_verify_surveyors
   const canSeeIdDocs =
     me?.role === 'super_admin' || !!me?.can_verify_surveyors || !!me?.can_validate_proof
+  const canAssignSurveys = me?.role === 'admin' && !!me?.can_assign_surveyors
   const togglePower = async (u, key, label) => {
     setSaving(true)
     try {
@@ -906,6 +914,26 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
       onToast?.(e.message, 'error')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function saveProfileSurveys(ids) {
+    if (!profileUser) return
+    const next = Array.isArray(ids) ? ids.map(String) : []
+    const prev = profileSurveys
+    setProfileSurveys(next)
+    setProfileSurveyBusy(true)
+    try {
+      await setUserSurveys(profileUser.id, next.map(Number))
+      const mapped = surveyChoices.filter((s) => next.includes(String(s.id)))
+      setProfileUser((p) => (p ? { ...p, surveys: mapped } : null))
+      onToast?.(`Surveys updated for @${profileUser.username}`, 'ok')
+      await load({ silent: true })
+    } catch (e) {
+      setProfileSurveys(prev)
+      onToast?.(e.message || 'Could not assign surveys', 'error')
+    } finally {
+      setProfileSurveyBusy(false)
     }
   }
 
@@ -922,8 +950,8 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
       <header className="screen-head">
         <h2>{me?.role === 'super_admin' ? 'Super Admin' : 'Client Admin'} · Surveyors</h2>
         <p>
-          Create surveyor logins · bulk create with surveys · per-surveyor profile with
-          day / month / geo filters
+          Create surveyor logins · open a surveyor profile to assign surveys · filters by
+          day / month / geo
         </p>
       </header>
 
@@ -1988,6 +2016,48 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                     </button>
                   )}
                 </div>
+
+                {(profileUser.role === 'surveyor' || profileUser.role === 'field') && (
+                  <div
+                    style={{
+                      background: '#f1f5f9',
+                      padding: 14,
+                      borderRadius: 10,
+                      border: '1px solid #e2e8f0',
+                      marginBottom: 16,
+                    }}
+                  >
+                    <h5 style={{ margin: '0 0 8px', fontSize: 14, color: '#0f172a' }}>
+                      Assign surveys
+                    </h5>
+                    {canAssignSurveys ? (
+                      <>
+                        <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
+                          Pick which surveys this surveyor can load on the phone. Save is instant.
+                        </p>
+                        <SurveySelect
+                          value={profileSurveys}
+                          onChange={(ids) => {
+                            if (profileSurveyBusy) return
+                            void saveProfileSurveys(ids)
+                          }}
+                          all={surveyChoices}
+                        />
+                      </>
+                    ) : me?.role === 'super_admin' ? (
+                      <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                        Client Admin assigns surveys here. Super Admin does not map surveyors.
+                      </p>
+                    ) : (
+                      <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                        Super Admin has not granted <strong>Assign surveys</strong> on your profile.
+                        {(profileUser.surveys || []).length > 0
+                          ? ` Currently: ${(profileUser.surveys || []).map((s) => s.title).join(' · ')}`
+                          : ''}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Metrics: Surveys Done / Approved / Pending */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>

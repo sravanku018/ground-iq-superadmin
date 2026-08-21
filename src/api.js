@@ -637,11 +637,18 @@ export function setSurveySurveyors(id, userIds) {
  * Admin: replace which surveys a surveyor is assigned to (user-centric).
  * Field app loads these via GET /api/my-surveys.
  */
-export function setUserSurveys(userId, surveyIds) {
+export function getUserSurveys(userId) {
+  return request(`/api/users/${userId}/surveys`)
+}
+
+export function setUserSurveys(userId, surveyIds, extra = {}) {
+  const body = { survey_ids: surveyIds }
+  if (Array.isArray(extra.add)) body.add_survey_ids = extra.add
+  if (Array.isArray(extra.remove)) body.remove_survey_ids = extra.remove
   return request(`/api/users/${userId}/surveys`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ survey_ids: surveyIds }),
+    body: JSON.stringify(body),
   })
 }
 

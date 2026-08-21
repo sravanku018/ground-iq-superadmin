@@ -14,6 +14,7 @@ import {
   getProgressBoard,
   getSeatRequests,
   getStoredUser,
+  getUserSurveys,
   listSurveys,
   listUsers,
   revokeUserSessions,
@@ -405,6 +406,12 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     setProfileFilters(initialFilters)
     setTab('profiles')
     loadProfile(u, initialFilters)
+    getUserSurveys(u.id)
+      .then((d) => {
+        const ids = (d.items || []).map((s) => String(s.id)).filter(Boolean)
+        if (ids.length) setProfileSurveys(ids)
+      })
+      .catch(() => {})
   }
 
   const openedFocusId = useRef(null)
@@ -962,15 +969,29 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
 
   async function saveProfileSurveys(ids) {
     if (!profileUser) return
-    const next = Array.isArray(ids) ? ids.map(String) : []
+    const next = [...new Set((Array.isArray(ids) ? ids : []).map(String))]
     const prev = profileSurveys
+    const prevSet = new Set(prev)
+    const nextSet = new Set(next)
+    const add = next.filter((id) => !prevSet.has(id))
+    const remove = prev.filter((id) => !nextSet.has(id))
+    if (!add.length && !remove.length) return
     setProfileSurveys(next)
     setProfileSurveyBusy(true)
     try {
-      await setUserSurveys(profileUser.id, next.map(Number))
-      const mapped = surveyChoices.filter((s) => next.includes(String(s.id)))
+      const res = await setUserSurveys(profileUser.id, next.map(Number), { add, remove })
+      const saved = Array.isArray(res?.survey_ids)
+        ? res.survey_ids.map(String)
+        : next
+      setProfileSurveys(saved)
+      const mapped = surveyChoices.filter((s) => saved.includes(String(s.id)))
       setProfileUser((p) => (p ? { ...p, surveys: mapped } : null))
-      onToast?.(`Surveys updated for @${profileUser.username}`, 'ok')
+      onToast?.(
+        saved.length
+          ? `${saved.length} survey(s) on @${profileUser.username}`
+          : `No surveys on @${profileUser.username}`,
+        'ok',
+      )
       await load({ silent: true })
     } catch (e) {
       setProfileSurveys(prev)
@@ -2089,17 +2110,20 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                     {canAssignSurveys ? (
                       <>
                         <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
-                          Pick which surveys this surveyor can load on the phone. Save is instant.
+                          Tick every survey this person should load on the phone. Ticking a second
+                          survey keeps the first — it does not replace it.
                         </p>
                         <SurveySelect
                           value={profileSurveys}
                           onChange={(ids) => {
-                            if (profileSurveyBusy) return
                             void saveProfileSurveys(ids)
                           }}
                           all={surveyChoices}
                           inline
                         />
+                        {profileSurveyBusy ? (
+                          <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>Saving…</p>
+                        ) : null}
                       </>
                     ) : me?.role === 'super_admin' ? (
                       <p className="muted" style={{ fontSize: 12, margin: 0 }}>

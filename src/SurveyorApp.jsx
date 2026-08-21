@@ -297,11 +297,24 @@ function HomeScreen({
         </div>
       </div>
 
-      {questionsMeta?.title && (
+      {(questionsMeta?.title || (questionsMeta?.surveys || []).length > 0) && (
         <div className="card" style={{ marginBottom: 12, padding: '12px 14px' }}>
-          <strong style={{ fontSize: 14 }}>{questionsMeta.title}</strong>
+          <strong style={{ fontSize: 14 }}>
+            {(questionsMeta.surveys || []).length > 1
+              ? `${questionsMeta.surveys.length} surveys assigned`
+              : questionsMeta.title}
+          </strong>
+          {(questionsMeta.surveys || []).length > 1 && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 13 }}>
+              {(questionsMeta.surveys || []).map((s) => (
+                <li key={s.id || s.form_key}>{s.title}</li>
+              ))}
+            </ul>
+          )}
           <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
-            {qCount} question(s) loaded
+            {(questionsMeta.surveys || []).length > 1
+              ? 'Open Collect and pick which survey to fill'
+              : `${qCount} question(s) loaded`}
             {questionsMeta.updated_at
               ? ` · updated ${String(questionsMeta.updated_at).slice(0, 16).replace('T', ' ')}`
               : ''}
@@ -1264,6 +1277,7 @@ export default function SurveyorApp() {
         title: data.title,
         count: (data.questions || []).length,
         questions: data.questions,
+        surveys: data.surveys || [],
         updated_at: data.updated_at,
       })
       if (prog) setMyProgress(prog)
@@ -1332,6 +1346,7 @@ export default function SurveyorApp() {
           title: data.title,
           count: (data.questions || []).length,
           questions: data.questions,
+          surveys: data.surveys || [],
           updated_at: data.updated_at,
         })
       })
@@ -1383,6 +1398,7 @@ export default function SurveyorApp() {
         title: form.title,
         count: (form.questions || []).length,
         questions: form.questions,
+        surveys: form.surveys || [],
         updated_at: form.updated_at,
       })
     }

@@ -8272,6 +8272,30 @@ async function rawHandler(req: Request): Promise<Response> {
       return json({ ok: true, assigned: saved.length, user_ids: saved });
     }
 
+    // Assigned surveys for one surveyor (Client Admin profile / field my-surveys twin).
+    if (path.match(/^\/api\/users\/\d+\/surveys$/) && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const userId = Number(path.split("/")[3]);
+      if (!Number.isFinite(userId)) return json({ error: "Invalid user id" }, 400);
+      if (me.role !== "super_admin") {
+        const owned = await sql`
+          SELECT id FROM app_users WHERE id = ${userId} AND created_by = ${me.id} LIMIT 1
+        `.catch(() => []);
+        if (!owned.length) return json({ error: "You can only view surveyors you created" }, 403);
+      }
+      const items = await listAssignedSurveys(sql, userId);
+      return json({
+        items: items.map((s) => ({
+          id: s.id,
+          form_key: s.form_key,
+          title: s.title,
+          display_lang: s.display_lang,
+        })),
+        count: items.length,
+      });
+    }
+
     // Replace which surveys a surveyor is assigned to (user-centric).
     // Used by Client Admin Surveyors tab — NOT the inverted setSurveySurveyors(surveyId, users).
     if (path.match(/^\/api\/users\/\d+\/surveys$/) && method === "PUT") {
@@ -8291,6 +8315,13 @@ async function rawHandler(req: Request): Promise<Response> {
       const surveyIds = (Array.isArray(body.survey_ids) ? body.survey_ids : [])
         .map(Number)
         .filter((v: number) => Number.isFinite(v));
+      const addIds = [...new Set((Array.isArray(body.add_survey_ids) ? body.add_survey_ids : [])
+        .map(Number)
+        .filter((v: number) => Number.isFinite(v)))];
+      const removeIds = [...new Set((Array.isArray(body.remove_survey_ids) ? body.remove_survey_ids : [])
+        .map(Number)
+        .filter((v: number) => Number.isFinite(v)))];
+      const incremental = addIds.length > 0 || removeIds.length > 0;
 
       // Must be a surveyor this Client Admin created
       const userRows = await sql`
@@ -8314,7 +8345,7 @@ async function rawHandler(req: Request): Promise<Response> {
       `.catch(() => []);
       const okSet = new Set((okSurveys as { id: number }[]).map((r) => Number(r.id)));
       const allowedSurveyIds = [...new Set(surveyIds.filter((v) => okSet.has(v)))];
-      if (surveyIds.length > 0 && allowedSurveyIds.length === 0) {
+      if (!incremental && surveyIds.length > 0 && allowedSurveyIds.length === 0) {
         return json({
           error: "None of those surveys belong to your account",
         }, 422);
@@ -8330,7 +8361,13 @@ async function rawHandler(req: Request): Promise<Response> {
           )
       `.catch(() => []);
       const current = new Set((currentRows as { survey_id: number }[]).map((r) => Number(r.survey_id)));
-      const next = new Set(allowedSurveyIds);
+      // Incremental add/remove keeps already-assigned surveys (tapping survey 2
+      // must not drop survey 1). Full replace still used by Edit / bulk assign.
+      const next = new Set(incremental ? current : allowedSurveyIds);
+      if (incremental) {
+        for (const sid of addIds) if (okSet.has(sid)) next.add(sid);
+        for (const sid of removeIds) next.delete(sid);
+      }
       for (const sid of current) {
         if (!next.has(sid)) {
           await sql`

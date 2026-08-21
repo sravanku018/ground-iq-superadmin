@@ -71,6 +71,7 @@ import {
 import { clearSession, getSurveyForm } from './api'
 import { APP_BUILD, APP_VERSION, APP_VERSION_CODE, versionLabel } from './version'
 import { slugQuestionKey } from './questionKey'
+import { compressImageFile } from './mediaOptimize'
 import PhoneIndiaField from './PhoneIndiaField'
 import { isValidInMobile, toE164In } from './phoneIn'
 import VerifiedBadge from './VerifiedBadge'
@@ -511,42 +512,7 @@ function MyRecordsScreen({ user, onToast, questions }) {
 }
 
 /** Surveyor Profile Screen: Name, Photo, Phone, Aadhaar Front & Back, Key ID */
-/** Compress profile/Aadhaar image file before upload (max 1200px, 0.75 quality) */
-function compressImageFile(file, maxDimension = 1200, quality = 0.75) {
-  return new Promise((resolve, reject) => {
-    if (!file) {
-      reject(new Error('No file provided'))
-      return
-    }
-    const reader = new FileReader()
-    reader.onerror = () => reject(new Error('Failed to read image file'))
-    reader.onload = (e) => {
-      const img = new Image()
-      img.onerror = () => reject(new Error('Failed to load image'))
-      img.onload = () => {
-        let { width, height } = img
-        if (width > maxDimension || height > maxDimension) {
-          if (width > height) {
-            height = Math.round((height * maxDimension) / width)
-            width = maxDimension
-          } else {
-            width = Math.round((width * maxDimension) / height)
-            height = maxDimension
-          }
-        }
-        const canvas = document.createElement('canvas')
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext('2d')
-        ctx.drawImage(img, 0, 0, width, height)
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality)
-        resolve(compressedDataUrl)
-      }
-      img.src = e.target?.result
-    }
-    reader.readAsDataURL(file)
-  })
-}
+
 
 function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
   const [phone, setPhone] = useState(user?.phone || '')
@@ -573,7 +539,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
     const fieldKey = field === 'front' ? 'aadhaar_front' : field === 'back' ? 'aadhaar_back' : 'photo'
     setUploading((u) => ({ ...u, [field]: true }))
     try {
-      const compressedDataUrl = await compressImageFile(file, 1200, 0.75)
+      const compressedDataUrl = await compressImageFile(file)
       const res = await uploadProfileMedia(fieldKey, compressedDataUrl)
       const newUrl = res?.[fieldKey] || compressedDataUrl
       onUserUpdated?.((prev) => ({ ...prev, [fieldKey]: newUrl }))

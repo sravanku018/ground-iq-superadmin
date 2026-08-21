@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './Icons'
 import { getMyProgress, getSurveyForm } from './api'
+import {
+  compressPhotoFromImage,
+  pickAudioRecorderOptions,
+  toSpeechWav16k,
+  AUDIO_SAMPLE_RATE,
+} from './mediaOptimize'
 import { slugQuestionKey } from './questionKey'
 
 function mapAnswersToQuestions(answers, questions) {
@@ -237,6 +243,7 @@ export default function FieldCollectScreen({
   const fileRef = useRef(null)
   const watchId = useRef(null)
   const streamRef = useRef(null)
+  const audioCtxRef = useRef(null)
   const audioStartedAt = useRef(null)
   // Swipe-navigation gesture tracking (only used when navMode === 'swipe')
   const touchStartX = useRef(null)
@@ -456,6 +463,12 @@ export default function FieldCollectScreen({
         /* ignore */
       }
       mediaRec.current = null
+      try {
+        audioCtxRef.current?.close()
+      } catch {
+        /* ignore */
+      }
+      audioCtxRef.current = null
       try {
         recognitionRef.current?.abort()
       } catch {
@@ -707,14 +720,7 @@ export default function FieldCollectScreen({
     reader.onload = () => {
       const img = new Image()
       img.onload = () => {
-        const maxW = 960
-        const scale = Math.min(1, maxW / img.width)
-        const canvas = document.createElement('canvas')
-        canvas.width = Math.round(img.width * scale)
-        canvas.height = Math.round(img.height * scale)
-        const ctx = canvas.getContext('2d')
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.72)
+        const dataUrl = compressPhotoFromImage(img)
         if (dataUrl.length < MIN_PHOTO_CHARS) {
           onToast?.('Photo invalid — retake', 'error')
           return
@@ -742,30 +748,56 @@ export default function FieldCollectScreen({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
+          channelCount: { ideal: 1 },
+          sampleRate: { ideal: AUDIO_SAMPLE_RATE },
         },
       })
       streamRef.current = stream
       chunks.current = []
-      const rec = new MediaRecorder(stream)
+      let recStream = stream
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext
+        const ctx = new Ctx({ sampleRate: AUDIO_SAMPLE_RATE })
+        if (ctx.state === 'suspended') await ctx.resume()
+        audioCtxRef.current = ctx
+        const src = ctx.createMediaStreamSource(stream)
+        const dest = ctx.createMediaStreamDestination()
+        src.connect(dest)
+        recStream = dest.stream
+      } catch {
+        audioCtxRef.current = null
+      }
+      const recOpts = pickAudioRecorderOptions()
+      const rec = recOpts.mimeType
+        ? new MediaRecorder(recStream, recOpts)
+        : new MediaRecorder(recStream, { audioBitsPerSecond: recOpts.audioBitsPerSecond })
       mediaRec.current = rec
       rec.ondataavailable = (ev) => {
         if (ev.data.size) chunks.current.push(ev.data)
       }
       rec.onstop = () => {
-        const blob = new Blob(chunks.current, { type: rec.mimeType || 'audio/webm' })
-        setAudioBlob(blob)
-        assignAudioUrl(URL.createObjectURL(blob))
+        const raw = new Blob(chunks.current, { type: rec.mimeType || 'audio/webm' })
+        void toSpeechWav16k(raw).then((blob) => {
+          setAudioBlob(blob)
+          assignAudioUrl(URL.createObjectURL(blob))
+        })
         try {
           stream.getTracks().forEach((t) => t.stop())
         } catch {
           /* ignore */
         }
+        try {
+          audioCtxRef.current?.close()
+        } catch {
+          /* ignore */
+        }
+        audioCtxRef.current = null
       }
       rec.start(1000)
       audioStartedAt.current = Date.now()
       setRecording(true)
       setVoiceActivated(true)
-      onToast?.('Voice activated · recording locked on', 'ok')
+      onToast?.('Voice activated · 16 kHz', 'ok')
     } catch (e) {
       setVoiceActivated(false)
       onToast?.(e.message || 'Microphone permission required — voice is locked mandatory', 'error')
@@ -900,16 +932,18 @@ export default function FieldCollectScreen({
           } catch {
             /* ignore */
           }
-          const b = new Blob(chunks.current, { type: rec.mimeType || 'audio/webm' })
-          setAudioBlob(b)
-          assignAudioUrl(URL.createObjectURL(b))
-          try {
-            streamRef.current?.getTracks?.().forEach((t) => t.stop())
-          } catch {
-            /* ignore */
-          }
-          setRecording(false)
-          resolve(b)
+          const raw = new Blob(chunks.current, { type: rec.mimeType || 'audio/webm' })
+          void toSpeechWav16k(raw).then((b) => {
+            setAudioBlob(b)
+            assignAudioUrl(URL.createObjectURL(b))
+            try {
+              streamRef.current?.getTracks?.().forEach((t) => t.stop())
+            } catch {
+              /* ignore */
+            }
+            setRecording(false)
+            resolve(b)
+          })
         }
         try {
           rec.stop()
@@ -922,7 +956,7 @@ export default function FieldCollectScreen({
 
     let blob = audioBlob
     if ((!blob || blob.size < MIN_AUDIO_BYTES) && chunks.current.length) {
-      blob = new Blob(chunks.current, { type: 'audio/webm' })
+      blob = await toSpeechWav16k(new Blob(chunks.current, { type: 'audio/webm' }))
       setAudioBlob(blob)
     }
 
@@ -946,7 +980,7 @@ export default function FieldCollectScreen({
     setSaving(true)
     try {
       const audioDataUrl = await blobToBase64(blob)
-      const audioMime = blob.type || 'audio/webm'
+      const audioMime = blob.type || 'audio/wav'
 
       // Locked location + geo stamped into answers (immutable client fields).
       // Draft markers are stripped — a confirmed record is finished work.
@@ -1103,15 +1137,18 @@ export default function FieldCollectScreen({
       })
 
       let audioDataUrl = null
-      let audioMime = 'audio/webm'
+      let audioMime = 'audio/wav'
       let blob = audioBlob
       if ((!blob || blob.size < MIN_AUDIO_BYTES) && chunks.current.length) {
-        blob = new Blob(chunks.current, { type: 'audio/webm' })
+        blob = await toSpeechWav16k(new Blob(chunks.current, { type: 'audio/webm' }))
         if (!checkpoint) setAudioBlob(blob)
       }
       if (blob && blob.size >= MIN_AUDIO_BYTES) {
+        if (blob.type && !blob.type.includes('wav')) {
+          blob = await toSpeechWav16k(blob)
+        }
         audioDataUrl = await blobToBase64(blob)
-        audioMime = blob.type || 'audio/webm'
+        audioMime = blob.type || 'audio/wav'
       } else if (!checkpoint) {
         onToast?.('Voice recording required to save a draft — activate voice and record', 'error')
         setStep(2)

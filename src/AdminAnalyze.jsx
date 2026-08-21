@@ -37,6 +37,21 @@ export default function AdminAnalyzeScreen({ onToast }) {
   const [busyId, setBusyId] = useState(null)
   const [expanded, setExpanded] = useState(null)
   const [editingId, setEditingId] = useState(null)
+  const [filterLang, setFilterLang] = useState(() => {
+    try {
+      return localStorage.getItem('esurvey_filter_lang') === 'te' ? 'te' : 'en'
+    } catch {
+      return 'en'
+    }
+  })
+  const setFilterLangPersist = (lang) => {
+    setFilterLang(lang)
+    try {
+      localStorage.setItem('esurvey_filter_lang', lang)
+    } catch {
+      /* ignore */
+    }
+  }
 
   useEffect(() => {
     import('./api')
@@ -198,7 +213,23 @@ export default function AdminAnalyzeScreen({ onToast }) {
 
       <div className="card" style={{ marginBottom: 12 }}>
         <h3>Data filters</h3>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+          {[
+            { id: 'en', label: 'English' },
+            { id: 'te', label: 'తెలుగు' },
+          ].map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`chip ${filterLang === p.id ? 'selected' : ''}`}
+              onClick={() => setFilterLangPersist(p.id)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
         <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+          English and Telugu stay separate. Pick one language for filter names and choices.
           Step by step: <strong>1. Survey name</strong> → <strong>2. Surveyor name</strong> →{' '}
           <strong>3. Geolocation</strong> → <strong>4. Day / Month</strong> → <strong>5. Rest</strong> (questions & status).
         </p>
@@ -255,12 +286,14 @@ export default function AdminAnalyzeScreen({ onToast }) {
           <p className="filter-step-title">3 · Geolocation</p>
           <div className="filter-step-grid">
             <label className="field">
-              <span>District</span>
+              <span>{filterLang === 'te' ? 'జిల్లా' : 'District'}</span>
               <select value={district} onChange={(e) => setDistrict(e.target.value)}>
-                <option value="">All districts</option>
+                <option value="">{filterLang === 'te' ? 'అన్ని జిల్లాలు' : 'All districts'}</option>
                 {(analytics?.filterOptions?.districts || []).map((d) => (
                   <option key={d} value={d}>
-                    {d}
+                    {filterLang === 'te'
+                      ? analytics?.filterLabels?.districts?.[d] || d
+                      : d}
                   </option>
                 ))}
               </select>
@@ -317,19 +350,31 @@ export default function AdminAnalyzeScreen({ onToast }) {
           {analytics?.dataFilters?.questions?.map((q) => {
             const countMap = new Map((q.counts || []).map((c) => [c.name, c]))
             const optionNames = [...new Set([...(q.options || []), ...countMap.keys()])]
+            const title =
+              filterLang === 'te'
+                ? q.label_te || q.label || q.label_en || q.id
+                : q.label_en || q.label || q.id
+            const titleShown = title && title !== q.id ? title : q.label_en || q.label || title
             return (
             <label className="field" key={q.id}>
-              <span>{q.label}</span>
+              <span>{titleShown}</span>
               <select
                 value={qFilters[`q_${q.id}`] || ''}
                 onChange={(e) =>
                   setQFilters((f) => ({ ...f, [`q_${q.id}`]: e.target.value }))
                 }
               >
-                <option value="">All {q.label}</option>
+                <option value="">{filterLang === 'te' ? 'అన్నీ' : 'All'} {titleShown}</option>
                 {optionNames.map((name) => {
                   const c = countMap.get(name)
-                  const shownName = c?.label || name
+                  let shownName = name
+                  if (filterLang === 'te') {
+                    if (c?.label && c.label !== name) shownName = c.label
+                    else {
+                      const i = (q.options || []).findIndex((o) => o === name)
+                      if (i >= 0 && q.options_te?.[i]) shownName = q.options_te[i]
+                    }
+                  }
                   const n = c?.value
                   return (
                     <option key={name} value={name}>

@@ -68,6 +68,7 @@ import {
 } from './localStore'
 import { clearSession, getSurveyForm } from './api'
 import { APP_BUILD, APP_VERSION, APP_VERSION_CODE, versionLabel } from './version'
+import { slugQuestionKey } from './questionKey'
 import PhoneIndiaField from './PhoneIndiaField'
 import { isValidInMobile, toE164In } from './phoneIn'
 import VerifiedBadge from './VerifiedBadge'
@@ -145,6 +146,25 @@ function formatDayLabel(ymd) {
     year: 'numeric',
     timeZone: 'UTC',
   })
+}
+
+function isAnswerMetaKey(k) {
+  const s = String(k || '')
+  if (!s || s.startsWith('_') || s.startsWith('geo_') || s.startsWith('location_')) return true
+  return ['draft', 'data_collector', 'client_package_id', 'submitted_by', 'has_photo', 'has_audio'].includes(s)
+}
+
+/** Show the question text, never the field id slug. */
+function labelForAnswerKey(key, questions) {
+  const k = String(key || '')
+  const hit = (questions || []).find((q) => {
+    const id = String(q.id || '')
+    const label = String(q.label || '')
+    return id === k || label === k || slugQuestionKey(label) === k
+  })
+  if (hit?.label && hit.label !== hit.id) return hit.label
+  if (hit?.label) return hit.label
+  return k.includes('_') ? k.replace(/_/g, ' ') : k
 }
 
 function groupRecordsByDay(records) {
@@ -321,7 +341,7 @@ function HomeScreen({
 }
 
 /** My submitted records: photo + audio openable from the field app */
-function MyRecordsScreen({ user, onToast }) {
+function MyRecordsScreen({ user, onToast, questions }) {
   const [records, setRecords] = useState(null)
   const [openId, setOpenId] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -437,12 +457,12 @@ function MyRecordsScreen({ user, onToast }) {
                               </tr>
                             )}
                             {Object.entries(ans).map(([k, v]) => {
-                              if (k.startsWith('_') || k.startsWith('geo_') || k.startsWith('location_')) return null
+                              if (isAnswerMetaKey(k)) return null
                               if (v == null || v === '') return null
                               const valStr = Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v)
                               return (
                                 <tr key={k} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                  <td className="muted" style={{ padding: '6px 8px', textTransform: 'capitalize' }}>{k.replace(/_/g, ' ')}:</td>
+                                  <td className="muted" style={{ padding: '6px 8px' }}>{labelForAnswerKey(k, questions)}:</td>
                                   <td style={{ textAlign: 'right', fontWeight: 600, padding: '6px 8px' }}>{valStr}</td>
                                 </tr>
                               )
@@ -796,7 +816,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
  * queued packages (collected "done" but not yet synced to the server).
  * Surveyors see every done record here BEFORE it reaches the admin.
  */
-function DraftsScreen({ user, onToast, onEdit }) {
+function DraftsScreen({ user, onToast, onEdit, questions }) {
   const [items, setItems] = useState(null)
   const [pushing, setPushing] = useState(null)
   const [openId, setOpenId] = useState(null)
@@ -990,10 +1010,10 @@ function DraftsScreen({ user, onToast, onEdit }) {
             {open && (
               <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
                 {Object.entries(a)
-                  .filter(([k]) => !String(k).startsWith('_'))
+                  .filter(([k]) => !isAnswerMetaKey(k))
                   .map(([k, v]) => (
                     <div key={k}>
-                      <strong>{k}:</strong> {String(v)}
+                      <strong>{labelForAnswerKey(k, questions)}:</strong> {String(v)}
                     </div>
                   ))}
               </div>
@@ -1257,6 +1277,16 @@ export default function SurveyorApp() {
         setDraftsCount((s.drafts ?? 0) + (s.pending ?? 0))
       })
     void refreshDraftCount()
+    void getSurveyForm()
+      .then((data) => {
+        setQuestionsMeta({
+          title: data.title,
+          count: (data.questions || []).length,
+          questions: data.questions,
+          updated_at: data.updated_at,
+        })
+      })
+      .catch(() => {})
 
     const offSync = onSyncEngine((ev) => {
       if (ev.type === 'drain-done') {
@@ -1580,6 +1610,7 @@ export default function SurveyorApp() {
           {tab === 'drafts' && (
             <DraftsScreen
               user={user}
+              questions={questionsMeta?.questions}
               onToast={notify}
               onEdit={(d) => {
                 if (lockForVerify) {
@@ -1594,7 +1625,13 @@ export default function SurveyorApp() {
               }}
             />
           )}
-          {tab === 'records' && <MyRecordsScreen user={user} onToast={notify} />}
+          {tab === 'records' && (
+            <MyRecordsScreen
+              user={user}
+              onToast={notify}
+              questions={questionsMeta?.questions}
+            />
+          )}
           {tab === 'profile' && (
             <SurveyorProfileScreen
               user={user}

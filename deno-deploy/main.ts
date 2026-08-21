@@ -3734,6 +3734,7 @@ async function buildAnalytics(
         id: q.id,
         label: q.label_te || q.label,
         label_en: q.label,
+        label_te: q.label_te || "",
         type: q.type,
         options: q.options,
         options_te: q.options_te,

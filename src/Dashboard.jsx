@@ -58,6 +58,54 @@ function shown(d, fallback = '') {
   return fallback
 }
 
+const FILTER_LANG_KEY = 'esurvey_filter_lang'
+
+function readFilterLang() {
+  try {
+    return localStorage.getItem(FILTER_LANG_KEY) === 'te' ? 'te' : 'en'
+  } catch {
+    return 'en'
+  }
+}
+
+function questionFilterTitle(q, lang) {
+  const en = String(q.label_en || '').trim()
+  const te = String(q.label_te || '').trim()
+  const any = String(q.label || '').trim()
+  const id = String(q.id || '').trim()
+  const real = (s) => s && s !== id
+  if (lang === 'te') return (real(te) && te) || (real(any) && any) || (real(en) && en) || any || en || id
+  return (real(en) && en) || (real(any) && any) || (real(te) && te) || en || any || id
+}
+
+function optionFilterText(name, q, countRow, lang) {
+  if (lang !== 'te') return name
+  if (countRow?.label && countRow.label !== name) return countRow.label
+  const i = (q.options || []).findIndex((o) => o === name)
+  if (i >= 0 && q.options_te?.[i]) return q.options_te[i]
+  return name
+}
+
+function FilterLangToggle({ value, onChange }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+      {[
+        { id: 'en', label: 'English' },
+        { id: 'te', label: 'తెలుగు' },
+      ].map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          className={`chip ${value === p.id ? 'selected' : ''}`}
+          onClick={() => onChange(p.id)}
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function tickShown(data) {
   return (v) => {
     const row = (data || []).find((d) => d.name === v)
@@ -390,6 +438,15 @@ export default function DashboardScreen({ onToast }) {
   const [error, setError] = useState(null)
   const [surveys, setSurveys] = useState([])
   const [boardTab, setBoardTab] = useState('day') // day | month | surveyor | geo
+  const [filterLang, setFilterLang] = useState(readFilterLang)
+  const setFilterLangPersist = useCallback((lang) => {
+    setFilterLang(lang)
+    try {
+      localStorage.setItem(FILTER_LANG_KEY, lang)
+    } catch {
+      /* ignore */
+    }
+  }, [])
 
   useEffect(() => {
     import('./api').then(({ listSurveys }) =>
@@ -502,13 +559,37 @@ export default function DashboardScreen({ onToast }) {
       }
       if (k.startsWith('q_')) {
         const q = data?.dataFilters?.questions?.find((x) => `q_${x.id}` === k)
-        chips.push({ key: k, label: q?.label || 'Question', value: v })
+        const countRow = (q?.counts || []).find((c) => c.name === v)
+        chips.push({
+          key: k,
+          label: q ? questionFilterTitle(q, filterLang) : 'Question',
+          value: q ? optionFilterText(v, q, countRow, filterLang) : v,
+        })
         continue
       }
-      chips.push({ key: k, label: filterChipLabels[k] || k, value: v })
+      const teChip = {
+        district: 'జిల్లా',
+        party: 'పార్టీ',
+        gender: 'లింగం',
+        caste: 'కులం',
+        constituency: 'నియోజకవర్గం',
+        user: 'సర్వేయర్',
+        survey: 'సర్వే',
+      }
+      const teVal =
+        filterLang === 'te'
+          ? data?.filterLabels?.[
+              { district: 'districts', party: 'parties', gender: 'genders', caste: 'castes', constituency: 'constituencies' }[k]
+            ]?.[v]
+          : null
+      chips.push({
+        key: k,
+        label: filterLang === 'te' ? teChip[k] || filterChipLabels[k] || k : filterChipLabels[k] || k,
+        value: teVal || v,
+      })
     }
     return chips
-  }, [filters, data])
+  }, [filters, data, filterLang])
   const removeFilter = useCallback((key) => {
     setFilters((f) => {
       const next = { ...f, [key]: '' }
@@ -1098,9 +1179,7 @@ export default function DashboardScreen({ onToast }) {
               onClick={() => removeFilter(chip.key)}
               title={`Remove ${chip.label} filter`}
             >
-              {chip.label}: {data?.filterLabels?.[
-                { district: 'districts', party: 'parties', gender: 'genders', caste: 'castes', constituency: 'constituencies' }[chip.key]
-              ]?.[chip.value] || chip.value} ✕
+              {chip.label}: {chip.value} ✕
             </button>
           ))}
           <button type="button" className="link-btn" onClick={clearFilters}>
@@ -1240,7 +1319,7 @@ export default function DashboardScreen({ onToast }) {
             return (
             <ChartCard
               key={q.id}
-              title={q.label}
+              title={questionFilterTitle(q, filterLang)}
               subtitle="Every option for this question — tap to filter"
             >
               {pieOk ? (
@@ -1273,9 +1352,14 @@ export default function DashboardScreen({ onToast }) {
         <aside className="dash-split-filters" aria-label="Dashboard filters">
       {reportReady && (
         <div className="card" style={{ marginBottom: 12 }}>
+          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
+            Filter language
+          </p>
+          <FilterLangToggle value={filterLang} onChange={setFilterLangPersist} />
           <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
+            English and Telugu stay separate. Pick one language for filter names and choices.
             Step by step: pick a <strong>survey</strong> → <strong>surveyor</strong> →{' '}
-            <strong>day / month</strong>. Question filters follow that survey, not legacy.
+            <strong>day / month</strong>.
           </p>
 
           {/* Step 1 · Survey name */}
@@ -1409,36 +1493,33 @@ export default function DashboardScreen({ onToast }) {
             }}
           >
             <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
-              Question filters (auto from survey)
+              {filterLang === 'te' ? 'ప్రశ్న ఫిల్టర్లు' : 'Question filters'}{' '}
+              <span className="muted" style={{ fontWeight: 500 }}>
+                ({filterLang === 'te' ? 'Telugu' : 'English'})
+              </span>
             </p>
             {data?.dataFilters?.questions?.map((q) => {
-              // Merge defined options (q.options) with submitted-value counts
-              // (q.counts) so a question with predefined choices but zero
-              // answers yet still shows its full choice list, and any answer
-              // value not in the defined list (free text) still appears.
-              const countMap = new Map((q.counts || []).map((c) => [c.name, c.value]))
-              const labelMap = new Map((q.counts || []).map((c) => [c.name, c.label || c.name]))
-              ;(q.options || []).forEach((name, i) => {
-                if (!labelMap.has(name) && q.options_te?.[i]) labelMap.set(name, q.options_te[i])
-              })
+              const countMap = new Map((q.counts || []).map((c) => [c.name, c]))
               const optionNames = [
                 ...new Set([...(q.options || []), ...countMap.keys()]),
               ]
+              const title = questionFilterTitle(q, filterLang)
               return (
                 <label className="field compact" key={q.id}>
-                  <span>{q.label}</span>
+                  <span>{title}</span>
                   <select
                     value={filters[`q_${q.id}`] || ''}
                     onChange={(e) =>
                       setFilters((f) => ({ ...f, [`q_${q.id}`]: e.target.value }))
                     }
                   >
-                    <option value="">All {q.label}</option>
+                    <option value="">{filterLang === 'te' ? 'అన్నీ' : 'All'} {title}</option>
                     {optionNames.map((name) => {
-                      const shownName = labelMap.get(name) || name
+                      const shownName = optionFilterText(name, q, countMap.get(name), filterLang)
+                      const n = countMap.get(name)?.value
                       return (
                       <option key={name} value={name}>
-                        {countMap.has(name) ? `${shownName} (${countMap.get(name)})` : shownName}
+                        {n != null ? `${shownName} (${n})` : shownName}
                       </option>
                       )
                     })}
@@ -1471,16 +1552,17 @@ export default function DashboardScreen({ onToast }) {
           )}
         </div>
 
+        <FilterLangToggle value={filterLang} onChange={setFilterLangPersist} />
         <label className="field compact">
-          <span>District</span>
+          <span>{filterLang === 'te' ? 'జిల్లా' : 'District'}</span>
           <select
             value={filters.district}
             onChange={(e) => setFilters((f) => ({ ...f, district: e.target.value, constituency: '' }))}
           >
-            <option value="">All districts</option>
+            <option value="">{filterLang === 'te' ? 'అన్ని జిల్లాలు' : 'All districts'}</option>
             {(opts?.districts || []).map((d) => (
               <option key={d} value={d}>
-                {data?.filterLabels?.districts?.[d] || d}
+                {filterLang === 'te' ? (data?.filterLabels?.districts?.[d] || d) : d}
               </option>
             ))}
           </select>

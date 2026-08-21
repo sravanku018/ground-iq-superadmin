@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Icon from './Icons'
 import {
   createSeatRequest,
@@ -61,9 +62,22 @@ function compressImageFile(file, maxDimension = 1200, quality = 0.75) {
   })
 }
 
-function SurveySelect({ value, onChange, all }) {
+function surveyIdsOf(u) {
+  return (Array.isArray(u?.surveys) ? u.surveys : [])
+    .map((s) => {
+      if (s == null) return ''
+      if (typeof s === 'object' && s.id != null) return String(s.id)
+      if (typeof s === 'number' || typeof s === 'string') return String(s)
+      return ''
+    })
+    .filter((id) => id && id !== 'undefined' && id !== 'null')
+}
+
+function SurveySelect({ value, onChange, all, inline = false }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
+  const selected = Array.isArray(value) ? value.map(String) : []
+  const list = Array.isArray(all) ? all : []
 
   useEffect(() => {
     if (!open) return
@@ -74,11 +88,55 @@ function SurveySelect({ value, onChange, all }) {
     return () => document.removeEventListener('mousedown', onDoc)
   }, [open])
 
-  if (!all.length) {
+  if (!list.length) {
     return (
       <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
         No surveys yet — create them in the Surveys tab first.
       </p>
+    )
+  }
+
+  const toggle = (id) => {
+    const sid = String(id)
+    onChange(selected.includes(sid) ? selected.filter((x) => x !== sid) : [...selected, sid])
+  }
+
+  const checks = list.map((s) => {
+    const sid = String(s.id)
+    const on = selected.includes(sid)
+    return (
+      <button
+        key={sid}
+        type="button"
+        className="btn small"
+        style={{
+          display: 'block',
+          width: '100%',
+          textAlign: 'left',
+          margin: '2px 0',
+          background: on ? 'rgba(0,229,153,0.15)' : undefined,
+        }}
+        onClick={() => toggle(sid)}
+      >
+        {s.title || sid}
+        {on ? ' ✓' : ''}
+      </button>
+    )
+  })
+
+  if (inline) {
+    return (
+      <div>
+        {checks}
+        <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
+          <button type="button" className="btn small" onClick={() => onChange(list.map((s) => String(s.id)))}>
+            All
+          </button>
+          <button type="button" className="btn small" onClick={() => onChange([])}>
+            Clear
+          </button>
+        </div>
+      </div>
     )
   }
 
@@ -90,8 +148,8 @@ function SurveySelect({ value, onChange, all }) {
         style={{ width: '100%', textAlign: 'left' }}
         onClick={() => setOpen((o) => !o)}
       >
-        {value.length
-          ? `${value.length} survey${value.length > 1 ? 's' : ''} selected`
+        {selected.length
+          ? `${selected.length} survey${selected.length > 1 ? 's' : ''} selected`
           : 'Select surveys… (none = not assigned)'}
       </button>
       {open && (
@@ -113,39 +171,9 @@ function SurveySelect({ value, onChange, all }) {
             boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
           }}
         >
-          {all.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className="btn small"
-              style={{
-                display: 'block',
-                width: '100%',
-                textAlign: 'left',
-                margin: '2px 0',
-                background: value.includes(String(s.id))
-                  ? 'rgba(0,229,153,0.15)'
-                  : undefined,
-              }}
-              onClick={() => {
-                const id = String(s.id)
-                onChange(
-                  value.includes(id)
-                    ? value.filter((x) => x !== id)
-                    : [...value, id],
-                )
-              }}
-            >
-              {s.title}
-              {value.includes(String(s.id)) ? ' ✓' : ''}
-            </button>
-          ))}
+          {checks}
           <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
-            <button
-              type="button"
-              className="btn small"
-              onClick={() => onChange(all.map((s) => String(s.id)))}
-            >
+            <button type="button" className="btn small" onClick={() => onChange(list.map((s) => String(s.id)))}>
               All
             </button>
             <button type="button" className="btn small" onClick={() => onChange([])}>
@@ -275,21 +303,27 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
   useEffect(() => {
     if (!profileId) return undefined
     drawerPrevFocus.current = document.activeElement
-    const panel = drawerRef.current
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    let panel = drawerRef.current
     const getFocusable = () =>
       panel
         ? [...panel.querySelectorAll(
             'a[href], button:not([disabled]), textarea, input:not([disabled]), select, [tabindex]:not([tabindex="-1"])',
           )]
         : []
-    const first = getFocusable()[0]
-    first?.focus()
+    const focusFirst = () => {
+      panel = drawerRef.current
+      getFocusable()[0]?.focus()
+    }
+    const raf = window.requestAnimationFrame(focusFirst)
     const onKey = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault()
-        setProfileUser(null)
+        closeProfile()
         return
       }
+      panel = drawerRef.current
       if (e.key !== 'Tab' || !panel) return
       const items = getFocusable()
       if (!items.length) return
@@ -305,7 +339,9 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     }
     document.addEventListener('keydown', onKey)
     return () => {
+      window.cancelAnimationFrame(raf)
       document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
       const prev = drawerPrevFocus.current
       if (prev && typeof prev.focus === 'function') {
         try {
@@ -315,7 +351,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
         }
       }
     }
-  }, [profileId])
+  }, [profileId, closeProfile])
 
   async function loadProfile(u, filters = profileFilters) {
     if (!u) return
@@ -363,7 +399,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
   function openProfile(u) {
     if (!u) return
     setProfileUser(u)
-    setProfileSurveys((u.surveys || []).map((s) => String(s.id)))
+    setProfileSurveys(surveyIdsOf(u))
     setProfileData(null)
     const initialFilters = { period: 'total', district: '', survey: 'active', day: '', month: '' }
     setProfileFilters(initialFilters)
@@ -371,14 +407,21 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     loadProfile(u, initialFilters)
   }
 
+  const openedFocusId = useRef(null)
   useEffect(() => {
-    if (focusUserId == null || !users.length) return
+    if (focusUserId == null) {
+      openedFocusId.current = null
+      return
+    }
+    if (!users.length) return
+    if (String(openedFocusId.current) === String(focusUserId)) return
     const u = users.find((x) => Number(x.id) === Number(focusUserId))
     if (!u) {
       onToast?.('That surveyor is not in your list', 'error')
       onFocusConsumed?.()
       return
     }
+    openedFocusId.current = focusUserId
     try {
       openProfile(u)
     } catch (e) {
@@ -395,7 +438,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
       phone: u.phone || '',
       password: '',
       target_quota: u.target ?? u.target_quota ?? 0,
-      surveys: (u.surveys || []).map((s) => String(s.id)),
+      surveys: surveyIdsOf(u),
     })
   }
 
@@ -1895,17 +1938,29 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
           </div>
 
           {profileUser ? (
+            <p className="muted" style={{ margin: 0 }}>
+              Profile for <strong>@{profileUser.username}</strong> is open in the panel.
+            </p>
+          ) : (
+            <p className="muted">Select a surveyor from the dropdown above or click <strong>Profile</strong> on any surveyor in the list.</p>
+          )}
+        </div>
+      )}
+
+      {profileUser
+        ? createPortal(
             <div
               style={{
                 position: 'fixed',
                 inset: 0,
-                zIndex: 9999,
-                background: 'rgba(0, 0, 0, 0.75)',
-                backdropFilter: 'blur(4px)',
+                zIndex: 10000,
+                background: 'rgba(15, 23, 42, 0.55)',
                 display: 'flex',
                 justifyContent: 'flex-end',
               }}
-              onClick={closeProfile}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) closeProfile()
+              }}
             >
               <div
                 ref={drawerRef}
@@ -1916,6 +1971,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                   width: '100%',
                   maxWidth: 580,
                   height: '100%',
+                  maxHeight: '100dvh',
                   background: '#ffffff',
                   borderLeft: '1px solid #e2e8f0',
                   padding: 20,
@@ -2042,6 +2098,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                             void saveProfileSurveys(ids)
                           }}
                           all={surveyChoices}
+                          inline
                         />
                       </>
                     ) : me?.role === 'super_admin' ? (
@@ -2052,7 +2109,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       <p className="muted" style={{ fontSize: 12, margin: 0 }}>
                         Super Admin has not granted <strong>Assign surveys</strong> on your profile.
                         {(profileUser.surveys || []).length > 0
-                          ? ` Currently: ${(profileUser.surveys || []).map((s) => s.title).join(' · ')}`
+                          ? ` Currently: ${(profileUser.surveys || []).map((s) => (s && s.title) || s).filter(Boolean).join(' · ')}`
                           : ''}
                       </p>
                     )}
@@ -2290,12 +2347,10 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                   <p className="muted">Click Filter to load submission details.</p>
                 )}
               </div>
-            </div>
-          ) : (
-            <p className="muted">Select a surveyor from the dropdown above or click <strong>View Profile</strong> on any surveyor in the list.</p>
-          )}
-        </div>
-      )}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }

@@ -3,7 +3,7 @@ import Icon from './Icons'
 import { getQuestions, getSurvey, listSurveys, saveQuestions, updateSurvey } from './api'
 import OptionPills from './OptionPills'
 import QuestionTelugu from './QuestionTelugu'
-import { canTeluguQuestions, labelPatch, slugQuestionKey, teluguFields } from './questionKey'
+import { canTeluguQuestions, isQuestionVisible, labelPatch, nextQuestionId, teluguFields } from './questionKey'
 
 const EMPTY_Q = {
   id: '',
@@ -11,6 +11,7 @@ const EMPTY_Q = {
   type: 'text',
   options: [],
   required: false,
+  visible: true,
   speak: '',
 }
 
@@ -143,6 +144,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
     }
     setSaving(true)
     try {
+      const used = new Set()
       const cleaned = questions.map((q) => {
         const optsFromText =
           q.optionsText != null
@@ -167,11 +169,12 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                       : undefined
 
         return {
-          id: String(q.id || '').trim() || slugQuestionKey(q.label) || `q_${Math.random().toString(36).slice(2, 8)}`,
+          id: nextQuestionId(q.label, q.id, used),
           label: String(q.label || '').trim() || 'Question',
           type: String(q.type || 'text'),
           options: finalOptions,
           required: !!q.required,
+          visible: q.visible !== false,
           speak: String(q.speak || q.label || '').trim(),
           ...teluguFields(q),
         }
@@ -279,23 +282,11 @@ export default function AdminQuestionsScreen({ onToast, user }) {
             </div>
 
             <label className="field">
-              <span>Field ID (storage key — not shown to surveyors)</span>
-              <input
-                value={q.id}
-                onChange={(e) => updateQ(i, { id: e.target.value.replace(/\s+/g, '_') })}
-                placeholder="auto from question text"
-              />
-              <span className="muted" style={{ fontSize: 11 }}>
-                Separate from the question. Auto-fills once; do not change after answers exist.
-              </span>
-            </label>
-
-            <label className="field">
-              <span>Question (exactly as typed)</span>
+              <span>Question</span>
               <input
                 value={q.label}
                 onChange={(e) => updateQ(i, labelPatch(q, e.target.value))}
-                placeholder="What is your age or income bracket?"
+                placeholder="Type the question — this is what everyone sees"
               />
             </label>
             {canTelugu ? (
@@ -361,29 +352,53 @@ export default function AdminQuestionsScreen({ onToast, user }) {
               </div>
             )}
 
-            <label
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 10,
-                background: q.required ? 'rgba(5, 150, 105, 0.12)' : 'rgba(15, 23, 42, 0.05)',
-                border: q.required ? '1px solid #059669' : '1px solid #e2e8f0',
-                borderRadius: 8,
-                padding: '10px 14px',
-                cursor: 'pointer',
-                margin: '10px 0 12px',
-                width: 'fit-content',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={!!q.required}
-                onChange={(e) => updateQ(i, { required: e.target.checked })}
-              />
-              <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#00e599' : '#e2e8f0' }}>
-                {q.required ? <><Icon name="check" size={12} /> Required Question (Surveyor must answer)</> : 'Optional Question'}
-              </span>
-            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, margin: '10px 0 12px' }}>
+              <label
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  background: isQuestionVisible(q) ? 'rgba(5, 150, 105, 0.12)' : 'rgba(15, 23, 42, 0.05)',
+                  border: isQuestionVisible(q) ? '1px solid #059669' : '1px solid #e2e8f0',
+                  borderRadius: 8,
+                  padding: '10px 14px',
+                  cursor: 'pointer',
+                  width: 'fit-content',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isQuestionVisible(q)}
+                  onChange={(e) => updateQ(i, { visible: e.target.checked })}
+                />
+                <span style={{ fontSize: 13, fontWeight: 'bold', color: isQuestionVisible(q) ? '#059669' : '#64748b' }}>
+                  {isQuestionVisible(q) ? '✓ Visible on dashboard' : 'Hidden on dashboard'}
+                </span>
+              </label>
+              <label
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  background: q.required ? 'rgba(5, 150, 105, 0.12)' : 'rgba(15, 23, 42, 0.05)',
+                  border: q.required ? '1px solid #059669' : '1px solid #e2e8f0',
+                  borderRadius: 8,
+                  padding: '10px 14px',
+                  cursor: 'pointer',
+                  width: 'fit-content',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={!!q.required}
+                  onChange={(e) => updateQ(i, { required: e.target.checked })}
+                  disabled={!canEdit}
+                />
+                <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#00e599' : '#e2e8f0' }}>
+                  {q.required ? <><Icon name="check" size={12} /> Required (surveyor must answer)</> : 'Optional'}
+                </span>
+              </label>
+            </div>
 
             {/* Live App Preview */}
             <div style={{ background: 'rgba(15,23,42,0.05)', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, marginTop: 8 }}>

@@ -3333,6 +3333,7 @@ async function buildAnalytics(
     label: string;
     label_te: string;
     type: string;
+    visible: boolean;
     options: string[];
     authored: string[];
     options_te: string[];
@@ -3442,6 +3443,7 @@ async function buildAnalytics(
           label: String(q.label || "").trim() || "Question",
           label_te: String(q.label_te || "").trim(),
           type,
+          visible: q.visible !== false,
           options: opts,
           authored,
           options_te: optionsTe,
@@ -3641,12 +3643,13 @@ async function buildAnalytics(
   }
 
   // Per-question charts: every survey question, every defined option (0 counts stay visible).
-  const questionCharts = surveyQuestions.map((q) => ({
+  const questionCharts = surveyQuestions.filter((q) => q.visible).map((q) => ({
     id: q.id,
-    label: q.label_te || q.label,
+    label: q.label,
     label_en: q.label,
     label_te: q.label_te || "",
     type: q.type,
+    visible: q.visible,
     options: q.options,
     authored: q.authored,
     counts: countsForQuestion(q, rows),
@@ -3844,12 +3847,13 @@ async function buildAnalytics(
       // Counts come from `subset` (all active filters applied — district/party/
       // gender/caste/q_* included) so the numbers shown next to each option
       // match what the charts are currently displaying, not the unfiltered universe.
-      questions: surveyQuestions.map((q) => ({
+      questions: surveyQuestions.filter((q) => q.visible).map((q) => ({
         id: q.id,
-        label: q.label_te || q.label,
+        label: q.label,
         label_en: q.label,
         label_te: q.label_te || "",
         type: q.type,
+        visible: q.visible,
         options: q.options,
         authored: q.authored,
         options_te: q.options_te,

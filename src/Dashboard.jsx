@@ -1463,7 +1463,7 @@ export default function DashboardScreen({ onToast }) {
             for (const cq of fromCharts) {
               if (!seen.has(cq.id)) merged.push(cq)
             }
-            return merged
+            return merged.filter((q) => q.visible !== false)
           })().map((q) => {
             const counts = rowsFromSurveyQuestion(q)
             const isMeter = q.type === 'meter' || q.type === 'tapometer'
@@ -1661,7 +1661,7 @@ export default function DashboardScreen({ onToast }) {
                 ({filterLang === 'te' ? 'Telugu' : 'English'})
               </span>
             </p>
-            {data?.dataFilters?.questions?.map((q) => {
+            {(data?.dataFilters?.questions || []).filter((q) => q.visible !== false).map((q) => {
               const countMap = new Map((q.counts || []).map((c) => [c.name, c]))
               const optionNames = [
                 ...new Set([...createdOptions(q), ...countMap.keys()]),

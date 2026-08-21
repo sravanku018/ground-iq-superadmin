@@ -35,7 +35,7 @@ export function canTeluguQuestions(user) {
   )
 }
 
-/** Question text stays exactly as typed. Field ID is a separate storage key. */
+/** Question text stays exactly as typed. Field ID is created once, internally. */
 export function labelPatch(q, label) {
   const next = String(label || '')
   const patch = { label: next }
@@ -46,4 +46,19 @@ export function labelPatch(q, label) {
   }
   if (!q?.speak || q.speak === q.label) patch.speak = next
   return patch
+}
+
+export function nextQuestionId(label, existingId, used) {
+  const set = used || new Set()
+  let id = String(existingId || '').trim()
+  if (!id) id = slugQuestionKey(label) || `q_${Date.now().toString(36)}`
+  const base = id
+  let n = 2
+  while (set.has(id)) id = `${base}_${n++}`
+  set.add(id)
+  return id
+}
+
+export function isQuestionVisible(q) {
+  return q?.visible !== false
 }

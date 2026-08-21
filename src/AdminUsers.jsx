@@ -217,15 +217,13 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     const silent = !!opts.silent
     if (!silent) setLoading(true)
     try {
-      const [data, prog, svs, seats] = await Promise.all([
+      const [data, prog, seats] = await Promise.all([
         listUsers(),
         getProgressBoard().catch(() => null),
-        listSurveys('').catch(() => ({ items: [] })),
         getSeatRequests().catch(() => null),
       ])
       setUsers(data.users || [])
       setBoard(prog)
-      setAllSurveys(svs.items || [])
       if (seats) setSeatData(seats)
     } catch (e) {
       if (!silent) onToast?.(e.message, 'error')
@@ -234,15 +232,26 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     }
   }, [onToast])
 
+  const loadSurveyList = useCallback(async (opts = {}) => {
+    try {
+      const svs = await listSurveys('')
+      setAllSurveys(svs.items || [])
+    } catch (e) {
+      if (!opts.silent) onToast?.(`Could not load surveys: ${e.message}`, 'error')
+    }
+  }, [onToast])
+
   useEffect(() => {
     load()
-  }, [load])
+    loadSurveyList()
+  }, [load, loadSurveyList])
 
   // Auto-refresh progress so field completions appear without manual Refresh
   useEffect(() => {
     const tick = () => {
       if (document.visibilityState !== 'visible') return
       void load({ silent: true })
+      void loadSurveyList({ silent: true })
     }
     const id = setInterval(tick, 20_000)
     const onVis = () => {
@@ -253,7 +262,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
       clearInterval(id)
       document.removeEventListener('visibilitychange', onVis)
     }
-  }, [load])
+  }, [load, loadSurveyList])
 
   const closeProfile = useCallback(() => setProfileUser(null), [])
 
@@ -828,6 +837,23 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
       setSaBusy(false)
     }
   }
+  const surveyChoices = useMemo(() => {
+    const byId = new Map()
+    for (const s of allSurveys) {
+      const id = Number(s?.id)
+      if (!Number.isFinite(id)) continue
+      byId.set(id, { id, title: s.title, form_key: s.form_key })
+    }
+    for (const u of users) {
+      for (const s of u.surveys || []) {
+        const id = Number(s?.id)
+        if (!Number.isFinite(id) || byId.has(id)) continue
+        byId.set(id, { id, title: s.title, form_key: s.form_key })
+      }
+    }
+    return [...byId.values()]
+  }, [allSurveys, users])
+
   const superAdmins = users.filter((u) => u.role === 'super_admin')
   const saSlots = [0, 1, 2].map((i) => superAdmins[i] || null)
 
@@ -1259,7 +1285,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
             <SurveySelect
               value={gen.surveys}
               onChange={(ids) => setGen((g) => ({ ...g, surveys: ids }))}
-              all={allSurveys}
+              all={surveyChoices}
             />
           </div>
           <button type="submit" className="btn primary" disabled={saving}>
@@ -1293,7 +1319,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
             <SurveySelect
               value={form.surveys}
               onChange={(ids) => setForm((f) => ({ ...f, surveys: ids }))}
-              all={allSurveys}
+              all={surveyChoices}
             />
           </div>
           <label className="field">
@@ -1789,7 +1815,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                           <SurveySelect
                             value={edit.surveys}
                             onChange={(ids) => setEdit((ed) => ({ ...ed, surveys: ids }))}
-                            all={allSurveys}
+                            all={surveyChoices}
                           />
                         </div>
                       )}
@@ -2125,7 +2151,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       }
                     >
                       <option value="active">All Active Surveys (Excludes Legacy)</option>
-                      {allSurveys.map((s) => (
+                      {surveyChoices.map((s) => (
                         <option key={s.id} value={s.form_key}>
                           {s.title}
                         </option>

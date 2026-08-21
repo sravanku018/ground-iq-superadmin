@@ -434,23 +434,47 @@ export default function AdminSurveysScreen({ onToast, user }) {
     setExists(hit || null)
   }, [newTitle, surveys])
 
-  function openDetail(id) {
+  async function openDetail(id) {
     setBusy(true)
-    Promise.all([getSurvey(id), listUsers()])
-      .then(([d, users]) => {
-        setDetail(d.survey)
-        const team = new Set((d.survey.surveyors || []).map((s) => Number(s.id)))
-        const collect = (users.surveyors || users.users || users || [])
+    try {
+      const d = await getSurvey(id)
+      const survey = d.survey
+      setDetail(survey)
+      const team = new Set((survey.surveyors || []).map((s) => Number(s.id)))
+      let collect = allSurveyors.filter((u) => u.role === 'surveyor' || u.role === 'field')
+      try {
+        const users = await listUsers()
+        collect = (users.surveyors || users.users || users || [])
           .filter((u) => u.role === 'surveyor' || u.role === 'field')
-        setAllSurveyors(collect)
-        setChecked(Object.fromEntries(collect.map((u) => [String(u.id), team.has(Number(u.id))])))
         const admins = (users.users || users.surveyors || users || []).filter((u) => u.role === 'admin')
         setAllAdmins(admins)
-        setAdminsOpen(false)
-        setMode('detail')
-      })
-      .catch((e) => onToast?.(e.message, 'error'))
-      .finally(() => setBusy(false))
+      } catch {
+        /* keep the previous surveyor list if GET /api/users is slow */
+      }
+      const byId = new Map()
+      for (const u of collect) byId.set(Number(u.id), u)
+      for (const s of survey.surveyors || []) {
+        const sid = Number(s.id)
+        if (!byId.has(sid)) {
+          byId.set(sid, {
+            id: sid,
+            username: s.username,
+            display_name: s.display_name || s.name,
+            name: s.name || s.display_name || s.username,
+            role: 'surveyor',
+          })
+        }
+      }
+      collect = [...byId.values()]
+      setAllSurveyors(collect)
+      setChecked(Object.fromEntries(collect.map((u) => [String(u.id), team.has(Number(u.id))])))
+      setAdminsOpen(false)
+      setMode('detail')
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function saveNew() {
@@ -564,18 +588,28 @@ export default function AdminSurveysScreen({ onToast, user }) {
 
   async function toggleTeamMember(u) {
     if (!detail) return
+    const uid = Number(u.id)
+    if (!Number.isFinite(uid)) return
+    const current = [
+      ...new Set(
+        (detail.surveyors || []).map((s) => Number(s.id)).filter((n) => Number.isFinite(n)),
+      ),
+    ]
+    const on = current.includes(uid)
+    const nextIds = on ? current.filter((id) => id !== uid) : [...current, uid]
     setBusy(true)
     try {
-      const nextIds = Object.keys(checked).filter((k) => checked[k]).map(Number)
-      const idx = nextIds.indexOf(Number(u.id))
-      if (idx >= 0) nextIds.splice(idx, 1)
-      else nextIds.push(Number(u.id))
-      await setSurveySurveyors(detail.id, nextIds)
-      onToast?.(idx >= 0 ? `Removed ${u.username} from team` : `Added ${u.username} to team`, 'ok')
+      const res = await setSurveySurveyors(detail.id, nextIds)
+      if (nextIds.length > 0 && Number(res?.assigned) === 0) {
+        throw new Error('Server did not save the surveyor on this survey')
+      }
+      onToast?.(on ? `Removed ${u.username} from team` : `Added ${u.username} to team`, 'ok')
+      setChecked((c) => ({ ...c, [String(uid)]: !on }))
       setTeamOpen(false)
       await openDetail(detail.id)
     } catch (e) {
       onToast?.(e.message, 'error')
+    } finally {
       setBusy(false)
     }
   }
@@ -826,7 +860,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         <div className="card" style={{ marginBottom: 12, padding: 12 }}>
           {allSurveyors.length === 0 ? (
             <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-              No surveyor accounts yet — create them in the Users tab first.
+              No surveyor accounts yet — create them in the Surveyors tab first.
             </p>
           ) : (
             <>

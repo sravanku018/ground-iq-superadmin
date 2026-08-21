@@ -66,6 +66,10 @@ via `.catch()`. Known broken instance: the submissions/geo section of
 
 **`survey_assignments`** — junction: `survey_id → survey_form`,
 `user_id → app_users`. Surveyor↔project (separate from admin access).
+Written by both `PUT /api/surveys/:id/surveyors` (Surveys tab team picker)
+and `PUT /api/users/:id/surveys` (Surveyors tab). Read by `GET /api/users`
+(`user.surveys`) and field `GET /api/my-surveys`. Same rows either way —
+assigning from Surveys must show on the surveyor and load in the field app.
 
 **`record_facts`**, **`survey_media`**, **`survey_respondents`**,
 **`question_bank`**, **`seat_limit_requests`**, **`seat_limits`** — see
@@ -132,6 +136,7 @@ Drafts are excluded; they live on the Pending tab.
 | Field record number is `payload.record_index`, not `submissions.id` | Database ids jump and are not the surveyor's 1, 2, 3 sequence. Pending tab numbers drafts continuously 1..N on the phone; Activity shows Record #N from `record_index` (or created_at order if missing). | **Done.** POST `/api/submissions` stores `record_index`; GET `/api/submissions/me` and list items return it. |
 | Client Admin bell is event-driven from `audit_log` | A 45s poll of `GET /api/users` + submissions was slow and late. Uploads now write `profile_media` / `submission_create` and the UI streams those rows. | **Done.** Do not go back to interval polling as the inbox source. |
 | Field daily sent counts live on My activity, grouped by date only | Home progress is allotment (done/target), not a diary. Today/Yesterday/weekday labels were tried and rejected — date is enough. | **Settled.** Do not put `by_day` on Home or on `GET /api/progress/me`. |
+| `GET /api/analytics?survey=` must be in `adminFormKeyScope` | Form keys are title slugs (`voter-survey`) and guessable. An unscoped `SELECT questions FROM survey_form WHERE form_key = $survey` leaked another tenant's labels/options into `charts.questionCharts` even though submission counts stayed 0. | **Done.** Out-of-scope `survey` is ignored (`formFilter = ""`). The questions query is `form_key = $filter AND form_key = ANY(scopeKeys)`. Super Admin (`scopeKeys = null`) is unchanged. Titles and analyze `qTypeMap` use the same scope. |
 
 ## Known open items — not yet fixed, don't assume they are
 

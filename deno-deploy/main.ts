@@ -487,6 +487,32 @@ function hasPower(
   return !!me && (me.role === "super_admin" || sqlBool(me[key]));
 }
 
+/**
+ * Surveyor ↔ survey mapping. ON CONFLICT needs UNIQUE(survey_id, user_id);
+ * if an older table is missing that constraint, fall back to a plain INSERT.
+ */
+async function upsertSurveyAssignment(surveyId: number, userId: number): Promise<boolean> {
+  if (!sql || !Number.isFinite(surveyId) || !Number.isFinite(userId)) return false;
+  try {
+    await sql`
+      INSERT INTO survey_assignments (survey_id, user_id)
+      VALUES (${surveyId}, ${userId})
+      ON CONFLICT (survey_id, user_id) DO NOTHING
+    `;
+    return true;
+  } catch {
+    try {
+      await sql`
+        INSERT INTO survey_assignments (survey_id, user_id)
+        VALUES (${surveyId}, ${userId})
+      `;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 /** Telugu add / type / auto-translate — question-management powers only (no separate grant). */
 function canQuestionCopy(
   me: { role: unknown } & Record<string, unknown> | null,
@@ -1307,6 +1333,18 @@ async function ensureSchema() {
   await sql`CREATE INDEX IF NOT EXISTS idx_survey_admin_access_admin ON survey_admin_access(admin_id)`.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_survey_admin_access_survey ON survey_admin_access(survey_id)`.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_survey_assignments_survey ON survey_assignments(survey_id)`.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_survey_assignments_user ON survey_assignments(user_id)`.catch(() => null);
+  // Dedupe then enforce UNIQUE so ON CONFLICT (survey_id, user_id) works on
+  // databases whose original table was created without the constraint.
+  await sql`
+    DELETE FROM survey_assignments a
+    USING survey_assignments b
+    WHERE a.ctid < b.ctid AND a.survey_id = b.survey_id AND a.user_id = b.user_id
+  `.catch(() => null);
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_survey_assignments_pair
+    ON survey_assignments(survey_id, user_id)
+  `.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_survey_form_created_by ON survey_form(created_by)`.catch(() => null);
 
   // Keep legacy field/user inactive; surveyors are created from admin dashboard
@@ -2055,14 +2093,16 @@ async function loadMediaKindsMap(
 
 /** Apply media kinds onto payload flags then verify (single source of truth). */
 function verifyWithMedia(
-  payload: Record<string, unknown>,
+  payload: Record<string, unknown> | null | undefined,
   mediaMap: Map<number, string[]>,
   id: number | string,
 ) {
+  const p: Record<string, unknown> =
+    payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
   const kinds = mediaMap.get(Number(id)) || [];
-  if (kinds.includes("audio")) payload.has_audio = true;
-  if (kinds.includes("photo")) payload.has_photo = true;
-  return verifySubmission(payload, kinds);
+  if (kinds.includes("audio")) p.has_audio = true;
+  if (kinds.includes("photo")) p.has_photo = true;
+  return verifySubmission(p, kinds);
 }
 
 /** Telugu place names → English (district etc.), applied when confirming */
@@ -2295,15 +2335,16 @@ function translateGeoEnglish(
 }
 
 function parsePayload(raw: unknown): Record<string, unknown> {
-  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-    return raw as Record<string, unknown>;
-  }
-  if (typeof raw === "string") {
+  let v: unknown = raw;
+  if (typeof v === "string") {
     try {
-      return JSON.parse(raw) as Record<string, unknown>;
+      v = JSON.parse(v);
     } catch {
       return {};
     }
+  }
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    return v as Record<string, unknown>;
   }
   return {};
 }
@@ -2649,8 +2690,27 @@ async function storeMediaLinked(
   };
 }
 
+/** India Standard Time (this product is IST-only). */
+const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+
+function istCalendarDate(v: unknown): string {
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    return new Date(v.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+  }
+  const s = String(v || "").trim();
+  if (!s) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s.slice(0, 10);
+  return new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
 function dayKey(iso: string) {
-  return String(iso || "").slice(0, 10);
+  return istCalendarDate(iso);
+}
+
+function istToday(): string {
+  return new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 // Neon returns TIMESTAMPTZ as Date objects; String(Date) yields locale text
@@ -3168,15 +3228,8 @@ async function loadAnalyticsRows(
   const mediaMap = await loadMediaKindsMap(sqlFn);
 
   const allRows: Row[] = (raw as Record<string, unknown>[]).map((row) => {
-    let payload = row.payload as Record<string, unknown>;
-    if (typeof payload === "string") {
-      try {
-        payload = JSON.parse(payload);
-      } catch {
-        payload = {};
-      }
-    }
-    const a = (payload?.answers as Record<string, unknown>) || payload || {};
+    const payload = parsePayload(row.payload);
+    const a = (payload.answers as Record<string, unknown>) || payload || {};
     let dist = String(a.district || "").trim();
     let ac = String(a.constituency || a.assembly_constituency || "").trim();
     const respondent = String(a.respondent_name || a.respondentName || "").trim();
@@ -3271,13 +3324,18 @@ async function buildAnalytics(
   let dateFrom = (url.searchParams.get("date_from") || url.searchParams.get("from") || "").trim();
   let dateTo = (url.searchParams.get("date_to") || url.searchParams.get("to") || "").trim();
   const userFilter = (url.searchParams.get("user") || url.searchParams.get("submitted_by") || "").trim();
-  const formFilter = (url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim();
+  let formFilter = (url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim();
+  // Client Admin: never load another tenant's questionnaire via a guessable form_key.
+  // Super Admin (scopeKeys = null) may still select any survey.
+  if (scopeKeys && formFilter && !scopeKeys.includes(formFilter)) {
+    formFilter = "";
+  }
   // period: total | day | month | today — Client Admin data scopes
   const period = (url.searchParams.get("period") || "total").trim().toLowerCase();
   const dayParam = (url.searchParams.get("day") || "").trim(); // YYYY-MM-DD
   const monthParam = (url.searchParams.get("month") || "").trim(); // YYYY-MM
   if (period === "today") {
-    const t = new Date().toISOString().slice(0, 10);
+    const t = istToday();
     dateFrom = t;
     dateTo = t;
   } else if (period === "day" && dayParam) {
@@ -3351,9 +3409,15 @@ async function buildAnalytics(
     const PLATFORM_FORM_KEYS = new Set(["default", "legacy"]);
     let formRows: { questions?: unknown }[] = [];
     if (formFilter) {
-      formRows = await sqlFn`
-        SELECT form_key, questions FROM survey_form WHERE form_key = ${formFilter} LIMIT 1
-      `.catch(() => []);
+      formRows = scopeKeys
+        ? await sqlFn`
+            SELECT form_key, questions FROM survey_form
+            WHERE form_key = ${formFilter} AND form_key = ANY(${scopeKeys})
+            LIMIT 1
+          `.catch(() => [])
+        : await sqlFn`
+            SELECT form_key, questions FROM survey_form WHERE form_key = ${formFilter} LIMIT 1
+          `.catch(() => []);
     } else {
       const scoped = Array.isArray(scopeKeys)
         ? scopeKeys.map(String).filter(Boolean)
@@ -3482,7 +3546,11 @@ async function buildAnalytics(
   // Survey titles for the by_survey board (participants + locations per survey)
   const surveyTitles = new Map<string, string>();
   {
-    const trows = await sqlFn`SELECT form_key, title FROM survey_form`.catch(() => []);
+    const trows = scopeKeys
+      ? await sqlFn`
+          SELECT form_key, title FROM survey_form WHERE form_key = ANY(${scopeKeys})
+        `.catch(() => [])
+      : await sqlFn`SELECT form_key, title FROM survey_form`.catch(() => []);
     for (const t of trows as { form_key?: string; title?: string }[]) {
       surveyTitles.set(String(t.form_key || ""), String(t.title || ""));
     }
@@ -3673,7 +3741,14 @@ async function buildAnalytics(
       row[ck] = Number(row[ck] || 0) + 1;
       row.total = Number(row.total || 0) + 1;
     }
-    const columns = partyOrder;
+    const seen = new Set<string>();
+    for (const r of rowMap.values()) {
+      for (const k of Object.keys(r)) {
+        if (k !== "name" && k !== "total") seen.add(k);
+      }
+    }
+    const extra = [...seen].filter((c) => !partyOrder.includes(c)).sort();
+    const columns = [...partyOrder, ...extra];
     const outRows = [...rowMap.values()]
       .map((r) => {
         for (const c of columns) if (r[c] == null) r[c] = 0;
@@ -4735,7 +4810,13 @@ async function rawHandler(req: Request): Promise<Response> {
         SELECT sa.user_id, f.id AS survey_id, f.title, f.form_key
         FROM survey_assignments sa JOIN survey_form f ON f.id = sa.survey_id
         ORDER BY f.title
-      `.catch(() => []);
+      `.catch(async () =>
+        await sql`
+          SELECT sa.user_id, sa.survey_id, COALESCE(f.title, '') AS title, COALESCE(f.form_key, '') AS form_key
+          FROM survey_assignments sa
+          LEFT JOIN survey_form f ON f.id = sa.survey_id
+        `.catch(() => [])
+      );
       const assignedMap = new Map<number, { id: number; title: string; form_key: string }[]>();
       for (const a of assignedRows as {
         user_id: number;
@@ -5039,11 +5120,7 @@ async function rawHandler(req: Request): Promise<Response> {
               AND form_key NOT IN ('default', 'legacy')
           `.catch(() => []);
           for (const s of mySurveys as { id: number }[]) {
-            await sql`
-              INSERT INTO survey_assignments (survey_id, user_id)
-              VALUES (${Number(s.id)}, ${Number(u.id)})
-              ON CONFLICT (survey_id, user_id) DO NOTHING
-            `.catch(() => null);
+            await upsertSurveyAssignment(Number(s.id), Number(u.id));
           }
         }
 
@@ -5325,11 +5402,7 @@ async function rawHandler(req: Request): Promise<Response> {
                 AND form_key NOT IN ('default', 'legacy')
             `.catch(() => []);
             for (const s of mySurveys as { id: number }[]) {
-              await sql`
-                INSERT INTO survey_assignments (survey_id, user_id)
-                VALUES (${Number(s.id)}, ${newId})
-                ON CONFLICT (survey_id, user_id) DO NOTHING
-              `.catch(() => null);
+              await upsertSurveyAssignment(Number(s.id), newId);
             }
           }
           created.push({
@@ -6196,7 +6269,7 @@ async function rawHandler(req: Request): Promise<Response> {
       const dayParam = (url.searchParams.get("day") || "").trim();
       const monthParam = (url.searchParams.get("month") || "").trim();
       if (periodQ === "today") {
-        const t = new Date().toISOString().slice(0, 10);
+        const t = istToday();
         dateFrom = t;
         dateTo = t;
       } else if (periodQ === "day" && dayParam) {
@@ -6292,7 +6365,9 @@ async function rawHandler(req: Request): Promise<Response> {
         // question id → type, so age-type filters bucket-match ranges
         const qTypeMap = new Map<string, string>();
         {
-          const frows = await sql`SELECT questions FROM survey_form`.catch(() => []);
+          const frows = scopeKeys
+            ? await sql`SELECT questions FROM survey_form WHERE form_key = ANY(${scopeKeys})`.catch(() => [])
+            : await sql`SELECT questions FROM survey_form`.catch(() => []);
           for (const f of frows as { questions?: unknown }[]) {
             let qs = f.questions;
             if (typeof qs === "string") { try { qs = JSON.parse(qs); } catch { qs = []; } }
@@ -6465,7 +6540,7 @@ async function rawHandler(req: Request): Promise<Response> {
         if (k.startsWith("q_") && v.trim()) qFilters.push([k.slice(2), v.trim()]);
       }
       if (period === "today") {
-        const t = new Date().toISOString().slice(0, 10);
+        const t = istToday();
         dateFrom = t;
         dateTo = t;
       } else if (period === "day" && dayParam) {
@@ -6493,7 +6568,9 @@ async function rawHandler(req: Request): Promise<Response> {
       // question id → type, so age-type q_ filters bucket-match ranges
       const qTypeMap = new Map<string, string>();
       {
-        const frows = await sql`SELECT questions FROM survey_form`.catch(() => []);
+        const frows = scopeKeys
+          ? await sql`SELECT questions FROM survey_form WHERE form_key = ANY(${scopeKeys})`.catch(() => [])
+          : await sql`SELECT questions FROM survey_form`.catch(() => []);
         for (const f of frows as { questions?: unknown }[]) {
           let qs = f.questions;
           if (typeof qs === "string") { try { qs = JSON.parse(qs); } catch { qs = []; } }
@@ -7510,12 +7587,7 @@ async function rawHandler(req: Request): Promise<Response> {
         for (const t of team as { id: number }[]) {
           const uid = Number(t.id);
           if (!Number.isFinite(uid)) continue;
-          await sql`
-            INSERT INTO survey_assignments (survey_id, user_id)
-            VALUES (${surveyId}, ${uid})
-            ON CONFLICT (survey_id, user_id) DO NOTHING
-          `.catch(() => null);
-          autoAssigned += 1;
+          if (await upsertSurveyAssignment(Number(surveyId), uid)) autoAssigned += 1;
         }
       }
       logAudit(me, "survey_create", "survey", surveyId, {
@@ -8080,9 +8152,9 @@ async function rawHandler(req: Request): Promise<Response> {
       }
       const id = Number(path.split("/")[3]);
       const body = await readBody(req);
-      const ids = (Array.isArray(body.user_ids) ? body.user_ids : [])
+      const ids = [...new Set((Array.isArray(body.user_ids) ? body.user_ids : [])
         .map(Number)
-        .filter((v: number) => Number.isFinite(v));
+        .filter((v: number) => Number.isFinite(v)))];
       // A Client Admin maps only their own surveyors to owned or assigned projects.
       const rows = await sql`
         SELECT id FROM survey_form
@@ -8090,30 +8162,33 @@ async function rawHandler(req: Request): Promise<Response> {
           OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
       `;
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
-      // Only allow mapping surveyors this admin created (or admin/super_admin accounts)
-      let allowed: number[] = ids;
-      if (me.role !== "super_admin" && ids.length) {
-        const ok = await sql`
-          SELECT id FROM app_users
-          WHERE id = ANY(${ids}) AND (created_by = ${me.id} OR role = 'admin' OR role = 'super_admin')
-        `.catch(() => []);
-        const okSet = new Set((ok as { id: number }[]).map((r) => Number(r.id)));
-        allowed = ids.filter((v) => okSet.has(v));
+      // Filter in JS — neon ANY(${ids}) has dropped every id on some deploys,
+      // which then DELETE'd the team and inserted nobody.
+      const mine = await sql`
+        SELECT id FROM app_users
+        WHERE created_by = ${me.id} AND role IN ('surveyor', 'field')
+      `.catch(() => []);
+      const mineSet = new Set((mine as { id: number }[]).map((r) => Number(r.id)));
+      const allowed = ids.filter((v) => mineSet.has(v));
+      if (ids.length > 0 && allowed.length === 0) {
+        return json({
+          error: "Only surveyors you created can be added to this survey",
+        }, 422);
       }
       await sql`
         DELETE FROM survey_assignments
         WHERE survey_id = ${id} AND user_id IN (
-          SELECT id FROM app_users WHERE created_by = ${me.id} AND role = 'surveyor'
+          SELECT id FROM app_users WHERE created_by = ${me.id} AND role IN ('surveyor', 'field')
         )
       `.catch(() => null);
+      const saved: number[] = [];
       for (const uid of allowed) {
-        await sql`
-          INSERT INTO survey_assignments (survey_id, user_id)
-          VALUES (${id}, ${uid})
-          ON CONFLICT (survey_id, user_id) DO NOTHING
-        `.catch(() => null);
+        if (await upsertSurveyAssignment(id, uid)) saved.push(uid);
       }
-      return json({ ok: true, assigned: allowed.length });
+      if (allowed.length > 0 && saved.length === 0) {
+        return json({ error: "Could not save surveyor assignments" }, 500);
+      }
+      return json({ ok: true, assigned: saved.length, user_ids: saved });
     }
 
     // Replace which surveys a surveyor is assigned to (user-centric).
@@ -8149,19 +8224,19 @@ async function rawHandler(req: Request): Promise<Response> {
         return json({ error: "You can only assign surveys to surveyors you created" }, 403);
       }
 
-      // Only allow surveys this admin owns or is explicitly shared on — no
-      // company predicate (see SCHEMA.md).
-      let allowedSurveyIds: number[] = [];
-      if (surveyIds.length) {
-        const okSurveys = await sql`
-              SELECT id FROM survey_form
-              WHERE id = ANY(${surveyIds})
-                AND (
-                  created_by = ${me.id}
-                  OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-                )
-            `.catch(() => []);
-        allowedSurveyIds = (okSurveys as { id: number }[]).map((r) => Number(r.id));
+      // Filter in JS — neon ANY(${ids}) has dropped every id on some deploys,
+      // which then DELETE'd this surveyor's surveys and inserted nobody.
+      const okSurveys = await sql`
+        SELECT id FROM survey_form
+        WHERE created_by = ${me.id}
+           OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+      `.catch(() => []);
+      const okSet = new Set((okSurveys as { id: number }[]).map((r) => Number(r.id)));
+      const allowedSurveyIds = [...new Set(surveyIds.filter((v) => okSet.has(v)))];
+      if (surveyIds.length > 0 && allowedSurveyIds.length === 0) {
+        return json({
+          error: "None of those surveys belong to your account",
+        }, 422);
       }
 
       // Drop existing assignments for this surveyor on surveys this admin can manage
@@ -8175,29 +8250,38 @@ async function rawHandler(req: Request): Promise<Response> {
           )
       `.catch(() => null);
 
+      const saved: number[] = [];
       for (const sid of allowedSurveyIds) {
-        await sql`
-          INSERT INTO survey_assignments (survey_id, user_id)
-          VALUES (${sid}, ${userId})
-          ON CONFLICT (survey_id, user_id) DO NOTHING
-        `.catch(() => null);
+        if (await upsertSurveyAssignment(sid, userId)) saved.push(sid);
       }
-      return json({ ok: true, assigned: allowedSurveyIds.length, survey_ids: allowedSurveyIds });
+      if (allowedSurveyIds.length > 0 && saved.length === 0) {
+        return json({ error: "Could not save survey assignments" }, 500);
+      }
+      return json({ ok: true, assigned: saved.length, survey_ids: saved });
     }
 
     // Surveyor view: surveys assigned to me (with their questions) — field app
     if (path === "/api/my-surveys" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "surveyor" && me.role !== "admin") {
+      if (me.role !== "surveyor" && me.role !== "field" && me.role !== "admin") {
         return json({ error: "Forbidden" }, 403);
       }
-      const rows = await sql`
+      let rows = await sql`
         SELECT f.id, f.form_key, f.title, f.display_lang, f.questions, f.updated_at
         FROM survey_assignments sa
         JOIN survey_form f ON f.id = sa.survey_id
         WHERE sa.user_id = ${me.id}
         ORDER BY f.title
-      `.catch(() => []);
+      `.catch(() => null);
+      if (!rows) {
+        rows = await sql`
+          SELECT f.id, f.form_key, f.title, f.questions, f.updated_at
+          FROM survey_assignments sa
+          JOIN survey_form f ON f.id = sa.survey_id
+          WHERE sa.user_id = ${me.id}
+          ORDER BY f.title
+        `.catch(() => []);
+      }
       const items = (rows as Record<string, unknown>[]).map((r) => {
         let qs = r.questions;
         if (typeof qs === "string") {
@@ -9175,7 +9259,7 @@ async function rawHandler(req: Request): Promise<Response> {
         const dayParam = (url.searchParams.get("day") || "").trim();
         const monthParam = (url.searchParams.get("month") || "").trim();
         if (period === "today") {
-          const t = new Date().toISOString().slice(0, 10);
+          const t = istToday();
           dateFrom = t;
           dateTo = t;
         } else if (period === "day" && dayParam) {

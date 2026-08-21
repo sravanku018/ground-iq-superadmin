@@ -117,13 +117,25 @@ function tickShown(data, lang = 'en') {
   }
 }
 
-/** Drop leftover A/B/C/D rows when the question already has real named answers. */
-function chartOptionRows(counts) {
-  const rows = counts || []
-  const letters = new Set(['A', 'B', 'C', 'D'])
-  const hasNamed = rows.some((c) => !letters.has(String(c.name)) && Number(c.value) > 0)
-  if (!hasNamed) return rows
-  return rows.filter((c) => !letters.has(String(c.name)) || Number(c.value) > 0)
+/** Authored choices (incl. 0) plus any extra answers that actually appear. */
+function visibleAnswerRows(q) {
+  const counts = q?.counts || []
+  const authored = new Set((q.authored || q.options || []).map((n) => String(n)))
+  return counts.filter((c) => authored.has(String(c.name)) || Number(c.value) > 0)
+}
+
+/**
+ * Pie only when every option stays readable. Otherwise bars.
+ * Not tied to question type — a 4-way crop list or a 99%/1% Yes-No both use bars.
+ */
+function chartShouldUsePie(rows) {
+  if (!rows?.length) return false
+  const total = rows.reduce((s, c) => s + Number(c.value || 0), 0)
+  if (total <= 0) return false
+  if (rows.some((c) => Number(c.value) <= 0)) return false
+  if (rows.length < 2 || rows.length > 3) return false
+  const minShare = Math.min(...rows.map((c) => Number(c.value) / total))
+  return minShare >= 0.08
 }
 
 /** Relative freshness — 09-ANALYTICS-SPEC §7: "Data as of {relative time}" */
@@ -254,12 +266,17 @@ const InteractivePie = memo(function InteractivePie({ data, onSelect, selectKey,
         <Tooltip content={(props) => <PctTooltip {...props} lang={lang} />} />
         <Legend
           verticalAlign="bottom"
-          height={36}
-          formatter={(v, entry) => (
+          height={48}
+          formatter={(v, entry) => {
+            const row = entry?.payload
+            const text = lang === 'te' ? row?.label || v : row?.name || v
+            const n = row?.value
+            return (
             <span style={{ color: '#94a3b8', fontSize: 11 }}>
-              {lang === 'te' ? entry?.payload?.label || v : entry?.payload?.name || v}
+              {n != null ? `${text} (${n})` : text}
             </span>
-          )}
+            )
+          }}
         />
       </PieChart>
     </ResponsiveContainer>
@@ -277,7 +294,7 @@ const HBar = memo(function HBar({ data, onSelect, selectKey, extra, activeName, 
         <YAxis
           type="category"
           dataKey="name"
-          width={lang === 'te' ? 110 : 92}
+          width={lang === 'te' ? 120 : 108}
           stroke="#94a3b8"
           fontSize={11}
           tickLine={false}
@@ -1233,6 +1250,7 @@ export default function DashboardScreen({ onToast }) {
                 filters={filters}
                 onSelectDistrict={onSelectDistrict}
                 onSelectConstituency={onSelectConstituency}
+                lang={filterLang}
               />
             </div>
           )}
@@ -1325,13 +1343,8 @@ export default function DashboardScreen({ onToast }) {
           )}
 
           {(charts?.questionCharts || []).map((q) => {
-            const counts = chartOptionRows(q.counts)
-            const n = counts.length
-            const pieOk =
-              ['yesno', 'sentiment', 'sentiment_text', 'abc', 'meter'].includes(q.type) &&
-              n > 0 &&
-              n <= 6 &&
-              counts.some((c) => Number(c.value) > 0)
+            const counts = visibleAnswerRows(q)
+            const pieOk = chartShouldUsePie(counts)
             return (
             <ChartCard
               key={q.id}

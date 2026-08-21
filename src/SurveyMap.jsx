@@ -44,6 +44,18 @@ const COLOR_MODES = [
   { id: 'party', label: 'Lead party' },
 ]
 
+const PARTY_TE = {
+  Congress: 'కాంగ్రెస్',
+  BJP: 'బీజేపీ',
+  BRS: 'బీఆర్ఎస్',
+  Others: 'ఇతరులు',
+  Undecided: 'నిర్ణయం కాలేదు',
+  Unknown: 'తెలియదు',
+  Low: 'తక్కువ',
+  Mid: 'మధ్యస్థం',
+  High: 'ఎక్కువ',
+}
+
 // Telangana-ish center
 const DEFAULT_VIEW = [17.9, 79.5]
 const DEFAULT_ZOOM = 7
@@ -58,6 +70,7 @@ export default function SurveyMap({
   filters,
   onSelectDistrict,
   onSelectConstituency,
+  lang = 'en',
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
@@ -362,7 +375,7 @@ export default function SurveyMap({
                 boxShadow: `0 0 0 1px rgba(255,255,255,0.25)`,
               }}
             />
-            {item.name}
+            {lang === 'te' ? PARTY_TE[item.name] || item.name : item.name}
           </span>
         ))}
         <span className="legend-hint">

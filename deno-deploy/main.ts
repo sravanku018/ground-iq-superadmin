@@ -3255,6 +3255,7 @@ async function buildAnalytics(
     label_te: string;
     type: string;
     options: string[];
+    authored: string[];
     options_te: string[];
     aliases: string[];
     optTe: Map<string, string>;
@@ -3333,30 +3334,37 @@ async function buildAnalytics(
           : [];
         const aliases = aliasesById.get(id) || [];
         const opts: string[] = [];
-        const pushOpt = (name: string) => {
+        const authored: string[] = [];
+        const pushOpt = (name: string, intoAuthored = false) => {
           const n = String(name || "").trim();
           if (!n) return;
           if (!opts.some((o) => o.toLowerCase() === n.toLowerCase())) opts.push(n);
+          if (
+            intoAuthored &&
+            !authored.some((o) => o.toLowerCase() === n.toLowerCase())
+          ) {
+            authored.push(n);
+          }
         };
-        // Use the question's own choices. Type defaults (A/B/C/D, Yes/No…)
-        // only fill in when the author did not set options.
+        // Authored choices only. Type defaults fill in when the form has none.
         if (defined.length) {
-          for (const d of defined) pushOpt(d);
+          for (const d of defined) pushOpt(d, true);
         } else {
-          for (const d of defaultQuestionOptions(type)) pushOpt(d);
+          for (const d of defaultQuestionOptions(type)) pushOpt(d, true);
         }
         for (const r of universe) {
           const av = answerOf(r.answers, id, String(q.label || ""), aliases);
-          for (const n of chartNamesFromAnswer(type, av, opts)) pushOpt(n);
+          for (const n of chartNamesFromAnswer(type, av, opts)) pushOpt(n, false);
         }
         const optionsTe = Array.isArray(q.options_te) ? q.options_te.map(String) : [];
-        const optTe = optionTeMap(defined.length ? defined : opts, optionsTe);
+        const optTe = optionTeMap(defined.length ? defined : authored, optionsTe);
         surveyQuestions.push({
           id,
           label: String(q.label || id),
           label_te: String(q.label_te || "").trim(),
           type,
           options: opts,
+          authored,
           options_te: optionsTe,
           aliases,
           optTe,
@@ -3505,9 +3513,10 @@ async function buildAnalytics(
     list: Row[],
   ) {
     const map = new Map<string, number>();
-    const choice = CHOICE_Q_TYPES.has(q.type) || (q.type !== "text" && q.options.length > 0);
+    const seed = q.authored?.length ? q.authored : q.options;
+    const choice = CHOICE_Q_TYPES.has(q.type) || (q.type !== "text" && seed.length > 0);
     if (choice) {
-      for (const opt of q.options) map.set(opt, 0);
+      for (const opt of seed) map.set(opt, 0);
     }
     for (const r of list) {
       const av = answerOf(r.answers, q.id, q.label, q.aliases);
@@ -3540,7 +3549,10 @@ async function buildAnalytics(
     id: q.id,
     label: q.label_te || q.label,
     label_en: q.label,
+    label_te: q.label_te || "",
     type: q.type,
+    options: q.options,
+    authored: q.authored,
     counts: countsForQuestion(q, rows),
   }));
 
@@ -3742,6 +3754,7 @@ async function buildAnalytics(
         label_te: q.label_te || "",
         type: q.type,
         options: q.options,
+        authored: q.authored,
         options_te: q.options_te,
         counts: countsForQuestion(q, subset),
       })),

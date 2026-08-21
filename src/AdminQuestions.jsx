@@ -303,15 +303,15 @@ export default function AdminQuestionsScreen({ onToast, user }) {
             </div>
 
             <label className="field">
-              <span>English question text</span>
+              <span>{displayLang === 'te' ? 'English question text' : 'Question'}</span>
               <input
                 value={q.label}
                 onChange={(e) => updateQ(i, labelPatch(q, e.target.value))}
-                placeholder="Type the English question"
+                placeholder="Type the question"
               />
             </label>
-            {canTelugu ? (
-              <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} onToast={onToast} />
+            {canTelugu && displayLang === 'te' ? (
+              <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} />
             ) : null}
 
             <label className="field">

@@ -35,7 +35,7 @@ const defaultOptionsForType = (t) => {
 }
 
 /** Shared question editor with rich question types, interactive options & live app preview */
-function QuestionEditor({ questions, onChange, onToast, canTelugu }) {
+function QuestionEditor({ questions, onChange, onToast, canTelugu, displayLang = 'en' }) {
   function updateQ(i, patch) {
     onChange(questions.map((q, idx) => (idx === i ? { ...q, ...patch } : q)))
   }
@@ -81,15 +81,15 @@ function QuestionEditor({ questions, onChange, onToast, canTelugu }) {
             </div>
 
             <label className="field">
-              <span>English question text</span>
+              <span>{displayLang === 'te' ? 'English question text' : 'Question'}</span>
               <input
                 value={q.label}
                 onChange={(e) => updateQ(i, labelPatch(q, e.target.value))}
-                placeholder="Type the English question"
+                placeholder="Type the question"
               />
             </label>
-            {canTelugu ? (
-              <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} onToast={onToast} />
+            {canTelugu && displayLang === 'te' ? (
+              <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} />
             ) : null}
 
             <label className="field">
@@ -1079,6 +1079,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           onChange={(qs) => setDetail({ ...detail, questions: qs })}
           onToast={onToast}
           canTelugu={canTeluguQuestions(user)}
+          displayLang={detail.display_lang === 'te' ? 'te' : 'en'}
         />
 
         <button

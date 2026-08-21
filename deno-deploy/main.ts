@@ -1510,51 +1510,101 @@ function aliasesForQuestions(
       else leftover.add(k);
     }
   }
-  const unusedQs = questions.filter((q) => {
-    const appears = answerBags.some((a) => {
-      if (!a) return false;
-      if (q.id && a[q.id] != null) return true;
-      if (q.label && a[q.label] != null) return true;
-      const slug = slugQuestionKeyServer(q.label);
-      return !!(slug && a[slug] != null);
-    });
-    return !appears;
-  });
-  // Only map old q_<timestamp> keys by order. Never attach a leftover slug
-  // to the next unused question — that dumped MSP/other answers onto the wrong Q.
-  const stamps = [...leftover].filter((k) => /^q_\d+$/i.test(k)).sort();
-  const stillUnused = unusedQs.filter((q) => q?.id);
-  for (let i = 0; i < stamps.length && i < stillUnused.length; i++) {
-    add(stillUnused[i].id, stamps[i]);
+  function scoreKeyToQuestion(key: string, q: { id: string; label: string }): number {
+    const kk = key.toLowerCase().replace(/^_+|_+$/g, "");
+    if (!kk || /^q_\d+$/i.test(key)) return 0;
+    const id = String(q.id || "").toLowerCase();
+    const slug = slugQuestionKeyServer(q.label);
+    const toks = (s: string) => s.split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
+    const kt = toks(kk);
+    const against = (c: string): number => {
+      if (!c) return 0;
+      if (c === kk) return 100;
+      if (c.startsWith(kk) || kk.startsWith(c)) {
+        const ratio = Math.min(c.length, kk.length) / Math.max(c.length, kk.length);
+        if (ratio >= 0.5) return Math.round(ratio * 90);
+      }
+      let i = 0;
+      while (i < c.length && i < kk.length && c[i] === kk[i]) i++;
+      if (i >= 10) return Math.round((i / Math.max(c.length, kk.length)) * 85);
+      const ct = toks(c);
+      if (!kt.length || !ct.length) return 0;
+      const set = new Set(ct);
+      const hit = kt.filter((t) => set.has(t));
+      const distinctive = hit.filter((t) => t.length >= 4);
+      if (distinctive.length === 0 && hit.length < 2) return 0;
+      const union = new Set([...kt, ...ct]).size || 1;
+      return Math.round((hit.length / union) * 75);
+    };
+    return Math.max(against(id), against(slug));
   }
+
+  // Attach renamed Field IDs to every question, including those that already
+  // have today's answers under the current id — otherwise only new records count.
   for (const k of leftover) {
     if (/^q_\d+$/i.test(k)) continue;
-    const kk = k.toLowerCase();
-    let best: { id: string } | null = null;
-    let bestScore = Infinity;
-    for (const q of stillUnused) {
-      const slug = slugQuestionKeyServer(q.label).toLowerCase();
-      const id = String(q.id || "").toLowerCase();
-      for (const c of [id, slug]) {
-        if (!c) continue;
-        if (c === kk) {
-          best = q;
-          bestScore = 0;
-          break;
-        }
-        if (c.startsWith(kk) || kk.startsWith(c)) {
-          const score = Math.abs(c.length - kk.length);
-          if (score < bestScore && score <= 24) {
-            bestScore = score;
-            best = q;
-          }
-        }
+    let bestQ: { id: string } | null = null;
+    let best = 0;
+    let second = 0;
+    for (const q of questions) {
+      if (!q.id) continue;
+      const s = scoreKeyToQuestion(k, q);
+      if (s > best) {
+        second = best;
+        best = s;
+        bestQ = q;
+      } else if (s > second) {
+        second = s;
       }
-      if (bestScore === 0) break;
     }
-    if (best?.id) add(best.id, k);
+    if (bestQ && best >= 45 && best >= second + 8) add(bestQ.id, k);
   }
   return aliases;
+}
+
+/** Per-record answers: current id/label/slug/aliases, then leftover q_<time> in form order. */
+function answersByQuestionId(
+  answers: Record<string, unknown> | undefined | null,
+  questions: { id: string; label: string; aliases: string[] }[],
+): Map<string, unknown> {
+  const a = answers || {};
+  const taken = new Set<string>();
+  const out = new Map<string, unknown>();
+  const take = (q: { id: string; label: string; aliases: string[] }, keys: string[]) => {
+    for (const want of keys) {
+      const w = String(want || "").trim();
+      if (!w) continue;
+      if (a[w] != null && a[w] !== "" && !taken.has(w)) {
+        taken.add(w);
+        out.set(q.id, a[w]);
+        return true;
+      }
+      const low = w.toLowerCase();
+      for (const [k, v] of Object.entries(a)) {
+        if (taken.has(k) || v == null || v === "") continue;
+        if (k.toLowerCase() === low) {
+          taken.add(k);
+          out.set(q.id, v);
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  for (const q of questions) {
+    take(q, [q.id, q.label, slugQuestionKeyServer(q.label), ...(q.aliases || [])]);
+  }
+  const stamps = Object.keys(a)
+    .filter((k) => /^q_\d+$/i.test(k) && !taken.has(k) && a[k] != null && a[k] !== "")
+    .sort();
+  let si = 0;
+  for (const q of questions) {
+    if (out.has(q.id) || si >= stamps.length) continue;
+    const k = stamps[si++];
+    taken.add(k);
+    out.set(q.id, a[k]);
+  }
+  return out;
 }
 
 function answerOf(
@@ -3409,9 +3459,10 @@ async function buildAnalytics(
   }
   if (dynFilters.size) {
     universe = universe.filter((r) => {
+      const bag = answersByQuestionId(r.answers, surveyQuestions);
       for (const [qid, want] of dynFilters) {
         const q = surveyQuestions.find((sq) => sq.id === qid || sq.aliases.includes(qid));
-        const av = answerOf(r.answers, qid, q?.label, q?.aliases);
+        const av = q ? bag.get(q.id) : answerOf(r.answers, qid, q?.label, q?.aliases);
         const names = chartNamesFromAnswer(q?.type || "", av, q?.options || []);
         const hit = names.some((n) => n === want) ||
           (Array.isArray(av) ? av.map(String).includes(want) : String(av ?? "") === want);
@@ -3544,7 +3595,7 @@ async function buildAnalytics(
     if (q.type !== "meter" && q.type !== "tapometer") return null;
     const nums: number[] = [];
     for (const r of list) {
-      const av = answerOf(r.answers, q.id, q.label, q.aliases);
+      const av = answersByQuestionId(r.answers, surveyQuestions).get(q.id);
       const n = Number(String(av ?? "").replace("%", "").replace(/[^0-9.+-]/g, ""));
       if (Number.isFinite(n) && n > 0) nums.push(Math.min(100, Math.max(1, n)));
     }
@@ -3564,7 +3615,7 @@ async function buildAnalytics(
       for (const opt of seed) map.set(opt, 0);
     }
     for (const r of list) {
-      const av = answerOf(r.answers, q.id, q.label, q.aliases);
+      const av = answersByQuestionId(r.answers, surveyQuestions).get(q.id);
       for (const name of chartNamesFromAnswer(q.type, av, q.options)) {
         map.set(name, (map.get(name) || 0) + 1);
       }

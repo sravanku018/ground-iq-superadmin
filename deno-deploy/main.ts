@@ -966,6 +966,7 @@ async function ensureSchema() {
   // Super-Admin-set cap on how many surveys a Client Admin may create (0 = unlimited)
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveys INT NOT NULL DEFAULT 0`.catch(() => null);
   await sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS created_by INT`.catch(() => null);
+  await sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS display_lang TEXT NOT NULL DEFAULT 'en'`.catch(() => null);
   // Company a project is mapped under (registered at creation by the Super Admin).
   await sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_name TEXT`.catch(() => null);
   // Companies registry (Super Admin creates them; Client Admins are added to them).
@@ -1456,6 +1457,10 @@ function ready() {
  * Answer lookup keyed by the Client Admin's question naming — matches
  * question id OR label, case-insensitively (question "Gender" ↔ answer "gender").
  */
+function surveyDisplayLang(v: unknown): "en" | "te" {
+  return String(v || "en").trim().toLowerCase() === "te" ? "te" : "en";
+}
+
 function slugQuestionKeyServer(label: string) {
   return String(label || "")
     .trim()
@@ -7240,17 +7245,17 @@ async function rawHandler(req: Request): Promise<Response> {
       // live access check).
       const rows = me.role === "super_admin"
         ? (q
-            ? await sql`SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form WHERE LOWER(title) LIKE ${'%' + q + '%'} ORDER BY title`
-            : await sql`SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form ORDER BY title`)
+            ? await sql`SELECT id, form_key, title, display_lang, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form WHERE LOWER(title) LIKE ${'%' + q + '%'} ORDER BY title`
+            : await sql`SELECT id, form_key, title, display_lang, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form ORDER BY title`)
         : (q
               ? await sql`
-                  SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
+                  SELECT id, form_key, title, display_lang, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
                   WHERE (created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
                     AND LOWER(title) LIKE ${'%' + q + '%'}
                   ORDER BY title
                 `
               : await sql`
-                  SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
+                  SELECT id, form_key, title, display_lang, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
                   WHERE created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
                   ORDER BY title
                 `);
@@ -7329,6 +7334,7 @@ async function rawHandler(req: Request): Promise<Response> {
           id: r.id,
           form_key: r.form_key,
           title: r.title,
+          display_lang: surveyDisplayLang((r as { display_lang?: unknown }).display_lang),
           company_name: r.company_name || null,
           owner_company: owner?.company_name ?? null,
           owner_name: owner?.name ?? null,
@@ -7534,16 +7540,16 @@ async function rawHandler(req: Request): Promise<Response> {
       // Client Admin: own survey or explicit share only — no company
       // predicate (see SCHEMA.md).
       const rows = me.role === "super_admin"
-        ? await sql`SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form WHERE id = ${id}`
+        ? await sql`SELECT id, form_key, title, display_lang, questions, updated_at, created_by, company_name FROM survey_form WHERE id = ${id}`
         : await sql`
-              SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form
+              SELECT id, form_key, title, display_lang, questions, updated_at, created_by, company_name FROM survey_form
               WHERE id = ${id} AND (
                 created_by = ${me.id}
                 OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
               )
             `;
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
-      const r = rows[0] as { id: number; form_key: string; title: string; questions: unknown; updated_at: string; created_by: number | null; company_name: string | null };
+      const r = rows[0] as { id: number; form_key: string; title: string; display_lang?: string; questions: unknown; updated_at: string; created_by: number | null; company_name: string | null };
       let questions = r.questions;
       if (typeof questions === "string") {
         try { questions = JSON.parse(questions); } catch { questions = []; }
@@ -7583,6 +7589,7 @@ async function rawHandler(req: Request): Promise<Response> {
           id: r.id,
           form_key: r.form_key,
           title: r.title,
+          display_lang: surveyDisplayLang(r.display_lang),
           questions,
           updated_at: r.updated_at,
           surveyors: team,
@@ -8008,6 +8015,12 @@ async function rawHandler(req: Request): Promise<Response> {
           WHERE id = ${id}
         `;
       }
+      if (body.display_lang !== undefined) {
+        const displayLang = surveyDisplayLang(body.display_lang);
+        await sql`
+          UPDATE survey_form SET display_lang = ${displayLang}, updated_at = NOW() WHERE id = ${id}
+        `;
+      }
       // The company a project is mapped under is registered by the Super Admin.
       let nextCompanyName: string | null | undefined;
       if (me.role === "super_admin" && body.company_name !== undefined) {
@@ -8179,7 +8192,7 @@ async function rawHandler(req: Request): Promise<Response> {
         return json({ error: "Forbidden" }, 403);
       }
       const rows = await sql`
-        SELECT f.id, f.form_key, f.title, f.questions, f.updated_at
+        SELECT f.id, f.form_key, f.title, f.display_lang, f.questions, f.updated_at
         FROM survey_assignments sa
         JOIN survey_form f ON f.id = sa.survey_id
         WHERE sa.user_id = ${me.id}
@@ -8194,6 +8207,7 @@ async function rawHandler(req: Request): Promise<Response> {
           id: r.id,
           form_key: r.form_key,
           title: r.title,
+          display_lang: surveyDisplayLang(r.display_lang),
           questions: Array.isArray(qs) ? qs : [],
           updated_at: r.updated_at,
         };

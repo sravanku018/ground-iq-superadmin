@@ -598,9 +598,10 @@ export function getSurvey(id) {
 }
 
 /** Admin: update title/questions; Super Admin may also update company_name */
-export function updateSurvey(id, { title, questions, company_name }) {
+export function updateSurvey(id, { title, questions, company_name, display_lang }) {
   const body = { title, questions }
   if (company_name !== undefined) body.company_name = company_name
+  if (display_lang !== undefined) body.display_lang = display_lang
   return request(`/api/surveys/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

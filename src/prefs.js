@@ -9,6 +9,56 @@
 
 const NAV_MODE_KEY = 'esurvey_survey_nav_mode'
 const FONT_SCALE_KEY = 'esurvey_font_scale'
+const DISPLAY_LANG_KEY = 'esurvey_display_lang'
+const LEGACY_FILTER_LANG_KEY = 'esurvey_filter_lang'
+
+export const DISPLAY_LANGS = ['en', 'te']
+
+const OPTION_TE = {
+  Yes: 'అవును',
+  No: 'కాదు',
+  Positive: 'సానుకూలం',
+  Neutral: 'తటస్థం',
+  Negative: 'ప్రతికూలం',
+}
+
+export function getDisplayLang() {
+  try {
+    const v = localStorage.getItem(DISPLAY_LANG_KEY) || localStorage.getItem(LEGACY_FILTER_LANG_KEY)
+    return v === 'te' ? 'te' : 'en'
+  } catch {
+    return 'en'
+  }
+}
+
+export function setDisplayLang(lang) {
+  const v = lang === 'te' ? 'te' : 'en'
+  try {
+    localStorage.setItem(DISPLAY_LANG_KEY, v)
+    localStorage.setItem(LEGACY_FILTER_LANG_KEY, v)
+    window.dispatchEvent(new Event('esurvey-display-lang'))
+  } catch {
+    /* ignore */
+  }
+  return v
+}
+
+/** Typed question text in the chosen display language. */
+export function displayQuestion(q, lang = getDisplayLang()) {
+  const en = String(q?.label || q?.label_en || '').trim()
+  const te = String(q?.label_te || '').trim()
+  if (lang === 'te') return te || en || 'Question'
+  return en || 'Question'
+}
+
+/** Option text in the chosen language. Stored answer value stays English. */
+export function displayOption(opt, q, index, lang = getDisplayLang()) {
+  const en = String(opt ?? '')
+  if (lang !== 'te') return en
+  const te = Array.isArray(q?.options_te) ? String(q.options_te[index] || '').trim() : ''
+  if (te) return te
+  return OPTION_TE[en] || en
+}
 
 /** 'next' = one question + Next/Prev buttons; 'swipe' = swipe gestures; 'scroll' = all in one column. */
 export const NAV_MODES = ['next', 'swipe', 'scroll']

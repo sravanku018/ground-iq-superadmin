@@ -500,6 +500,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
       await updateSurvey(detail.id, {
         title: detail.title,
         questions: cleanQuestions(detail.questions),
+        display_lang: detail.display_lang === 'te' ? 'te' : 'en',
         ...(user?.role === 'super_admin' ? { company_name: detail.company_name || '' } : {}),
       })
       onToast?.(`${Unit} name + questions saved`, 'ok')
@@ -1049,6 +1050,30 @@ export default function AdminSurveysScreen({ onToast, user }) {
         </p>
 
         <h3 style={{ fontSize: 14, margin: '14px 0 6px' }}>Survey questions</h3>
+        <div className="card" style={{ marginBottom: 12, padding: 14 }}>
+          <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>
+            Display language (phone, dashboard, export)
+          </p>
+          <p className="muted" style={{ margin: '0 0 10px', fontSize: 12 }}>
+            Type questions in English. Add Telugu under each question. This switch is what the
+            field app, dashboard, and CSV use.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {[
+              { id: 'en', label: 'English' },
+              { id: 'te', label: 'తెలుగు' },
+            ].map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={`chip ${(detail.display_lang || 'en') === p.id ? 'selected' : ''}`}
+                onClick={() => setDetail({ ...detail, display_lang: p.id })}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <QuestionEditor
           questions={detail.questions || []}
           onChange={(qs) => setDetail({ ...detail, questions: qs })}

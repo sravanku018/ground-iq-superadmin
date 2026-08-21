@@ -78,6 +78,8 @@ import {
   getFontScale,
   setFontScale as persistFontScale,
   applyFontScale,
+  getDisplayLang,
+  setDisplayLang as persistDisplayLang,
   NAV_MODES,
   FONT_SCALES,
 } from './prefs'
@@ -1033,9 +1035,31 @@ const NAV_MODE_INFO = {
 const FONT_SCALE_LABELS = ['Normal', 'Large', 'Larger', 'Largest']
 
 /** Device-local UI preferences: survey question layout + app display size. */
-function SurveyorSettingsScreen({ navMode, onNavModeChange, fontScale, onFontScaleChange }) {
+function SurveyorSettingsScreen({ navMode, onNavModeChange, fontScale, onFontScaleChange, displayLang, onDisplayLangChange }) {
   return (
     <div className="screen settings-screen" style={{ padding: '12px 14px 110px' }}>
+      <div className="card" style={{ marginBottom: 14, padding: 16 }}>
+        <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 16 }}>Display language</h3>
+        <p className="muted" style={{ marginTop: 0, marginBottom: 14, fontSize: 13 }}>
+          Used when the survey has no language set. A survey’s own English / Telugu setting
+          (chosen when questions are prepared) wins on Collect.
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {[
+            { id: 'en', label: 'English' },
+            { id: 'te', label: 'తెలుగు' },
+          ].map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`chip ${displayLang === p.id ? 'selected' : ''}`}
+              onClick={() => onDisplayLangChange(p.id)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="card" style={{ marginBottom: 14, padding: 16 }}>
         <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 16 }}>Survey question layout</h3>
         <p className="muted" style={{ marginTop: 0, marginBottom: 14, fontSize: 13 }}>
@@ -1136,6 +1160,7 @@ export default function SurveyorApp() {
   // Device-local UI prefs (per-phone, not synced to the account).
   const [navMode, setNavModeState] = useState(getNavMode)
   const [fontScale, setFontScaleState] = useState(getFontScale)
+  const [displayLang, setDisplayLangState] = useState(getDisplayLang)
   const wasVerified = useRef(false)
 
   const changeNavMode = useCallback((mode) => {
@@ -1144,6 +1169,10 @@ export default function SurveyorApp() {
 
   const changeFontScale = useCallback((scale) => {
     setFontScaleState(persistFontScale(scale))
+  }, [])
+
+  const changeDisplayLang = useCallback((lang) => {
+    setDisplayLangState(persistDisplayLang(lang))
   }, [])
 
   // Apply the display-size zoom to the whole app on mount and whenever it
@@ -1645,6 +1674,8 @@ export default function SurveyorApp() {
               onNavModeChange={changeNavMode}
               fontScale={fontScale}
               onFontScaleChange={changeFontScale}
+              displayLang={displayLang}
+              onDisplayLangChange={changeDisplayLang}
             />
           )}
         </PullToRefresh>

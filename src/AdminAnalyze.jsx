@@ -6,6 +6,7 @@ import {
   setSubmissionStatus,
 } from './api'
 import SubmissionEditor from './SubmissionEditor'
+import { getDisplayLang, setDisplayLang } from './prefs'
 
 /**
  * Client Admin: filter by date + user, strict geo/voice, complete/incomplete, analyze.
@@ -37,20 +38,9 @@ export default function AdminAnalyzeScreen({ onToast }) {
   const [busyId, setBusyId] = useState(null)
   const [expanded, setExpanded] = useState(null)
   const [editingId, setEditingId] = useState(null)
-  const [filterLang, setFilterLang] = useState(() => {
-    try {
-      return localStorage.getItem('esurvey_filter_lang') === 'te' ? 'te' : 'en'
-    } catch {
-      return 'en'
-    }
-  })
+  const [filterLang, setFilterLang] = useState(getDisplayLang)
   const setFilterLangPersist = (lang) => {
-    setFilterLang(lang)
-    try {
-      localStorage.setItem('esurvey_filter_lang', lang)
-    } catch {
-      /* ignore */
-    }
+    setFilterLang(setDisplayLang(lang))
   }
 
   useEffect(() => {
@@ -229,7 +219,8 @@ export default function AdminAnalyzeScreen({ onToast }) {
           ))}
         </div>
         <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-          English and Telugu stay separate. Pick one language for filter names and choices.
+          English and Telugu stay separate. Picking a survey applies the language set when
+          its questions were prepared.
           Step by step: <strong>1. Survey name</strong> → <strong>2. Surveyor name</strong> →{' '}
           <strong>3. Geolocation</strong> → <strong>4. Day / Month</strong> → <strong>5. Rest</strong> (questions & status).
         </p>
@@ -242,9 +233,14 @@ export default function AdminAnalyzeScreen({ onToast }) {
             <select
               value={survey}
               onChange={(e) => {
-                setSurvey(e.target.value)
+                const v = e.target.value
+                setSurvey(v)
                 setUser('')
                 setQFilters({})
+                const s = surveys.find((x) => x.form_key === v)
+                if (s?.display_lang === 'te' || s?.display_lang === 'en') {
+                  setFilterLangPersist(s.display_lang)
+                }
               }}
             >
               <option value="">All surveys</option>

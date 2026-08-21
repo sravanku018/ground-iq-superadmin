@@ -37,6 +37,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
   // '' = Super Admin platform default only. Client Admin always uses a real survey id.
   const [surveyId, setSurveyId] = useState('')
   const [surveysReady, setSurveysReady] = useState(false)
+  const [displayLang, setDisplayLang] = useState('en')
 
   const load = useCallback(async () => {
     if (!surveysReady) return
@@ -53,6 +54,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
         const d = await getSurvey(surveyId)
         setTitle(d.survey?.title || '')
         setQuestions(Array.isArray(d.survey?.questions) ? d.survey.questions : [])
+        setDisplayLang(d.survey?.display_lang === 'te' ? 'te' : 'en')
       } else if (isSuperAdmin) {
         const data = await getQuestions()
         setTitle(data.title || 'Field Survey')
@@ -180,7 +182,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
         }
       })
       if (surveyId) {
-        await updateSurvey(surveyId, { title, questions: cleaned })
+        await updateSurvey(surveyId, { title, questions: cleaned, display_lang: displayLang })
       } else if (isSuperAdmin) {
         await saveQuestions({ title, questions: cleaned })
       } else {
@@ -240,6 +242,25 @@ export default function AdminQuestionsScreen({ onToast, user }) {
 
       {(isSuperAdmin || surveys.length > 0) && (
       <div className="card" style={{ marginBottom: 12 }}>
+        <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>
+          Display language (phone, dashboard, export)
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+          {[
+            { id: 'en', label: 'English' },
+            { id: 'te', label: 'తెలుగు' },
+          ].map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`chip ${displayLang === p.id ? 'selected' : ''}`}
+              onClick={() => setDisplayLang(p.id)}
+              disabled={!canEdit}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
         <label className="field">
           <span>{isSuperAdmin ? 'Project / form' : 'Survey'}</span>
           <select value={surveyId} onChange={(e) => setSurveyId(e.target.value)}>

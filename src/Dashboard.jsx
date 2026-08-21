@@ -18,6 +18,7 @@ import {
 } from 'recharts'
 import { getAnalytics } from './api'
 import SurveyMap from './SurveyMap'
+import { getDisplayLang, setDisplayLang } from './prefs'
 
 const PARTY_COLORS = {
   Congress: '#16a34a',
@@ -61,15 +62,7 @@ function shown(d, fallback = '', lang = 'en') {
   return fallback
 }
 
-const FILTER_LANG_KEY = 'esurvey_filter_lang'
 
-function readFilterLang() {
-  try {
-    return localStorage.getItem(FILTER_LANG_KEY) === 'te' ? 'te' : 'en'
-  } catch {
-    return 'en'
-  }
-}
 
 function questionFilterTitle(q, lang) {
   const typed = String(q.label_en || q.label || '').trim()
@@ -563,15 +556,21 @@ export default function DashboardScreen({ onToast }) {
   const [error, setError] = useState(null)
   const [surveys, setSurveys] = useState([])
   const [boardTab, setBoardTab] = useState('day') // day | month | surveyor | geo
-  const [filterLang, setFilterLang] = useState(readFilterLang)
+  const [filterLang, setFilterLang] = useState(getDisplayLang)
   const setFilterLangPersist = useCallback((lang) => {
-    setFilterLang(lang)
-    try {
-      localStorage.setItem(FILTER_LANG_KEY, lang)
-    } catch {
-      /* ignore */
-    }
+    setFilterLang(setDisplayLang(lang))
   }, [])
+  useEffect(() => {
+    const onLang = () => setFilterLang(getDisplayLang())
+    window.addEventListener('esurvey-display-lang', onLang)
+    return () => window.removeEventListener('esurvey-display-lang', onLang)
+  }, [])
+  useEffect(() => {
+    const s = surveys.find((x) => x.form_key === filters.survey)
+    if (s?.display_lang === 'te' || s?.display_lang === 'en') {
+      setFilterLangPersist(s.display_lang)
+    }
+  }, [filters.survey, surveys, setFilterLangPersist])
 
   useEffect(() => {
     import('./api').then(({ listSurveys }) =>

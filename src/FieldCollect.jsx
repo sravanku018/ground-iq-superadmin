@@ -71,7 +71,7 @@ function writeStoredOpenDraft(user, data) {
   }
 }
 import { forceSyncNow, getQueueSnapshot } from './syncEngine'
-import { getNavMode } from './prefs'
+import { displayOption, displayQuestion, getDisplayLang, getNavMode } from './prefs'
 /**
  * LOCKED collect flow — surveyor cannot skip:
  * (Pull-to-refresh is provided by SurveyorApp shell.)
@@ -172,8 +172,17 @@ export default function FieldCollectScreen({
   // Device-local question-navigation preference (Settings tab). The prop is the
   // live source; fall back to localStorage if this screen is rendered without it.
   const navMode = navModeProp || getNavMode()
+  const [deviceLang, setDeviceLang] = useState(getDisplayLang)
+  useEffect(() => {
+    const onLang = () => setDeviceLang(getDisplayLang())
+    window.addEventListener('esurvey-display-lang', onLang)
+    return () => window.removeEventListener('esurvey-display-lang', onLang)
+  }, [])
   const [step, setStep] = useState(0) // 0 geo, 1 photo, 2 voice+qa, 3 done
   const [formMeta, setFormMeta] = useState(null)
+  const displayLang = formMeta?.display_lang === 'te' || formMeta?.display_lang === 'en'
+    ? formMeta.display_lang
+    : deviceLang
   const [questions, setQuestions] = useState([])
   const [answers, setAnswers] = useState({})
   const [geo, setGeo] = useState(null)
@@ -1241,14 +1250,14 @@ export default function FieldCollectScreen({
           className={`qa-opt yes${answers[qq.id] === 'Yes' ? ' selected' : ''}`}
           onClick={() => setAnswers((a) => ({ ...a, [qq.id]: 'Yes' }))}
         >
-          Yes
+          {displayOption('Yes', qq, 0, displayLang)}
         </button>
         <button
           type="button"
           className={`qa-opt no${answers[qq.id] === 'No' ? ' selected' : ''}`}
           onClick={() => setAnswers((a) => ({ ...a, [qq.id]: 'No' }))}
         >
-          No
+          {displayOption('No', qq, 1, displayLang)}
         </button>
       </div>
     ) : qq.type === 'sentiment_text' ? (
@@ -1268,9 +1277,9 @@ export default function FieldCollectScreen({
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {[
-            { label: '😀 Positive', val: 'Positive', color: '#059669' },
-            { label: '😐 Neutral', val: 'Neutral', color: '#d97706' },
-            { label: '🙁 Negative', val: 'Negative', color: '#dc2626' },
+            { label: `😀 ${displayOption('Positive', qq, 0, displayLang)}`, val: 'Positive', color: '#059669' },
+            { label: `😐 ${displayOption('Neutral', qq, 1, displayLang)}`, val: 'Neutral', color: '#d97706' },
+            { label: `🙁 ${displayOption('Negative', qq, 2, displayLang)}`, val: 'Negative', color: '#dc2626' },
           ].map((item) => {
             const active = (answers[qq.id] || '').includes(`[${item.val}]`)
             return (
@@ -1331,15 +1340,15 @@ export default function FieldCollectScreen({
                 />
               </div>
               <div className="qa-meter-scale">
-                <span>Negative</span>
-                <span>Neutral</span>
-                <span>Positive</span>
+                <span>{displayOption('Negative', qq, 0, displayLang)}</span>
+                <span>{displayOption('Neutral', qq, 1, displayLang)}</span>
+                <span>{displayOption('Positive', qq, 2, displayLang)}</span>
               </div>
               <div className="qa-meter-value">
                 <strong>{answers[qq.id] ? `${val}%` : '—'}</strong>
                 {answers[qq.id] ? (
                   <span className={`qa-opt selected ${moodClass}`} style={{ minHeight: 32, padding: '4px 12px' }}>
-                    {mood}
+                    {displayOption(mood, qq, mood === 'Negative' ? 0 : mood === 'Neutral' ? 1 : 2, displayLang)}
                   </span>
                 ) : (
                   <span className="muted">Tap the bar</span>
@@ -1370,7 +1379,6 @@ export default function FieldCollectScreen({
                     ? 'neg'
                     : 'neu'
                 : ''
-            const te = Array.isArray(qq.options_te) ? qq.options_te[oi] : ''
             return (
               <button
                 key={opt}
@@ -1378,12 +1386,7 @@ export default function FieldCollectScreen({
                 className={`qa-opt${sel ? ' selected' : ''}${sent ? ` ${sent}` : ''}`}
                 onClick={() => setAnswers((a) => ({ ...a, [qq.id]: opt }))}
               >
-                {opt}
-                {te ? (
-                  <span className="muted" style={{ display: 'block', fontSize: 11, fontWeight: 500 }}>
-                    {te}
-                  </span>
-                ) : null}
+                {displayOption(opt, qq, oi, displayLang)}
               </button>
             )
           })}
@@ -1439,12 +1442,7 @@ export default function FieldCollectScreen({
   function renderQuestionCard(qq, { speakFill = false } = {}) {
     return (
       <>
-        <h3 className="qa-title">{String(qq.label || '').trim() || 'Question'}</h3>
-        {qq.label_te ? (
-          <p className="muted" style={{ fontSize: 14, marginTop: -6, marginBottom: 10 }}>
-            {qq.label_te}
-          </p>
-        ) : null}
+        <h3 className="qa-title">{displayQuestion(qq, displayLang)}</h3>
         {qq.speak &&
           String(qq.speak).trim() &&
           String(qq.speak).trim().toLowerCase() !== 'new question' &&

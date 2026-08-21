@@ -13,6 +13,7 @@ import {
 import { saveBlob, zipStore } from './zipStore'
 import { FilterSection } from './PortalUI'
 import SurveyMap from './SurveyMap'
+import { getDisplayLang } from './prefs'
 
 /**
  * Admin-only: 2 tabs
@@ -40,7 +41,7 @@ export default function AdminDataScreen({ onToast }) {
     constituency: '',
     status: 'confirmed',
     orientation: 'vertical',
-    lang: 'te',
+    lang: getDisplayLang() === 'en' ? 'en' : 'te',
   })
 
   const exportFilters = () => ({
@@ -620,7 +621,17 @@ export default function AdminDataScreen({ onToast }) {
             <FilterSection title="Survey & surveyor" badge={survey || 'all'} defaultOpen>
               <label className="field compact">
                 <span>Survey</span>
-                <select value={survey} onChange={(e) => setSurvey(e.target.value)}>
+                <select
+                  value={survey}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setSurvey(v)
+                    const s = surveys.find((x) => x.form_key === v)
+                    if (s?.display_lang === 'te' || s?.display_lang === 'en') {
+                      setExp((f) => ({ ...f, lang: s.display_lang }))
+                    }
+                  }}
+                >
                   <option value="">All surveys</option>
                   {surveys.map((s) => (
                     <option key={s.id} value={s.form_key}>

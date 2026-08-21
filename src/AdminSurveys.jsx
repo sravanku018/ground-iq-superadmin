@@ -81,11 +81,11 @@ function QuestionEditor({ questions, onChange, onToast, canTelugu }) {
             </div>
 
             <label className="field">
-              <span>Question</span>
+              <span>English question text</span>
               <input
                 value={q.label}
                 onChange={(e) => updateQ(i, labelPatch(q, e.target.value))}
-                placeholder="Type the question — this is what everyone sees"
+                placeholder="Type the English question"
               />
             </label>
             {canTelugu ? (

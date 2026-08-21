@@ -1,38 +1,11 @@
-import { useState } from 'react'
-import { translateQuestion } from './api'
-
 /**
- * Telugu label + options. Shown only when Super Admin granted
- * can_manage_questions or can_crud_questionnaire (or the caller is Super Admin).
+ * Optional Telugu copy typed by the author. English is never auto-translated.
  */
-export default function QuestionTelugu({ q, onChange, onToast }) {
-  const [busy, setBusy] = useState(false)
+export default function QuestionTelugu({ q, onChange }) {
   const options = Array.isArray(q.options) ? q.options : []
   const teOpts = Array.isArray(q.options_te) ? q.options_te : []
   const teText =
     q.options_te_text != null ? q.options_te_text : teOpts.join(', ')
-
-  async function autoTranslate() {
-    const text = String(q.label || '').trim()
-    if (!text) {
-      onToast?.('Enter the English question first', 'error')
-      return
-    }
-    setBusy(true)
-    try {
-      const res = await translateQuestion({ text, options })
-      onChange({
-        label_te: res.text_te || '',
-        options_te: Array.isArray(res.options_te) ? res.options_te : [],
-        options_te_text: Array.isArray(res.options_te) ? res.options_te.join(', ') : '',
-      })
-      onToast?.('Telugu filled from English', 'ok')
-    } catch (e) {
-      onToast?.(e.message || 'Translate failed', 'error')
-    } finally {
-      setBusy(false)
-    }
-  }
 
   return (
     <div
@@ -44,11 +17,8 @@ export default function QuestionTelugu({ q, onChange, onToast }) {
         padding: 12,
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#047857' }}>తెలుగు · Telugu</span>
-        <button type="button" className="btn small" disabled={busy} onClick={() => void autoTranslate()}>
-          {busy ? 'Translating…' : 'Auto-translate'}
-        </button>
+      <div style={{ marginBottom: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#047857' }}>తెలుగు · Telugu (optional)</span>
       </div>
       <label className="field">
         <span>Telugu question text</span>

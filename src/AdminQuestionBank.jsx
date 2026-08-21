@@ -265,8 +265,8 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
                 </button>
               </div>
               <label className="field">
-                <span>Question</span>
-                <input value={q.label} onChange={(e) => updateQ(i, labelPatch(q, e.target.value))} placeholder="Type the question — this is what everyone sees" />
+                <span>English question text</span>
+                <input value={q.label} onChange={(e) => updateQ(i, labelPatch(q, e.target.value))} placeholder="Type the English question" />
               </label>
               {canTeluguQuestions(user || me) && canCrud ? (
                 <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} onToast={onToast} />

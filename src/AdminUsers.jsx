@@ -1369,10 +1369,10 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
             />
           </label>
           <div className="field">
-            <span>Assign surveys to all created users (multiple)</span>
+            <span>Assign surveys to all created users (required on the phone)</span>
             <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
-              Pick one or more surveys — every created surveyor gets all of them. None
-              selected = surveyor has no survey until you assign one.
+              Pick one or more surveys — every created surveyor gets all of them. Collect will
+              not start until at least one survey is assigned.
             </p>
             <SurveySelect
               value={gen.surveys}
@@ -1404,9 +1404,10 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
             />
           </label>
           <div className="field">
-            <span>Assign surveys (multiple, optional)</span>
+            <span>Assign surveys (required on the phone)</span>
             <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
-              None selected = surveyor has no survey until you assign one.
+              Collect will not start until at least one survey is assigned. Tick every survey they
+              must fill.
             </p>
             <SurveySelect
               value={form.surveys}
@@ -1900,9 +1901,9 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       </label>
                       {(u.role === 'surveyor' || u.role === 'field') && (
                         <div className="field compact">
-                          <span>Assign surveys (optional)</span>
+                          <span>Assign surveys (required on the phone)</span>
                           <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
-                            None = no survey assigned until you pick one.
+                            The app will not collect until at least one survey is assigned.
                           </p>
                           <SurveySelect
                             value={edit.surveys}

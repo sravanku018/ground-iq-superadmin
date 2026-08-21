@@ -180,6 +180,7 @@ export default function FieldCollectScreen({
   }, [])
   const [step, setStep] = useState(0) // 0 geo, 1 photo, 2 voice+qa, 3 done
   const [formMeta, setFormMeta] = useState(null)
+  const [surveyChosen, setSurveyChosen] = useState(false)
   const displayLang = formMeta?.display_lang === 'te' || formMeta?.display_lang === 'en'
     ? formMeta.display_lang
     : deviceLang
@@ -283,6 +284,7 @@ export default function FieldCollectScreen({
     if (typeof pkg.activeQ === 'number' && pkg.activeQ >= 0) {
       setActiveQ(pkg.activeQ)
     }
+    setSurveyChosen(true)
   }
 
   // Editing a saved draft: prefill everything from phone storage
@@ -387,13 +389,40 @@ export default function FieldCollectScreen({
       try {
         setLoadErr('')
         const data = await getSurveyForm()
-        setFormMeta(data)
-        setQuestions(data.questions || [])
-        if (opts.resetAnswers !== false) {
-          const init = {}
-          for (const q of data.questions || []) init[q.id] = ''
-          setAnswers(init)
-          setActiveQ(0)
+        const list = Array.isArray(data.surveys) && data.surveys.length
+          ? data.surveys
+          : data.form_key
+            ? [data]
+            : []
+        const draftKey = draft?.qa?.form_key || draft?.form_key
+        const resumeKey = !draft
+          ? (readStoredOpenDraft(user)?.form_key || '')
+          : ''
+        const preferKey = draftKey || resumeKey
+        const pick = preferKey
+          ? list.find((s) => String(s.form_key) === String(preferKey))
+          : list.length === 1
+            ? list[0]
+            : null
+        if (pick) {
+          setFormMeta({ ...pick, surveys: list })
+          setQuestions(pick.questions || [])
+          setSurveyChosen(true)
+          if (opts.resetAnswers !== false) {
+            const init = {}
+            for (const q of pick.questions || []) init[q.id] = ''
+            setAnswers(init)
+            setActiveQ(0)
+          }
+        } else {
+          setFormMeta({
+            title: list.length ? 'Choose survey' : 'No survey assigned',
+            form_key: '',
+            questions: [],
+            surveys: list,
+          })
+          setQuestions([])
+          setSurveyChosen(false)
         }
         await refreshProgress()
         await refreshQueue()
@@ -407,7 +436,7 @@ export default function FieldCollectScreen({
         throw e
       }
     },
-    [onToast, refreshProgress, refreshQueue],
+    [onToast, refreshProgress, refreshQueue, draft, user],
   )
 
   useEffect(() => {
@@ -1659,45 +1688,74 @@ export default function FieldCollectScreen({
       <div className={`screen field-collect${step === 2 && voiceActivated ? ' qa-focus' : ''}`}>
         <p className="ptr-hint">↓ Pull down to refresh questions from admin</p>
         <header className="screen-head">
-          <h2>{formMeta?.title || 'Field survey'}</h2>
+          <h2>
+            {surveyChosen || (formMeta?.surveys || []).length <= 1
+              ? (formMeta?.title || 'Field survey')
+              : 'Choose survey'}
+          </h2>
           <p>
-            {user?.name || user?.username} · step {step + 1}/4 · {questions.length} Qs
+            {user?.name || user?.username}
+            {surveyChosen || (formMeta?.surveys || []).length <= 1
+              ? ` · step ${step + 1}/4 · ${questions.length} Qs`
+              : ' · pick a survey first'}
           </p>
-          {(formMeta?.surveys || []).length > 0 && !editingDraft && (
-            <div style={{ marginTop: 10 }}>
-              <p className="muted" style={{ fontSize: 12, margin: '0 0 6px' }}>
-                {(formMeta.surveys || []).length === 1
-                  ? 'Assigned survey'
-                  : `${(formMeta.surveys || []).length} surveys assigned — pick one`}
-              </p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {(formMeta.surveys || []).map((s) => {
-                  const on = String(s.form_key) === String(formMeta?.form_key)
-                  return (
-                    <button
-                      key={s.id || s.form_key}
-                      type="button"
-                      className={`chip ${on ? 'selected' : ''}`}
-                      onClick={() => {
-                        if (on) return
-                        setFormMeta({ ...s, surveys: formMeta.surveys })
-                        setQuestions(s.questions || [])
-                        const init = {}
-                        for (const q of s.questions || []) init[q.id] = ''
-                        setAnswers(init)
-                        setActiveQ(0)
-                        onToast?.(`Switched to "${s.title}"`, 'ok')
-                      }}
-                    >
-                      {s.title}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
         </header>
 
+        {(formMeta?.surveys || []).length > 1 && (
+          <div className="card" style={{ marginBottom: 10, padding: 14 }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: 16 }}>Choose survey</h3>
+            <p className="muted" style={{ margin: '0 0 10px', fontSize: 13 }}>
+              Required — pick which survey this record is for before GPS.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {(formMeta.surveys || []).map((s) => {
+                const on = surveyChosen && String(s.form_key) === String(formMeta?.form_key)
+                return (
+                  <button
+                    key={s.id || s.form_key}
+                    type="button"
+                    className={`btn ${on ? 'primary' : 'secondary'}`}
+                    style={{ width: '100%', textAlign: 'left', fontWeight: 700 }}
+                    onClick={() => {
+                      setFormMeta({ ...s, surveys: formMeta.surveys })
+                      setQuestions(s.questions || [])
+                      const init = {}
+                      for (const q of s.questions || []) init[q.id] = ''
+                      setAnswers(init)
+                      setActiveQ(0)
+                      setSurveyChosen(true)
+                      setStep(0)
+                      setGeo(null)
+                      setLocationDetails(null)
+                      setPhotoDataUrl('')
+                      onToast?.(`Collecting "${s.title}"`, 'ok')
+                    }}
+                  >
+                    {on ? '✓ ' : ''}{s.title}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {!surveyChosen && (formMeta?.surveys || []).length > 1 ? (
+          <p className="muted" style={{ fontSize: 13 }}>
+            GPS, photo and questions stay locked until you choose a survey.
+          </p>
+        ) : null}
+
+        {(formMeta?.surveys || []).length === 0 && formMeta ? (
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>No survey assigned</h3>
+            <p className="muted" style={{ marginBottom: 0 }}>
+              Client Admin must assign a survey on your profile. Pull to refresh after they assign.
+            </p>
+          </div>
+        ) : null}
+
+        {surveyChosen || (formMeta?.surveys || []).length === 1 ? (
+        <>
         {/* Lock status — mandatory */}
         <div className="card lock-bar" style={{ marginBottom: 10, padding: '10px 12px' }}>
           <p className="muted" style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 700 }}>
@@ -2090,6 +2148,8 @@ export default function FieldCollectScreen({
             </button>
           </div>
         )}
+        </>
+        ) : null}
       </div>
   )
 }

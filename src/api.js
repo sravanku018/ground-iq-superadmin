@@ -64,7 +64,7 @@ async function request(path, options = {}) {
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const res = await fetch(url, { ...options, headers })
+  const res = await fetch(url, { cache: 'no-store', ...options, headers })
   const data = await res.json().catch(() => ({}))
 
   if (res.status === 401) {

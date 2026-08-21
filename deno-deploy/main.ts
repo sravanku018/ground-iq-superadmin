@@ -278,6 +278,7 @@ function json(data: unknown, status = 200) {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store, no-cache, must-revalidate",
       "access-control-allow-headers": "authorization, content-type, x-auth-token",
       "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
     },
@@ -7111,7 +7112,7 @@ async function rawHandler(req: Request): Promise<Response> {
       });
     }
 
-    // Client Admin: DELETE survey record
+    // Client Admin / Super Admin: DELETE survey record
     if (path.match(/^\/api\/submissions\/\d+$/) && method === "DELETE") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
@@ -7126,8 +7127,13 @@ async function rawHandler(req: Request): Promise<Response> {
         ? await sql`SELECT id FROM submissions WHERE id = ${id} AND payload->>'form_key' = ANY(${scopeKeys})`
         : await sql`SELECT id FROM submissions WHERE id = ${id}`;
       if (!rows.length) return json({ error: "Not found" }, 404);
+      // Older DBs may lack ON DELETE CASCADE on record_facts — delete children first
+      // or Client Admin Analyze/Overview keeps showing the row after Super Admin delete.
+      await sql`DELETE FROM record_facts WHERE submission_id = ${id}`.catch(() => null);
       await sql`DELETE FROM survey_media WHERE submission_id = ${id}`.catch(() => null);
+      await sql`UPDATE survey_respondents SET submission_id = NULL WHERE submission_id = ${id}`.catch(() => null);
       await sql`DELETE FROM submissions WHERE id = ${id}`;
+      logAudit(me, "submission_delete", "submission", id, {});
       return json({
         ok: true,
         id,

@@ -2,9 +2,9 @@
 
 export const AUDIO_SAMPLE_RATE = 16000
 export const AUDIO_BITRATE = 24000
-export const PHOTO_MAX_EDGE = 800
-export const PHOTO_JPEG_QUALITY = 0.58
-export const PHOTO_WEBP_QUALITY = 0.62
+export const PHOTO_MAX_EDGE = 1024
+export const PHOTO_JPEG_QUALITY = 0.78
+export const PHOTO_WEBP_QUALITY = 0.75
 
 export function pickAudioRecorderMime() {
   const types = [
@@ -124,8 +124,8 @@ export function compressPhotoFromImage(img) {
   } catch {
     /* WebP not available */
   }
-  if (out.length > 550_000) {
-    out = canvas.toDataURL('image/jpeg', 0.45)
+  if (out.length > 800_000) {
+    out = canvas.toDataURL('image/jpeg', 0.65)
   }
   return out
 }

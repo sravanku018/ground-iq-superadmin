@@ -72,13 +72,10 @@ function readFilterLang() {
 }
 
 function questionFilterTitle(q, lang) {
-  const en = String(q.label_en || '').trim()
+  const typed = String(q.label_en || q.label || '').trim()
   const te = String(q.label_te || '').trim()
-  const any = String(q.label || '').trim()
-  const id = String(q.id || '').trim()
-  const notId = (s) => s && s !== id
-  if (lang === 'te') return notId(te) ? te : notId(any) ? any : notId(en) ? en : any || en || 'Question'
-  return notId(en) ? en : notId(any) ? any : notId(te) ? te : any || en || 'Question'
+  if (lang === 'te') return te || typed || 'Question'
+  return typed || 'Question'
 }
 
 function optionFilterText(name, q, countRow, lang) {

@@ -352,8 +352,8 @@ export default function AdminAnalyzeScreen({ onToast }) {
             const optionNames = [...new Set([...(q.options || []), ...countMap.keys()])]
             const titleShown =
               filterLang === 'te'
-                ? q.label_te || q.label || q.label_en || 'Question'
-                : q.label_en || q.label || q.label_te || 'Question'
+                ? String(q.label_te || q.label || q.label_en || 'Question').trim()
+                : String(q.label_en || q.label || 'Question').trim()
             return (
             <label className="field" key={q.id}>
               <span>{titleShown}</span>

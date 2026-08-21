@@ -162,8 +162,8 @@ function labelForAnswerKey(key, questions) {
     const label = String(q.label || '')
     return id === k || label === k || slugQuestionKey(label) === k
   })
-  if (hit?.label && hit.label !== hit.id) return hit.label
-  if (hit?.label_en && hit.label_en !== hit.id) return hit.label_en
+  if (hit?.label) return hit.label
+  if (hit?.label_en) return hit.label_en
   return 'Question'
 }
 

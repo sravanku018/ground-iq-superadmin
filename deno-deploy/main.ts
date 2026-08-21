@@ -3390,8 +3390,8 @@ async function buildAnalytics(
     const aliasesById = new Map<string, string[]>();
     for (const form of parsedForms) {
       const qs = form.qs.map((q) => ({
-        id: String(q.id || q.label || "").trim(),
-        label: String(q.label || q.id || "").trim(),
+        id: String(q.id || slugQuestionKeyServer(String(q.label || ""))).trim(),
+        label: String(q.label || "").trim(),
       })).filter((q) => q.id);
       const bags = universe
         .filter((r) => !form.form_key || String(r.formKey || "") === form.form_key)
@@ -3404,7 +3404,7 @@ async function buildAnalytics(
     }
     for (const form of parsedForms) {
       for (const q of form.qs) {
-        const id = String(q.id || q.label || "").trim();
+        const id = String(q.id || "").trim() || slugQuestionKeyServer(String(q.label || ""));
         if (!id || seen.has(id)) continue;
         seen.add(id);
         const type = String(q.type || "text");

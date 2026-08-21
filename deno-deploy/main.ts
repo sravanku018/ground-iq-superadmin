@@ -1938,6 +1938,17 @@ function isDraftSubmission(payload: Record<string, unknown>): boolean {
   );
 }
 
+/** Field Send / POST must not keep phone-only draft markers on the server row. */
+function stripDraftFlags(payload: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...payload, draft: false };
+  const ans = { ...((next.answers || {}) as Record<string, unknown>) };
+  delete ans._draft;
+  delete ans.draft;
+  next.answers = ans;
+  if (String(next.content_type || "").toLowerCase() === "draft") next.content_type = "qa";
+  return next;
+}
+
 /** Field record number (1, 2, 3…) — not the database id. */
 function recordIndexOf(payload: Record<string, unknown>): number | null {
   const a = (payload?.answers || {}) as Record<string, unknown>;
@@ -2387,9 +2398,26 @@ function parsePayload(raw: unknown): Record<string, unknown> {
   return {};
 }
 
+/**
+ * Strip a data URL header, including MIME parameters such as
+ * `data:audio/webm;codecs=opus;base64,...` (MediaRecorder Opus).
+ */
+function splitDataUrl(raw: string): { mime: string; b64: string } {
+  const s = String(raw || "").trim();
+  if (!/^data:/i.test(s)) return { mime: "", b64: s };
+  const comma = s.indexOf(",");
+  if (comma < 0) return { mime: "", b64: s };
+  const header = s.slice(5, comma);
+  const payload = s.slice(comma + 1);
+  const mime = header.split(";").map((p) => p.trim()).find((p) => p.includes("/")) || "";
+  return { mime, b64: payload };
+}
+
 /** Decode base64 (optionally data-URL stripped already) → bytes */
 function b64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
-  const clean = b64.replace(/\s/g, "");
+  let clean = String(b64 || "").replace(/\s/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  const pad = clean.length % 4;
+  if (pad) clean += "=".repeat(4 - pad);
   const bin = atob(clean);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
@@ -2889,10 +2917,7 @@ async function autoConfirmIfComplete(
     SELECT id, payload FROM submissions WHERE id = ${submissionId} LIMIT 1
   `.catch(() => []);
   if (!rows.length) return { auto_confirmed: false, completeness: "incomplete" };
-  let payload = parsePayload((rows[0] as { payload: unknown }).payload);
-  if (isDraftSubmission(payload)) {
-    return { auto_confirmed: false, completeness: "incomplete" };
-  }
+  let payload = stripDraftFlags(parsePayload((rows[0] as { payload: unknown }).payload));
   const cur = payloadStatus(payload);
   if (cur === "confirmed") return { auto_confirmed: false, completeness: "complete" };
   if (cur === "rejected") return { auto_confirmed: false, completeness: "incomplete" };
@@ -5541,9 +5566,9 @@ async function rawHandler(req: Request): Promise<Response> {
       // Store in Cloudflare R2 if configured
       const processR2 = async (field: "photo" | "aadhaar_front" | "aadhaar_back", val: string | null) => {
         if (!val || !val.startsWith("data:image/")) return val;
-        const mimeMatch = val.match(/^data:([^;]+);base64,/);
-        const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
-        const b64Data = mimeMatch ? val.slice(mimeMatch[0].length) : val;
+        const parsed = splitDataUrl(val);
+        const mime = parsed.mime || "image/jpeg";
+        const b64Data = parsed.b64;
         try {
           const bytes = b64ToBytes(b64Data);
           const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
@@ -8575,7 +8600,8 @@ async function rawHandler(req: Request): Promise<Response> {
       const items = (rows as Record<string, unknown>[])
         .map((r) => {
           const payload = parsePayload(r.payload);
-          if (isDraftSubmission(payload)) return null;
+          // Phone-only drafts are never inserted. Rows tagged _draft were Sent
+          // from Pending and must still show in My activity.
           const answers = (payload?.answers || {}) as Record<string, unknown>;
           const media = mediaMap.get(Number(r.id)) || [];
           return {
@@ -8749,7 +8775,7 @@ async function rawHandler(req: Request): Promise<Response> {
           (answers as Record<string, unknown>)?.recordIndex,
       );
       const recIdx = Number.isFinite(recIdxRaw) && recIdxRaw > 0 ? Math.round(recIdxRaw) : null;
-      const payload = {
+      const payload = stripDraftFlags({
         form_key: body.form_key || "default",
         form_id: body.form_id || `field-${Date.now()}`,
         source: body.source || "mobile-field-survey",
@@ -8776,7 +8802,7 @@ async function rawHandler(req: Request): Promise<Response> {
         app_version_code: body.app_version_code != null
           ? Number(body.app_version_code)
           : null,
-      };
+      });
       // BR-004 write scope: records may only be written into projects the caller
       // belongs to. Client Admins → own/assigned projects (plus the always-visible
       // legacy/default forms); Surveyors → the surveys they are assigned to (or the
@@ -8897,10 +8923,12 @@ async function rawHandler(req: Request): Promise<Response> {
         mode = "client_url";
       } else {
         let data = String(body.data || "");
-        const mimeMatch = data.match(/^data:([^;]+);base64,/);
-        if (mimeMatch) {
-          mime = String(body.mime || mimeMatch[1] || mime);
-          data = data.slice(mimeMatch[0].length);
+        const parsed = splitDataUrl(data);
+        if (parsed.mime) {
+          mime = String(body.mime || parsed.mime || mime).split(";")[0].trim() || mime;
+          data = parsed.b64;
+        } else if (parsed.b64 !== data) {
+          data = parsed.b64;
         }
         // Incoming cap (~1.2MB base64)
         if (data.length > 1_200_000) {

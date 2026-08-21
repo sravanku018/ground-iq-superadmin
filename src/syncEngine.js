@@ -5,11 +5,13 @@
  */
 
 import { getApiBase, getToken } from './api'
+import { mediaTypeOnly, mimeFromDataUrl, normalizeMediaDataUrl } from './mediaOptimize'
 import {
   getPackage,
   listPendingPackages,
   queueStats,
   removePackage,
+  stripDraftAnswers,
   updatePackage,
 } from './localStore'
 import { checkNetwork, isStrongEnoughToSync, isUsableForSync, watchNetwork } from './network'
@@ -107,6 +109,11 @@ export async function syncOnePackage(id) {
         throw new Error('Package incomplete — GPS, photo and voice are locked requirements')
       }
       const recIdx = Number(pkg.recordIndex)
+      const answers = stripDraftAnswers({
+        ...(pkg.qa.answers || {}),
+        client_package_id: pkg.id,
+        ...(Number.isFinite(recIdx) && recIdx > 0 ? { _recordIndex: recIdx } : {}),
+      })
       const qaBody = {
         form_key: pkg.qa.form_key,
         form_id: pkg.qa.form_id,
@@ -116,11 +123,7 @@ export async function syncOnePackage(id) {
         location_details: pkg.qa.location_details || null,
         locks: pkg.locks || pkg.qa.locks || { geo: true, photo: true, voice: true },
         record_index: Number.isFinite(recIdx) && recIdx > 0 ? recIdx : null,
-        answers: {
-          ...pkg.qa.answers,
-          client_package_id: pkg.id,
-          ...(Number.isFinite(recIdx) && recIdx > 0 ? { _recordIndex: recIdx } : {}),
-        },
+        answers,
         // Push app version with every sync so admin knows which build collected data
         app_version:
           typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : pkg.app_version,
@@ -153,13 +156,14 @@ export async function syncOnePackage(id) {
       if (!pkg.photoDataUrl) {
         throw new Error('Photo missing from device — recapture this record')
       }
+      const photoData = normalizeMediaDataUrl(pkg.photoDataUrl, 'image/jpeg')
       await fetchJson(`${base}/api/submissions/${serverId}/media`, {
         method: 'POST',
         token,
         body: {
           kind: 'photo',
-          data: pkg.photoDataUrl,
-          mime: 'image/jpeg',
+          data: photoData,
+          mime: mimeFromDataUrl(photoData, 'image/jpeg') || 'image/jpeg',
           meta: { client_package_id: pkg.id, source: 'local_queue' },
         },
       })
@@ -175,13 +179,14 @@ export async function syncOnePackage(id) {
       if (!pkg.audioDataUrl) {
         throw new Error('Voice missing from device — recapture this record')
       }
+      const audioData = normalizeMediaDataUrl(pkg.audioDataUrl, pkg.audioMime || 'audio/webm')
       await fetchJson(`${base}/api/submissions/${serverId}/media`, {
         method: 'POST',
         token,
         body: {
           kind: 'audio',
-          data: pkg.audioDataUrl,
-          mime: pkg.audioMime || 'audio/webm',
+          data: audioData,
+          mime: mediaTypeOnly(pkg.audioMime) || mimeFromDataUrl(audioData, 'audio/webm') || 'audio/webm',
           meta: { client_package_id: pkg.id, source: 'local_queue' },
         },
       })

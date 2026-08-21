@@ -413,11 +413,26 @@ export async function draftCount() {
   }
 }
 
+/** Phone-only draft markers — must not go to the server on Send. */
+export function stripDraftAnswers(answers) {
+  const a = { ...(answers || {}) }
+  delete a._draft
+  delete a.draft
+  return a
+}
+
 /** Push a draft into the sync queue → client admin sees it as pending */
 export async function pushDraft(id) {
   const pkg = await getPackage(id)
   if (!pkg) return null
-  await updatePackage(id, { phase: 'queued', attempts: 0, lastError: null })
+  const qa = { ...(pkg.qa || {}) }
+  qa.answers = stripDraftAnswers(qa.answers)
+  await updatePackage(id, {
+    phase: 'queued',
+    attempts: 0,
+    lastError: null,
+    qa,
+  })
   emitChange({ type: 'saved', id, pushed: true })
   return id
 }

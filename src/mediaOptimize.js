@@ -26,6 +26,55 @@ export function pickAudioRecorderOptions() {
   return opts
 }
 
+/** MIME without parameters — `audio/webm;codecs=opus` → `audio/webm`. */
+export function mediaTypeOnly(mime) {
+  const t = String(mime || '').split(';')[0].trim().toLowerCase()
+  return t && t.includes('/') ? t : ''
+}
+
+export function mimeFromDataUrl(dataUrl, fallback = '') {
+  const s = String(dataUrl || '')
+  if (/^data:/i.test(s)) {
+    const comma = s.indexOf(',')
+    const header = s.slice(5, comma >= 0 ? comma : s.length)
+    return mediaTypeOnly(header) || mediaTypeOnly(fallback)
+  }
+  return mediaTypeOnly(fallback) || mediaTypeOnly(s)
+}
+
+/**
+ * FileReader data URLs include blob.type verbatim, so Opus becomes
+ * `data:audio/webm;codecs=opus;base64,...`. The API used to only strip
+ * `data:<type>;base64,` and then reject that as invalid base64.
+ */
+export function normalizeMediaDataUrl(dataUrl, fallbackMime = '') {
+  const s = String(dataUrl || '')
+  if (!s) return s
+  if (!/^data:/i.test(s)) {
+    const mime = mediaTypeOnly(fallbackMime)
+    return mime ? `data:${mime};base64,${s.replace(/\s/g, '')}` : s
+  }
+  const comma = s.indexOf(',')
+  if (comma < 0) return s
+  const header = s.slice(5, comma)
+  const payload = s.slice(comma + 1).replace(/\s/g, '')
+  const mime = mediaTypeOnly(header) || mediaTypeOnly(fallbackMime) || 'application/octet-stream'
+  return `data:${mime};base64,${payload}`
+}
+
+export function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    if (!blob) {
+      resolve('')
+      return
+    }
+    const r = new FileReader()
+    r.onload = () => resolve(normalizeMediaDataUrl(String(r.result || ''), blob.type))
+    r.onerror = reject
+    r.readAsDataURL(blob)
+  })
+}
+
 function downsampleMono(input, fromRate, toRate) {
   if (!fromRate || fromRate === toRate) return input
   const ratio = fromRate / toRate

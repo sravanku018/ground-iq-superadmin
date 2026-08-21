@@ -5,6 +5,7 @@ import {
   compressPhotoFromImage,
   pickAudioRecorderOptions,
   toSpeechWav16k,
+  blobToDataUrl,
   AUDIO_SAMPLE_RATE,
 } from './mediaOptimize'
 import { slugQuestionKey } from './questionKey'
@@ -867,12 +868,7 @@ export default function FieldCollectScreen({
   }
 
   function blobToBase64(blob) {
-    return new Promise((resolve, reject) => {
-      const r = new FileReader()
-      r.onload = () => resolve(String(r.result || ''))
-      r.onerror = reject
-      r.readAsDataURL(blob)
-    })
+    return blobToDataUrl(blob)
   }
 
   function assertLocksForSave() {

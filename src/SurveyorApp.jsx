@@ -45,7 +45,6 @@ import {
   updateUser,
   uploadProfileMedia,
 } from './api'
-import SubmissionMedia from './SubmissionMedia'
 import { QUALITY, watchNetwork } from './network'
 import { queueCount, refreshQueueCountCache } from './offlineQueue'
 import {
@@ -167,7 +166,18 @@ function formatDayLabel(ymd) {
 function isAnswerMetaKey(k) {
   const s = String(k || '')
   if (!s || s.startsWith('_') || s.startsWith('geo_') || s.startsWith('location_')) return true
-  return ['draft', 'data_collector', 'client_package_id', 'submitted_by', 'has_photo', 'has_audio'].includes(s)
+  return [
+    'draft',
+    'data_collector',
+    'client_package_id',
+    'submitted_by',
+    'has_photo',
+    'has_audio',
+    'photo',
+    'audio',
+    'photo_url',
+    'audio_url',
+  ].includes(s)
 }
 
 /** Show the question text, never the field id slug. */
@@ -369,7 +379,7 @@ function HomeScreen({
   )
 }
 
-/** My submitted records: photo + audio openable from the field app */
+/** My submitted records — answers only; photo/audio stay off this list. */
 function MyRecordsScreen({ user, onToast, questions }) {
   const [records, setRecords] = useState(null)
   const [openId, setOpenId] = useState(null)
@@ -458,7 +468,6 @@ function MyRecordsScreen({ user, onToast, questions }) {
                   </button>
                   {open && (
                     <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #e2e8f0' }}>
-                      <SubmissionMedia item={r} compact />
                       <div style={{ fontSize: 13, marginTop: 8 }}>
                         <strong style={{ display: 'block', marginBottom: 6, color: '#0f172a' }}>Activity details</strong>
                         <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6 }}>

@@ -163,6 +163,20 @@ function formatDayLabel(ymd) {
   })
 }
 
+/** Queue / activity lists must never print photo or voice payloads. */
+function queueAnswerText(v) {
+  if (v == null || v === '') return null
+  if (Array.isArray(v)) {
+    const parts = v.map(queueAnswerText).filter(Boolean)
+    return parts.length ? parts.join(', ') : null
+  }
+  if (typeof v === 'object') return null
+  const s = String(v)
+  if (/^data:(image|audio|video)\//i.test(s)) return null
+  if (s.length > 400 && /^[A-Za-z0-9+/=]+$/.test(s.slice(0, 80))) return null
+  return s
+}
+
 function isAnswerMetaKey(k) {
   const s = String(k || '')
   if (!s || s.startsWith('_') || s.startsWith('geo_') || s.startsWith('location_')) return true
@@ -496,8 +510,8 @@ function MyRecordsScreen({ user, onToast, questions }) {
                             )}
                             {Object.entries(ans).map(([k, v]) => {
                               if (isAnswerMetaKey(k)) return null
-                              if (v == null || v === '') return null
-                              const valStr = Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v)
+                              const valStr = queueAnswerText(v)
+                              if (!valStr) return null
                               return (
                                 <tr key={k} style={{ borderBottom: '1px solid #f1f5f9' }}>
                                   <td className="muted" style={{ padding: '6px 8px' }}>{labelForAnswerKey(k, questions)}:</td>
@@ -1020,10 +1034,10 @@ function DraftsScreen({ user, onToast, onEdit, questions }) {
             {open && (
               <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
                 {Object.entries(a)
-                  .filter(([k]) => !isAnswerMetaKey(k))
+                  .filter(([k, v]) => !isAnswerMetaKey(k) && queueAnswerText(v) != null)
                   .map(([k, v]) => (
                     <div key={k}>
-                      <strong>{labelForAnswerKey(k, questions)}:</strong> {String(v)}
+                      <strong>{labelForAnswerKey(k, questions)}:</strong> {queueAnswerText(v)}
                     </div>
                   ))}
               </div>

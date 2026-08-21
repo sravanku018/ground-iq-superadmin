@@ -2003,7 +2003,7 @@ export default function FieldCollectScreen({
             >
               {locks.photo ? 'Retake photo' : 'Take photo (camera)'}
             </button>
-            {photoDataUrl && (
+            {photoDataUrl && !editingDraft && (
               <img
                 src={photoDataUrl}
                 alt="capture locked"
@@ -2014,6 +2014,11 @@ export default function FieldCollectScreen({
                   border: locks.photo ? '2px solid #22c55e' : 'none',
                 }}
               />
+            )}
+            {photoDataUrl && editingDraft && (
+              <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>
+                Photo is saved on this phone — not shown in the queue.
+              </p>
             )}
             {locks.photo && (
               <p className="pill ok" style={{ marginTop: 8, display: 'inline-flex' }}>

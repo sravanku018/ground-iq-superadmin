@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Icon from './Icons'
 import {
   confirmAllPending,
+  deleteSubmission,
   downloadMediaFile,
   fetchMediaBlobUrl,
   listSubmissionMedia,
@@ -157,6 +158,66 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
     },
     [load, onToast],
   )
+
+  const deleteRejected = useCallback(
+    async (id) => {
+      if (!canReview) {
+        onToast?.('Super Admin has not granted your account data-verification rights', 'error')
+        return
+      }
+      if (!confirm('Delete this rejected record permanently? Photo and voice for it are removed too.')) {
+        return
+      }
+      setBusyId(id)
+      try {
+        await deleteSubmission(id)
+        onToast?.('Rejected record deleted', 'ok')
+        await load()
+      } catch (e) {
+        onToast?.(e.message, 'error')
+      } finally {
+        setBusyId(null)
+      }
+    },
+    [canReview, load, onToast],
+  )
+
+  async function bulkDeleteRejected() {
+    if (!canReview) {
+      onToast?.('Super Admin has not granted your account data-verification rights', 'error')
+      return
+    }
+    const rejected = items.filter((it) => it.status === 'rejected')
+    if (!rejected.length) {
+      onToast?.('No rejected records in this list', 'error')
+      return
+    }
+    if (
+      !confirm(
+        `Delete ${rejected.length} rejected record(s) permanently? Photos and voice for them are removed too.`,
+      )
+    ) {
+      return
+    }
+    setLoading(true)
+    try {
+      let n = 0
+      for (const it of rejected) {
+        try {
+          await deleteSubmission(it.id)
+          n += 1
+        } catch {
+          /* skip one failure, continue */
+        }
+      }
+      onToast?.(`Deleted ${n} rejected record(s)`, 'ok')
+      await load()
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const retryFactFor = useCallback(
     async (id) => {
@@ -328,6 +389,17 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
             disabled={loading}
           >
             Confirm all pending (batch)
+          </button>
+        )}
+        {status === 'rejected' && canReview && items.length > 0 && (
+          <button
+            type="button"
+            className="btn danger"
+            style={{ marginTop: 12, width: '100%' }}
+            onClick={bulkDeleteRejected}
+            disabled={loading}
+          >
+            Delete all rejected in this list
           </button>
         )}
         {status === 'pending' && !canReview && (
@@ -679,6 +751,16 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                       onClick={() => setStatusFor(item.id, 'rejected')}
                     >
                       Reject (r)
+                    </button>
+                  )}
+                  {canReview && item.status === 'rejected' && (
+                    <button
+                      type="button"
+                      className="btn small danger"
+                      disabled={busyId === item.id}
+                      onClick={() => deleteRejected(item.id)}
+                    >
+                      Delete
                     </button>
                   )}
                   {canReview && item.status !== 'pending' && (

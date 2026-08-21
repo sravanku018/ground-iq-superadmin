@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
+  deleteSubmission,
   getAdminAnalyze,
   getAnalytics,
   listSubmissions,
@@ -184,6 +185,22 @@ export default function AdminAnalyzeScreen({ onToast }) {
     try {
       await setSubmissionStatus(id, 'rejected')
       onToast?.('Marked rejected', 'ok')
+      await load()
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function deleteRejectedOne(id) {
+    if (!confirm('Delete this rejected record permanently? Photo and voice for it are removed too.')) {
+      return
+    }
+    setBusyId(id)
+    try {
+      await deleteSubmission(id)
+      onToast?.('Rejected record deleted', 'ok')
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -919,6 +936,16 @@ export default function AdminAnalyzeScreen({ onToast }) {
                                 onClick={() => rejectOne(it.id)}
                               >
                                 Reject
+                              </button>
+                            )}
+                            {it.status === 'rejected' && (
+                              <button
+                                type="button"
+                                className="btn small danger"
+                                disabled={busyId === it.id}
+                                onClick={() => deleteRejectedOne(it.id)}
+                              >
+                                Delete
                               </button>
                             )}
                           </div>

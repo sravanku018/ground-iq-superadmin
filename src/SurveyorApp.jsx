@@ -62,9 +62,11 @@ import {
   collapseDuplicateDrafts,
   deleteDraft,
   draftCount,
+  getPackage,
   listDrafts,
   listPendingPackages,
   pushDraft,
+  updatePackage,
 } from './localStore'
 import { clearSession, getSurveyForm } from './api'
 import { APP_BUILD, APP_VERSION, APP_VERSION_CODE, versionLabel } from './version'
@@ -213,10 +215,10 @@ function packageFailedRequirements(d) {
   if (d.phase === 'failed') return true
   const qa = d.qa || {}
   const hasGeo = qa.geo?.lat != null || qa.answers?.geo_lat != null
-  const hasPhoto = !!(d.photoDataUrl || d.hasPhoto || d.flags?.photo)
-  const hasVoice = !!(d.audioDataUrl || d.hasAudio || d.flags?.audio)
+  const hasPhoto = !!(d.hasPhoto || d.flags?.photo)
+  const hasVoice = !!(d.hasAudio || d.flags?.audio)
   if (d.kind !== 'draft' && (!hasGeo || !hasPhoto || !hasVoice)) return true
-  return /GPS|photo|voice|lock|incomplete|required|too large|compress|geo_lock/i.test(
+  return /GPS|voice|lock|incomplete|required|too large|compress|geo_lock/i.test(
     String(d.lastError || ''),
   )
 }
@@ -837,7 +839,10 @@ function DraftsScreen({ user, onToast, onEdit, questions }) {
   const load = useCallback(async () => {
     try {
       await collapseDuplicateDrafts().catch(() => {})
-      const [drafts, queued] = await Promise.all([listDrafts(), listPendingPackages()])
+      const [drafts, queued] = await Promise.all([
+        listDrafts({ media: false }),
+        listPendingPackages(),
+      ])
       const all = [
         ...(drafts || []).map((d) => ({ ...d, kind: 'draft' })),
         ...(queued || []).map((q) => ({ ...q, kind: 'queued' })),
@@ -941,9 +946,8 @@ function DraftsScreen({ user, onToast, onEdit, questions }) {
               </span>
             </div>
             <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
-              {String(d.createdAt || '').slice(0, 16).replace('T', ' ')} · geo{' '}
-              {qa.geo?.lat != null ? <Icon name="check" size={11} /> : <Icon name="cross" size={11} />} · photo {d.photoDataUrl ? <Icon name="check" size={11} /> : <Icon name="cross" size={11} />} · voice{' '}
-              {d.audioDataUrl ? <Icon name="check" size={11} /> : <Icon name="cross" size={11} />}
+              {String(d.createdAt || '').slice(0, 16).replace('T', ' ')}
+              {qa.form_key ? ` · ${qa.form_key}` : ''}
             </span>
 
             {isDraft && (
@@ -969,48 +973,53 @@ function DraftsScreen({ user, onToast, onEdit, questions }) {
               </p>
             )}
 
-            {(isDraft || failedReq) && (
-              <div className="act-actions">
-                {isDraft && (
-                  <button
-                    type="button"
-                    className="btn secondary"
-                    disabled={pushing === d.id}
-                    onClick={() => onEdit(d)}
-                  >
-                    Edit
-                  </button>
-                )}
-                {isDraft && !failedReq && (
-                  <button
-                    type="button"
-                    className="btn primary"
-                    disabled={pushing === d.id}
-                    onClick={() => push(d.id)}
-                  >
-                    {pushing === d.id ? 'Sending…' : 'Send'}
-                  </button>
-                )}
-                {failedReq && !isDraft && (
-                  <button
-                    type="button"
-                    className="btn secondary"
-                    disabled={pushing === d.id}
-                    onClick={retry}
-                  >
-                    Retry sync
-                  </button>
-                )}
+            <div
+              className="act-actions"
+              style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}
+            >
+              {!isSyncing && (
                 <button
                   type="button"
-                  className="btn secondary danger-cta"
+                  className="btn primary"
                   disabled={pushing === d.id}
-                  onClick={() => remove(d.id)}
+                  onClick={() => onEdit(d)}
+                  style={{ flex: '1 1 120px' }}
                 >
-                  Delete
+                  Edit
                 </button>
-              </div>
-            )}
+              )}
+              {isDraft && !failedReq && (
+                <button
+                  type="button"
+                  className="btn secondary"
+                  disabled={pushing === d.id}
+                  onClick={() => push(d.id)}
+                  style={{ flex: '1 1 120px' }}
+                >
+                  {pushing === d.id ? 'Sending…' : 'Send'}
+                </button>
+              )}
+              {failedReq && !isDraft && (
+                <button
+                  type="button"
+                  className="btn secondary"
+                  disabled={pushing === d.id}
+                  onClick={retry}
+                  style={{ flex: '1 1 120px' }}
+                >
+                  Retry sync
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn secondary danger-cta"
+                disabled={pushing === d.id || isSyncing}
+                onClick={() => remove(d.id)}
+                style={{ flex: '1 1 120px' }}
+              >
+                Delete
+              </button>
+            </div>
 
             <button
               type="button"
@@ -1654,16 +1663,25 @@ export default function SurveyorApp() {
               user={user}
               questions={questionsMeta?.questions}
               onToast={notify}
-              onEdit={(d) => {
+              onEdit={async (d) => {
                 if (lockForVerify) {
                   alertVerifyPending()
                   setTab('profile')
                   return
                 }
-                setEditDraft(d)
-                setCollectKey((k) => k + 1)
-                setTab('collect')
-                notify('Draft loaded — review, then send', 'ok')
+                try {
+                  let pkg = await getPackage(d.id)
+                  if (!pkg) pkg = d
+                  if (pkg.phase && pkg.phase !== 'draft' && pkg.phase !== 'syncing') {
+                    pkg = (await updatePackage(pkg.id, { phase: 'draft', lastError: null })) || pkg
+                  }
+                  setEditDraft(pkg)
+                  setCollectKey((k) => k + 1)
+                  setTab('collect')
+                  notify('Opened for edit — photo and voice stay on the phone', 'ok')
+                } catch (e) {
+                  notify(e.message || 'Could not open this record', 'error')
+                }
               }}
             />
           )}

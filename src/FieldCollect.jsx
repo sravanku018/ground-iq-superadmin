@@ -1750,7 +1750,7 @@ export default function FieldCollectScreen({
           </p>
           <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
             Device queue: <strong>{queueInfo?.pending ?? 0}</strong> waiting ·{' '}
-            <strong>{queueInfo?.failed ?? 0}</strong> failed · sync: QA → photo → audio
+            <strong>{queueInfo?.failed ?? 0}</strong> failed
           </p>
           {targetCount > 0 && (
             <div

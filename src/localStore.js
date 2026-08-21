@@ -215,6 +215,17 @@ function stripHeavy(pkg) {
   }
 }
 
+/** UI / queue lists must not carry photo or audio blobs. */
+export function withoutMedia(pkg) {
+  if (!pkg || typeof pkg !== 'object') return pkg
+  const { photoDataUrl, audioDataUrl, ...rest } = pkg
+  return {
+    ...rest,
+    hasPhoto: !!(photoDataUrl || rest.hasPhoto || rest.flags?.photo),
+    hasAudio: !!(audioDataUrl || rest.hasAudio || rest.flags?.audio),
+  }
+}
+
 function listPackagesMetaFallback() {
   try {
     return JSON.parse(localStorage.getItem('esurvey_packages_fallback') || '[]')
@@ -291,7 +302,7 @@ export async function removePackage(id) {
   emitChange({ type: 'removed', id })
 }
 
-/** Packages waiting for systematic sync (not done) */
+/** Packages waiting for systematic sync (not done). Never includes photo/audio blobs. */
 export async function listPendingPackages() {
   try {
     const db = await openDb()
@@ -300,17 +311,20 @@ export async function listPendingPackages() {
     return (all || [])
       .filter((p) => p.phase !== 'done' && p.phase !== 'draft')
       .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+      .map(withoutMedia)
   } catch {
     return listPackagesMetaFallback()
       .filter((p) => p.phase !== 'done' && p.phase !== 'draft')
       .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+      .map(withoutMedia)
   }
 }
 
 /** Drafts stay on this phone until the surveyor verifies and pushes them */
-export async function listDrafts() {
+export async function listDrafts(opts = {}) {
   const all = await listAllPackages()
-  return (all || []).filter((p) => p.phase === 'draft')
+  const drafts = (all || []).filter((p) => p.phase === 'draft')
+  return opts.media === false ? drafts.map(withoutMedia) : drafts
 }
 
 function draftOwnerKey(pkg) {
@@ -447,8 +461,8 @@ export async function queueStats() {
       attempts: p.attempts,
       lastError: p.lastError,
       recordIndex: p.recordIndex,
-      hasPhoto: !!p.photoDataUrl || p.hasPhoto,
-      hasAudio: !!p.audioDataUrl || p.hasAudio,
+      hasPhoto: !!(p.photoDataUrl || p.hasPhoto || p.flags?.photo),
+      hasAudio: !!(p.audioDataUrl || p.hasAudio || p.flags?.audio),
     })),
   }
 }

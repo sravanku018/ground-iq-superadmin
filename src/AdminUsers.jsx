@@ -27,6 +27,21 @@ import PhoneIndiaField from './PhoneIndiaField'
 import { digits10, isValidInMobile, toE164In, formatInMobile } from './phoneIn'
 import { compressImageFile } from './mediaOptimize'
 
+function formatIstStamp(v) {
+  if (!v) return ''
+  const d = v instanceof Date ? v : new Date(v)
+  if (Number.isNaN(d.getTime())) return String(v).replace('T', ' ').replace('Z', '')
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(d)
+}
+
 function surveyIdsOf(u) {
   return (Array.isArray(u?.surveys) ? u.surveys : [])
     .map((s) => {
@@ -105,6 +120,10 @@ function SurveySelect({ value, onChange, all, inline = false }) {
     )
   }
 
+  const selectedTitles = list
+    .filter((s) => selected.includes(String(s.id)))
+    .map((s) => s.title || String(s.id))
+
   return (
     <div ref={ref} style={{ position: 'relative', width: '100%' }}>
       <button
@@ -113,15 +132,15 @@ function SurveySelect({ value, onChange, all, inline = false }) {
         style={{ width: '100%', textAlign: 'left' }}
         onClick={() => setOpen((o) => !o)}
       >
-        {selected.length
-          ? `${selected.length} survey${selected.length > 1 ? 's' : ''} selected`
-          : 'Select surveys… (none = not assigned)'}
+        {selectedTitles.length
+          ? selectedTitles.join(' · ')
+          : 'Select surveys…'}
       </button>
       {open && (
         <div
           style={{
             position: 'absolute',
-            zIndex: 20,
+            zIndex: 80,
             top: '100%',
             left: 0,
             marginTop: 4,
@@ -131,7 +150,7 @@ function SurveySelect({ value, onChange, all, inline = false }) {
             border: '1px solid rgba(0,0,0,0.25)',
             borderRadius: 8,
             padding: 8,
-            maxHeight: 190,
+            maxHeight: 220,
             overflowY: 'auto',
             boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
           }}
@@ -2091,6 +2110,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       borderRadius: 10,
                       border: '1px solid #e2e8f0',
                       marginBottom: 16,
+                      overflow: 'visible',
                     }}
                   >
                     <h5 style={{ margin: '0 0 8px', fontSize: 14, color: '#0f172a' }}>
@@ -2099,8 +2119,8 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                     {canAssignSurveys ? (
                       <>
                         <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
-                          Tick every survey this person should load on the phone. Ticking a second
-                          survey keeps the first — it does not replace it.
+                          Open the list and tick every survey this person should load on the phone.
+                          A second survey is added — it does not replace the first.
                         </p>
                         <SurveySelect
                           value={profileSurveys}
@@ -2108,7 +2128,6 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                             void saveProfileSurveys(ids)
                           }}
                           all={surveysForAssign(profileSurveys)}
-                          inline
                         />
                         {profileSurveyBusy ? (
                           <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>Saving…</p>
@@ -2334,12 +2353,54 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       <p className="muted">No records for this filter.</p>
                     ) : (
                       <ul className="user-list">
-                        {profileData.items.map((it, i) => (
-                          <li key={it.id || i} style={{ padding: '10px 12px', background: '#f1f5f9', borderRadius: 8, marginBottom: 8 }}>
-                            <div>
+                        {profileData.items.map((it, i) => {
+                          const approved = it.status === 'confirmed'
+                          return (
+                          <li
+                            key={it.id || i}
+                            style={{
+                              padding: '10px 12px',
+                              background: '#f1f5f9',
+                              borderRadius: 8,
+                              marginBottom: 8,
+                              flexDirection: 'row',
+                              alignItems: 'flex-start',
+                              justifyContent: 'space-between',
+                              gap: 8,
+                            }}
+                          >
+                            <div style={{ minWidth: 0, flex: 1 }}>
                               <strong>#{it.record_index ?? it.id ?? i + 1}</strong>
-                              <span className="meta" style={{ marginLeft: 8 }}>
-                                {it.created_at || ''} · {it.form_key || 'field'}
+                              {approved ? (
+                                <span
+                                  style={{
+                                    marginLeft: 6,
+                                    color: '#059669',
+                                    fontWeight: 700,
+                                    fontSize: 12,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 3,
+                                    verticalAlign: 'middle',
+                                  }}
+                                >
+                                  <Icon name="check" size={13} /> Approved
+                                </span>
+                              ) : (
+                                <span
+                                  style={{
+                                    marginLeft: 6,
+                                    color: '#d97706',
+                                    fontWeight: 700,
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  Pending
+                                </span>
+                              )}
+                              <span className="meta" style={{ marginLeft: 0, display: 'block', marginTop: 4 }}>
+                                {formatIstStamp(it.created_at) || '—'}
+                                {it.form_key ? ` · ${it.form_key}` : ''}
                               </span>
                               <span className="meta" style={{ display: 'block', marginTop: 2 }}>
                                 {it.answers?.district || 'no district'}
@@ -2348,11 +2409,9 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                                   : ''}
                               </span>
                             </div>
-                            <span className={`pill ${it.status === 'confirmed' ? 'ok' : ''}`} style={{ background: it.status === 'confirmed' ? '#059669' : '#d97706', color: '#fff', fontWeight: 'bold' }}>
-                              {it.status === 'confirmed' ? 'Approved ✓' : 'Pending ⏳'}
-                            </span>
                           </li>
-                        ))}
+                          )
+                        })}
                       </ul>
                     )}
                   </>

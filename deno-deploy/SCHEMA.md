@@ -66,10 +66,13 @@ via `.catch()`. Known broken instance: the submissions/geo section of
 
 **`survey_assignments`** — junction: `survey_id → survey_form`,
 `user_id → app_users`. Surveyor↔project (separate from admin access).
-Written by both `PUT /api/surveys/:id/surveyors` (Surveys tab team picker)
-and `PUT /api/users/:id/surveys` (Surveyors tab). Read by `GET /api/users`
-(`user.surveys`) and field `GET /api/my-surveys`. Same rows either way —
-assigning from Surveys must show on the surveyor and load in the field app.
+Written by both `PUT /api/surveys/:id/surveyors` (Surveys tab / questions
+screen team picker) and `PUT /api/users/:id/surveys` (Surveyors tab).
+Those PUTs **merge** (insert missing, delete unchecked) — they must not
+DELETE the whole team and then insert, or a failed insert leaves the
+field app with nothing to load. Read by `GET /api/users` (`user.surveys`),
+field `GET /api/my-surveys`, and field `GET /api/questions` (surveyor role
+returns assigned surveys, never the platform `default` form).
 
 **`record_facts`**, **`survey_media`**, **`survey_respondents`**,
 **`question_bank`**, **`seat_limit_requests`**, **`seat_limits`** — see

@@ -538,33 +538,40 @@ export function getMySurveys() {
 }
 
 /**
- * Form for the field app: assigned survey if any, else the default form.
+ * Form for the field app: surveys assigned to this surveyor (GET /api/my-surveys).
  * Returns { form_key, title, questions, surveys: [...] }.
  */
-export async function getSurveyForm() {
-  try {
-    const mine = await getMySurveys()
-    if (mine && Array.isArray(mine.items) && mine.items.length) {
-      const item = mine.items[0]
-      return {
-        ...item,
-        questions: Array.isArray(item.questions) ? item.questions : [],
-        surveys: mine.items,
-      }
+function asQuestionList(raw) {
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
     }
-  } catch {
-    /* fall back to default */
   }
-  try {
-    const d = await getQuestions()
+  return []
+}
+
+export async function getSurveyForm() {
+  const mine = await getMySurveys()
+  const items = Array.isArray(mine?.items) ? mine.items : []
+  if (items.length) {
+    const item = items[0]
     return {
-      form_key: d?.form_key || 'default',
-      title: d?.title || 'Survey',
-      questions: Array.isArray(d?.questions) ? d.questions : [],
-      surveys: [],
+      ...item,
+      questions: asQuestionList(item.questions),
+      surveys: items.map((s) => ({ ...s, questions: asQuestionList(s.questions) })),
     }
-  } catch {
-    return { form_key: 'default', title: 'Survey', questions: [], surveys: [] }
+  }
+  // Do not fall back to the platform Field Survey — that is a different form
+  // and looks like "the survey would not load" after assigning a surveyor.
+  return {
+    form_key: '',
+    title: 'No survey assigned',
+    questions: [],
+    surveys: [],
   }
 }
 
@@ -594,7 +601,10 @@ export function createSurvey({ title, questions, company_name, admin_ids }) {
 
 /** Admin: full survey detail (questions + team + respondents) */
 export function getSurvey(id) {
-  return request(`/api/surveys/${id}`)
+  return request(`/api/surveys/${id}`).then((d) => {
+    if (d?.survey) d.survey.questions = asQuestionList(d.survey.questions)
+    return d
+  })
 }
 
 /** Admin: update title/questions; Super Admin may also update company_name */

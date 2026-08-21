@@ -2031,7 +2031,7 @@ export default function FieldCollectScreen({
                 {!questions.length && (
                   <div className="card">
                     <p className="muted">
-                      No questions from dashboard. Admin must save questions first.
+                      No questions loaded. Assign this surveyor on the survey (Surveys → field team), save questions, then pull to refresh.
                     </p>
                   </div>
                 )}

@@ -440,6 +440,44 @@ function parseQuestionsArray(raw: unknown): unknown[] {
   return Array.isArray(qs) ? qs : [];
 }
 
+/** Surveys assigned to a surveyor, with questions parsed for the field app. */
+async function listAssignedSurveys(
+  sqlFn: NonNullable<typeof sql>,
+  userId: number,
+): Promise<{
+  id: unknown;
+  form_key: unknown;
+  title: unknown;
+  display_lang: "en" | "te";
+  questions: unknown[];
+  updated_at: unknown;
+}[]> {
+  let rows = await sqlFn`
+    SELECT f.id, f.form_key, f.title, f.display_lang, f.questions, f.updated_at
+    FROM survey_assignments sa
+    JOIN survey_form f ON f.id = sa.survey_id
+    WHERE sa.user_id = ${userId}
+    ORDER BY f.title
+  `.catch(() => null);
+  if (!rows) {
+    rows = await sqlFn`
+      SELECT f.id, f.form_key, f.title, f.questions, f.updated_at
+      FROM survey_assignments sa
+      JOIN survey_form f ON f.id = sa.survey_id
+      WHERE sa.user_id = ${userId}
+      ORDER BY f.title
+    `.catch(() => []);
+  }
+  return (rows as Record<string, unknown>[]).map((r) => ({
+    id: r.id,
+    form_key: r.form_key,
+    title: r.title,
+    display_lang: surveyDisplayLang(r.display_lang),
+    questions: parseQuestionsArray(r.questions),
+    updated_at: r.updated_at,
+  }));
+}
+
 /**
  * Peak questions in any one survey a Client Admin can use (owned + shared + company projects).
  * Used for "Questions / survey (peak)" vs max_questions_per_survey.
@@ -7320,22 +7358,37 @@ async function rawHandler(req: Request): Promise<Response> {
       // Client Admin: own surveys + explicit shares only — no company
       // predicate (see SCHEMA.md: company is a display label, never a
       // live access check).
-      const rows = me.role === "super_admin"
-        ? (q
-            ? await sql`SELECT id, form_key, title, display_lang, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form WHERE LOWER(title) LIKE ${'%' + q + '%'} ORDER BY title`
-            : await sql`SELECT id, form_key, title, display_lang, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form ORDER BY title`)
-        : (q
-              ? await sql`
-                  SELECT id, form_key, title, display_lang, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
-                  WHERE (created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
-                    AND LOWER(title) LIKE ${'%' + q + '%'}
-                  ORDER BY title
-                `
-              : await sql`
-                  SELECT id, form_key, title, display_lang, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
-                  WHERE created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-                  ORDER BY title
-                `);
+      let rows: Record<string, unknown>[] = [];
+      try {
+        rows = (me.role === "super_admin"
+          ? (q
+              ? await sql`SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name FROM survey_form WHERE LOWER(title) LIKE ${'%' + q + '%'} ORDER BY title`
+              : await sql`SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name FROM survey_form ORDER BY title`)
+          : (q
+                ? await sql`
+                    SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name FROM survey_form
+                    WHERE (created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
+                      AND LOWER(title) LIKE ${'%' + q + '%'}
+                    ORDER BY title
+                  `
+                : await sql`
+                    SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name FROM survey_form
+                    WHERE created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                    ORDER BY title
+                  `)) as Record<string, unknown>[];
+      } catch {
+        const fallback = me.role === "super_admin"
+          ? await sql`SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form ORDER BY title`.catch(() => [])
+          : await sql`
+              SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form
+              WHERE created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+              ORDER BY title
+            `.catch(() => []);
+        rows = (fallback as Record<string, unknown>[]).map((r) => ({
+          ...r,
+          question_count: parseQuestionsArray(r.questions).length,
+        }));
+      }
 
       // Project → Client Admin connections for the Super Admin project list.
       const adminAccess = await sql`
@@ -7611,21 +7664,29 @@ async function rawHandler(req: Request): Promise<Response> {
       const id = Number(path.split("/")[3]);
       // Client Admin: own survey or explicit share only — no company
       // predicate (see SCHEMA.md).
-      const rows = me.role === "super_admin"
-        ? await sql`SELECT id, form_key, title, display_lang, questions, updated_at, created_by, company_name FROM survey_form WHERE id = ${id}`
+      let rows = me.role === "super_admin"
+        ? await sql`SELECT id, form_key, title, display_lang, questions, updated_at, created_by, company_name FROM survey_form WHERE id = ${id}`.catch(() => null)
         : await sql`
               SELECT id, form_key, title, display_lang, questions, updated_at, created_by, company_name FROM survey_form
               WHERE id = ${id} AND (
                 created_by = ${me.id}
                 OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
               )
-            `;
+            `.catch(() => null);
+      if (!rows) {
+        rows = me.role === "super_admin"
+          ? await sql`SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form WHERE id = ${id}`
+          : await sql`
+                SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form
+                WHERE id = ${id} AND (
+                  created_by = ${me.id}
+                  OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                )
+              `;
+      }
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
       const r = rows[0] as { id: number; form_key: string; title: string; display_lang?: string; questions: unknown; updated_at: string; created_by: number | null; company_name: string | null };
-      let questions = r.questions;
-      if (typeof questions === "string") {
-        try { questions = JSON.parse(questions); } catch { questions = []; }
-      }
+      const questions = parseQuestionsArray(r.questions);
       const team = me.role === "super_admin"
         ? await sql`
         SELECT u.id, u.username, u.display_name, u.active
@@ -8175,17 +8236,29 @@ async function rawHandler(req: Request): Promise<Response> {
           error: "Only surveyors you created can be added to this survey",
         }, 422);
       }
-      await sql`
-        DELETE FROM survey_assignments
+      // Merge — never DELETE the whole team first. A failed insert used to
+      // wipe assignments so the field app could not load this survey.
+      const currentRows = await sql`
+        SELECT user_id FROM survey_assignments
         WHERE survey_id = ${id} AND user_id IN (
           SELECT id FROM app_users WHERE created_by = ${me.id} AND role IN ('surveyor', 'field')
         )
-      `.catch(() => null);
-      const saved: number[] = [];
-      for (const uid of allowed) {
+      `.catch(() => []);
+      const current = new Set((currentRows as { user_id: number }[]).map((r) => Number(r.user_id)));
+      const next = new Set(allowed);
+      for (const uid of current) {
+        if (!next.has(uid)) {
+          await sql`
+            DELETE FROM survey_assignments WHERE survey_id = ${id} AND user_id = ${uid}
+          `.catch(() => null);
+        }
+      }
+      const saved: number[] = [...next].filter((uid) => current.has(uid));
+      for (const uid of next) {
+        if (current.has(uid)) continue;
         if (await upsertSurveyAssignment(id, uid)) saved.push(uid);
       }
-      if (allowed.length > 0 && saved.length === 0) {
+      if (next.size > 0 && saved.length === 0) {
         return json({ error: "Could not save surveyor assignments" }, 500);
       }
       return json({ ok: true, assigned: saved.length, user_ids: saved });
@@ -8239,22 +8312,30 @@ async function rawHandler(req: Request): Promise<Response> {
         }, 422);
       }
 
-      // Drop existing assignments for this surveyor on surveys this admin can manage
-      await sql`
-        DELETE FROM survey_assignments
+      const currentRows = await sql`
+        SELECT survey_id FROM survey_assignments
         WHERE user_id = ${userId}
           AND survey_id IN (
             SELECT id FROM survey_form
             WHERE created_by = ${me.id}
                OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
           )
-      `.catch(() => null);
-
-      const saved: number[] = [];
-      for (const sid of allowedSurveyIds) {
+      `.catch(() => []);
+      const current = new Set((currentRows as { survey_id: number }[]).map((r) => Number(r.survey_id)));
+      const next = new Set(allowedSurveyIds);
+      for (const sid of current) {
+        if (!next.has(sid)) {
+          await sql`
+            DELETE FROM survey_assignments WHERE survey_id = ${sid} AND user_id = ${userId}
+          `.catch(() => null);
+        }
+      }
+      const saved: number[] = [...next].filter((sid) => current.has(sid));
+      for (const sid of next) {
+        if (current.has(sid)) continue;
         if (await upsertSurveyAssignment(sid, userId)) saved.push(sid);
       }
-      if (allowedSurveyIds.length > 0 && saved.length === 0) {
+      if (next.size > 0 && saved.length === 0) {
         return json({ error: "Could not save survey assignments" }, 500);
       }
       return json({ ok: true, assigned: saved.length, survey_ids: saved });
@@ -8266,36 +8347,7 @@ async function rawHandler(req: Request): Promise<Response> {
       if (me.role !== "surveyor" && me.role !== "field" && me.role !== "admin") {
         return json({ error: "Forbidden" }, 403);
       }
-      let rows = await sql`
-        SELECT f.id, f.form_key, f.title, f.display_lang, f.questions, f.updated_at
-        FROM survey_assignments sa
-        JOIN survey_form f ON f.id = sa.survey_id
-        WHERE sa.user_id = ${me.id}
-        ORDER BY f.title
-      `.catch(() => null);
-      if (!rows) {
-        rows = await sql`
-          SELECT f.id, f.form_key, f.title, f.questions, f.updated_at
-          FROM survey_assignments sa
-          JOIN survey_form f ON f.id = sa.survey_id
-          WHERE sa.user_id = ${me.id}
-          ORDER BY f.title
-        `.catch(() => []);
-      }
-      const items = (rows as Record<string, unknown>[]).map((r) => {
-        let qs = r.questions;
-        if (typeof qs === "string") {
-          try { qs = JSON.parse(qs); } catch { qs = []; }
-        }
-        return {
-          id: r.id,
-          form_key: r.form_key,
-          title: r.title,
-          display_lang: surveyDisplayLang(r.display_lang),
-          questions: Array.isArray(qs) ? qs : [],
-          updated_at: r.updated_at,
-        };
-      });
+      const items = await listAssignedSurveys(sql, Number(me.id));
       return json({ items, count: items.length });
     }
 
@@ -8347,6 +8399,28 @@ async function rawHandler(req: Request): Promise<Response> {
     // ── Dynamic questions (field app loads automatically) ───
     if (path === "/api/questions" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
+      // Surveyors must get the survey they were assigned (Surveys tab / questions
+      // screen), not the platform Field Survey default.
+      if (me.role === "surveyor" || me.role === "field") {
+        const items = await listAssignedSurveys(sql, Number(me.id));
+        const first = items[0];
+        if (!first) {
+          return json({
+            form_key: "",
+            title: "No survey assigned",
+            questions: [],
+            surveys: [],
+            updated_at: null,
+          });
+        }
+        return json({
+          ...first,
+          surveys: items,
+          require_geo: true,
+          require_photo: true,
+          require_audio: true,
+        });
+      }
       try {
         const rows = await sql`
           SELECT form_key, title, questions, updated_at

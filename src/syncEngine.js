@@ -106,6 +106,7 @@ export async function syncOnePackage(id) {
       if (!pkg.qa?.geo?.lat || !pkg.photoDataUrl || !pkg.audioDataUrl) {
         throw new Error('Package incomplete — GPS, photo and voice are locked requirements')
       }
+      const recIdx = Number(pkg.recordIndex)
       const qaBody = {
         form_key: pkg.qa.form_key,
         form_id: pkg.qa.form_id,
@@ -114,9 +115,11 @@ export async function syncOnePackage(id) {
         geo: pkg.qa.geo,
         location_details: pkg.qa.location_details || null,
         locks: pkg.locks || pkg.qa.locks || { geo: true, photo: true, voice: true },
+        record_index: Number.isFinite(recIdx) && recIdx > 0 ? recIdx : null,
         answers: {
           ...pkg.qa.answers,
           client_package_id: pkg.id,
+          ...(Number.isFinite(recIdx) && recIdx > 0 ? { _recordIndex: recIdx } : {}),
         },
         // Push app version with every sync so admin knows which build collected data
         app_version:

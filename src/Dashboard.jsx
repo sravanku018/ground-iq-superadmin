@@ -1230,13 +1230,20 @@ export default function DashboardScreen({ onToast }) {
             </ChartCard>
           )}
 
-          {(charts?.questionCharts || []).map((q) => (
+          {(charts?.questionCharts || []).map((q) => {
+            const n = (q.counts || []).length
+            const pieOk =
+              ['yesno', 'sentiment', 'sentiment_text', 'abc', 'meter'].includes(q.type) &&
+              n > 0 &&
+              n <= 6 &&
+              (q.counts || []).some((c) => Number(c.value) > 0)
+            return (
             <ChartCard
               key={q.id}
               title={q.label}
-              subtitle="From Client Admin questions — tap to filter"
+              subtitle="Every option for this question — tap to filter"
             >
-              {q.type !== 'text' ? (
+              {pieOk ? (
                 <InteractivePie
                   data={q.counts}
                   activeName={filters[`q_${q.id}`] || ''}
@@ -1252,7 +1259,8 @@ export default function DashboardScreen({ onToast }) {
                 />
               )}
             </ChartCard>
-          ))}
+            )
+          })}
 
           <ChartCard title="Top constituencies" subtitle="By response count" tall>
             <HBar data={charts?.byConstituency} />

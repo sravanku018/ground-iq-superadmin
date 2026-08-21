@@ -1778,6 +1778,19 @@ function isDraftSubmission(payload: Record<string, unknown>): boolean {
   );
 }
 
+/** Field record number (1, 2, 3…) — not the database id. */
+function recordIndexOf(payload: Record<string, unknown>): number | null {
+  const a = (payload?.answers || {}) as Record<string, unknown>;
+  const n = Number(
+    payload?.record_index ??
+      payload?.recordIndex ??
+      a._recordIndex ??
+      a.recordIndex,
+  );
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+
 /**
  * Surveyor work status for Report boards:
  * - completed = Client Admin confirmed AND not a draft
@@ -2056,8 +2069,84 @@ function withTeLabels<T extends { name: string }>(
   }));
 }
 
+function coerceOptionName(o: unknown): string {
+  if (o == null) return "";
+  if (typeof o === "object") {
+    const rec = o as Record<string, unknown>;
+    return String(rec.label || rec.value || rec.name || "").trim();
+  }
+  return String(o).trim();
+}
+
+const CHOICE_Q_TYPES = new Set([
+  "yesno",
+  "abc",
+  "choice",
+  "sentiment",
+  "sentiment_text",
+  "meter",
+  "age",
+  "range",
+  "numeric_range",
+]);
+
+function defaultQuestionOptions(type: string): string[] {
+  if (type === "age") return [...AGE_OPTIONS];
+  if (type === "yesno") return ["Yes", "No"];
+  if (type === "abc") return ["A", "B", "C", "D"];
+  if (type === "sentiment" || type === "sentiment_text" || type === "meter") {
+    return ["Positive", "Neutral", "Negative"];
+  }
+  if (type === "range" || type === "numeric_range") {
+    return ["10-20", "21-30", "31-40", "41-50", "50+"];
+  }
+  return [];
+}
+
+/** Map a raw answer onto chart/filter option name(s). */
+function chartNamesFromAnswer(
+  type: string,
+  raw: unknown,
+  options: string[],
+): string[] {
+  const vals = Array.isArray(raw) ? raw : [raw];
+  const out: string[] = [];
+  for (const v of vals) {
+    const s = String(v ?? "").trim();
+    if (!s || s === "Unknown" || s === "undefined") continue;
+    if (type === "age") {
+      const b = ageBucket(s);
+      if (b) out.push(b);
+      continue;
+    }
+    if (type === "meter") {
+      const n = Number(s.replace("%", "").replace(/[^0-9.+-]/g, ""));
+      if (Number.isFinite(n) && n > 0) {
+        out.push(n <= 33 ? "Negative" : n <= 66 ? "Neutral" : "Positive");
+        continue;
+      }
+    }
+    if (type === "sentiment" || type === "sentiment_text") {
+      const tag = s.match(/\[(Positive|Neutral|Negative)\]/i);
+      if (tag) {
+        const t = tag[1].toLowerCase();
+        out.push(t.charAt(0).toUpperCase() + t.slice(1));
+        continue;
+      }
+      const low = s.toLowerCase();
+      if (/\bpositive\b/.test(low)) out.push("Positive");
+      else if (/\bnegative\b/.test(low)) out.push("Negative");
+      else if (/\bneutral\b/.test(low)) out.push("Neutral");
+      continue;
+    }
+    const hit = options.find((o) => o.toLowerCase() === s.toLowerCase());
+    out.push(hit || s);
+  }
+  return out;
+}
+
 function optionTeMap(options: unknown, optionsTe: unknown): Map<string, string> {
-  const opts = Array.isArray(options) ? options.map((x) => String(x ?? "")) : [];
+  const opts = Array.isArray(options) ? options.map(coerceOptionName) : [];
   const tes = Array.isArray(optionsTe) ? optionsTe.map((x) => String(x ?? "")) : [];
   const m = new Map<string, string>();
   opts.forEach((en, i) => {
@@ -3029,7 +3118,10 @@ async function loadAnalyticsRows(
     }
     if (!Array.isArray(issues)) issues = [];
 
-    const status = payloadStatus(payload);
+    // Drafts (even if status was wrongly set to confirmed) stay out of
+    // dashboard confirmed counts — same rule as workStatusOf().
+    const work = workStatusOf(payload);
+    const status = work === "completed" ? "confirmed" : work;
     const verify = verifyWithMedia(payload, mediaMap, Number(row.id));
     const surveyor = surveyorNameOf(payload);
     return {
@@ -3236,26 +3328,30 @@ async function buildAnalytics(
         if (!id || seen.has(id)) continue;
         seen.add(id);
         const type = String(q.type || "text");
-        const defined = Array.isArray(q.options) ? q.options.map(String) : [];
-        const opts = type === "age" ? [...AGE_OPTIONS] : [...defined];
+        const defined = Array.isArray(q.options)
+          ? q.options.map(coerceOptionName).filter(Boolean)
+          : [];
         const aliases = aliasesById.get(id) || [];
-        if (type === "text" || !opts.length) {
-          const seenVals = new Set<string>(opts);
-          for (const r of universe) {
-            const av = answerOf(r.answers, id, String(q.label || ""), aliases);
-            const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
-            for (const v of vals) if (v && v !== "Unknown" && v !== "undefined") seenVals.add(v);
-          }
-          opts.push(...seenVals);
+        const opts: string[] = [];
+        const pushOpt = (name: string) => {
+          const n = String(name || "").trim();
+          if (!n) return;
+          if (!opts.some((o) => o.toLowerCase() === n.toLowerCase())) opts.push(n);
+        };
+        for (const d of defaultQuestionOptions(type)) pushOpt(d);
+        for (const d of defined) pushOpt(d);
+        for (const r of universe) {
+          const av = answerOf(r.answers, id, String(q.label || ""), aliases);
+          for (const n of chartNamesFromAnswer(type, av, opts)) pushOpt(n);
         }
         const optionsTe = Array.isArray(q.options_te) ? q.options_te.map(String) : [];
-        const optTe = optionTeMap(defined, optionsTe);
+        const optTe = optionTeMap(defined.length ? defined : opts, optionsTe);
         surveyQuestions.push({
           id,
           label: String(q.label || id),
           label_te: String(q.label_te || "").trim(),
           type,
-          options: [...new Set(opts)].slice(0, 100),
+          options: opts,
           options_te: optionsTe,
           aliases,
           optTe,
@@ -3274,11 +3370,9 @@ async function buildAnalytics(
       for (const [qid, want] of dynFilters) {
         const q = surveyQuestions.find((sq) => sq.id === qid || sq.aliases.includes(qid));
         const av = answerOf(r.answers, qid, q?.label, q?.aliases);
-        const hit = q?.type === "age"
-          ? ageBucket(av) === want
-          : Array.isArray(av)
-            ? av.map(String).includes(want)
-            : String(av ?? "") === want;
+        const names = chartNamesFromAnswer(q?.type || "", av, q?.options || []);
+        const hit = names.some((n) => n === want) ||
+          (Array.isArray(av) ? av.map(String).includes(want) : String(av ?? "") === want);
         if (!hit) return false;
       }
       return true;
@@ -3401,38 +3495,49 @@ async function buildAnalytics(
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-60);
 
-  // Per-question distribution charts — report forms from the Client Admin's
-  // question naming (every survey, or the selected survey only).
-  const questionCharts = surveyQuestions
-    .map((q) => {
-      const map = new Map<string, number>();
-      for (const r of rows) {
-        const av = answerOf(r.answers, q.id, q.label, q.aliases);
-        const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
-        for (const v of vals) {
-          const name = q.type === "age" ? ageBucket(v) : String(v).trim();
-          if (!name || name === "Unknown" || name === "undefined") continue;
-          map.set(name, (map.get(name) || 0) + 1);
-        }
+  function countsForQuestion(
+    q: (typeof surveyQuestions)[number],
+    list: Row[],
+  ) {
+    const map = new Map<string, number>();
+    const choice = CHOICE_Q_TYPES.has(q.type) || (q.type !== "text" && q.options.length > 0);
+    if (choice) {
+      for (const opt of q.options) map.set(opt, 0);
+    }
+    for (const r of list) {
+      const av = answerOf(r.answers, q.id, q.label, q.aliases);
+      for (const name of chartNamesFromAnswer(q.type, av, q.options)) {
+        map.set(name, (map.get(name) || 0) + 1);
       }
-      return {
-        id: q.id,
-        label: q.label_te || q.label,
-        label_en: q.label,
-        type: q.type,
-        counts: withTeLabels(
-          withPct(
-            [...map.entries()]
-              .map(([name, value]) => ({ name, value, pct: 0 }))
-              .sort((a, b) => b.value - a.value)
-              .slice(0, 12),
-          ),
-          "value",
-          q.optTe,
-        ),
-      };
-    })
-    .filter((q) => q.counts.length > 0);
+    }
+    const order = q.options;
+    let entries = [...map.entries()];
+    entries.sort((a, b) => {
+      const ia = order.findIndex((o) => o.toLowerCase() === a[0].toLowerCase());
+      const ib = order.findIndex((o) => o.toLowerCase() === b[0].toLowerCase());
+      if (ia >= 0 && ib >= 0) return ia - ib;
+      if (ia >= 0) return -1;
+      if (ib >= 0) return 1;
+      return b[1] - a[1] || a[0].localeCompare(b[0]);
+    });
+    if (!choice && entries.length > 50) {
+      entries = [...entries].sort((a, b) => b[1] - a[1]).slice(0, 50);
+    }
+    return withTeLabels(
+      withPct(entries.map(([name, value]) => ({ name, value, pct: 0 }))),
+      "value",
+      q.optTe,
+    );
+  }
+
+  // Per-question charts: every survey question, every defined option (0 counts stay visible).
+  const questionCharts = surveyQuestions.map((q) => ({
+    id: q.id,
+    label: q.label_te || q.label,
+    label_en: q.label,
+    type: q.type,
+    counts: countsForQuestion(q, rows),
+  }));
 
   // Cross-tabs for maps
   const partyOrder = ["Congress", "BJP", "BRS", "Others", "Undecided"];
@@ -3625,31 +3730,15 @@ async function buildAnalytics(
       // Counts come from `subset` (all active filters applied — district/party/
       // gender/caste/q_* included) so the numbers shown next to each option
       // match what the charts are currently displaying, not the unfiltered universe.
-      questions: surveyQuestions.map((q) => {
-        const map = new Map<string, number>();
-        for (const r of subset) {
-          const av = answerOf(r.answers, q.id, q.label, q.aliases);
-          const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
-          for (const v of vals) {
-            const name = q.type === "age" ? ageBucket(v) : v;
-            if (!name || name === "Unknown") continue;
-            map.set(name, (map.get(name) || 0) + 1);
-          }
-        }
-        const counts = [...map.entries()]
-          .map(([name, value]) => ({ name, value }))
-          .sort((a, b) => b.value - a.value)
-          .slice(0, 100);
-        return {
-          id: q.id,
-          label: q.label_te || q.label,
-          label_en: q.label,
-          type: q.type,
-          options: q.options,
-          options_te: q.options_te,
-          counts: withTeLabels(counts, "value", q.optTe),
-        };
-      }),
+      questions: surveyQuestions.map((q) => ({
+        id: q.id,
+        label: q.label_te || q.label,
+        label_en: q.label,
+        type: q.type,
+        options: q.options,
+        options_te: q.options_te,
+        counts: countsForQuestion(q, subset),
+      })),
       // Surveyor × month (each surveyor's monthly totals)
       by_surveyor_month: (() => {
         const map = new Map<string, { surveyor: string; month: string; value: number }>();
@@ -4114,9 +4203,6 @@ async function rawHandler(req: Request): Promise<Response> {
     if (path === "/api/stats" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
       const statsScope = await adminFormKeyScope(sql, me);
-      const [subs] = statsScope
-        ? await sql`SELECT COUNT(*)::int AS n FROM submissions WHERE payload->>'form_key' = ANY(${statsScope})`
-        : await sql`SELECT COUNT(*)::int AS n FROM submissions`;
       const [dists] = await sql`SELECT COUNT(*)::int AS n FROM districts`.catch(() => [{ n: 0 }]);
       const [mands] = await sql`SELECT COUNT(*)::int AS n FROM mandals`.catch(() => [{ n: 0 }]);
       const [acs] = await sql`SELECT COUNT(*)::int AS n FROM assembly_constituencies`.catch(() => [{ n: 0 }]);
@@ -4128,25 +4214,71 @@ async function rawHandler(req: Request): Promise<Response> {
         FROM record_facts
       `.catch(() => [{ dist_count: 0, ac_count: 0 }]);
 
-      const surveyDistricts = Number((factGeo as Record<string, unknown>)?.dist_count || dists?.n || 0);
-      const surveyAcs = Number((factGeo as Record<string, unknown>)?.ac_count || acs?.n || 0);
-
       // Review outcome lives on payload.status. fact_status is the
       // materialization pipeline only (materialized/failed/NULL) — it is
       // cleared on reject, so counting it merges rejected into pending.
+      // Field drafts (even if status was set confirmed) count as pending.
       const [statusRow] = statsScope
         ? await sql`
             SELECT
-              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') = 'confirmed')::int AS confirmed,
-              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') = 'rejected')::int AS rejected,
-              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected'))::int AS pending
+              COUNT(*) FILTER (
+                WHERE NOT (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+                AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+              )::int AS confirmed,
+              COUNT(*) FILTER (
+                WHERE NOT (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+                AND COALESCE(payload->>'status', 'pending') = 'rejected'
+              )::int AS rejected,
+              COUNT(*) FILTER (
+                WHERE (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+                OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
+              )::int AS pending
             FROM submissions WHERE payload->>'form_key' = ANY(${statsScope})
           `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }])
         : await sql`
             SELECT
-              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') = 'confirmed')::int AS confirmed,
-              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') = 'rejected')::int AS rejected,
-              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected'))::int AS pending
+              COUNT(*) FILTER (
+                WHERE NOT (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+                AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+              )::int AS confirmed,
+              COUNT(*) FILTER (
+                WHERE NOT (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+                AND COALESCE(payload->>'status', 'pending') = 'rejected'
+              )::int AS rejected,
+              COUNT(*) FILTER (
+                WHERE (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+                OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
+              )::int AS pending
             FROM submissions
           `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }]);
 
@@ -4154,15 +4286,76 @@ async function rawHandler(req: Request): Promise<Response> {
       const rejected = Number((statusRow as Record<string, unknown>)?.rejected || 0);
       const pending = Number((statusRow as Record<string, unknown>)?.pending || 0);
 
+      // Districts / ACs in *survey data*, not the master geo tables (those
+      // would show ~30 Telangana districts even with two confirmed records).
+      const [distFromData] = statsScope
+        ? await sql`
+            SELECT COUNT(DISTINCT NULLIF(TRIM(payload->'answers'->>'district'), ''))::int AS n
+            FROM submissions
+            WHERE payload->>'form_key' = ANY(${statsScope})
+              AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+              AND NOT (
+                COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+              )
+          `.catch(() => [{ n: 0 }])
+        : await sql`
+            SELECT COUNT(DISTINCT NULLIF(TRIM(payload->'answers'->>'district'), ''))::int AS n
+            FROM submissions
+            WHERE COALESCE(payload->>'status', 'pending') = 'confirmed'
+              AND NOT (
+                COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+              )
+          `.catch(() => [{ n: 0 }]);
+      const [acFromData] = statsScope
+        ? await sql`
+            SELECT COUNT(DISTINCT NULLIF(TRIM(COALESCE(
+              payload->'answers'->>'constituency',
+              payload->'answers'->>'assembly_constituency'
+            )), ''))::int AS n
+            FROM submissions
+            WHERE payload->>'form_key' = ANY(${statsScope})
+              AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+              AND NOT (
+                COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+              )
+          `.catch(() => [{ n: 0 }])
+        : await sql`
+            SELECT COUNT(DISTINCT NULLIF(TRIM(COALESCE(
+              payload->'answers'->>'constituency',
+              payload->'answers'->>'assembly_constituency'
+            )), ''))::int AS n
+            FROM submissions
+            WHERE COALESCE(payload->>'status', 'pending') = 'confirmed'
+              AND NOT (
+                COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+              )
+          `.catch(() => [{ n: 0 }]);
+      const dataDistricts = Number((distFromData as Record<string, unknown>)?.n || 0);
+      const dataAcs = Number((acFromData as Record<string, unknown>)?.n || 0);
+      const surveyDistrictsLive = dataDistricts || Number((factGeo as Record<string, unknown>)?.dist_count || 0);
+      const surveyAcsLive = dataAcs || Number((factGeo as Record<string, unknown>)?.ac_count || 0);
+
       return json({
-        submissions: subs?.n ?? 0,
+        submissions: confirmed + pending + rejected,
         survey_responses: srs?.n ?? 0,
         pending,
         confirmed,
         rejected,
-        // Survey coverage from confirmed analytics universe
-        districts: surveyDistricts,
-        assembly_constituencies: surveyAcs,
+        // Survey coverage from confirmed records (not master geo tables)
+        districts: surveyDistrictsLive,
+        assembly_constituencies: surveyAcsLive,
         districts_master: dists?.n ?? 0,
         mandals: mands?.n ?? 0,
         assembly_constituencies_master: acs?.n ?? 0,
@@ -5962,6 +6155,7 @@ async function rawHandler(req: Request): Promise<Response> {
           audio_url: payload?.audio_url || null,
           media_storage: payload?.media_storage || null,
           proof_validated: payload?.proof_validated || null,
+          record_index: recordIndexOf(payload),
         };
       });
 
@@ -8040,22 +8234,28 @@ async function rawHandler(req: Request): Promise<Response> {
         arr.push({ url, kind: m.kind });
         mediaMap.set(Number(m.submission_id), arr);
       }
-      const items = (rows as Record<string, unknown>[]).map((r) => {
-        const payload = parsePayload(r.payload);
-        const answers = (payload?.answers || payload) as Record<string, unknown>;
-        const media = mediaMap.get(Number(r.id)) || [];
-        return {
-          id: r.id,
-          created_at: r.created_at,
-          status: payloadStatus(payload),
-          submitted_by: String(
-            payload?.submitted_by || answers?.data_collector || "",
-          ),
-          photo_url: media.find((m) => m.kind === "photo")?.url || null,
-          audio_url: media.find((m) => m.kind === "audio")?.url || null,
-          media,
-        };
-      });
+      const items = (rows as Record<string, unknown>[])
+        .map((r) => {
+          const payload = parsePayload(r.payload);
+          if (isDraftSubmission(payload)) return null;
+          const answers = (payload?.answers || {}) as Record<string, unknown>;
+          const media = mediaMap.get(Number(r.id)) || [];
+          return {
+            id: r.id,
+            created_at: r.created_at,
+            status: payloadStatus(payload),
+            submitted_by: String(
+              payload?.submitted_by || answers?.data_collector || "",
+            ),
+            record_index: recordIndexOf(payload),
+            form_key: String(payload?.form_key || "default"),
+            answers,
+            photo_url: media.find((m) => m.kind === "photo")?.url || null,
+            audio_url: media.find((m) => m.kind === "audio")?.url || null,
+            media,
+          };
+        })
+        .filter(Boolean);
       return json({ items, count: items.length });
     }
 
@@ -8205,6 +8405,12 @@ async function rawHandler(req: Request): Promise<Response> {
         }
       }
 
+      const recIdxRaw = Number(
+        body.record_index ??
+          (answers as Record<string, unknown>)?._recordIndex ??
+          (answers as Record<string, unknown>)?.recordIndex,
+      );
+      const recIdx = Number.isFinite(recIdxRaw) && recIdxRaw > 0 ? Math.round(recIdxRaw) : null;
       const payload = {
         form_key: body.form_key || "default",
         form_id: body.form_id || `field-${Date.now()}`,
@@ -8213,12 +8419,17 @@ async function rawHandler(req: Request): Promise<Response> {
         user_id: me.id,
         user_role: me.role,
         status: "pending",
+        record_index: recIdx,
         geo: geo,
         location_details: body.location_details || null,
         locks: body.locks || { geo: true },
         has_photo: false,
         has_audio: false,
-        answers: { ...answers, data_collector: agent },
+        answers: {
+          ...answers,
+          data_collector: agent,
+          ...(recIdx != null ? { _recordIndex: recIdx } : {}),
+        },
         // Q/A separated from media blobs
         content_type: "qa",
         // Client app version (pushed from React build)

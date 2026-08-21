@@ -161,10 +161,38 @@ function groupRecordsByDay(records) {
   }))
 }
 
+/** Sequential 1..N by created time (oldest = 1). Optional storedKey uses saved record number when set. */
+function recordNumberMap(records, idKey = 'id', timeKey = 'created_at', storedKey = 'record_index') {
+  const list = records || []
+  const map = new Map()
+  const sorted = [...list].sort((a, b) =>
+    String(a?.[timeKey] || '').localeCompare(String(b?.[timeKey] || '')),
+  )
+  sorted.forEach((r, i) => {
+    const stored = storedKey ? Number(r?.[storedKey]) : NaN
+    map.set(r[idKey], Number.isFinite(stored) && stored > 0 ? stored : i + 1)
+  })
+  return map
+}
+
+function packageFailedRequirements(d) {
+  if (!d) return false
+  if (d.phase === 'failed') return true
+  const qa = d.qa || {}
+  const hasGeo = qa.geo?.lat != null || qa.answers?.geo_lat != null
+  const hasPhoto = !!(d.photoDataUrl || d.hasPhoto || d.flags?.photo)
+  const hasVoice = !!(d.audioDataUrl || d.hasAudio || d.flags?.audio)
+  if (d.kind !== 'draft' && (!hasGeo || !hasPhoto || !hasVoice)) return true
+  return /GPS|photo|voice|lock|incomplete|required|too large|compress|geo_lock/i.test(
+    String(d.lastError || ''),
+  )
+}
+
 function HomeScreen({
   user,
   network,
   pendingSync,
+  pendingLocal,
   myProgress,
   questionsMeta,
   onNewSurvey,
@@ -177,6 +205,7 @@ function HomeScreen({
   const target = myProgress?.target ?? 0
   const complete = myProgress?.complete || (target > 0 && done >= target)
   const qCount = questionsMeta?.count ?? questionsMeta?.questions?.length ?? 0
+  const localPending = pendingLocal ?? pendingSync ?? 0
 
   return (
     <div className="screen home-screen">
@@ -196,10 +225,10 @@ function HomeScreen({
             <span className="dot" />
             {label}
           </div>
-          {pendingSync > 0 && (
+          {localPending > 0 && (
             <div className="pill warn">
               <span className="dot" />
-              {pendingSync} queued on phone
+              {localPending} pending on phone
             </div>
           )}
           {complete && (
@@ -220,8 +249,8 @@ function HomeScreen({
           <span>On server</span>
         </div>
         <div className="stat">
-          <strong>{pendingSync ?? 0}</strong>
-          <span>Queued</span>
+          <strong>{localPending}</strong>
+          <span>Pending</span>
         </div>
         <div className="stat">
           <strong>{qCount || '—'}</strong>
@@ -296,6 +325,7 @@ function MyRecordsScreen({ user, onToast }) {
   const [records, setRecords] = useState(null)
   const [openId, setOpenId] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
+  const recNums = recordNumberMap(records || [])
 
   const load = useCallback(async () => {
     setRefreshing(true)
@@ -311,6 +341,9 @@ function MyRecordsScreen({ user, onToast }) {
 
   useEffect(() => {
     load()
+    const onRefresh = () => load()
+    window.addEventListener('esurvey-activity-refresh', onRefresh)
+    return () => window.removeEventListener('esurvey-activity-refresh', onRefresh)
   }, [load])
 
   return (
@@ -345,6 +378,7 @@ function MyRecordsScreen({ user, onToast }) {
               const open = openId === r.id
               const isConfirmed = r.status === 'confirmed' || r.fact_status === 'confirmed' || r.fact_status === 'materialized'
               const ans = r.answers || r.payload?.answers || {}
+              const recNo = recNums.get(r.id) ?? r.record_index ?? r.id
               return (
                 <div key={r.id} className="card" style={{ marginTop: 10, padding: 12 }}>
                   <button
@@ -360,7 +394,7 @@ function MyRecordsScreen({ user, onToast }) {
                     onClick={() => setOpenId(open ? null : r.id)}
                   >
                     <span style={{ fontWeight: 600, fontSize: 14 }}>
-                      Activity #{r.id}
+                      Record #{recNo}
                       <span className={`pill ${isConfirmed ? 'ok' : ''}`} style={{ marginLeft: 8 }}>
                         {isConfirmed ? <><Icon name="check" size={11} /> Confirmed</> : r.status || 'pending'}
                       </span>
@@ -381,8 +415,8 @@ function MyRecordsScreen({ user, onToast }) {
                         <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6 }}>
                           <tbody>
                             <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                              <td className="muted" style={{ padding: '6px 8px' }}>Activity ID:</td>
-                              <td style={{ textAlign: 'right', fontWeight: 600, padding: '6px 8px' }}>#{r.id}</td>
+                              <td className="muted" style={{ padding: '6px 8px' }}>Record number:</td>
+                              <td style={{ textAlign: 'right', fontWeight: 600, padding: '6px 8px' }}>#{recNo}</td>
                             </tr>
                             <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
                               <td className="muted" style={{ padding: '6px 8px' }}>Status:</td>
@@ -803,7 +837,7 @@ function DraftsScreen({ user, onToast, onEdit }) {
   }
 
   const remove = async (id) => {
-    if (!confirm('Delete this activity from the phone?')) return
+    if (!confirm('Delete this from the phone? It will not be sent.')) return
     await deleteDraft(id).catch(() => {})
     await load()
   }
@@ -815,6 +849,7 @@ function DraftsScreen({ user, onToast, onEdit }) {
 
   const draftN = (items || []).filter((i) => i.kind === 'draft').length
   const queuedN = (items || []).filter((i) => i.kind === 'queued').length
+  const pendingNums = recordNumberMap(items || [], 'id', 'createdAt', null)
 
   return (
     <div className="screen home-screen">
@@ -848,7 +883,7 @@ function DraftsScreen({ user, onToast, onEdit }) {
         </div>
       )}
 
-      {items?.map((d, idx) => {
+      {items?.map((d) => {
         const qa = d.qa || {}
         const a = qa.answers || {}
         const loc = qa.location_details || {}
@@ -856,18 +891,20 @@ function DraftsScreen({ user, onToast, onEdit }) {
         const isDraft = d.kind === 'draft'
         const isFailed = d.phase === 'failed'
         const isSyncing = d.phase === 'syncing'
-        const recordNum = d.recordIndex != null ? d.recordIndex : (items.length - idx)
+        const failedReq = packageFailedRequirements(d)
+        const pendingNo = pendingNums.get(d.id) ?? 0
+        const kindLabel = isFailed || failedReq ? 'Failed' : isDraft ? 'Draft' : 'Queued'
         return (
           <div key={d.id} className="card" style={{ marginTop: 12, padding: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
               <strong style={{ fontSize: 14 }}>
                 {a.respondent_name || a.district || loc.display_name || 'Survey'}
                 <span className="pill" style={{ fontWeight: 'bold', background: '#e0f2fe', color: '#0369a1', marginLeft: 6 }}>
-                  Activity #{recordNum}
+                  {kindLabel} #{pendingNo}
                 </span>
               </strong>
-              <span className={`pending-chip ${isFailed ? 'fail' : isDraft ? 'draft' : 'sync'}`}>
-                {isFailed ? 'failed' : isDraft ? 'draft' : 'to sync'}
+              <span className={`pending-chip ${isFailed || failedReq ? 'fail' : isDraft ? 'draft' : 'sync'}`}>
+                {isFailed || failedReq ? 'failed' : isDraft ? 'draft' : 'to sync'}
               </span>
             </div>
             <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
@@ -885,35 +922,52 @@ function DraftsScreen({ user, onToast, onEdit }) {
               </span>
             )}
 
-            {isFailed && (
+            {(isFailed || failedReq) && (
               <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
-                Sync failed{d.lastError ? `: ${d.lastError}` : ''} — tap “Sync now” to retry.
+                {isFailed
+                  ? `Sync failed${d.lastError ? `: ${d.lastError}` : ''}`
+                  : 'Missing GPS, photo or voice lock'}
+                {' '}— delete this item or fix and retry.
               </p>
             )}
-            {!isDraft && !isFailed && (
+            {!isDraft && !isFailed && !failedReq && (
               <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
                 {isSyncing ? 'Syncing to server…' : 'Waiting for network — auto-syncs when online.'}
               </p>
             )}
 
-            {isDraft && (
+            {(isDraft || failedReq) && (
               <div className="act-actions">
-                <button
-                  type="button"
-                  className="btn secondary"
-                  disabled={pushing === d.id}
-                  onClick={() => onEdit(d)}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="btn primary"
-                  disabled={pushing === d.id}
-                  onClick={() => push(d.id)}
-                >
-                  {pushing === d.id ? 'Sending…' : 'Send'}
-                </button>
+                {isDraft && (
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    disabled={pushing === d.id}
+                    onClick={() => onEdit(d)}
+                  >
+                    Edit
+                  </button>
+                )}
+                {isDraft && !failedReq && (
+                  <button
+                    type="button"
+                    className="btn primary"
+                    disabled={pushing === d.id}
+                    onClick={() => push(d.id)}
+                  >
+                    {pushing === d.id ? 'Sending…' : 'Send'}
+                  </button>
+                )}
+                {failedReq && !isDraft && (
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    disabled={pushing === d.id}
+                    onClick={retry}
+                  >
+                    Retry sync
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn secondary danger-cta"
@@ -1089,9 +1143,15 @@ export default function SurveyorApp() {
 
   const refreshDraftCount = useCallback(async () => {
     try {
-      setDraftsCount(await draftCount())
+      const s = await getQueueSnapshot()
+      setPendingSync(s.pending ?? 0)
+      setDraftsCount((s.drafts ?? 0) + (s.pending ?? 0))
     } catch {
-      /* ignore */
+      try {
+        setDraftsCount(await draftCount())
+      } catch {
+        /* ignore */
+      }
     }
   }, [])
 
@@ -1117,9 +1177,10 @@ export default function SurveyorApp() {
       }
 
       if (tab === 'records') {
-        // Records tab: user + progress
+        // Records tab: user + progress + sent list
         const prog = await getMyProgress().catch(() => null)
         if (prog) setMyProgress(prog)
+        window.dispatchEvent(new Event('esurvey-activity-refresh'))
         notify('Activity refreshed ✓', 'ok')
         return
       }
@@ -1484,6 +1545,7 @@ export default function SurveyorApp() {
               user={user}
               network={network}
               pendingSync={pendingSync}
+              pendingLocal={draftsCount}
               myProgress={myProgress}
               questionsMeta={questionsMeta}
               onNewSurvey={() => {

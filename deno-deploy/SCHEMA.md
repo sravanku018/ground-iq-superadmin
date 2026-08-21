@@ -104,10 +104,12 @@ The field-app **My activity** tab (`MyRecordsScreen`) lists the
 surveyor's own sent items from `GET /api/submissions/me`. The list is
 **grouped by calendar date only** (IST / `Asia/Kolkata` from
 `created_at`). Each group header is the date plus how many were sent,
-e.g. `13 Aug 2026` · `4 sent`. Then that day's cards.
+e.g. `13 Aug 2026` · `4 sent`. Then that day's cards. Each card shows
+**Record #N** (`payload.record_index`, else 1..N by `created_at`).
+Drafts are excluded; they live on the Pending tab.
 
 - Do **not** put daily counts on Home. Home stays overall
-  done/target, queued, questions, status.
+  done/target, pending-on-phone, questions, status.
 - Do **not** label groups Today / Yesterday / Day before, and do
   **not** add weekday names. Date is enough.
 - Do **not** add a `by_day` payload to `GET /api/progress/me` for this.
@@ -126,7 +128,8 @@ e.g. `13 Aug 2026` · `4 sent`. Then that day's cards.
 | Web survey fill is its own Super-Admin grant (`can_web_survey`) | Desk/web entry must not leak to every Client Admin; field `POST /api/submissions` stays GPS-locked | **Done.** Nav + `POST /api/web-survey` + web `source` on field POST all use `hasPower(me, "can_web_survey")`. |
 | Telugu question copy uses existing question-management powers | Avoid a second grant unless translation-API cost needs its own knob | **Done.** UI + `POST /api/questions/translate` require `can_manage_questions` or `can_crud_questionnaire`. |
 | Super Admin seats are 3 slots with TOTP | Password alone is not enough for platform accounts | **Done.** `totp_secret` / `totp_enabled`. Login for `super_admin` requires a valid 6-digit TOTP after password. |
-| Submission status stats read `payload->>'status'`, not `fact_status` | Two similarly-named fields, different meanings — `payload.status` is the real review outcome (`confirmed`/`rejected`/`pending`, set by the PATCH/PUT status endpoints, mirrored by `payloadStatus()`); `fact_status` only tracks the fact-materialization pipeline (`materialized`/`failed`/`NULL`) and is set to `NULL` on both rejection and never-touched-pending — filtering by it silently merged "rejected" into "pending" | **Settled rule.** `/api/stats` now counts `COALESCE(payload->>'status', 'pending')`. `fact_status` is only for "has this confirmed record been materialized into `record_facts` yet." |
+| Submission status stats read `payload->>'status'`, not `fact_status` | Two similarly-named fields, different meanings — `payload.status` is the real review outcome (`confirmed`/`rejected`/`pending`, set by the PATCH/PUT status endpoints, mirrored by `payloadStatus()`); `fact_status` only tracks the fact-materialization pipeline (`materialized`/`failed`/`NULL`) and is set to `NULL` on both rejection and never-touched-pending — filtering by it silently merged "rejected" into "pending" | **Settled rule.** `/api/stats` counts `payload.status`, treats field drafts as pending (not confirmed), and reports districts/ACs from confirmed survey answers — never the master geo tables. `fact_status` is only for "has this confirmed record been materialized into `record_facts` yet." |
+| Field record number is `payload.record_index`, not `submissions.id` | Database ids jump and are not the surveyor's 1, 2, 3 sequence. Pending tab numbers drafts continuously 1..N on the phone; Activity shows Record #N from `record_index` (or created_at order if missing). | **Done.** POST `/api/submissions` stores `record_index`; GET `/api/submissions/me` and list items return it. |
 | Client Admin bell is event-driven from `audit_log` | A 45s poll of `GET /api/users` + submissions was slow and late. Uploads now write `profile_media` / `submission_create` and the UI streams those rows. | **Done.** Do not go back to interval polling as the inbox source. |
 | Field daily sent counts live on My activity, grouped by date only | Home progress is allotment (done/target), not a diary. Today/Yesterday/weekday labels were tried and rejected — date is enough. | **Settled.** Do not put `by_day` on Home or on `GET /api/progress/me`. |
 

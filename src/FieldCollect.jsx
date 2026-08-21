@@ -906,12 +906,19 @@ export default function FieldCollectScreen({
       delete cleanAnswers._draft
       delete cleanAnswers.draft
       const remapped = mapAnswersToQuestions(cleanAnswers, questions || [])
+      const currentDone = Math.max(localDoneCount, progress?.done || 0)
+      const reuseId = workingDraftIdRef.current || draft?.id || null
+      const localSeq =
+        workingRecordIndexRef.current ??
+        draft?.recordIndex ??
+        Math.max(progress?.next_record || 0, currentDone + 1)
       const lockedAnswers = {
         ...remapped,
         _geo_locked: true,
         _photo_locked: true,
         _voice_locked: true,
         _location_locked: true,
+        _recordIndex: localSeq,
         geo_lat: geo.lat,
         geo_lng: geo.lng,
         geo_accuracy: geo.accuracy,
@@ -921,13 +928,6 @@ export default function FieldCollectScreen({
         location_mandal: locationDetails?.mandal || answers.mandal || '',
         location_state: locationDetails?.state || '',
       }
-
-      const currentDone = Math.max(localDoneCount, progress?.done || 0)
-      const reuseId = workingDraftIdRef.current || draft?.id || null
-      const localSeq =
-        workingRecordIndexRef.current ??
-        draft?.recordIndex ??
-        Math.max(progress?.next_record || 0, currentDone + 1)
       const packageId = await savePackageLocal({
         id: reuseId,
         createdAt: draftCreatedAtRef.current || draft?.createdAt,
@@ -1091,6 +1091,7 @@ export default function FieldCollectScreen({
       const lockedAnswers = {
         ...answers,
         _draft: true,
+        _recordIndex: workingRecordIndexRef.current,
         geo_lat: geo?.lat,
         geo_lng: geo?.lng,
         geo_accuracy: geo?.accuracy,

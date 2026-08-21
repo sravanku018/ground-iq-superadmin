@@ -314,7 +314,10 @@ export default function AdminAnalyzeScreen({ onToast }) {
         {/* Step 5 · Rest (Question filters & status) */}
         <div className="filter-step">
           <p className="filter-step-title">5 · Rest (Question filters & status)</p>
-          {analytics?.dataFilters?.questions?.map((q) => (
+          {analytics?.dataFilters?.questions?.map((q) => {
+            const countMap = new Map((q.counts || []).map((c) => [c.name, c]))
+            const optionNames = [...new Set([...(q.options || []), ...countMap.keys()])]
+            return (
             <label className="field" key={q.id}>
               <span>{q.label}</span>
               <select
@@ -324,14 +327,20 @@ export default function AdminAnalyzeScreen({ onToast }) {
                 }
               >
                 <option value="">All {q.label}</option>
-                {(q.counts || []).map((c) => (
-                  <option key={c.name} value={c.name}>
-                    {c.label || c.name} ({c.value})
-                  </option>
-                ))}
+                {optionNames.map((name) => {
+                  const c = countMap.get(name)
+                  const shownName = c?.label || name
+                  const n = c?.value
+                  return (
+                    <option key={name} value={name}>
+                      {n != null ? `${shownName} (${n})` : shownName}
+                    </option>
+                  )
+                })}
               </select>
             </label>
-          ))}
+            )
+          })}
           {survey && (analytics?.dataFilters?.questions || []).length === 0 && (
             <p className="muted" style={{ fontSize: 12 }}>
               This survey has no question filters yet.

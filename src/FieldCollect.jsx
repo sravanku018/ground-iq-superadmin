@@ -241,7 +241,6 @@ export default function FieldCollectScreen({
   const recognitionRef = useRef(null)
   const audioUrlRef = useRef('')
   const saveDraftRef = useRef(null)
-  const fileRef = useRef(null)
   const watchId = useRef(null)
   const streamRef = useRef(null)
   const audioCtxRef = useRef(null)
@@ -1980,29 +1979,95 @@ export default function FieldCollectScreen({
                 GPS not locked — go back
               </p>
             )}
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              style={{ display: 'none' }}
-              onChange={onPickPhoto}
-            />
-            <button
-              type="button"
-              className="btn primary"
-              disabled={!locks.geo}
-              onClick={() => {
-                if (!locks.geo) {
-                  onToast?.('Lock GPS first', 'error')
-                  setStep(0)
-                  return
-                }
-                fileRef.current?.click()
-              }}
-            >
-              {locks.photo ? 'Retake photo' : 'Take photo (camera)'}
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+              <label
+                className={`btn primary ${!locks.geo ? 'disabled' : ''}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  cursor: locks.geo ? 'pointer' : 'not-allowed',
+                  opacity: !locks.geo ? 0.6 : 1,
+                  textAlign: 'center',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  margin: 0,
+                  padding: '12px 16px',
+                }}
+                onClick={(e) => {
+                  if (!locks.geo) {
+                    e.preventDefault()
+                    onToast?.('Lock GPS first', 'error')
+                    setStep(0)
+                  }
+                }}
+              >
+                <Icon name="camera" size={18} />
+                <span>{locks.photo ? 'Retake photo (Camera)' : 'Take photo (Camera)'}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  disabled={!locks.geo}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    opacity: 0,
+                    cursor: locks.geo ? 'pointer' : 'not-allowed',
+                    zIndex: 2,
+                  }}
+                  onChange={onPickPhoto}
+                />
+              </label>
+
+              <label
+                className="btn secondary"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  cursor: locks.geo ? 'pointer' : 'not-allowed',
+                  opacity: !locks.geo ? 0.6 : 1,
+                  textAlign: 'center',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  margin: 0,
+                  padding: '10px 16px',
+                  fontSize: 13,
+                }}
+                onClick={(e) => {
+                  if (!locks.geo) {
+                    e.preventDefault()
+                    onToast?.('Lock GPS first', 'error')
+                    setStep(0)
+                  }
+                }}
+              >
+                <Icon name="image" size={16} />
+                <span>Choose from Gallery / Camera</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={!locks.geo}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    opacity: 0,
+                    cursor: locks.geo ? 'pointer' : 'not-allowed',
+                    zIndex: 2,
+                  }}
+                  onChange={onPickPhoto}
+                />
+              </label>
+            </div>
             {photoDataUrl && !editingDraft && (
               <img
                 src={photoDataUrl}

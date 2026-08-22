@@ -1268,14 +1268,32 @@ export default function FieldCollectScreen({
   const q = questions[activeQ]
 
   // ── Survey question navigation (Settings → "survey loading" mode) ────────
+  function scrollToQuestionCenter() {
+    requestAnimationFrame(() => {
+      try {
+        const card = document.querySelector('.qa-card')
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
+        }
+      } catch {
+        /* ignore */
+      }
+    })
+  }
+
   // Shared advance/retreat used by the Prev/Next buttons and swipe gestures.
   function goPrev() {
-    setActiveQ((i) => Math.max(0, i - 1))
+    setActiveQ((i) => {
+      const prevQ = Math.max(0, i - 1)
+      scrollToQuestionCenter()
+      return prevQ
+    })
   }
   function goNext() {
     if (activeQ < questions.length - 1) {
       const nextQ = activeQ + 1
       setActiveQ(nextQ)
+      scrollToQuestionCenter()
       void saveDraft({ mode: 'checkpoint', questionIndex: nextQ })
     }
   }
@@ -1512,12 +1530,12 @@ export default function FieldCollectScreen({
   function renderQuestionCard(qq, { speakFill = false } = {}) {
     return (
       <>
-        <h3 className="qa-title">{displayQuestion(qq, displayLang)}</h3>
+        <h3 className="qa-title" style={{ textAlign: 'center' }}>{displayQuestion(qq, displayLang)}</h3>
         {qq.speak &&
           String(qq.speak).trim() &&
           String(qq.speak).trim().toLowerCase() !== 'new question' &&
           String(qq.speak).trim() !== String(qq.label || '').trim() && (
-            <p className="muted" style={{ fontSize: 12, marginTop: -8, marginBottom: 12 }}>
+            <p className="muted" style={{ fontSize: 12, marginTop: -8, marginBottom: 12, textAlign: 'center' }}>
               {qq.speak}
             </p>
           )}

@@ -1827,7 +1827,8 @@ textarea:focus,
 }
 
 .qa-card {
-  /* radius/padding inherited from base .card — always used as "card qa-card" */
+  margin: 12px auto;
+  scroll-margin: 15vh;
 }
 
 .qa-progress {
@@ -1865,6 +1866,7 @@ textarea:focus,
   font-size: 21px;
   line-height: 1.28;
   letter-spacing: -0.02em;
+  text-align: center;
 }
 
 .qa-options {

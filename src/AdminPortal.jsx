@@ -698,7 +698,8 @@ export default function AdminPortal({ superAdminOnly = false }) {
     [user]
   )
 
-  const baseNav = superAdminOnly
+  const isSuper = superAdminOnly || user?.role === 'super_admin'
+  const baseNav = isSuper
     ? [
         CLIENT_ADMINS_NAV,
         COMPANIES_NAV,
@@ -710,9 +711,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           .filter((n) => n.id !== 'surveys')
           .map((n) => (n.id === 'data' ? { ...n, pages: n.pages.filter((p) => p !== 'bank') } : n)),
       ]
-    : user?.role === 'super_admin'
-      ? [...NAV, PROFILE_NAV]
-      : NAV
+    : NAV
   const nav = baseNav
     .map((n) => ({ ...n, pages: n.pages.filter(canPage) }))
     .filter((n) => n.pages.length > 0)
@@ -1008,7 +1007,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           <span className="portal-logo">◆</span>
           <div>
             <strong>Smart Survey X</strong>
-            <span>{superAdminOnly ? 'Super Admin' : 'Client Admin'}</span>
+            <span>{isSuper ? 'Super Admin' : 'Client Admin'}</span>
           </div>
         </div>
         <nav className="portal-nav">
@@ -1110,7 +1109,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
               user={user}
               stats={stats}
               onNav={goPage}
-              superAdminOnly={superAdminOnly}
+              superAdminOnly={isSuper}
               canPage={canPage}
             />
           )}

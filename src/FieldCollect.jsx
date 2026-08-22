@@ -1298,13 +1298,12 @@ export default function FieldCollectScreen({
     }
   }
   function onSwipeStart(e) {
-    // Don't hijack a gesture that starts on an interactive control (slider,
-    // text field, option button) — those handle their own touches.
+    // Don't hijack text inputs or sliders
     const el = e.target
     if (
       el &&
       el.closest &&
-      el.closest('input, textarea, select, button, a, [contenteditable], .qa-meter')
+      el.closest('input[type="text"], input[type="number"], textarea, select, [contenteditable], .qa-meter')
     ) {
       touchStartX.current = null
       return
@@ -1323,8 +1322,8 @@ export default function FieldCollectScreen({
     if (!t) return
     const dx = t.clientX - startX
     const dy = t.clientY - startY
-    // Require a deliberate, mostly-horizontal swipe.
-    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return
+    // Require a deliberate, mostly-horizontal swipe (min 35px, horizontal > vertical)
+    if (Math.abs(dx) < 35 || Math.abs(dx) < Math.abs(dy) * 1.1) return
     if (dx < 0) goNext()
     else goPrev()
   }
@@ -1622,7 +1621,8 @@ export default function FieldCollectScreen({
     return (
       <div
         className={`card qa-card${swipe ? ' qa-swipe' : ''}`}
-        {...(swipe ? { onTouchStart: onSwipeStart, onTouchEnd: onSwipeEnd } : {})}
+        onTouchStart={onSwipeStart}
+        onTouchEnd={onSwipeEnd}
       >
         <div className="qa-progress">
           <div className="qa-progress-bar" aria-hidden>

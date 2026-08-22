@@ -149,7 +149,7 @@ export async function toSpeechWav16k(blob) {
     const mono = mixToMono(decoded)
     const speech = downsampleMono(mono, decoded.sampleRate, AUDIO_SAMPLE_RATE)
     const wav = encodeWav16kMono(speech)
-    if (wav.size > 680_000 && blob.size < wav.size) return blob
+    if (wav.size > 1_500_000 && blob.size < wav.size) return blob
     return wav
   } catch {
     return blob

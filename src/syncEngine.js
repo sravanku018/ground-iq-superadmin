@@ -110,7 +110,7 @@ export async function syncOnePackage(id) {
       }
       const recIdx = Number(pkg.recordIndex)
       const answers = stripDraftAnswers({
-        ...(pkg.qa.answers || {}),
+        ...pkg.qa.answers,
         client_package_id: pkg.id,
         ...(Number.isFinite(recIdx) && recIdx > 0 ? { _recordIndex: recIdx } : {}),
       })

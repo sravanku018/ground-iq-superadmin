@@ -198,7 +198,7 @@ export default function FieldCollectScreen({
   const [geoLoading, setGeoLoading] = useState(false)
   const [photoDataUrl, setPhotoDataUrl] = useState('')
   const [audioBlob, setAudioBlob] = useState(null)
-  const [audioUrl, setAudioUrl] = useState('')
+  const [, setAudioUrl] = useState('')
   const [recording, setRecording] = useState(false)
   const [voiceActivated, setVoiceActivated] = useState(false)
   const [listening, setListening] = useState(false)

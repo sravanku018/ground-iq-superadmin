@@ -90,7 +90,7 @@ import './App.css'
 function mergeUserKeepMedia(prev, next) {
   if (!next) return prev || null
   return {
-    ...(prev || {}),
+    ...prev,
     ...next,
     photo: next.photo || prev?.photo || null,
     aadhaar_front: next.aadhaar_front || prev?.aadhaar_front || null,

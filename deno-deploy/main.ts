@@ -1576,7 +1576,6 @@ function aliasesForQuestions(
     if (!arr.includes(key)) arr.push(key);
     aliases.set(qid, arr);
   };
-  const currentIds = new Set(questions.map((q) => q.id).filter(Boolean));
   const leftover = new Set<string>();
   for (const a of answerBags) {
     for (const k of Object.keys(a || {})) {
@@ -2743,10 +2742,10 @@ async function storeMediaLinked(
   }
 
   // DEFAULT: Neon — no credit card, uses your existing free Neon project
-  // Cap ~700KB binary (~930KB base64) to protect free tier
-  if (bytes.length > 700_000) {
+  // Cap ~1.5MB binary (~2.0MB base64) to protect free tier
+  if (bytes.length > 1_500_000) {
     throw new Error(
-      "Media too large for free Neon storage (max ~700KB). Use a smaller photo / shorter audio.",
+      "Media too large (max ~1.5MB). Use a smaller photo / shorter audio.",
     );
   }
   return {
@@ -8944,10 +8943,10 @@ async function rawHandler(req: Request): Promise<Response> {
         } else if (parsed.b64 !== data) {
           data = parsed.b64;
         }
-        // Incoming cap (~1.2MB base64)
-        if (data.length > 1_200_000) {
+        // Incoming cap (~2.1MB base64 for ~1.5MB binary)
+        if (data.length > 2_100_000) {
           return json({
-            error: "Media too large. Compress photo or shorten audio (max ~700KB).",
+            error: "Media too large. Compress photo or shorten audio (max ~1.5MB).",
           }, 413);
         }
         if (!data) {

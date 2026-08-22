@@ -626,7 +626,7 @@ export default function DashboardScreen({ onToast }) {
     setFilters((f) => ({
       ...f,
       [key]: f[key] === name ? '' : name,
-      ...(extra || {}),
+      ...extra,
     }))
   }, [])
 

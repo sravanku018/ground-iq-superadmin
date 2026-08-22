@@ -2012,6 +2012,59 @@ textarea:focus,
   margin-top: 10px;
 }
 
+/* Card styling when Swipe mode is active — centered middle card */
+.qa-card.qa-swipe {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 55vh;
+  margin: 16px auto;
+  padding: 24px 20px;
+  background: #ffffff;
+  border: 1.5px solid var(--border);
+  border-radius: 22px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 4px 10px -2px rgba(0, 0, 0, 0.04);
+  scroll-margin: 20vh;
+}
+
+.qa-card.qa-swipe .qa-title {
+  margin: 14px 0 20px;
+  font-size: 22px;
+  text-align: center;
+}
+
+.qa-swipe-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 16px 0 8px;
+}
+
+.qa-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.qa-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  transition: all 0.25s ease;
+}
+
+.qa-dot.on {
+  width: 22px;
+  border-radius: 99px;
+  background: var(--accent);
+}
+
 .act-actions {
   display: grid;
   grid-template-columns: 1fr 1.2fr 1fr;

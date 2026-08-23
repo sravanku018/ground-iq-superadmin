@@ -18,7 +18,13 @@
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:api": "deno test -A --no-check --quiet deno-deploy/api_test.ts",
+    "test:api:helpers": "deno test -A --no-check --quiet deno-deploy/helpers_test.ts",
+    "test:api:field": "deno test -A --no-check --quiet deno-deploy/field_test.ts",
+    "test:api:integration": "deno test -A --no-check deno-deploy/integration_test.ts",
+    "test:api:stress": "deno test -A --no-check deno-deploy/stress_test.ts",
+    "test:api:all": "deno test -A --no-check deno-deploy/api_test.ts deno-deploy/helpers_test.ts deno-deploy/field_test.ts deno-deploy/integration_test.ts deno-deploy/stress_test.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",

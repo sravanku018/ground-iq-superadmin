@@ -1,3 +1,8 @@
 {
-  "nodeModulesDir": "auto"
+  "nodeModulesDir": "auto",
+  "tasks": {
+    "test": "deno test -A --no-check --quiet api_test.ts helpers_test.ts field_test.ts integration_test.ts",
+    "test:all": "deno test -A --no-check api_test.ts helpers_test.ts field_test.ts integration_test.ts stress_test.ts",
+    "stress": "deno test -A --no-check stress_test.ts"
+  }
 }

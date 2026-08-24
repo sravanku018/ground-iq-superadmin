@@ -35,13 +35,14 @@ const AdminCompaniesScreen = lazy(() => import('./AdminCompanies'))
 const AdminWebSurveyScreen = lazy(() => import('./AdminWebSurvey'))
 const AdminProfileScreen = lazy(() => import('./AdminProfile'))
 
-// Client Admin nav — Google-style: one entry per intent, no nesting
+// Client Admin nav — Mock 3 Google + Twitter doctrine
 const NAV = [
   { id: 'overview',   label: 'Overview',   icon: 'grid',      pages: ['overview'] },
-  { id: 'analytics',  label: 'Analytics',  icon: 'chart',     pages: ['analyze', 'report'] },
+  { id: 'analyze',    label: 'Analyze',    icon: 'chart',     pages: ['analyze'] },
+  { id: 'report',     label: 'Live Feed',  icon: 'menu',      pages: ['report'] },
   { id: 'surveyors',  label: 'Surveyors',  icon: 'user',      pages: ['users'] },
   { id: 'surveys',    label: 'Surveys',    icon: 'clipboard', pages: ['surveys'] },
-  { id: 'data',       label: 'Review & Data', icon: 'menu',   pages: ['review', 'upload', 'data', 'questions', 'bank', 'web'] },
+  { id: 'data',       label: 'Review & Data', icon: 'check',  pages: ['review', 'upload', 'data', 'questions', 'bank', 'web'] },
 ]
 
 // Super Admin console only (01-PRD.md): platform governance group
@@ -85,7 +86,7 @@ const PROJECTS_NAV = {
 
 const PAGE_LABELS = {
   overview: 'Overview',
-  analyze:  'Charts & Maps',
+  analyze:  'Analyze · charts',
   report:   'Live Feed',
   users:    'Surveyors',
   surveys:  'Surveys',
@@ -189,12 +190,33 @@ function formatDate(v) {
     return String(v)
   }
 }
+
 function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => true }) {
   const gated = (p) => {
     // Super Admin (or console mode) always sees every feature
     if (superAdminOnly || user?.role === 'super_admin') return true
     return canPage(p)
   }
+
+  const [recentItems, setRecentItems] = useState([])
+  const [loadingRecent, setLoadingRecent] = useState(true)
+
+  useEffect(() => {
+    let alive = true
+    listSubmissions(5, '')
+      .then((d) => {
+        if (alive) setRecentItems(d.items || [])
+      })
+      .catch(() => {
+        if (alive) setRecentItems([])
+      })
+      .finally(() => {
+        if (alive) setLoadingRecent(false)
+      })
+    return () => {
+      alive = false
+    }
+  }, [stats?.submissions])
 
   return (
     <div className="portal-page">
@@ -203,7 +225,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           <p className="eyebrow">{superAdminOnly ? 'Super Admin Console' : 'Client Admin'}</p>
           <h1>Overview</h1>
           <p className="portal-lead">
-            Welcome, {user?.name || user?.username}
+            Welcome, {user?.name || user?.username} · Google + Twitter data review pipeline
           </p>
         </div>
       </header>
@@ -228,29 +250,156 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         </div>
       </div>
 
+      {/* Recent Submissions Feed — Mock 3 doctrine */}
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Recent Submissions</h3>
+            <p className="csub" style={{ margin: 0 }}>Submissions awaiting confirmation</p>
+          </div>
+          {gated('review') && (
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => onNav('review')}
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: '#1a73e8',
+                background: '#e8f0fe',
+                border: '1px solid #c2e7ff',
+                borderRadius: 9999,
+                padding: '6px 14px',
+                cursor: 'pointer',
+              }}
+            >
+              Open Review →
+            </button>
+          )}
+        </div>
+
+        {loadingRecent ? (
+          <p className="muted" style={{ fontSize: 13, margin: '8px 0' }}>Loading submissions…</p>
+        ) : recentItems.length === 0 ? (
+          <p className="muted" style={{ fontSize: 13, margin: '8px 0' }}>No submissions received yet.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {recentItems.map((it) => {
+              const a = it.answers || {}
+              const surveyor = it.submitted_by || a.data_collector || 'Field Surveyor'
+              const district = a.district || a.constituency || 'General'
+              const status = it.status || 'pending'
+              const pills = Object.entries(a)
+                .filter(([k, v]) => !k.startsWith('_') && !['data_collector', 'district', 'constituency'].includes(k) && v != null && String(v).trim())
+                .slice(0, 3)
+
+              return (
+                <div
+                  key={it.id}
+                  onClick={() => onNav('review')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    padding: '12px 16px',
+                    background: '#f8fafd',
+                    border: '1px solid #e0e2ec',
+                    borderRadius: 12,
+                    cursor: 'pointer',
+                    transition: 'all 120ms ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                    <div
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: '50%',
+                        background: '#e8f0fe',
+                        color: '#1a73e8',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {surveyor.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <strong style={{ fontSize: 13, color: '#202124' }}>#{it.record_index || it.id} · {surveyor}</strong>
+                        <span style={{ fontSize: 11, color: '#5f6368' }}>📍 {district}</span>
+                      </div>
+                      {pills.length > 0 && (
+                        <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                          {pills.map(([k, v]) => (
+                            <span
+                              key={k}
+                              style={{
+                                fontSize: 11,
+                                background: '#ffffff',
+                                border: '1px solid #dadce0',
+                                padding: '2px 8px',
+                                borderRadius: 9999,
+                                color: '#3c4043',
+                              }}
+                            >
+                              {String(v)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <span
+                      className={`pill ${status === 'confirmed' ? 'ok' : status === 'rejected' ? 'bad' : 'warn'}`}
+                      style={{ fontSize: 11, fontWeight: 700, textTransform: 'capitalize' }}
+                    >
+                      {status}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Quick-nav action cards */}
       <div className="portal-action-grid">
-        {gated('users') && (
-          <button type="button" className="portal-action" onClick={() => onNav('users')}>
-            <span className="portal-action-n">1</span>
-            <strong>Surveyors</strong>
-            <span>Create field accounts, set quotas</span>
+        {gated('analyze') && (
+          <button type="button" className="portal-action" onClick={() => onNav('analyze')}>
+            <span className="portal-action-n">📊</span>
+            <strong>Analyze</strong>
+            <span>Visual charts &amp; district breakdowns</span>
           </button>
         )}
-        {(gated('analyze') || gated('report')) && (
-          <button type="button" className="portal-action" onClick={() => onNav('analyze')}>
-            <span className="portal-action-n">2</span>
-            <strong>Analytics</strong>
-            <span>Charts · Maps · Live Feed</span>
+        {gated('report') && (
+          <button type="button" className="portal-action" onClick={() => onNav('report')}>
+            <span className="portal-action-n">📡</span>
+            <strong>Live Feed</strong>
+            <span>Real-time surveyor intake stream</span>
+          </button>
+        )}
+        {gated('users') && (
+          <button type="button" className="portal-action" onClick={() => onNav('users')}>
+            <span className="portal-action-n">👥</span>
+            <strong>Surveyors</strong>
+            <span>Field accounts, quotas &amp; assignments</span>
           </button>
         )}
         {gated('review') && (
           <button type="button" className="portal-action primary" onClick={() => onNav('review')}>
-            <span className="portal-action-n">3</span>
+            <span className="portal-action-n">✓</span>
             <strong>Review &amp; Confirm</strong>
-            <span>Edit answers · Confirm · Reject</span>
+            <span>Verify answers, audio &amp; decisions</span>
           </button>
         )}
+
 
         {(superAdminOnly || user?.role === 'super_admin') && (
           <>
@@ -374,7 +523,8 @@ export default function AdminPortal({ superAdminOnly = false }) {
   const baseNav = isSuper
     ? [
         NAV.find((n) => n.id === 'overview'),
-        NAV.find((n) => n.id === 'analytics'),
+        NAV.find((n) => n.id === 'analyze'),
+        NAV.find((n) => n.id === 'report'),
         COMPANIES_NAV,
         CLIENT_ADMINS_NAV,
         PROJECTS_NAV,
@@ -382,7 +532,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
         PROFILE_NAV,
         // console keeps Question Bank under Platform only — avoid duplicate subtabs
         ...NAV
-          .filter((n) => !['overview', 'analytics', 'surveys'].includes(n.id))
+          .filter((n) => !['overview', 'analyze', 'report', 'surveys'].includes(n.id))
           .map((n) => (n.id === 'data' ? { ...n, pages: n.pages.filter((p) => p !== 'bank') } : n)),
       ].filter(Boolean)
     : NAV

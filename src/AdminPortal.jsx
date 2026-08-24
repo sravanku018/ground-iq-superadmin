@@ -192,15 +192,17 @@ function formatDate(v) {
 }
 
 function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => true }) {
+  const isSuper = superAdminOnly || user?.role === 'super_admin'
   const gated = (p) => {
     // Super Admin (or console mode) always sees every feature
-    if (superAdminOnly || user?.role === 'super_admin') return true
+    if (isSuper) return true
     return canPage(p)
   }
 
   const [recentItems, setRecentItems] = useState([])
   const [totalAllocations, setTotalAllocations] = useState(null)
   const [loadingRecent, setLoadingRecent] = useState(true)
+
 
   useEffect(() => {
     let alive = true

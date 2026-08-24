@@ -116,9 +116,8 @@ const PAGE_POWER = {
   review: 'can_review_data',
   upload: 'can_validate_proof',
   data: 'can_validate_proof',
-  // Super Admin console only — Client Admins never have this key
-  profile: '__super_admin_only__',
 }
+
 
 /**
  * Catches lazy chunk load failures (stale cached bundle → removed hashed chunk
@@ -860,8 +859,9 @@ export default function AdminPortal({ superAdminOnly = false }) {
           )}
 
           <div className="side-section-label" style={{ marginTop: 12 }}>ACCOUNT</div>
-          <button className={`side-sub ${page === 'profile' || page === 'sa-profile' ? 'active' : ''}`} onClick={() => goPage(isSuper ? 'profile' : 'overview')}>My access</button>
+          <button className={`side-sub ${page === 'profile' ? 'active' : ''}`} onClick={() => goPage('profile')}>My access</button>
         </nav>
+
 
         <div className="portal-sidebar-foot">
           <button

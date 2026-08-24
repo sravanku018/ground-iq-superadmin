@@ -253,11 +253,28 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         )}
 
         {(superAdminOnly || user?.role === 'super_admin') && (
-          <button type="button" className="portal-action" onClick={() => onNav('profile')}>
-            <span className="portal-action-n">★</span>
-            <strong>Super Admin profile</strong>
-            <span>Password, TOTP authenticator</span>
-          </button>
+          <>
+            <button type="button" className="portal-action" onClick={() => onNav('companies')}>
+              <span className="portal-action-n">🏢</span>
+              <strong>Companies</strong>
+              <span>Multi-tenant registry &amp; projects</span>
+            </button>
+            <button type="button" className="portal-action" onClick={() => onNav('admins')}>
+              <span className="portal-action-n">🛡️</span>
+              <strong>Client Admins</strong>
+              <span>Manage accounts &amp; power delegations</span>
+            </button>
+            <button type="button" className="portal-action" onClick={() => onNav('audit')}>
+              <span className="portal-action-n">⭐</span>
+              <strong>Platform Audit</strong>
+              <span>Platform-wide trail &amp; seat quotas</span>
+            </button>
+            <button type="button" className="portal-action" onClick={() => onNav('profile')}>
+              <span className="portal-action-n">★</span>
+              <strong>Super Admin profile</strong>
+              <span>Password &amp; TOTP authenticator</span>
+            </button>
+          </>
         )}
       </div>
     </div>
@@ -356,16 +373,18 @@ export default function AdminPortal({ superAdminOnly = false }) {
   const isSuper = superAdminOnly || user?.role === 'super_admin'
   const baseNav = isSuper
     ? [
-        CLIENT_ADMINS_NAV,
+        NAV.find((n) => n.id === 'overview'),
+        NAV.find((n) => n.id === 'analytics'),
         COMPANIES_NAV,
+        CLIENT_ADMINS_NAV,
         PROJECTS_NAV,
         PLATFORM_NAV,
         PROFILE_NAV,
         // console keeps Question Bank under Platform only — avoid duplicate subtabs
         ...NAV
-          .filter((n) => n.id !== 'surveys')
+          .filter((n) => !['overview', 'analytics', 'surveys'].includes(n.id))
           .map((n) => (n.id === 'data' ? { ...n, pages: n.pages.filter((p) => p !== 'bank') } : n)),
-      ]
+      ].filter(Boolean)
     : NAV
   const nav = baseNav
     .map((n) => ({ ...n, pages: n.pages.filter(canPage) }))

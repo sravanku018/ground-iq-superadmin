@@ -3,567 +3,349 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Smart Survey X — Whole Product Mock</title>
+<title>Smart Survey X — Unified Product Mock (Simplified)</title>
 <link rel="stylesheet" href="tokens.css" />
 <style>
   /* ══════════════════════════════════════════════════════════
-     WHOLE MOCK — the unified product surface
-     Surveyor (Apple) · Client Admin (Google+Twitter) · Super Admin
-     Spine: the explainable Trust Score, built only from real
-     captured signals (locks/media/identity/sync/QA).
-     Built on tokens.css — "one system, not screens."
+     SMART SURVEY X — SIMPLIFIED UNIFIED PRODUCT MOCK
+     Apple: Surveyor Field App (Ruthless subtraction, craft feel)
+     Google: System tokens, data legibility, offline resilience
+     Twitter/X: Optimistic sync, scannable live intake feeds
      ══════════════════════════════════════════════════════════ */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html { font-family: var(--font); }
-  body { background: var(--bg); color: var(--ink); min-height: 100vh; }
+  html { font-family: var(--font, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif); }
+  body { background: var(--bg, #f8fafc); color: var(--ink, #1e293b); min-height: 100vh; }
   .mono { font-family: 'SF Mono', Menlo, Consolas, monospace; }
   .tnum { font-variant-numeric: tabular-nums; }
 
-  /* ── Top app bar / role switcher ── */
+  /* ── Top App Bar & Role Switcher ── */
   .appbar {
     position: sticky; top: 0; z-index: 40;
-    display: flex; align-items: center; gap: var(--sp-4);
-    padding: var(--sp-3) var(--sp-5);
-    background: var(--surface);
-    border-bottom: 1px solid var(--surface-hover);
-    box-shadow: var(--shadow-sm);
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 24px;
+    background: var(--surface, #ffffff);
+    border-bottom: 1px solid var(--surface-hover, #e2e8f0);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
   }
-  .brand { display: flex; align-items: center; gap: var(--sp-2); font-weight: var(--fw-bold); font-size: var(--fs-md); }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; }
   .brand .glyph {
-    width: 26px; height: 26px; border-radius: var(--r-sm);
-    background: var(--accent); color: #fff;
-    display: flex; align-items: center; justify-content: center; font-size: 15px;
+    width: 28px; height: 28px; border-radius: 6px;
+    background: var(--accent, #1d6fe0); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
   }
-  .brand .sub { color: var(--ink-muted); font-weight: var(--fw-normal); font-size: var(--fs-xs); }
-  .role-tabs { display: flex; gap: var(--sp-1); background: var(--surface-alt); padding: 3px; border-radius: var(--r-pill); }
+  .brand .sub { color: var(--ink-muted, #64748b); font-weight: 400; font-size: 11px; }
+  .role-tabs { display: flex; gap: 4px; background: var(--surface-alt, #f1f5f9); padding: 3px; border-radius: 999px; }
   .role-tab {
     border: none; background: none; cursor: pointer;
-    padding: 6px 14px; border-radius: var(--r-pill);
-    font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--ink-muted);
-    transition: all var(--dur-fast) var(--ease-out); white-space: nowrap;
+    padding: 6px 16px; border-radius: 999px;
+    font-size: 13px; font-weight: 500; color: var(--ink-muted, #64748b);
+    transition: all 150ms ease; white-space: nowrap;
   }
-  .role-tab:hover { color: var(--ink); }
-  .role-tab.active { background: var(--surface); color: var(--accent); font-weight: var(--fw-bold); box-shadow: var(--shadow-sm); }
+  .role-tab:hover { color: var(--ink, #1e293b); }
+  .role-tab.active { background: var(--surface, #ffffff); color: var(--accent, #1d6fe0); font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
   .appbar-spacer { flex: 1; }
-  .ts-chip {
-    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-    padding: 5px 12px; border-radius: var(--r-pill);
-    background: var(--accent-bg); border: 1px solid var(--accent-border);
-    color: var(--accent); font-size: var(--fs-xs); font-weight: var(--fw-bold);
-  }
-  .ts-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
 
-  /* ── Sync status — offline-first + optimistic (Twitter sync · Google low-end) ── */
-  .sync-chip { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 5px 12px; border-radius: var(--r-pill); background: var(--surface-alt); border: 1px solid var(--surface-hover); color: var(--ink-secondary); font-size: var(--fs-xs); font-weight: var(--fw-bold); }
-  .sync-chip .sdot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
-  .sync-chip.synced { color: var(--ok); }
-  .sync-chip.syncing { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
-  .sync-chip.syncing .sdot { width: 8px; height: 8px; border-radius: 2px; background: var(--warn); animation: spin .7s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .fc-sync { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: var(--fw-bold); color: var(--warn); background: var(--warn-bg); padding: 2px 7px; border-radius: var(--r-sm); }
-  .fc-sync::before { content: '⟳'; display: inline-block; animation: spin .7s linear infinite; }
+  /* ── Live Sync Chip ── */
+  .sync-chip { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 5px 14px; border-radius: 999px; background: var(--surface-alt, #f1f5f9); border: 1px solid var(--surface-hover, #e2e8f0); color: var(--ok, #16a34a); font-size: 12px; font-weight: 700; }
+  .sync-chip .sdot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok, #16a34a); }
 
-  /* ── Stage / role panels ── */
-  .stage { padding: var(--sp-6); }
+  /* ── Stage ── */
+  .stage { padding: 24px 20px; max-width: 1400px; margin: 0 auto; }
   .role-panel { display: none; }
   .role-panel.active { display: block; }
-  .panel-lead { max-width: 1240px; margin: 0 auto var(--sp-5); }
-  .panel-lead h2 { font-size: var(--fs-xl); font-weight: var(--fw-bold); }
-  .panel-lead p { font-size: var(--fs-sm); color: var(--ink-muted); margin-top: 2px; }
+  .panel-lead { margin-bottom: 20px; }
+  .panel-lead h2 { font-size: 22px; font-weight: 700; }
+  .panel-lead p { font-size: 13px; color: var(--ink-muted, #64748b); margin-top: 2px; }
 
-  /* ════════════ SURVEYOR (Apple lens) ════════════ */
-  .survey-stage { display: flex; gap: var(--sp-6); justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+  /* ════════════ SURVEYOR (Apple Lens) ════════════ */
+  .survey-stage { display: flex; gap: 24px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
   .phone {
-    width: 380px; min-height: 780px; background: var(--surface);
-    border-radius: 34px; box-shadow: var(--shadow-lg), 0 0 0 1px rgba(0,0,0,0.06);
+    width: 380px; min-height: 760px; background: var(--surface, #ffffff);
+    border-radius: 34px; box-shadow: 0 16px 40px rgba(15,23,42,0.12), 0 0 0 1px rgba(0,0,0,0.06);
     overflow: hidden; display: flex; flex-direction: column; position: relative;
   }
   .status-bar {
     height: 42px; display: flex; align-items: center; justify-content: space-between;
-    padding: 0 var(--sp-5); font-size: var(--fs-xs); font-weight: var(--fw-bold);
+    padding: 0 20px; font-size: 12px; font-weight: 700; background: var(--surface, #ffffff);
   }
   .status-bar .time { font-size: 15px; }
-  .phone-subnav { display: flex; gap: 3px; padding: 0 var(--sp-4) var(--sp-2); background: var(--surface); }
+  .phone-subnav { display: flex; gap: 3px; padding: 0 16px 8px; background: var(--surface, #ffffff); }
   .phone-subnav button {
-    flex: 1; border: none; background: var(--surface-alt); cursor: pointer;
-    padding: 7px 0; border-radius: var(--r-sm); font-size: var(--fs-xs);
-    font-weight: var(--fw-medium); color: var(--ink-muted); transition: all var(--dur-fast);
+    flex: 1; border: none; background: var(--surface-alt, #f1f5f9); cursor: pointer;
+    padding: 7px 0; border-radius: 6px; font-size: 12px;
+    font-weight: 500; color: var(--ink-muted, #64748b); transition: all 120ms;
   }
-  .phone-subnav button.active { background: var(--accent-bg); color: var(--accent); font-weight: var(--fw-bold); }
+  .phone-subnav button.active { background: var(--accent-bg, #eff6ff); color: var(--accent, #1d6fe0); font-weight: 700; }
   .phone-body { flex: 1; overflow-y: auto; }
   .phone-screen { display: none; }
   .phone-screen.active { display: block; }
 
-  .nav-bar { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-3) var(--sp-5) var(--sp-2); }
-  .nav-bar h1 { font-size: var(--fs-lg); font-weight: var(--fw-bold); }
-  .pill-count { background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border); border-radius: var(--r-pill); padding: 3px 10px; font-size: var(--fs-xs); font-weight: var(--fw-bold); }
-
-  .hero-card { margin: var(--sp-3) var(--sp-5); padding: var(--sp-4); background: linear-gradient(135deg, var(--accent-bg), var(--surface)); border: 1px solid var(--accent-border); border-radius: var(--r-lg); }
-  .hero-eyebrow { font-size: var(--fs-xs); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .5px; color: var(--accent); }
-  .hero-name { display: flex; align-items: center; gap: 6px; font-size: var(--fs-lg); font-weight: var(--fw-bold); margin: 3px 0; }
-  .hero-sub { font-size: var(--fs-sm); color: var(--ink-secondary); }
+  .hero-card { margin: 12px 20px; padding: 18px 16px; background: linear-gradient(135deg, var(--accent-bg, #eff6ff), var(--surface, #ffffff)); border: 1px solid var(--accent-border, #bfdbfe); border-radius: 16px; }
+  .hero-eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--accent, #1d6fe0); }
+  .hero-name { display: flex; align-items: center; gap: 6px; font-size: 18px; font-weight: 700; margin: 4px 0; }
+  .hero-sub { font-size: 13px; color: var(--ink-secondary, #475569); }
   .verified { width: 16px; height: 16px; flex-shrink: 0; }
 
-  .pill-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 var(--sp-5) var(--sp-2); }
-  .spill { font-size: var(--fs-xs); font-weight: var(--fw-bold); padding: 3px 9px; border-radius: var(--r-pill); display: inline-flex; align-items: center; gap: 5px; }
-  .spill.ok { background: var(--ok-bg); color: var(--ok); }
-  .spill.warn { background: var(--warn-bg); color: var(--warn); }
-  .spill.bad { background: var(--bad-bg); color: var(--bad); }
+  .pill-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 20px 8px; }
+  .spill { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; }
+  .spill.ok { background: var(--ok-bg, #f0fdf4); color: var(--ok, #16a34a); }
+  .spill.warn { background: var(--warn-bg, #fffbeb); color: var(--warn, #f59e0b); }
   .spill .d { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
-  .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-2); padding: var(--sp-2) var(--sp-5); }
-  .stat { background: var(--surface-alt); border-radius: var(--r-md); padding: var(--sp-2); text-align: center; }
-  .stat .v { font-size: var(--fs-lg); font-weight: var(--fw-bold); }
-  .stat .l { font-size: 10px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .3px; }
+  .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 8px 20px; }
+  .stat { background: var(--surface-alt, #f1f5f9); border-radius: 10px; padding: 10px 4px; text-align: center; }
+  .stat .v { font-size: 18px; font-weight: 700; }
+  .stat .l { font-size: 10px; color: var(--ink-muted, #64748b); text-transform: uppercase; letter-spacing: .3px; margin-top: 2px; }
 
-  /* Trust ring (reused everywhere) */
-  .ring-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; }
-  .ring svg { transform: rotate(-90deg); display: block; }
-  .ring .ring-track { fill: none; stroke: var(--surface-hover); }
-  .ring .ring-fill { fill: none; stroke-linecap: round; transition: stroke-dashoffset var(--dur-slow) var(--ease-out); }
-  .ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
-  .ring-center .num { font-weight: var(--fw-bold); }
-  .ring-center .cap { font-size: 9px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .4px; }
+  .cta { margin: 12px 20px 20px; }
+  .cta-btn { width: 100%; min-height: 50px; background: var(--accent, #1d6fe0); color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 10px rgba(29,111,224,.3); }
+  .cta-sub { width: 100%; margin-top: 8px; min-height: 40px; background: none; color: var(--accent, #1d6fe0); border: 1px solid var(--accent-border, #bfdbfe); border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; }
 
-  .ts-card { margin: var(--sp-2) var(--sp-5) var(--sp-3); padding: var(--sp-4); background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); box-shadow: var(--shadow-sm); display: flex; align-items: center; gap: var(--sp-4); }
-  .ts-card .meta { flex: 1; }
-  .ts-card .meta h4 { font-size: var(--fs-sm); font-weight: var(--fw-bold); }
-  .ts-card .meta p { font-size: var(--fs-xs); color: var(--ink-muted); line-height: 1.5; margin-top: 2px; }
-  .ts-card .link { font-size: var(--fs-xs); color: var(--accent); font-weight: var(--fw-bold); cursor: pointer; margin-top: 6px; display: inline-block; }
+  /* ── Collect Flow ── */
+  .nav-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px 8px; }
+  .nav-bar h1 { font-size: 18px; font-weight: 700; }
+  .pill-count { background: var(--accent-bg, #eff6ff); color: var(--accent, #1d6fe0); border: 1px solid var(--accent-border, #bfdbfe); border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 700; }
 
-  .cta { margin: var(--sp-2) var(--sp-5); }
-  .cta-btn { width: 100%; min-height: 52px; background: var(--accent); color: #fff; border: none; border-radius: var(--r-md); font-size: var(--fs-md); font-weight: var(--fw-bold); cursor: pointer; box-shadow: 0 2px 10px rgba(29,111,224,.3); transition: transform var(--dur-fast) var(--ease-out); }
-  .cta-btn:active { transform: scale(.98); }
-  .cta-sub { width: 100%; margin-top: var(--sp-2); min-height: 40px; background: none; color: var(--accent); border: 1px solid var(--accent-border); border-radius: var(--r-md); font-size: var(--fs-sm); font-weight: var(--fw-bold); cursor: pointer; }
-
-  /* Collect — locked flow */
-  .stepper { display: flex; gap: 4px; padding: var(--sp-3) var(--sp-5) var(--sp-2); }
+  .stepper { display: flex; gap: 4px; padding: 8px 20px 8px; }
   .step { flex: 1; text-align: center; }
-  .step .dot { width: 26px; height: 26px; margin: 0 auto 4px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--fs-xs); font-weight: var(--fw-bold); background: var(--surface-alt); color: var(--ink-muted); border: 2px solid var(--surface-hover); }
-  .step.done .dot { background: var(--ok); color: #fff; border-color: var(--ok); }
-  .step.active .dot { background: var(--accent); color: #fff; border-color: var(--accent); }
-  .step .lbl { font-size: 10px; color: var(--ink-muted); }
-  .step.active .lbl { color: var(--accent); font-weight: var(--fw-bold); }
+  .step .dot { width: 26px; height: 26px; margin: 0 auto 4px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: var(--surface-alt, #f1f5f9); color: var(--ink-muted, #64748b); border: 2px solid var(--surface-hover, #e2e8f0); }
+  .step.done .dot { background: var(--ok, #16a34a); color: #fff; border-color: var(--ok, #16a34a); }
+  .step.active .dot { background: var(--accent, #1d6fe0); color: #fff; border-color: var(--accent, #1d6fe0); }
+  .step .lbl { font-size: 10px; color: var(--ink-muted, #64748b); }
+  .step.active .lbl { color: var(--accent, #1d6fe0); font-weight: 700; }
 
-  .lockbar { margin: 0 var(--sp-5) var(--sp-3); padding: var(--sp-3); background: var(--surface-alt); border-radius: var(--r-md); }
-  .lockbar .hd { font-size: 10px; font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .4px; color: var(--ink-muted); margin-bottom: 6px; }
-  .lock-pills { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
-  .lock-pill { font-size: var(--fs-xs); font-weight: var(--fw-bold); padding: 5px 8px; border-radius: var(--r-sm); display: flex; align-items: center; gap: 5px; }
-  .lock-pill.ok { background: var(--ok-bg); color: var(--ok); }
-  .lock-pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .lockbar { margin: 0 20px 12px; padding: 10px 12px; background: var(--surface-alt, #f1f5f9); border-radius: 10px; }
+  .lockbar .hd { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--ink-muted, #64748b); margin-bottom: 6px; }
+  .lock-pills { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .lock-pill { font-size: 11px; font-weight: 700; padding: 5px 8px; border-radius: 6px; display: flex; align-items: center; gap: 5px; }
+  .lock-pill.ok { background: var(--ok-bg, #f0fdf4); color: var(--ok, #16a34a); }
+  .lock-pill.bad { background: var(--bad-bg, #fef2f2); color: var(--bad, #ef4444); }
 
-  .card-stack { padding: 0 var(--sp-5) var(--sp-4); }
-  .q-card { background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-md); }
-  .q-number { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--accent); text-transform: uppercase; letter-spacing: .5px; }
-  .q-text { font-size: var(--fs-md); font-weight: var(--fw-bold); margin: 6px 0 var(--sp-4); line-height: 1.4; text-align: center; }
-  .options { display: flex; flex-direction: column; gap: var(--sp-2); }
-  .opt-btn { width: 100%; min-height: 48px; border: 2px solid var(--surface-hover); border-radius: var(--r-md); background: var(--surface); font-size: var(--fs-base); font-weight: var(--fw-medium); color: var(--ink); cursor: pointer; transition: all var(--dur-fast) var(--ease-out); display: flex; align-items: center; justify-content: center; gap: 8px; }
-  .opt-btn:active { transform: scale(.97); }
+  .card-stack { padding: 0 20px 16px; }
+  .q-card { background: var(--surface, #ffffff); border: 1px solid var(--surface-hover, #e2e8f0); border-radius: 16px; padding: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+  .q-number { font-size: 11px; font-weight: 700; color: var(--accent, #1d6fe0); text-transform: uppercase; letter-spacing: .5px; }
+  .q-text { font-size: 16px; font-weight: 700; margin: 8px 0 16px; line-height: 1.4; text-align: center; }
+  .options { display: flex; flex-direction: column; gap: 8px; }
+  .opt-btn { width: 100%; min-height: 48px; border: 2px solid var(--surface-hover, #e2e8f0); border-radius: 10px; background: var(--surface, #ffffff); font-size: 14px; font-weight: 600; color: var(--ink, #1e293b); cursor: pointer; transition: all 120ms ease; display: flex; align-items: center; justify-content: center; gap: 8px; }
   .opt-btn .swatch { width: 10px; height: 10px; border-radius: 3px; }
-  .opt-btn.selected { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); font-weight: var(--fw-bold); }
-  .opt-btn.party-congress { border-color: var(--party-congress); }
-  .opt-btn.party-congress.selected { background: var(--party-congress); color: #fff; }
-  .opt-btn.party-bjp { border-color: var(--party-bjp); }
-  .opt-btn.party-bjp.selected { background: var(--party-bjp); color: #fff; }
-  .opt-btn.party-brs { border-color: var(--party-brs); }
-  .opt-btn.party-brs.selected { background: var(--party-brs); color: #fff; }
+  .opt-btn.party-congress { border-color: var(--party-congress, #16a34a); }
+  .opt-btn.party-congress.selected { background: var(--party-congress, #16a34a); color: #fff; }
+  .opt-btn.party-bjp { border-color: var(--party-bjp, #f97316); }
+  .opt-btn.party-bjp.selected { background: var(--party-bjp, #f97316); color: #fff; }
+  .opt-btn.party-brs { border-color: var(--party-brs, #ec4899); }
+  .opt-btn.party-brs.selected { background: var(--party-brs, #ec4899); color: #fff; }
+  .opt-btn.party-others { border-color: var(--party-others, #94a3b8); }
+  .opt-btn.party-others.selected { background: var(--party-others, #94a3b8); color: #fff; }
+  .opt-btn.party-undecided { border-color: var(--party-undecided, #64748b); }
+  .opt-btn.party-undecided.selected { background: var(--party-undecided, #64748b); color: #fff; }
 
-  .voice-strip { margin: 0 var(--sp-5) var(--sp-3); padding: var(--sp-2) var(--sp-3); background: var(--bad-bg); border-radius: var(--r-md); display: flex; align-items: center; gap: 8px; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--bad); }
-  .voice-strip .live { width: 8px; height: 8px; border-radius: 50%; background: var(--bad); animation: pulse 1.4s infinite; }
+  .voice-strip { margin: 0 20px 12px; padding: 8px 12px; background: var(--bad-bg, #fef2f2); border-radius: 8px; display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; color: var(--bad, #ef4444); }
+  .voice-strip .live { width: 8px; height: 8px; border-radius: 50%; background: var(--bad, #ef4444); animation: pulse 1.4s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
 
-  .bottom-bar { padding: var(--sp-3) var(--sp-5) var(--sp-5); border-top: 1px solid var(--surface-alt); display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
-  .btn-ghost { font-size: var(--fs-sm); color: var(--ink-muted); background: none; border: none; cursor: pointer; padding: var(--sp-2); }
-  .next-btn { flex: 1; min-height: 46px; background: var(--accent); color: #fff; border: none; border-radius: var(--r-pill); font-size: var(--fs-base); font-weight: var(--fw-bold); cursor: pointer; box-shadow: 0 2px 8px rgba(29,111,224,.3); }
-  .next-btn:active { transform: scale(.98); }
+  .bottom-bar { padding: 12px 20px 20px; border-top: 1px solid var(--surface-alt, #f1f5f9); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .btn-ghost { font-size: 13px; color: var(--ink-muted, #64748b); background: none; border: none; cursor: pointer; padding: 8px; }
+  .next-btn { flex: 1; min-height: 46px; background: var(--accent, #1d6fe0); color: #fff; border: none; border-radius: 999px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(29,111,224,.3); }
 
-  /* Pending queue */
-  .qhead { padding: var(--sp-3) var(--sp-5); }
-  .qhead p { font-size: var(--fs-sm); color: var(--ink-muted); }
-  .queue-card { margin: 0 var(--sp-5) var(--sp-2); padding: var(--sp-3); border: 1px solid var(--surface-hover); border-radius: var(--r-md); background: var(--surface); }
-  .queue-card.failed { border-color: var(--bad); background: var(--bad-bg); }
+  /* ── Pending Queue ── */
+  .qhead { padding: 12px 20px; }
+  .qhead p { font-size: 13px; color: var(--ink-muted, #64748b); }
+  .queue-card { margin: 0 20px 10px; padding: 12px; border: 1px solid var(--surface-hover, #e2e8f0); border-radius: 10px; background: var(--surface, #ffffff); }
   .queue-card.syncing { border-style: dashed; opacity: .8; }
   .qc-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-  .qc-title { font-size: var(--fs-sm); font-weight: var(--fw-bold); }
-  .kind-pill { font-size: 10px; font-weight: var(--fw-bold); padding: 2px 7px; border-radius: var(--r-sm); }
-  .kind-pill.draft { background: var(--surface-hover); color: var(--ink-secondary); }
-  .kind-pill.queued { background: var(--accent-bg); color: var(--accent); }
-  .kind-pill.failed { background: var(--bad); color: #fff; }
-  .qc-meta { font-size: var(--fs-xs); color: var(--ink-muted); }
+  .qc-title { font-size: 13px; font-weight: 700; }
+  .kind-pill { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+  .kind-pill.draft { background: var(--surface-hover, #e2e8f0); color: var(--ink-secondary, #475569); }
+  .kind-pill.queued { background: var(--accent-bg, #eff6ff); color: var(--accent, #1d6fe0); }
+  .qc-meta { font-size: 11px; color: var(--ink-muted, #64748b); }
   .qc-actions { display: flex; gap: 6px; margin-top: 8px; }
-  .qc-actions button { flex: 1; font-size: var(--fs-xs); font-weight: var(--fw-bold); padding: 6px; border-radius: var(--r-sm); border: 1px solid var(--surface-hover); background: var(--surface); color: var(--ink-secondary); cursor: pointer; }
-  .qc-actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .qc-actions button { flex: 1; font-size: 11px; font-weight: 700; padding: 6px; border-radius: 6px; border: 1px solid var(--surface-hover, #e2e8f0); background: var(--surface, #ffffff); color: var(--ink-secondary, #475569); cursor: pointer; }
+  .qc-actions button.primary { background: var(--accent, #1d6fe0); color: #fff; border-color: var(--accent, #1d6fe0); }
 
-  /* Profile / verification */
-  .prof { padding: var(--sp-4) var(--sp-5); text-align: center; }
-  .prof .avatar { width: 76px; height: 76px; border-radius: 50%; background: var(--accent-bg); border: 2px solid var(--accent-border); margin: 0 auto var(--sp-2); display: flex; align-items: center; justify-content: center; font-size: var(--fs-xl); font-weight: var(--fw-bold); color: var(--accent); position: relative; }
-  .prof .avatar .lock { position: absolute; bottom: -2px; right: -2px; width: 24px; height: 24px; border-radius: 50%; background: var(--ok); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; border: 2px solid var(--surface); }
-  .prof .pname { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: var(--fs-lg); font-weight: var(--fw-bold); }
-  .prof .puser { font-size: var(--fs-sm); color: var(--ink-muted); }
-  .keychip { display: inline-block; margin-top: 8px; font-size: var(--fs-xs); font-weight: var(--fw-bold); background: var(--surface-alt); border-radius: var(--r-pill); padding: 4px 12px; }
-  .idcard { margin: var(--sp-2) var(--sp-5); padding: var(--sp-3); border: 1px solid var(--surface-hover); border-radius: var(--r-md); }
-  .idcard h4 { font-size: var(--fs-sm); font-weight: var(--fw-bold); display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-  .idcard p { font-size: var(--fs-xs); color: var(--ink-muted); }
+  /* ── Profile & Settings ── */
+  .prof { padding: 16px 20px; text-align: center; }
+  .prof .avatar { width: 72px; height: 72px; border-radius: 50%; background: var(--accent-bg, #eff6ff); border: 2px solid var(--accent-border, #bfdbfe); margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; color: var(--accent, #1d6fe0); position: relative; }
+  .prof .avatar .lock { position: absolute; bottom: -2px; right: -2px; width: 22px; height: 22px; border-radius: 50%; background: var(--ok, #16a34a); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; border: 2px solid #fff; }
+  .prof .pname { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 18px; font-weight: 700; }
+  .prof .puser { font-size: 12px; color: var(--ink-muted, #64748b); }
+  .keychip { display: inline-block; margin-top: 8px; font-size: 11px; font-weight: 700; background: var(--surface-alt, #f1f5f9); border-radius: 999px; padding: 4px 12px; }
+  .idcard { margin: 8px 20px; padding: 12px; border: 1px solid var(--surface-hover, #e2e8f0); border-radius: 10px; }
+  .idcard h4 { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .idcard p { font-size: 11px; color: var(--ink-muted, #64748b); }
   .id-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-  .id-tile { aspect-ratio: 8/5; background: var(--surface-alt); border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; font-size: var(--fs-xs); color: var(--ink-faint); border: 1px solid var(--surface-hover); }
+  .id-tile { aspect-ratio: 8/5; background: var(--surface-alt, #f1f5f9); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--ink-muted, #64748b); border: 1px solid var(--surface-hover, #e2e8f0); }
 
-  /* ════════════ ADMIN SHELL (Google + Twitter) ════════════ */
-  .admin-shell { max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: 232px 1fr; gap: var(--sp-5); }
-  .sidebar { background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); padding: var(--sp-4); align-self: start; position: sticky; top: 84px; }
-  .side-brand { display: flex; align-items: center; gap: 8px; font-weight: var(--fw-bold); font-size: var(--fs-sm); padding-bottom: var(--sp-3); border-bottom: 1px solid var(--surface-alt); margin-bottom: var(--sp-3); }
-  .side-brand .role-tag { margin-left: auto; font-size: 10px; font-weight: var(--fw-bold); color: var(--accent); background: var(--accent-bg); padding: 2px 7px; border-radius: var(--r-sm); }
-  .side-item { display: block; }
-  .side-item > .lbl { font-size: 10px; font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .5px; color: var(--ink-faint); padding: var(--sp-3) 6px 4px; }
-  .side-sub { border: none; background: none; width: 100%; text-align: left; cursor: pointer; padding: 8px 10px; border-radius: var(--r-sm); font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--ink-secondary); transition: all var(--dur-fast); }
-  .side-sub:hover { background: var(--surface-alt); }
-  .side-sub.active { background: var(--accent-bg); color: var(--accent); font-weight: var(--fw-bold); }
-  .side-foot { margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--surface-alt); font-size: var(--fs-xs); color: var(--ink-muted); }
+  .set-card { margin: 12px 20px; padding: 16px; background: var(--surface, #ffffff); border: 1px solid var(--surface-hover, #e2e8f0); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .set-card h4 { font-size: 14px; font-weight: 700; }
+  .set-card .desc { font-size: 11px; color: var(--ink-muted, #64748b); margin: 4px 0 12px; }
+  .set-chips { display: flex; gap: 8px; }
+  .set-chip { border: 2px solid var(--surface-hover, #e2e8f0); background: var(--surface, #ffffff); cursor: pointer; padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 700; color: var(--ink-secondary, #475569); }
+  .set-chip.selected { border-color: var(--accent, #1d6fe0); background: var(--accent-bg, #eff6ff); color: var(--accent, #1d6fe0); }
 
-  .admin-main { min-width: 0; }
-  .subtabs { display: flex; gap: 4px; margin-bottom: var(--sp-4); flex-wrap: wrap; }
-  .subtab { border: 1px solid var(--surface-hover); background: var(--surface); cursor: pointer; padding: 7px 14px; border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--ink-secondary); }
-  .subtab.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: var(--fw-bold); }
+  /* ════════════ CLIENT ADMIN (Google + Twitter) ════════════ */
+  .admin-shell { display: grid; grid-template-columns: 220px 1fr; gap: 20px; }
+  .sidebar { background: var(--surface, #ffffff); border: 1px solid var(--surface-hover, #e2e8f0); border-radius: 12px; padding: 16px; align-self: start; }
+  .side-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; padding-bottom: 12px; border-bottom: 1px solid var(--surface-alt, #f1f5f9); margin-bottom: 12px; }
+  .side-brand .role-tag { margin-left: auto; font-size: 10px; font-weight: 700; color: var(--accent, #1d6fe0); background: var(--accent-bg, #eff6ff); padding: 2px 6px; border-radius: 4px; }
+  .side-sub { border: none; background: none; width: 100%; text-align: left; cursor: pointer; padding: 8px 10px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--ink-secondary, #475569); transition: all 120ms; }
+  .side-sub:hover { background: var(--surface-alt, #f1f5f9); }
+  .side-sub.active { background: var(--accent-bg, #eff6ff); color: var(--accent, #1d6fe0); font-weight: 700; }
+
+  .subtabs { display: flex; gap: 6px; margin-bottom: 16px; }
+  .subtab { border: 1px solid var(--surface-hover, #e2e8f0); background: var(--surface, #ffffff); cursor: pointer; padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 500; color: var(--ink-secondary, #475569); }
+  .subtab.active { background: var(--accent, #1d6fe0); color: #fff; border-color: var(--accent, #1d6fe0); font-weight: 700; }
   .admin-view { display: none; }
   .admin-view.active { display: block; }
 
-  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-3); margin-bottom: var(--sp-4); }
-  .kpi { background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); padding: var(--sp-4); box-shadow: var(--shadow-sm); cursor: pointer; transition: box-shadow var(--dur-normal) var(--ease-out), transform var(--dur-normal) var(--ease-out); }
-  .kpi:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
-  .kpi .v { font-size: var(--fs-xl); font-weight: var(--fw-bold); }
-  .kpi .l { font-size: var(--fs-xs); color: var(--ink-muted); margin-top: 2px; }
-  .kpi .l b { color: var(--ink-secondary); }
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .kpi { background: var(--surface, #ffffff); border: 1px solid var(--surface-hover, #e2e8f0); border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .kpi .v { font-size: 20px; font-weight: 700; }
+  .kpi .l { font-size: 11px; color: var(--ink-muted, #64748b); margin-top: 2px; }
 
-  .card { background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-sm); margin-bottom: var(--sp-4); }
-  .card h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); margin-bottom: var(--sp-1); }
-  .card .csub { font-size: var(--fs-xs); color: var(--ink-muted); margin-bottom: var(--sp-4); }
-  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); }
-  @media (max-width: 1000px) { .chart-grid { grid-template-columns: 1fr; } .admin-shell { grid-template-columns: 1fr; } .sidebar { position: static; } }
+  .card { background: var(--surface, #ffffff); border: 1px solid var(--surface-hover, #e2e8f0); border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); margin-bottom: 16px; }
+  .card h3 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .card .csub { font-size: 11px; color: var(--ink-muted, #64748b); margin-bottom: 16px; }
+  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 960px) { .chart-grid { grid-template-columns: 1fr; } .admin-shell { grid-template-columns: 1fr; } }
 
-  /* Filter chips */
-  .filter-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: var(--sp-4); }
-  .filter-bar .flabel { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--ink-muted); text-transform: uppercase; letter-spacing: .4px; }
-  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: var(--fw-medium); padding: 4px 6px 4px 10px; border-radius: var(--r-pill); background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border); }
-  .chip button { border: none; background: none; cursor: pointer; color: var(--accent); font-weight: var(--fw-bold); width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-  .chip button:hover { background: var(--accent-border); }
-  .chip.ghost { background: var(--surface-alt); color: var(--ink-muted); border-color: var(--surface-hover); cursor: pointer; }
+  /* Horizontal bars */
+  .hbar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .hbar-label { width: 90px; font-size: 12px; font-weight: 700; color: var(--ink-secondary, #475569); text-align: right; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+  .hbar-label .swatch { width: 8px; height: 8px; border-radius: 2px; }
+  .hbar-track { flex: 1; height: 24px; background: var(--surface-alt, #f1f5f9); border-radius: 6px; overflow: hidden; position: relative; }
+  .hbar-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; padding-left: 8px; }
+  .hbar-val { font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap; }
 
-  /* Insight chips */
-  .insights { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: var(--sp-4); }
-  .insight { font-size: var(--fs-xs); color: var(--ink-secondary); background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-md); padding: 8px 12px; }
-  .insight b { color: var(--ink); }
-
-  /* Horizontal bars (identity + magnitude) */
-  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: var(--sp-3); }
-  .legend-item { display: flex; align-items: center; gap: 5px; font-size: var(--fs-xs); color: var(--ink-secondary); }
-  .legend-swatch { width: 12px; height: 12px; border-radius: 3px; }
-  .hbar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
-  .hbar-label { width: 92px; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--ink-secondary); text-align: right; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
-  .hbar-label .swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
-  .hbar-track { flex: 1; height: 24px; background: var(--surface-alt); border-radius: var(--r-sm); overflow: hidden; position: relative; }
-  .hbar-fill { height: 100%; border-radius: var(--r-sm); display: flex; align-items: center; padding-left: 8px; transition: width var(--dur-slow) var(--ease-out); }
-  .hbar-val { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.25); white-space: nowrap; }
-  .hbar-val.outside { color: var(--ink-secondary); text-shadow: none; }
-
-  /* Trust gauge (Analyze hero) */
-  .trust-hero { display: grid; grid-template-columns: 200px 1fr; gap: var(--sp-5); align-items: center; }
-  @media (max-width: 640px) { .trust-hero { grid-template-columns: 1fr; } }
-  .gauge-band { text-align: center; margin-top: 8px; font-size: var(--fs-xs); font-weight: var(--fw-bold); }
-  .rubric-row { margin-bottom: 10px; }
-  .rr-top { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-xs); margin-bottom: 3px; }
-  .rr-top .name { font-weight: var(--fw-bold); color: var(--ink-secondary); }
-  .rr-top .val { color: var(--ink-muted); }
-  .rr-track { height: 8px; background: var(--surface-alt); border-radius: 4px; overflow: hidden; }
-  .rr-fill { height: 100%; background: var(--accent); border-radius: 4px; }
-  .formula { font-family: 'SF Mono', Menlo, monospace; font-size: var(--fs-xs); background: var(--surface-alt); padding: 8px 12px; border-radius: var(--r-sm); color: var(--ink); margin-top: var(--sp-3); line-height: 1.6; }
-
-  /* Tile-map choropleth */
-  .map-toolbar { display: flex; gap: 6px; margin-bottom: var(--sp-3); flex-wrap: wrap; }
-  .map-toolbar .seg { display: flex; gap: 3px; background: var(--surface-alt); padding: 3px; border-radius: var(--r-sm); }
-  .map-toolbar .seg button { border: none; background: none; cursor: pointer; padding: 5px 12px; border-radius: 4px; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--ink-muted); }
-  .map-toolbar .seg button.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-sm); }
+  /* Tilemap */
   .tilemap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
   @media (max-width: 520px) { .tilemap { grid-template-columns: repeat(2, 1fr); } }
-  .tile { border-radius: var(--r-md); padding: 10px 8px; cursor: pointer; border: 2px solid transparent; transition: transform var(--dur-fast) var(--ease-out); position: relative; min-height: 74px; display: flex; flex-direction: column; justify-content: space-between; }
-  .tile:hover { transform: translateY(-2px); }
-  .tile.selected { border-color: var(--ink); box-shadow: var(--shadow-md); }
-  .tile .tn { font-size: var(--fs-xs); font-weight: var(--fw-bold); line-height: 1.2; }
-  .tile .tv { font-size: var(--fs-xs); font-weight: var(--fw-bold); }
+  .tile { border-radius: 10px; padding: 10px 8px; cursor: pointer; min-height: 70px; display: flex; flex-direction: column; justify-content: space-between; }
+  .tile .tn { font-size: 12px; font-weight: 700; }
+  .tile .tv { font-size: 12px; font-weight: 700; }
   .tile .tsub { font-size: 10px; opacity: .85; }
-  .map-note { font-size: 10px; color: var(--ink-faint); margin-top: 8px; }
-  .tile-legend { display: flex; align-items: center; gap: 12px; margin-top: var(--sp-3); flex-wrap: wrap; }
 
-  /* Trend */
-  .trend-wrap { position: relative; }
-  .trend-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--ink-faint); margin-top: 4px; }
-
-  /* Feed (Twitter) */
-  .feed-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-3); }
-  .live-dot { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--ok); font-weight: var(--fw-bold); }
-  .live-dot::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); animation: pulse 2s infinite; }
-  .feed-card { background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); padding: var(--sp-4); margin-bottom: var(--sp-3); box-shadow: var(--shadow-sm); transition: box-shadow var(--dur-normal) var(--ease-out), transform var(--dur-normal) var(--ease-out); }
-  .feed-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
-  .feed-card.syncing { opacity: .65; border-style: dashed; }
-  .feed-card.failed { border-color: var(--bad); background: var(--bad-bg); }
-  .fc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-3); }
+  /* Feed Cards */
+  .feed-card { background: var(--surface, #ffffff); border: 1px solid var(--surface-hover, #e2e8f0); border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: transform 120ms; }
+  .feed-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+  .fc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
   .fc-surveyor { display: flex; align-items: center; gap: 10px; }
-  .fc-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--accent-bg); border: 2px solid var(--accent-border); display: flex; align-items: center; justify-content: center; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--accent); flex-shrink: 0; }
-  .fc-name { font-size: var(--fs-sm); font-weight: var(--fw-bold); }
-  .fc-location { font-size: var(--fs-xs); color: var(--ink-muted); }
-  .fc-time { font-size: var(--fs-xs); color: var(--ink-faint); }
-  .fc-answers { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--sp-3); }
-  .fc-pill { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-xs); font-weight: var(--fw-medium); padding: 3px 9px; border-radius: var(--r-pill); background: var(--surface-alt); color: var(--ink-secondary); border: 1px solid var(--surface-hover); }
-  .fc-pill .dot { width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
-  .fc-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
-  .fc-signals { display: flex; gap: 5px; flex-wrap: wrap; }
-  .sig { font-size: 10px; font-weight: var(--fw-bold); padding: 2px 7px; border-radius: var(--r-sm); display: inline-flex; align-items: center; gap: 3px; }
-  .sig.ok { background: var(--ok-bg); color: var(--ok); }
-  .sig.bad { background: var(--bad-bg); color: var(--bad); }
-  .fc-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-  .fc-status { font-size: var(--fs-xs); font-weight: var(--fw-bold); padding: 3px 9px; border-radius: var(--r-sm); }
-  .fc-status.pending { background: var(--warn-bg); color: var(--warn); }
-  .fc-status.confirmed { background: var(--ok-bg); color: var(--ok); }
-  .fc-status.rejected { background: var(--bad-bg); color: var(--bad); }
-  .review-actions { display: flex; gap: 6px; margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--surface-alt); }
-  .review-actions button { font-size: var(--fs-xs); font-weight: var(--fw-bold); padding: 6px 12px; border-radius: var(--r-sm); border: 1px solid var(--surface-hover); background: var(--surface); color: var(--ink-secondary); cursor: pointer; }
-  .review-actions .confirm { background: var(--ok); color: #fff; border-color: var(--ok); }
-  .review-actions .reject { color: var(--bad); border-color: var(--bad); }
+  .fc-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--accent-bg, #eff6ff); border: 2px solid var(--accent-border, #bfdbfe); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--accent, #1d6fe0); }
+  .fc-name { font-size: 13px; font-weight: 700; }
+  .fc-location { font-size: 11px; color: var(--ink-muted, #64748b); }
+  .fc-time { font-size: 11px; color: var(--ink-faint, #94a3b8); }
+  .fc-answers { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .fc-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--surface-alt, #f1f5f9); color: var(--ink-secondary, #475569); }
+  .fc-pill .dot { width: 7px; height: 7px; border-radius: 2px; }
+  .fc-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .fc-signals { display: flex; gap: 5px; }
+  .sig { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+  .sig.ok { background: var(--ok-bg, #f0fdf4); color: var(--ok, #16a34a); }
+  .sig.bad { background: var(--bad-bg, #fef2f2); color: var(--bad, #ef4444); }
+  .fc-status { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 4px; }
+  .fc-status.pending { background: var(--warn-bg, #fffbeb); color: var(--warn, #f59e0b); }
+  .fc-status.confirmed { background: var(--ok-bg, #f0fdf4); color: var(--ok, #16a34a); }
+  .fc-status.rejected { background: var(--bad-bg, #fef2f2); color: var(--bad, #ef4444); }
 
-  .pending-row { display: flex; align-items: center; gap: var(--sp-3); padding: 10px 0; border-bottom: 1px solid var(--surface-alt); font-size: var(--fs-sm); }
-  .pending-row:last-child { border-bottom: none; }
-  .pending-row .rid { font-weight: var(--fw-bold); width: 44px; }
-  .pending-row .rmeta { flex: 1; color: var(--ink-secondary); }
-  .pending-row .rmeta .t { font-size: var(--fs-xs); color: var(--ink-muted); }
-  .badge { font-size: 10px; font-weight: var(--fw-bold); padding: 2px 8px; border-radius: var(--r-sm); background: var(--warn-bg); color: var(--warn); }
-  .mini-btn { font-size: var(--fs-xs); font-weight: var(--fw-bold); padding: 5px 12px; border-radius: var(--r-sm); border: 1px solid var(--accent-border); background: var(--accent-bg); color: var(--accent); cursor: pointer; }
-
-  /* ════════════ SUPER ADMIN (governance) ════════════ */
-  .gov-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); }
-  @media (max-width: 1000px) { .gov-grid { grid-template-columns: 1fr; } }
-  .company-card { border: 1px solid var(--surface-hover); border-left: 3px solid var(--party-congress); border-radius: var(--r-md); padding: var(--sp-3); margin-bottom: var(--sp-3); }
+  /* ════════════ SUPER ADMIN (Governance) ════════════ */
+  .gov-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 960px) { .gov-grid { grid-template-columns: 1fr; } }
+  .company-card { border: 1px solid var(--surface-hover, #e2e8f0); border-left: 3px solid var(--party-congress, #16a34a); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
   .company-card .cc-top { display: flex; align-items: center; justify-content: space-between; }
-  .company-card .cc-name { font-size: var(--fs-sm); font-weight: var(--fw-bold); }
-  .company-card .cc-meta { font-size: var(--fs-xs); color: var(--ink-muted); margin-top: 2px; }
+  .company-card .cc-name { font-size: 13px; font-weight: 700; }
+  .company-card .cc-meta { font-size: 11px; color: var(--ink-muted, #64748b); margin-top: 2px; }
   .company-card .cc-pills { display: flex; gap: 6px; margin-top: 8px; }
-  .cc-pills .p { font-size: 10px; font-weight: var(--fw-bold); padding: 2px 8px; border-radius: var(--r-sm); background: var(--surface-alt); color: var(--ink-secondary); }
+  .cc-pills .p { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: var(--surface-alt, #f1f5f9); color: var(--ink-secondary, #475569); }
 
-  .admin-row { border: 1px solid var(--surface-hover); border-radius: var(--r-md); padding: var(--sp-3); margin-bottom: var(--sp-3); }
-  .ar-top { display: flex; align-items: center; gap: 8px; }
-  .ar-avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--ok), #0e7a38); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: var(--fw-bold); font-size: var(--fs-xs); }
-  .ar-name { font-size: var(--fs-sm); font-weight: var(--fw-bold); display: flex; align-items: center; gap: 5px; }
-  .ar-user { font-size: var(--fs-xs); color: var(--ink-muted); }
-  .role-pill { font-size: 10px; font-weight: var(--fw-bold); padding: 2px 8px; border-radius: var(--r-sm); }
-  .role-pill.active { background: var(--ok-bg); color: var(--ok); }
-  .role-pill.disabled { background: var(--bad-bg); color: var(--bad); }
-  .powers-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: var(--sp-3); }
-  .power { font-size: var(--fs-xs); padding: 6px 9px; border-radius: var(--r-sm); border: 1px solid var(--surface-hover); color: var(--ink-faint); display: flex; align-items: center; gap: 6px; }
-  .power.on { border-color: var(--accent-border); background: var(--accent-bg); color: var(--accent); font-weight: var(--fw-bold); }
-  .power .chk { width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid currentColor; display: flex; align-items: center; justify-content: center; font-size: 9px; flex-shrink: 0; }
-  .caps-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--sp-3); }
-  .cap { font-size: var(--fs-xs); padding: 4px 10px; border-radius: var(--r-pill); background: var(--surface-alt); color: var(--ink-secondary); }
-  .cap b { color: var(--ink); }
+  .powers-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
+  .power { font-size: 12px; padding: 6px 9px; border-radius: 6px; border: 1px solid var(--accent-border, #bfdbfe); background: var(--accent-bg, #eff6ff); color: var(--accent, #1d6fe0); font-weight: 700; display: flex; align-items: center; gap: 6px; }
+  .power .chk { width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid currentColor; display: flex; align-items: center; justify-content: center; font-size: 9px; }
 
-  .audit-row { display: flex; align-items: center; gap: 10px; padding: 10px; border-left: 3px solid var(--accent); background: var(--surface-alt); border-radius: 0 var(--r-sm) var(--r-sm) 0; margin-bottom: 8px; }
-  .audit-row .ico { width: 28px; height: 28px; border-radius: var(--r-sm); background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+  .audit-row { display: flex; align-items: center; gap: 10px; padding: 10px; border-left: 3px solid var(--accent, #1d6fe0); background: var(--surface-alt, #f1f5f9); border-radius: 0 6px 6px 0; margin-bottom: 8px; }
+  .audit-row .ico { width: 28px; height: 28px; border-radius: 6px; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
   .audit-row .ainfo { flex: 1; min-width: 0; }
-  .audit-row .aact { font-size: var(--fs-sm); font-weight: var(--fw-bold); }
-  .audit-row .ameta { font-size: var(--fs-xs); color: var(--ink-muted); }
-  .audit-row .atime { font-size: var(--fs-xs); color: var(--ink-faint); white-space: nowrap; }
-  .entity-pill { font-size: 10px; font-weight: var(--fw-bold); padding: 1px 7px; border-radius: var(--r-sm); background: var(--accent-bg); color: var(--accent); }
+  .audit-row .aact { font-size: 13px; font-weight: 700; }
+  .audit-row .ameta { font-size: 11px; color: var(--ink-muted, #64748b); }
+  .audit-row .atime { font-size: 11px; color: var(--ink-faint, #94a3b8); }
 
-  .seat-card { border: 1px solid var(--surface-hover); border-radius: var(--r-md); padding: var(--sp-3); margin-bottom: 10px; }
-  .seat-card .st { display: flex; align-items: center; justify-content: space-between; }
-  .seat-status { font-size: 10px; font-weight: var(--fw-bold); padding: 2px 8px; border-radius: var(--r-sm); }
-  .seat-status.pending { background: var(--warn-bg); color: var(--warn); }
-  .seat-status.approved { background: var(--ok-bg); color: var(--ok); }
-
-  /* Design rationale aside */
-  .aside { width: 320px; flex-shrink: 0; background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-sm); align-self: flex-start; }
-  .aside h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); margin-bottom: var(--sp-3); }
-  .principle { display: flex; gap: 8px; margin-bottom: var(--sp-3); font-size: var(--fs-sm); color: var(--ink-secondary); line-height: 1.5; }
-  .principle .tag { background: var(--accent-bg); color: var(--accent); border-radius: var(--r-sm); padding: 1px 7px; font-size: 10px; font-weight: var(--fw-bold); white-space: nowrap; flex-shrink: 0; height: fit-content; }
-
-  /* Doctrine footer */
-  .doctrine { max-width: 1400px; margin: var(--sp-6) auto 0; padding: var(--sp-5); background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); }
-  .doctrine h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); margin-bottom: var(--sp-3); }
-  .doctrine-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-4); }
-  @media (max-width: 760px) { .doctrine-grid { grid-template-columns: 1fr; } }
-  .doc-col h4 { font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--accent); margin-bottom: 6px; }
-  .doc-col p { font-size: var(--fs-xs); color: var(--ink-secondary); line-height: 1.6; }
-  .doc-foot { margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--surface-alt); font-size: var(--fs-xs); color: var(--ink-muted); line-height: 1.6; }
-  .doc-foot b { color: var(--ink); }
-
-  /* ── Surveyor Settings screen (device-local prefs) ── */
-  .set-card { margin: var(--sp-3) var(--sp-5); padding: var(--sp-4); background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); box-shadow: var(--shadow-sm); }
-  .set-card h4 { font-size: var(--fs-md); font-weight: var(--fw-bold); }
-  .set-card .desc { font-size: var(--fs-xs); color: var(--ink-muted); line-height: 1.5; margin: 4px 0 var(--sp-3); }
-  .set-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-  .set-chip { border: 2px solid var(--surface-hover); background: var(--surface); cursor: pointer; padding: 8px 16px; border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--ink-secondary); }
-  .set-chip.selected { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
-  .nav-mode-opt { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; cursor: pointer; padding: 12px 14px; border-radius: var(--r-lg); border: 2px solid var(--surface-hover); background: var(--surface); margin-bottom: 10px; }
-  .nav-mode-opt:last-child { margin-bottom: 0; }
-  .nav-mode-opt.selected { border-color: var(--accent); background: var(--accent-bg); }
-  .nav-mode-opt .radio { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; box-sizing: border-box; border: 2px solid var(--ink-faint); }
-  .nav-mode-opt.selected .radio { border: 6px solid var(--accent); }
-  .nav-mode-opt .nm-title { font-size: var(--fs-base); font-weight: var(--fw-bold); display: block; }
-  .nav-mode-opt .nm-desc { font-size: var(--fs-xs); color: var(--ink-muted); }
-  .font-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-  .font-btn { border: 2px solid var(--surface-hover); background: var(--surface); border-radius: var(--r-md); cursor: pointer; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--ink); }
-  .font-btn.selected { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
-  .font-btn .glyph { font-weight: var(--fw-bold); line-height: 1; }
-  .font-btn .lbl { font-size: 10px; }
-  .set-preview { margin-top: var(--sp-3); background: var(--surface-alt); border-radius: var(--r-md); padding: 12px 14px; }
-  .set-preview .eyebrow { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: var(--ink-muted); }
-  .set-preview p { margin-top: 6px; font-size: var(--fs-base); }
-
-  /* ── Surveyor Login (full-screen; hides chrome) ── */
-  .phone.login-mode .status-bar, .phone.login-mode .phone-subnav { display: none; }
-  .login { min-height: 100%; display: flex; flex-direction: column; padding: var(--sp-6) var(--sp-5) var(--sp-5); background: linear-gradient(160deg, var(--accent-bg), var(--surface) 55%); }
-  .login-brandrow { display: flex; align-items: center; gap: 10px; margin-bottom: auto; }
-  .login-logo { width: 40px; height: 40px; border-radius: var(--r-md); background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: var(--fw-bold); }
-  .login-brand { font-size: var(--fs-md); font-weight: var(--fw-bold); }
-  .login-brand .tag { display: block; font-size: var(--fs-xs); color: var(--ink-muted); font-weight: var(--fw-normal); }
-  .login h1 { font-size: var(--fs-xl); font-weight: var(--fw-bold); margin-top: var(--sp-6); }
-  .login .lead { font-size: var(--fs-sm); color: var(--ink-muted); margin: 4px 0 var(--sp-4); }
-  .login-form { display: flex; flex-direction: column; gap: var(--sp-3); }
-  .login-label { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--ink-secondary); display: flex; flex-direction: column; gap: 5px; }
-  .login-input { min-height: 48px; border: 1px solid var(--surface-hover); border-radius: var(--r-md); padding: 0 14px; font-size: var(--fs-base); font-family: var(--font); background: var(--surface); color: var(--ink); }
-  .login-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
-  .login-pass { position: relative; display: flex; }
-  .login-pass .login-input { flex: 1; padding-right: 58px; }
-  .login-eye { position: absolute; right: 6px; top: 6px; bottom: 6px; border: none; background: var(--surface-alt); border-radius: var(--r-sm); padding: 0 12px; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--ink-secondary); cursor: pointer; }
-  .login-submit { margin-top: var(--sp-2); min-height: 50px; background: var(--accent); color: #fff; border: none; border-radius: var(--r-md); font-size: var(--fs-md); font-weight: var(--fw-bold); cursor: pointer; box-shadow: 0 2px 10px rgba(29,111,224,.3); }
-  .login-note { margin-top: var(--sp-3); font-size: var(--fs-xs); color: var(--ink-muted); text-align: center; }
-  .login-version { margin-top: var(--sp-4); font-size: 10px; color: var(--ink-faint); text-align: center; }
-  .signout-row { margin: var(--sp-2) var(--sp-5) var(--sp-5); }
-  .signout-btn { width: 100%; min-height: 44px; background: none; border: 1px solid var(--surface-hover); border-radius: var(--r-md); color: var(--ink-secondary); font-size: var(--fs-sm); font-weight: var(--fw-bold); cursor: pointer; }
-
-  /* ── Admin profile / account forms ── */
-  .form-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: var(--sp-3); }
-  .form-field span { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--ink-secondary); }
-  .form-field input { min-height: 42px; border: 1px solid var(--surface-hover); border-radius: var(--r-md); padding: 0 12px; font-size: var(--fs-base); font-family: var(--font); background: var(--surface); color: var(--ink); }
-  .form-field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
-  .btn-primary { min-height: 42px; padding: 0 18px; background: var(--accent); color: #fff; border: none; border-radius: var(--r-md); font-size: var(--fs-sm); font-weight: var(--fw-bold); cursor: pointer; }
-  .btn-outline { min-height: 38px; padding: 0 16px; background: var(--surface); color: var(--ink-secondary); border: 1px solid var(--surface-hover); border-radius: var(--r-md); font-size: var(--fs-xs); font-weight: var(--fw-bold); cursor: pointer; }
-  .totp-secret { margin-top: 12px; background: var(--surface-alt); border-radius: var(--r-md); padding: 12px 14px; }
-  .totp-secret code { font-family: 'SF Mono', Menlo, monospace; font-weight: var(--fw-bold); word-break: break-all; font-size: var(--fs-sm); display: block; }
-  .identity-card { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); background: var(--surface-alt); margin-bottom: var(--sp-4); }
-  .identity-card .big-avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: var(--fs-lg); font-weight: var(--fw-bold); flex-shrink: 0; }
-  .identity-card .id-name { font-size: var(--fs-md); font-weight: var(--fw-bold); display: flex; align-items: center; gap: 6px; }
-  .identity-card .id-sub { font-size: var(--fs-xs); color: var(--ink-muted); margin-top: 2px; }
-  .readonly-note { font-size: var(--fs-xs); color: var(--ink-muted); background: var(--warn-bg); border: 1px solid var(--warn); border-radius: var(--r-md); padding: 10px 12px; margin-bottom: var(--sp-4); display: flex; gap: 8px; align-items: flex-start; }
-  .sa-view { display: none; }
-  .sa-view.active { display: block; }
-
-  /* ════════ Record-verification modal (Client Admin · Review) ════════ */
+  /* ── Review Modal ── */
   .rv-overlay { position: fixed; inset: 0; z-index: 200; display: none; align-items: flex-start; justify-content: center; background: rgba(15,23,42,.55); backdrop-filter: blur(2px); padding: 40px 16px; overflow-y: auto; }
   .rv-overlay.open { display: flex; }
-  .rv-panel { background: var(--surface); width: 100%; max-width: 560px; border-radius: var(--r-lg); box-shadow: var(--shadow-lg); overflow: hidden; animation: rvIn var(--dur-normal) var(--ease-out); }
-  @keyframes rvIn { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: none; } }
-  .rv-head { position: relative; padding: var(--sp-4) var(--sp-5); border-bottom: 1px solid var(--surface-alt); }
-  .rv-title { font-size: var(--fs-md); font-weight: var(--fw-bold); display: flex; align-items: center; gap: 8px; }
-  .rv-sub { font-size: var(--fs-xs); color: var(--ink-muted); margin-top: 2px; }
-  .rv-close { position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--surface-hover); background: var(--surface); color: var(--ink-muted); font-size: 15px; cursor: pointer; line-height: 1; }
-  .rv-close:hover { background: var(--surface-alt); color: var(--ink); }
-  .rv-kbhint { font-size: 10px; color: var(--ink-muted); margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .rv-kbhint kbd { font-family: 'SF Mono', Menlo, monospace; font-size: 10px; background: var(--surface-alt); border: 1px solid var(--surface-hover); border-radius: 4px; padding: 1px 5px; color: var(--ink-secondary); }
-  .rv-pipeline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 10px var(--sp-5); background: var(--surface-alt); font-size: 10px; font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .4px; color: var(--ink-faint); }
-  .rv-pipeline .step.active { color: var(--accent); }
-  .rv-body { padding: var(--sp-5); max-height: 56vh; overflow-y: auto; }
-  .rv-card { border: 1px solid var(--surface-hover); border-radius: var(--r-md); padding: var(--sp-4); margin-bottom: var(--sp-3); }
-  .rv-card h5 { font-size: var(--fs-xs); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .5px; color: var(--ink-muted); margin-bottom: var(--sp-3); }
-  .rv-trust { display: flex; gap: var(--sp-4); align-items: center; }
-  .rv-ring { position: relative; display: inline-flex; flex-shrink: 0; }
-  .rv-ring .ring-band { font-size: 9px; text-transform: uppercase; letter-spacing: .4px; color: var(--ink-muted); margin-top: 2px; }
-  .rv-pillars { flex: 1; display: flex; flex-direction: column; gap: 7px; }
-  .rv-pill-row { display: grid; grid-template-columns: 96px 1fr 44px; align-items: center; gap: 8px; font-size: var(--fs-xs); }
-  .rv-pill-row .plabel { color: var(--ink-secondary); }
-  .rv-track { height: 6px; border-radius: 3px; background: var(--surface-hover); overflow: hidden; }
-  .rv-track > span { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width var(--dur-slow) var(--ease-out); }
-  .rv-pill-row .pval { text-align: right; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; color: var(--ink); }
-  .rv-pill-row.zero .pval { color: var(--ink-faint); }
-  .rv-uplift { font-size: var(--fs-xs); color: #047857; background: var(--ok-bg); border: 1px solid #bbf7d0; border-radius: var(--r-sm); padding: 8px 10px; margin-top: var(--sp-3); display: flex; gap: 6px; align-items: center; }
-  .rv-photo { position: relative; height: 150px; border-radius: var(--r-sm); background: linear-gradient(135deg,#e2e8f0,#cbd5e1); display: flex; align-items: center; justify-content: center; color: var(--ink-faint); font-size: var(--fs-xs); overflow: hidden; }
-  .rv-photo .gps-stamp { position: absolute; left: 8px; bottom: 8px; background: rgba(15,23,42,.72); color: #fff; font-size: 10px; padding: 3px 7px; border-radius: 4px; font-variant-numeric: tabular-nums; }
-  .rv-photo .cam-ico { font-size: 30px; opacity: .55; }
-  .rv-dl { font-size: var(--fs-xs); color: var(--accent); cursor: pointer; background: none; border: none; padding: 0; margin-top: 8px; font-weight: var(--fw-medium); }
-  .rv-audio { display: flex; align-items: center; gap: 10px; background: var(--surface-alt); border-radius: var(--r-sm); padding: 8px 10px; margin-top: var(--sp-3); }
-  .rv-play { width: 30px; height: 30px; border-radius: 50%; border: none; background: var(--accent); color: #fff; font-size: 11px; cursor: pointer; flex-shrink: 0; }
-  .rv-wave { flex: 1; display: flex; align-items: center; gap: 2px; height: 26px; }
-  .rv-wave i { flex: 1; background: var(--accent-border); border-radius: 1px; min-width: 2px; }
-  .rv-dur { font-size: var(--fs-xs); color: var(--ink-muted); font-variant-numeric: tabular-nums; }
-  .rv-confirmed-note { background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857; border-radius: var(--r-md); padding: var(--sp-4); font-size: var(--fs-sm); display: flex; gap: 8px; align-items: flex-start; margin-bottom: var(--sp-3); }
-  .rv-proof-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); font-size: var(--fs-sm); padding: 7px 0; border-bottom: 1px solid var(--surface-alt); }
-  .rv-proof-row:last-child { border-bottom: none; }
-  .rv-proof-row .pv { font-variant-numeric: tabular-nums; color: var(--ink-secondary); font-weight: var(--fw-medium); margin-left: 6px; }
-  .rv-chip { font-size: 10px; font-weight: var(--fw-bold); padding: 2px 8px; border-radius: var(--r-pill); white-space: nowrap; }
-  .rv-chip.ok { background: var(--ok-bg); color: var(--ok); }
-  .rv-chip.bad { background: var(--bad-bg); color: var(--bad); }
-  .rv-kv { display: flex; justify-content: space-between; gap: var(--sp-4); padding: 7px 0; border-bottom: 1px solid var(--surface-alt); font-size: var(--fs-sm); }
+  .rv-panel { background: var(--surface, #ffffff); width: 100%; max-width: 540px; border-radius: 16px; box-shadow: 0 16px 40px rgba(0,0,0,0.18); overflow: hidden; }
+  .rv-head { position: relative; padding: 16px 20px; border-bottom: 1px solid var(--surface-alt, #f1f5f9); }
+  .rv-title { font-size: 16px; font-weight: 700; }
+  .rv-close { position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--surface-hover, #e2e8f0); background: var(--surface, #ffffff); cursor: pointer; font-size: 14px; }
+  .rv-body { padding: 20px; max-height: 60vh; overflow-y: auto; }
+  .rv-card { border: 1px solid var(--surface-hover, #e2e8f0); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+  .rv-card h5 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--ink-muted, #64748b); margin-bottom: 8px; }
+  .rv-kv { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--surface-alt, #f1f5f9); font-size: 13px; }
   .rv-kv:last-child { border-bottom: none; }
-  .rv-kv .q { color: var(--ink-muted); }
-  .rv-kv .a { font-weight: var(--fw-bold); text-align: right; }
-  .rv-actions { display: flex; gap: 8px; padding: var(--sp-4) var(--sp-5); border-top: 1px solid var(--surface-alt); background: var(--surface); flex-wrap: wrap; align-items: center; }
-  .rv-actions .grow { flex: 1; }
-  .rv-actions button { font-size: var(--fs-sm); font-weight: var(--fw-bold); padding: 9px 14px; border-radius: var(--r-sm); border: 1px solid var(--surface-hover); background: var(--surface); color: var(--ink-secondary); cursor: pointer; }
-  .rv-actions button:hover { background: var(--surface-alt); }
-  .rv-actions .confirm { background: var(--ok); color: #fff; border-color: var(--ok); }
-  .rv-actions .confirm:hover { filter: brightness(.95); background: var(--ok); }
-  .rv-actions .reject { color: var(--bad); border-color: var(--bad); }
-  .rv-actions .reject:hover { background: var(--bad-bg); }
-  #toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px); z-index: 300; background: var(--ink); color: #fff; font-size: var(--fs-sm); font-weight: var(--fw-medium); padding: 11px 18px; border-radius: var(--r-pill); box-shadow: var(--shadow-lg); opacity: 0; pointer-events: none; transition: opacity var(--dur-normal) var(--ease-out), transform var(--dur-normal) var(--ease-out); max-width: 90vw; }
+  .rv-kv .q { color: var(--ink-muted, #64748b); }
+  .rv-kv .a { font-weight: 700; }
+  .rv-proof-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; font-size: 13px; }
+  .rv-chip { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+  .rv-chip.ok { background: var(--ok-bg, #f0fdf4); color: var(--ok, #16a34a); }
+  .rv-actions { display: flex; gap: 8px; padding: 16px 20px; border-top: 1px solid var(--surface-alt, #f1f5f9); background: var(--surface, #ffffff); }
+  .rv-actions button { flex: 1; font-size: 13px; font-weight: 700; padding: 10px; border-radius: 8px; border: 1px solid var(--surface-hover, #e2e8f0); background: var(--surface, #ffffff); cursor: pointer; }
+  .rv-actions .confirm { background: var(--ok, #16a34a); color: #fff; border-color: var(--ok, #16a34a); }
+  .rv-actions .reject { color: var(--bad, #ef4444); border-color: var(--bad, #ef4444); }
+
+  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); z-index: 300; background: var(--ink, #1e293b); color: #fff; font-size: 13px; font-weight: 600; padding: 10px 18px; border-radius: 999px; box-shadow: 0 4px 16px rgba(0,0,0,0.18); opacity: 0; pointer-events: none; transition: all 200ms; }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   #toast.ok { background: #065f46; }
   #toast.bad { background: #991b1b; }
 </style>
 </head>
-<body data-palette="#16a34a,#f97316,#ec4899,#94a3b8,#64748b">
+<body>
 
-<!-- ══════════ Top app bar ══════════ -->
-<div class="appbar">
+<!-- ══════════ Top App Bar ══════════ -->
+<header class="appbar">
   <div class="brand">
     <span class="glyph">◆</span>
-    <span>Smart Survey X<br><span class="sub">Whole product mock · Trust Score spine</span></span>
+    <div>
+      Smart Survey X<br />
+      <span class="sub">Ground IQ Platform · Mock 3 Unified</span>
+    </div>
   </div>
-  <div class="role-tabs" role="tablist">
-    <button class="role-tab" data-role="surveyor" onclick="setRole('surveyor', this)">📱 Surveyor</button>
-    <button class="role-tab active" data-role="clientadmin" onclick="setRole('clientadmin', this)">📊 Client Admin</button>
-    <button class="role-tab" data-role="superadmin" onclick="setRole('superadmin', this)">🛡 Super Admin</button>
+  <div class="role-tabs">
+    <button class="role-tab active" onclick="setRole('surveyor')">📱 Surveyor</button>
+    <button class="role-tab" onclick="setRole('clientadmin')">📊 Client Admin</button>
+    <button class="role-tab" onclick="setRole('superadmin')">🛡 Super Admin</button>
   </div>
   <div class="appbar-spacer"></div>
-  <span class="sync-chip synced" title="Local-first: actions apply instantly, sync in the background"><span class="sdot"></span>Synced just now</span>
-  <span class="ts-chip" onclick="gotoTrust()"><span class="dot"></span>Platform Trust 87 · High</span>
-</div>
+  <span class="sync-chip"><span class="sdot"></span> Synced just now</span>
+</header>
 
-<div class="stage">
-
-  <!-- ═══════════════════════════════════════════════════════
-       SURVEYOR — Apple lens · where trust signals are captured
-       ═══════════════════════════════════════════════════════ -->
-  <div class="role-panel" id="panel-surveyor">
-    <div class="panel-lead"><h2>Surveyor · field capture</h2><p>Ruthless subtraction, craft in the feel — and every hard lock here becomes a Trust Score signal downstream.</p></div>
+<main class="stage">
+  <!-- ════════════ SURVEYOR ════════════ -->
+  <div id="panel-surveyor" class="role-panel active">
+    <div class="panel-lead">
+      <h2>Surveyor · Field Capture</h2>
+      <p>Apple lens: 4-step Stepper, Lockbar, centered question cards, and optimistic offline sync.</p>
+    </div>
     <div class="survey-stage">
       <div class="phone">
-        <div class="status-bar"><span class="time">9:41</span><span>●●●●○ 5G 🔋</span></div>
-        <div class="phone-subnav">
-          <button class="active" onclick="setScreen('s-home', this)">Home</button>
-          <button onclick="setScreen('s-collect', this)">Collect</button>
-          <button onclick="setScreen('s-pending', this)">Pending</button>
-          <button onclick="setScreen('s-profile', this)">Profile</button>
-          <button onclick="setScreen('s-settings', this)">Settings</button>
+        <div class="status-bar">
+          <span class="time">9:41</span>
+          <span>●●●●○ 5G 🔋</span>
         </div>
-        <div class="phone-body">
+        <div class="phone-subnav">
+          <button class="active" onclick="setSurveyorScreen('s-home')">Home</button>
+          <button onclick="setSurveyorScreen('s-collect')">Collect</button>
+          <button onclick="setSurveyorScreen('s-pending')">Pending</button>
+          <button onclick="setSurveyorScreen('s-profile')">Profile</button>
+          <button onclick="setSurveyorScreen('s-settings')">Settings</button>
+        </div>
 
+        <div class="phone-body">
           <!-- Home -->
-          <div class="phone-screen active" id="s-home">
+          <div id="s-home" class="phone-screen active">
             <div class="hero-card">
               <div class="hero-eyebrow">Field survey · Surveyor</div>
-              <div class="hero-name">Hi, Rajesh Kumar
-                <svg class="verified" viewBox="0 0 22 22" aria-label="Verified"><path fill="#1D9BF0" d="M11 2l2.2 1.6 2.7-.2 1 2.5 2.3 1.4-.6 2.7.6 2.7-2.3 1.4-1 2.5-2.7-.2L11 20l-2.2-1.6-2.7.2-1-2.5-2.3-1.4.6-2.7-.6-2.7 2.3-1.4 1-2.5 2.7.2z"/><path fill="#fff" d="M9.6 13.4l-2-2 1-1 1 1 3.2-3.2 1 1z"/></svg>
-              </div>
-              <div class="hero-sub">GPS → Photo → Q/A + audio · saved on device · auto next</div>
+              <div class="hero-name">Hi, Rajesh Kumar <span style="color:#1d6fe0">✓</span></div>
+              <div class="hero-sub">GPS → Photo → Voice + Q/A · saved on device</div>
             </div>
             <div class="pill-row">
-              <span class="spill ok"><span class="d"></span>Strong</span>
+              <span class="spill ok"><span class="d"></span>Network Strong</span>
               <span class="spill warn"><span class="d"></span>3 pending on phone</span>
             </div>
             <div class="stat-row">
@@ -572,27 +354,18 @@
               <div class="stat"><div class="v tnum">12</div><div class="l">Questions</div></div>
               <div class="stat"><div class="v tnum">84%</div><div class="l">Target</div></div>
             </div>
-            <!-- Surveyor's own Trust Score -->
-            <div class="ts-card">
-              <div class="ring-wrap ring" data-p="91" data-r="26" data-w="6">
-                <svg width="64" height="64" viewBox="0 0 64 64"><circle class="ring-track" cx="32" cy="32" r="26" stroke-width="6"/><circle class="ring-fill" cx="32" cy="32" r="26" stroke-width="6"/></svg>
-                <div class="ring-center"><span class="num tnum" style="font-size:16px">91</span><span class="cap">Trust</span></div>
-              </div>
-              <div class="meta">
-                <h4>Your Trust Score — 91 · High</h4>
-                <p>Built from your locked captures, verified identity and QA confirmations. Keep locking GPS + photo + voice on every record.</p>
-                <span class="link" onclick="setRole('clientadmin', document.querySelector('[data-role=clientadmin]')); setTimeout(gotoTrust,60)">See how it's scored →</span>
-              </div>
-            </div>
             <div class="cta">
-              <button class="cta-btn" onclick="setScreen('s-collect', document.querySelectorAll('.phone-subnav button')[1])">Start collect · GPS → Photo → Q/A</button>
-              <button class="cta-sub">Sync 3 packages now</button>
+              <button class="cta-btn" onclick="setSurveyorScreen('s-collect')">Start collect · GPS → Photo → Q/A</button>
+              <button class="cta-sub" onclick="toast('Syncing 3 packages…','ok')">Sync 3 packages now</button>
             </div>
           </div>
 
-          <!-- Collect (locked flow) -->
-          <div class="phone-screen" id="s-collect">
-            <div class="nav-bar"><h1>Maheshwaram AC</h1><span class="pill-count">Q4 / 12</span></div>
+          <!-- Collect -->
+          <div id="s-collect" class="phone-screen">
+            <div class="nav-bar">
+              <h1>Maheshwaram AC</h1>
+              <span class="pill-count">Q4 / 12</span>
+            </div>
             <div class="stepper">
               <div class="step done"><div class="dot">✓</div><div class="lbl">GPS</div></div>
               <div class="step done"><div class="dot">✓</div><div class="lbl">Photo</div></div>
@@ -600,1018 +373,430 @@
               <div class="step"><div class="dot">4</div><div class="lbl">Done</div></div>
             </div>
             <div class="lockbar">
-              <div class="hd">Locked requirements · cannot skip</div>
+              <div class="hd">Locked requirements</div>
               <div class="lock-pills">
                 <span class="lock-pill ok">📍 GPS LOCKED · ±8m</span>
-                <span class="lock-pill ok">🧭 Location LOCKED</span>
                 <span class="lock-pill ok">📷 Photo LOCKED</span>
                 <span class="lock-pill ok">🎤 Voice ON</span>
+                <span class="lock-pill ok">🪪 ID LOCKED</span>
               </div>
             </div>
-            <div class="voice-strip"><span class="live"></span>Recording interview · Voice locked · Opus 24 kbps</div>
+            <div class="voice-strip">
+              <span class="live"></span> Recording interview · Voice locked · Opus 24 kbps
+            </div>
             <div class="card-stack">
-              <div class="q-card" id="q1">
+              <div class="q-card">
                 <div class="q-number">Question 4</div>
                 <div class="q-text">Which party do you support?</div>
                 <div class="options">
-                  <button class="opt-btn party-congress" onclick="pick(this,'q1')"><span class="swatch" style="background:var(--party-congress)"></span>Congress</button>
-                  <button class="opt-btn party-bjp" onclick="pick(this,'q1')"><span class="swatch" style="background:var(--party-bjp)"></span>BJP</button>
-                  <button class="opt-btn party-brs" onclick="pick(this,'q1')"><span class="swatch" style="background:var(--party-brs)"></span>BRS</button>
-                  <button class="opt-btn" onclick="pick(this,'q1')"><span class="swatch" style="background:var(--party-others)"></span>Others</button>
-                  <button class="opt-btn" onclick="pick(this,'q1')"><span class="swatch" style="background:var(--party-undecided)"></span>Undecided</button>
+                  <button class="opt-btn party-congress selected" onclick="selectParty(this)"><span class="swatch" style="background:#16a34a"></span>Congress</button>
+                  <button class="opt-btn party-bjp" onclick="selectParty(this)"><span class="swatch" style="background:#f97316"></span>BJP</button>
+                  <button class="opt-btn party-brs" onclick="selectParty(this)"><span class="swatch" style="background:#ec4899"></span>BRS</button>
+                  <button class="opt-btn party-others" onclick="selectParty(this)"><span class="swatch" style="background:#94a3b8"></span>Others</button>
+                  <button class="opt-btn party-undecided" onclick="selectParty(this)"><span class="swatch" style="background:#64748b"></span>Undecided</button>
                 </div>
               </div>
             </div>
             <div class="bottom-bar">
-              <button class="btn-ghost">‹ Prev</button>
-              <button class="next-btn" onclick="setScreen('s-home', document.querySelectorAll('.phone-subnav button')[0])">Next ›</button>
+              <button class="btn-ghost" onclick="setSurveyorScreen('s-home')">‹ Prev</button>
+              <button class="next-btn" onclick="toast('Answer saved ✓','ok'); setSurveyorScreen('s-home')">Next ›</button>
             </div>
           </div>
 
-          <!-- Pending queue -->
-          <div class="phone-screen" id="s-pending">
-            <div class="qhead"><h1 style="font-size:var(--fs-lg);font-weight:var(--fw-bold)">Pending</h1><p>3 pending · 1 draft · 2 waiting to sync</p></div>
+          <!-- Pending -->
+          <div id="s-pending" class="phone-screen">
+            <div class="qhead">
+              <h1 style="font-size:18px;font-weight:700">Pending</h1>
+              <p>3 pending · 1 draft · 2 waiting to sync</p>
+            </div>
             <div class="queue-card">
-              <div class="qc-top"><span class="qc-title">Kukatpally · Female · 35</span><span class="kind-pill queued">Queued #64</span></div>
-              <div class="qc-meta">9:32 AM · default · locks OK · syncs when strong</div>
-              <div class="qc-actions"><button>Show answers ▾</button><button class="primary">Retry sync</button></div>
+              <div class="qc-top">
+                <span class="qc-title">Kukatpally · Female · 35</span>
+                <span class="kind-pill queued">Queued #64</span>
+              </div>
+              <div class="qc-meta">9:32 AM · locks OK · syncs when strong</div>
+              <div class="qc-actions">
+                <button onclick="toast('Showing answers')">Show answers ▾</button>
+                <button class="primary" onclick="toast('Syncing #64…','ok')">Retry sync</button>
+              </div>
             </div>
             <div class="queue-card syncing">
-              <div class="qc-top"><span class="qc-title">Maheshwaram · Male · 42</span><span class="kind-pill queued">Queued #59</span></div>
+              <div class="qc-top">
+                <span class="qc-title">Maheshwaram · Male · 42</span>
+                <span class="kind-pill queued">Queued #59</span>
+              </div>
               <div class="qc-meta">Syncing to server…</div>
-            </div>
-            <div class="queue-card">
-              <div class="qc-top"><span class="qc-title">Draft — step 3/4 · 8/12 answered</span><span class="kind-pill draft">Draft #65</span></div>
-              <div class="qc-meta">Stays on this phone until you tap Send</div>
-              <div class="qc-actions"><button>Edit</button><button class="primary">Send</button></div>
-            </div>
-            <div class="queue-card failed">
-              <div class="qc-top"><span class="qc-title">Missing photo lock</span><span class="kind-pill failed">Failed #57</span></div>
-              <div class="qc-meta">Sync failed: locks incomplete — re-open to lock photo</div>
-              <div class="qc-actions"><button>Edit</button><button class="primary">Fix &amp; send</button></div>
             </div>
           </div>
 
-          <!-- Profile / verification -->
-          <div class="phone-screen" id="s-profile">
+          <!-- Profile -->
+          <div id="s-profile" class="phone-screen">
             <div class="prof">
               <div class="avatar">RK<span class="lock">🔒</span></div>
-              <div class="pname">Rajesh Kumar
-                <svg class="verified" viewBox="0 0 22 22"><path fill="#1D9BF0" d="M11 2l2.2 1.6 2.7-.2 1 2.5 2.3 1.4-.6 2.7.6 2.7-2.3 1.4-1 2.5-2.7-.2L11 20l-2.2-1.6-2.7.2-1-2.5-2.3-1.4.6-2.7-.6-2.7 2.3-1.4 1-2.5 2.7.2z"/><path fill="#fff" d="M9.6 13.4l-2-2 1-1 1 1 3.2-3.2 1 1z"/></svg>
-              </div>
+              <div class="pname">Rajesh Kumar <span style="color:#1d6fe0">✓</span></div>
               <div class="puser">@rajesh01</div>
               <div class="keychip">Key ID: GROUND-KEY-2291</div>
             </div>
             <div class="idcard">
-              <h4>📞 Phone <span style="font-size:11px">🔒</span></h4>
-              <p>+91 98480 22910 · verified · cannot be changed</p>
+              <h4>📞 Phone 🔒</h4>
+              <p>+91 98480 22910 · verified</p>
             </div>
             <div class="idcard">
-              <h4>🪪 Aadhaar Identity <span style="font-size:11px">🔒</span></h4>
-              <p>Verified by Client Admin · documents locked</p>
-              <div class="id-tiles"><div class="id-tile">Front ✓</div><div class="id-tile">Back ✓</div></div>
+              <h4>🪪 Aadhaar Identity 🔒</h4>
+              <p>Verified documents locked</p>
+              <div class="id-tiles">
+                <div class="id-tile">Front ✓</div>
+                <div class="id-tile">Back ✓</div>
+              </div>
             </div>
-            <div class="ts-card" style="margin-top:var(--sp-2)">
-              <div style="font-size:20px">🛡</div>
-              <div class="meta"><h4>Identity feeds Trust</h4><p>A verified surveyor + validated proof contributes 20 of 100 points to every record you submit.</p></div>
-            </div>
-            <div class="signout-row"><button class="signout-btn" onclick="showLogin()">Sign out</button></div>
           </div>
 
-          <!-- Settings (device-local prefs — mirrors SurveyorSettingsScreen) -->
-          <div class="phone-screen" id="s-settings">
-            <div class="qhead"><h1 style="font-size:var(--fs-lg);font-weight:var(--fw-bold)">Settings</h1><p>Saved on this device only</p></div>
+          <!-- Settings -->
+          <div id="s-settings" class="phone-screen">
             <div class="set-card">
-              <h4>Display language</h4>
-              <p class="desc">Used when the survey has no language set. Individual surveys can still force their own language.</p>
+              <h4>Display Language</h4>
+              <p class="desc">Choose your preferred survey interface language.</p>
               <div class="set-chips">
-                <button class="set-chip selected" onclick="pickChip(this)">English</button>
-                <button class="set-chip" onclick="pickChip(this)">తెలుగు</button>
+                <button class="set-chip selected" onclick="toggleSetChip(this)">English</button>
+                <button class="set-chip" onclick="toggleSetChip(this)">తెలుగు</button>
               </div>
             </div>
             <div class="set-card">
-              <h4>Survey question layout</h4>
-              <p class="desc">Choose how questions appear while collecting a survey. Saved on this device only.</p>
-              <button class="nav-mode-opt selected" onclick="pickNavMode(this)">
-                <span class="radio"></span>
-                <span><span class="nm-title">Next button</span><span class="nm-desc">One question at a time, with Prev / Next buttons.</span></span>
-              </button>
-              <button class="nav-mode-opt" onclick="pickNavMode(this)">
-                <span class="radio"></span>
-                <span><span class="nm-title">Swipe</span><span class="nm-desc">One question at a time — swipe left or right to move.</span></span>
-              </button>
-              <button class="nav-mode-opt" onclick="pickNavMode(this)">
-                <span class="radio"></span>
-                <span><span class="nm-title">Vertical scroll</span><span class="nm-desc">All questions in one scrollable page.</span></span>
-              </button>
-            </div>
-            <div class="set-card">
-              <h4>Display size</h4>
-              <p class="desc">Make the whole app bigger for easier reading outdoors.</p>
-              <div class="font-grid">
-                <button class="font-btn selected" onclick="pickFont(this)"><span class="glyph" style="font-size:15px">A</span><span class="lbl">Normal</span></button>
-                <button class="font-btn" onclick="pickFont(this)"><span class="glyph" style="font-size:18px">A</span><span class="lbl">Large</span></button>
-                <button class="font-btn" onclick="pickFont(this)"><span class="glyph" style="font-size:22px">A</span><span class="lbl">Larger</span></button>
-                <button class="font-btn" onclick="pickFont(this)"><span class="glyph" style="font-size:26px">A</span><span class="lbl">Largest</span></button>
-              </div>
-              <div class="set-preview">
-                <span class="eyebrow">Preview</span>
-                <p>The quick brown fox jumps — 1234567890</p>
+              <h4>Question Layout</h4>
+              <p class="desc">Control question transition style.</p>
+              <div class="set-chips">
+                <button class="set-chip selected" onclick="toggleSetChip(this)">Next button</button>
+                <button class="set-chip" onclick="toggleSetChip(this)">Swipe cards</button>
               </div>
             </div>
           </div>
-
-          <!-- Login (full-screen — mirrors Login.jsx; hides chrome via login-mode) -->
-          <div class="phone-screen" id="s-login">
-            <div class="login">
-              <div class="login-brandrow">
-                <div class="login-logo">S</div>
-                <div class="login-brand">Smart Survey X<span class="tag">Field Survey App</span></div>
-              </div>
-              <h1>Sign in</h1>
-              <p class="lead">Surveyor access only.</p>
-              <div class="login-form">
-                <label class="login-label">Username
-                  <input class="login-input" type="text" value="rajesh01" autocomplete="off">
-                </label>
-                <label class="login-label">Password
-                  <span class="login-pass">
-                    <input class="login-input" id="login-pw" type="password" value="fieldpass">
-                    <button class="login-eye" onclick="togglePw(this)">Show</button>
-                  </span>
-                </label>
-                <button class="login-submit" onclick="exitLogin()">Sign in</button>
-              </div>
-              <div class="login-version">Smart Survey X · Field build v1.4</div>
-            </div>
-          </div>
-
         </div>
       </div>
-
-      <aside class="aside">
-        <h3>Apple lens — applied here</h3>
-        <div class="principle"><span class="tag">SUBTRACT</span><span>One question per card, 48px targets, no manual "submit to server" — save-first, auto-next. Decide what not to show.</span></div>
-        <div class="principle"><span class="tag">CRAFT</span><span>Elevation, press scale, the pulsing voice dot, animated progress ring. Motion carries the sense of a locked, deliberate capture.</span></div>
-        <div class="principle"><span class="tag">LOCKS = TRUST</span><span>GPS ≤120m, photo, and voice are enforced twice (device + server). These aren't friction — they're the raw signals the Trust Score is built from.</span></div>
-      </aside>
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════
-       CLIENT ADMIN — Google (system + data) + Twitter (feed)
-       ═══════════════════════════════════════════════════════ -->
-  <div class="role-panel active" id="panel-clientadmin">
+  <!-- ════════════ CLIENT ADMIN ════════════ -->
+  <div id="panel-clientadmin" class="role-panel">
+    <div class="panel-lead">
+      <h2>Client Admin · Analytics & Data Review</h2>
+      <p>Google + Twitter lens: System tokens, district tilemaps, and live scannable intake feed.</p>
+    </div>
     <div class="admin-shell">
       <nav class="sidebar">
-        <div class="side-brand">◆ Smart Survey X <span class="role-tag">Client Admin</span></div>
-        <div class="side-item">
-          <div class="lbl">Dashboard</div>
-          <button class="side-sub" onclick="setView('v-overview', this)">Overview</button>
-          <button class="side-sub active" onclick="setView('v-analyze', this)">Analyze · charts</button>
-          <button class="side-sub" onclick="setView('v-report', this)">Report · review</button>
+        <div class="side-brand">
+          ◆ Smart Survey X <span class="role-tag">Client Admin</span>
         </div>
-        <div class="side-item">
-          <div class="lbl">Collection</div>
-          <button class="side-sub" onclick="setView('v-overview', this)">Surveyors &amp; targets</button>
-          <button class="side-sub" onclick="setView('v-overview', this)">Questions · bank</button>
-        </div>
-        <div class="side-item">
-          <div class="lbl">Account</div>
-          <button class="side-sub" onclick="setView('v-account', this)">My access</button>
-        </div>
-        <div class="side-foot">🔄 Charts update live from Neon submissions.<br>v3.4 · 128 · Field app ↗</div>
+        <button class="side-sub active" onclick="setAdminView('v-overview')">Overview</button>
+        <button class="side-sub" onclick="setAdminView('v-analyze')">Analyze · charts</button>
+        <button class="side-sub" onclick="setAdminView('v-report')">Live Feed</button>
       </nav>
 
       <main class="admin-main">
         <div class="subtabs">
-          <button class="subtab" onclick="setView('v-overview', this, true)">Overview</button>
-          <button class="subtab active" onclick="setView('v-analyze', this, true)">Analyze</button>
-          <button class="subtab" onclick="setView('v-report', this, true)">Report</button>
-          <button class="subtab" onclick="setView('v-account', this, true)">Account</button>
+          <button class="subtab active" onclick="setAdminView('v-overview')">Overview</button>
+          <button class="subtab" onclick="setAdminView('v-analyze')">Analyze</button>
+          <button class="subtab" onclick="setAdminView('v-report')">Live Feed</button>
         </div>
 
         <!-- Overview -->
-        <div class="admin-view" id="v-overview">
+        <div id="v-overview" class="admin-view active">
           <div class="kpi-grid">
             <div class="kpi"><div class="v tnum">63</div><div class="l">Pending review</div></div>
             <div class="kpi"><div class="v tnum">4,026</div><div class="l">Confirmed</div></div>
             <div class="kpi"><div class="v tnum">4,089</div><div class="l">All submissions</div></div>
             <div class="kpi"><div class="v tnum">8</div><div class="l">Districts in data</div></div>
-            <div class="kpi" onclick="gotoTrust()"><div class="v tnum" style="color:var(--ok)">87</div><div class="l"><b>Platform Trust</b> · High</div></div>
           </div>
           <div class="card">
-            <h3>Pending review</h3>
-            <div class="csub">Oldest first · confirm after Q/A review (strict complete unless forced)</div>
-            <div class="pending-row"><span class="rid tnum">#58</span><span class="rmeta">Kukatpally · Ibrahim Khan<span class="t"> · 9:32 AM · by Sunita Patel</span></span><span class="badge">Pending</span><button class="mini-btn" onclick="openReview('58')">Open Review</button></div>
-            <div class="pending-row"><span class="rid tnum">#61</span><span class="rmeta">Huzurabad · Ramesh Goud<span class="t"> · 9:19 AM · by Venu Rao</span></span><span class="badge">Pending</span><button class="mini-btn" onclick="openReview('61')">Open Review</button></div>
-            <div class="pending-row"><span class="rid tnum">#62</span><span class="rmeta">Warangal West · Suresh Yadav<span class="t"> · 9:04 AM · by Amit Kumar</span></span><span class="badge">Pending</span><button class="mini-btn" onclick="openReview('62')">Open Review</button></div>
-          </div>
-          <div class="card">
-            <h3>My allocation</h3>
-            <div class="csub">Records &amp; features granted by Super Admin (0 = unlimited)</div>
-            <div class="caps-row">
-              <span class="cap">Surveys <b>3 / ∞</b></span>
-              <span class="cap">Surveyors <b>24 / 30</b></span>
-              <span class="cap">Questions/survey <b>12 / 20</b></span>
-              <span class="cap">Records <b>4,089 / 6,000</b></span>
-            </div>
+            <h3>Recent Submissions</h3>
+            <div class="csub">Submissions awaiting confirmation</div>
+            <div id="overview-feed"></div>
           </div>
         </div>
 
         <!-- Analyze -->
-        <div class="admin-view active" id="v-analyze">
-          <div class="filter-bar">
-            <span class="flabel">Filters</span>
-            <span class="chip" id="chip-survey">Survey: Pre-poll 2026 <button onclick="this.parentElement.remove()">✕</button></span>
-            <span class="chip ghost" onclick="addDistrictChip('')">+ add filter</span>
-            <span id="filter-slot"></span>
-          </div>
-
+        <div id="v-analyze" class="admin-view">
           <div class="kpi-grid">
             <div class="kpi"><div class="v tnum">4,026</div><div class="l">In this report</div></div>
-            <div class="kpi"><div class="v" style="color:var(--party-congress)">Congress</div><div class="l">Lead party · 33.2%</div></div>
+            <div class="kpi"><div class="v" style="color:#16a34a">Congress</div><div class="l">Lead party · 33.2%</div></div>
             <div class="kpi"><div class="v">Roads</div><div class="l">Top issue · 28%</div></div>
-            <div class="kpi" onclick="gotoTrust()"><div class="v tnum" style="color:var(--ok)">87</div><div class="l"><b>Avg Trust Score</b></div></div>
           </div>
-
-          <div class="insights">
-            <span class="insight">Top district <b>Rangareddy</b> (800)</span>
-            <span class="insight">Congress leads in <b>3 / 8</b> districts</span>
-            <span class="insight">BJP strongest in the <b>north</b> belt</span>
-            <span class="insight">Undecided down to <b>3.0%</b></span>
-          </div>
-
-          <!-- Trust Score hero -->
-          <div class="card" id="trust-anchor">
-            <h3>🛡 Trust Score — the explainable quality &amp; fraud proof</h3>
-            <div class="csub">Reuses signals already captured in the field. No black box — every point is traceable to a real signal.</div>
-            <div class="trust-hero">
-              <div style="text-align:center">
-                <div class="ring-wrap ring" data-p="87" data-r="54" data-w="12" style="margin:0 auto">
-                  <svg width="132" height="132" viewBox="0 0 132 132"><circle class="ring-track" cx="66" cy="66" r="54" stroke-width="12"/><circle class="ring-fill" cx="66" cy="66" r="54" stroke-width="12"/></svg>
-                  <div class="ring-center"><span class="num tnum" style="font-size:34px">87</span><span class="cap">/ 100</span></div>
-                </div>
-                <div class="gauge-band" style="color:var(--ok)">● High trust (≥80)</div>
-              </div>
-              <div>
-                <div class="rubric-row"><div class="rr-top"><span class="name">Capture locks — GPS · location · photo · voice · answers</span><span class="val tnum">37 / 40</span></div><div class="rr-track"><div class="rr-fill" style="width:92%"></div></div></div>
-                <div class="rubric-row"><div class="rr-top"><span class="name">Identity — surveyor verified + proof validated</span><span class="val tnum">18 / 20</span></div><div class="rr-track"><div class="rr-fill" style="width:90%"></div></div></div>
-                <div class="rubric-row"><div class="rr-top"><span class="name">Delivery integrity — clean sync · ±accuracy · app build</span><span class="val tnum">16 / 20</span></div><div class="rr-track"><div class="rr-fill" style="width:80%"></div></div></div>
-                <div class="rubric-row"><div class="rr-top"><span class="name">QA confirmation — Client-Admin confirmed, strict complete</span><span class="val tnum">16 / 20</span></div><div class="rr-track"><div class="rr-fill" style="width:80%"></div></div></div>
-                <div class="formula">trust = capture_locks(40) + identity(20) + delivery_integrity(20) + qa_confirmation(20)<br>bands: ≥80 High · 60–79 Needs review · &lt;60 Low</div>
-              </div>
-            </div>
-          </div>
-
           <div class="chart-grid">
-            <!-- District tile-map choropleth -->
             <div class="card">
-              <h3>Responses by district</h3>
-              <div class="csub">Schematic district tiles · click to filter the whole dashboard</div>
-              <div class="map-toolbar">
-                <div class="seg">
-                  <button class="active" id="mode-volume" onclick="setMapMode('volume')">Volume</button>
-                  <button id="mode-party" onclick="setMapMode('party')">Lead party</button>
-                </div>
-              </div>
+              <h3>Responses by District</h3>
+              <div class="csub">Schematic district tilemap</div>
               <div class="tilemap" id="tilemap"></div>
-              <div class="tile-legend" id="tile-legend"></div>
-              <div class="map-note">Tiles are a schematic grid, not surveyed boundaries. Volume uses a blue sequential ramp (accent) rather than the field map's green, to avoid colliding with Congress-green on this light surface.</div>
             </div>
-
-            <!-- Party preference (identity) -->
             <div class="card">
-              <h3>Party preference · statewide</h3>
-              <div class="csub">Colored by party identity · every bar direct-labeled (relief rule)</div>
-              <div class="legend" id="party-legend"></div>
+              <h3>Party Preference</h3>
+              <div class="csub">Statewide party distribution</div>
               <div id="party-bars"></div>
             </div>
-
-            <!-- Top districts (magnitude) -->
-            <div class="card">
-              <h3>Top districts by responses</h3>
-              <div class="csub">Single-hue magnitude · lead-party pill on each label</div>
-              <div id="top-districts"></div>
-            </div>
-
-            <!-- Responses over time -->
-            <div class="card">
-              <h3>Responses over time</h3>
-              <div class="csub">Confirmed records per day · last 14 days</div>
-              <div class="trend-wrap" id="trend"></div>
-              <div class="trend-labels"><span>Aug 11</span><span>Aug 24</span></div>
-            </div>
           </div>
         </div>
 
-        <!-- Report / live feed (Twitter) -->
-        <div class="admin-view" id="v-report">
-          <div class="feed-head"><h3 style="font-size:var(--fs-lg);font-weight:var(--fw-bold)">Live Intake</h3><span class="live-dot">LIVE</span></div>
-          <div class="csub" style="font-size:var(--fs-xs);color:var(--ink-muted);margin-bottom:var(--sp-4)">One consistent card · newest first · each carries its Trust Score and the signals behind it.</div>
-          <div id="feed"></div>
-        </div>
-
-        <!-- Account (read-only mirror — a Client Admin has NO self-profile; the Super Admin provisions it) -->
-        <div class="admin-view" id="v-account">
-          <div class="identity-card">
-            <div class="big-avatar">PN</div>
-            <div>
-              <div class="id-name">Priya N
-                <svg class="verified" viewBox="0 0 22 22"><path fill="#1D9BF0" d="M11 2l2.2 1.6 2.7-.2 1 2.5 2.3 1.4-.6 2.7.6 2.7-2.3 1.4-1 2.5-2.7-.2L11 20l-2.2-1.6-2.7.2-1-2.5-2.3-1.4.6-2.7-.6-2.7 2.3-1.4 1-2.5 2.7.2z"/><path fill="#fff" d="M9.6 13.4l-2-2 1-1 1 1 3.2-3.2 1 1z"/></svg>
-              </div>
-              <div class="id-sub">@priya · client_admin · Acme Research · Key CLIENT-KEY-114</div>
-            </div>
-          </div>
-          <div class="readonly-note"><span>🔒</span><span>Provisioned by the Super Admin. Display name, password, powers and caps are managed centrally — Client Admins have no self-service profile. Request changes through platform governance.</span></div>
-
+        <!-- Live Feed -->
+        <div id="v-report" class="admin-view">
           <div class="card">
-            <h3>Granted powers</h3>
-            <div class="csub">Least privilege — each capability is switched on by the Super Admin</div>
-            <div class="powers-grid">
-              <span class="power on"><span class="chk">✓</span>🗂 Create surveys</span>
-              <span class="power on"><span class="chk">✓</span>✓ Data review</span>
-              <span class="power on"><span class="chk">✓</span>🛡 Verify surveyors</span>
-              <span class="power on"><span class="chk">✓</span>📞 Proof validation</span>
-              <span class="power on"><span class="chk">✓</span>⬇ Data export</span>
-              <span class="power"><span class="chk"></span>📚 Question bank</span>
-              <span class="power"><span class="chk"></span>✎ Web survey</span>
-              <span class="power"><span class="chk"></span>🌐 Telugu translate</span>
-            </div>
-          </div>
-
-          <div class="card">
-            <h3>Allocation &amp; caps</h3>
-            <div class="csub">Hard limits set by the Super Admin (∞ = unlimited)</div>
-            <div class="caps-row">
-              <span class="cap">Surveys <b>3 / ∞</b></span>
-              <span class="cap">Surveyors <b>24 / 30</b></span>
-              <span class="cap">Questions/survey <b>12 / 20</b></span>
-              <span class="cap">Records <b>4,089 / 6,000</b></span>
-              <span class="cap">Admin seats <b>3 / 5</b></span>
-            </div>
+            <h3>Live Intake Feed</h3>
+            <div class="csub">Real-time surveyor intake stream</div>
+            <div id="feed-stream"></div>
           </div>
         </div>
       </main>
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════
-       SUPER ADMIN — multi-tenant governance
-       ═══════════════════════════════════════════════════════ -->
-  <div class="role-panel" id="panel-superadmin">
-    <div class="panel-lead"><h2>Super Admin · governance</h2><p>Company → Client Admin → Projects → Surveyors. Least-privilege powers, hard caps, and a full audit trail — the institutional backing behind the Trust Score.</p></div>
-    <div class="admin-shell">
-      <main class="admin-main" style="grid-column:1 / -1">
-        <div class="subtabs">
-          <button class="subtab active" onclick="setSaView('sa-governance', this)">Governance</button>
-          <button class="subtab" onclick="setSaView('sa-profile', this)">My profile</button>
-        </div>
-        <div class="sa-view active" id="sa-governance">
-        <div class="gov-grid">
-          <!-- Companies + Client Admins -->
-          <div>
-            <div class="card">
-              <h3>Companies</h3>
-              <div class="csub">1) Create company → 2) Add Client Admins → 3) Create a project</div>
-              <div class="company-card">
-                <div class="cc-top"><span class="cc-name">Acme Research</span><span class="cc-pills"><span class="p">▤ 2 projects</span><span class="p">👥 2 admins</span></span></div>
-                <div class="cc-meta">created Aug 2026 · by @superadmin · Members: Priya N (@priya), Ravi T (@ravi)</div>
-              </div>
-              <div class="company-card" style="border-left-color:var(--party-bjp)">
-                <div class="cc-top"><span class="cc-name">Deccan Insights</span><span class="cc-pills"><span class="p">▤ 1 project</span><span class="p">👥 1 admin</span></span></div>
-                <div class="cc-meta">created Aug 2026 · by @superadmin · Members: Kiran M (@kiran)</div>
-              </div>
-            </div>
-
-            <div class="card">
-              <h3>Client Admin · powers &amp; caps</h3>
-              <div class="csub">New admins start with no powers (least privilege) and unverified</div>
-              <div class="admin-row">
-                <div class="ar-top">
-                  <div class="ar-avatar">PN</div>
-                  <div style="flex:1">
-                    <div class="ar-name">Priya N
-                      <svg class="verified" viewBox="0 0 22 22"><path fill="#1D9BF0" d="M11 2l2.2 1.6 2.7-.2 1 2.5 2.3 1.4-.6 2.7.6 2.7-2.3 1.4-1 2.5-2.7-.2L11 20l-2.2-1.6-2.7.2-1-2.5-2.3-1.4.6-2.7-.6-2.7 2.3-1.4 1-2.5 2.7.2z"/><path fill="#fff" d="M9.6 13.4l-2-2 1-1 1 1 3.2-3.2 1 1z"/></svg>
-                    </div>
-                    <div class="ar-user">@priya · Acme Research</div>
-                  </div>
-                  <span class="role-pill active">ACTIVE</span>
-                </div>
-                <div class="powers-grid">
-                  <span class="power on"><span class="chk">✓</span>🗂 Create surveys</span>
-                  <span class="power on"><span class="chk">✓</span>✓ Data review</span>
-                  <span class="power on"><span class="chk">✓</span>🛡 Verify surveyors</span>
-                  <span class="power on"><span class="chk">✓</span>📞 Proof validation</span>
-                  <span class="power"><span class="chk"></span>📚 Question bank</span>
-                  <span class="power"><span class="chk"></span>✎ Web survey</span>
-                </div>
-                <div class="caps-row">
-                  <span class="cap">surveys <b>3 / ∞</b></span>
-                  <span class="cap">surveyors <b>24 / 30</b></span>
-                  <span class="cap">records <b>4,089 / 6,000</b></span>
-                </div>
-              </div>
-              <div class="admin-row">
-                <div class="ar-top">
-                  <div class="ar-avatar" style="background:linear-gradient(135deg,var(--ink-faint),var(--ink-muted))">KM</div>
-                  <div style="flex:1"><div class="ar-name">Kiran M</div><div class="ar-user">@kiran · Deccan Insights</div></div>
-                  <span class="role-pill disabled">DISABLED</span>
-                </div>
-                <div class="powers-grid">
-                  <span class="power on"><span class="chk">✓</span>🗂 Create surveys</span>
-                  <span class="power"><span class="chk"></span>✓ Data review</span>
-                </div>
-              </div>
-            </div>
+  <!-- ════════════ SUPER ADMIN ════════════ -->
+  <div id="panel-superadmin" class="role-panel">
+    <div class="panel-lead">
+      <h2>Super Admin · Platform Governance</h2>
+      <p>Multi-tenant companies, client admin capability toggles, and live audit event stream.</p>
+    </div>
+    <div class="gov-grid">
+      <div>
+        <div class="card">
+          <h3>Companies</h3>
+          <div class="csub">Active client organizations</div>
+          <div class="company-card">
+            <div class="cc-top"><span class="cc-name">Acme Research</span><span class="cc-pills"><span class="p">▤ 2 projects</span><span class="p">👥 2 admins</span></span></div>
+            <div class="cc-meta">Members: Priya N (@priya), Ravi T (@ravi)</div>
           </div>
-
-          <!-- Audit + Seats -->
-          <div>
-            <div class="card">
-              <h3>Audit log</h3>
-              <div class="csub">Platform-wide trail of every administrative action</div>
-              <div class="audit-row"><div class="ico">✓</div><div class="ainfo"><div class="aact">Review decision <span class="entity-pill">Submissions</span></div><div class="ameta">@priya · client admin · #62 → confirmed</div></div><span class="atime">9:41 AM</span></div>
-              <div class="audit-row"><div class="ico">🛡</div><div class="ainfo"><div class="aact">Surveyor verified <span class="entity-pill">Accounts</span></div><div class="ameta">@priya · client admin · @rajesh01</div></div><span class="atime">9:12 AM</span></div>
-              <div class="audit-row"><div class="ico">＋</div><div class="ainfo"><div class="aact">Survey created <span class="entity-pill">Surveys</span></div><div class="ameta">@superadmin · super admin · "Pre-poll 2026"</div></div><span class="atime">Aug 23</span></div>
-              <div class="audit-row"><div class="ico">⬇</div><div class="ainfo"><div class="aact">Data export <span class="entity-pill">Data export</span></div><div class="ameta">@priya · client admin · 4,026 rows</div></div><span class="atime">Aug 23</span></div>
-              <div class="audit-row"><div class="ico">🪑</div><div class="ainfo"><div class="aact">Seat upgrade approved <span class="entity-pill">Seat requests</span></div><div class="ameta">@superadmin · super admin · limit → 5</div></div><span class="atime">Aug 22</span></div>
-            </div>
-
-            <div class="card">
-              <h3>🪑 Admin seat limits</h3>
-              <div class="csub">Governance only — no billing. Default approved limit 5.</div>
-              <div class="seat-card">
-                <div class="st"><span style="font-size:var(--fs-sm);font-weight:var(--fw-bold)">Acme Research</span><span class="seat-status pending">⏳ Pending</span></div>
-                <div class="ameta" style="font-size:var(--fs-xs);color:var(--ink-muted);margin-top:4px">admin seats → 6 · "new team joining next month" · sent Aug 24</div>
-                <div class="qc-actions" style="margin-top:8px"><button class="mini-btn" style="flex:1">✓ Approve</button><button style="flex:1;font-size:var(--fs-xs);font-weight:var(--fw-bold);padding:5px;border-radius:var(--r-sm);border:1px solid var(--bad);background:var(--surface);color:var(--bad);cursor:pointer">✕ Deny</button></div>
-              </div>
-              <div class="seat-card">
-                <div class="st"><span style="font-size:var(--fs-sm);font-weight:var(--fw-bold)">Deccan Insights</span><span class="seat-status approved">✓ Approved</span></div>
-                <div class="ameta" style="font-size:var(--fs-xs);color:var(--ink-muted);margin-top:4px">3 / 5 admin seats used · last change by @superadmin</div>
-              </div>
-            </div>
+          <div class="company-card" style="border-left-color:#f97316">
+            <div class="cc-top"><span class="cc-name">Deccan Insights</span><span class="cc-pills"><span class="p">▤ 1 project</span><span class="p">👥 1 admin</span></span></div>
+            <div class="cc-meta">Members: Kiran M (@kiran)</div>
           </div>
         </div>
-        </div><!-- /sa-governance -->
 
-        <!-- Super Admin self-profile (mirrors AdminProfile.jsx — the ONLY role with a self-profile) -->
-        <div class="sa-view" id="sa-profile">
-          <div style="max-width:640px">
-            <div class="card">
-              <h3>⭐ Super Admin profile</h3>
-              <div class="csub">Platform account. Full powers (including web survey and Telugu translate) — no grant needed.</div>
-              <div class="identity-card">
-                <div class="big-avatar">SA</div>
-                <div>
-                  <div class="id-name">Platform Owner
-                    <svg class="verified" viewBox="0 0 22 22"><path fill="#1D9BF0" d="M11 2l2.2 1.6 2.7-.2 1 2.5 2.3 1.4-.6 2.7.6 2.7-2.3 1.4-1 2.5-2.7-.2L11 20l-2.2-1.6-2.7.2-1-2.5-2.3-1.4.6-2.7-.6-2.7 2.3-1.4 1-2.5 2.7.2z"/><path fill="#fff" d="M9.6 13.4l-2-2 1-1 1 1 3.2-3.2 1 1z"/></svg>
-                  </div>
-                  <div class="id-sub">@superadmin · super_admin · Key SUPER-KEY-001</div>
-                </div>
-              </div>
-              <div class="form-field"><span>Display name</span><input type="text" value="Platform Owner"></div>
-              <div class="form-field"><span>New password</span><input type="password" placeholder="Leave blank to keep"></div>
-              <button class="btn-primary">Save profile</button>
-            </div>
-
-            <div class="card">
-              <h3>🔐 Authenticator (TOTP)</h3>
-              <div class="csub">All 3 Super Admin slots sign in with password + a 6-digit app code.</div>
-              <button class="btn-outline" onclick="revealTotp(this)">Reset my TOTP</button>
-              <div class="totp-secret" id="totp-reveal" style="display:none">
-                <span style="font-size:var(--fs-xs);color:var(--ink-muted)">New secret — scan or paste into your authenticator app:</span>
-                <code>JBSW Y3DP EHPK 3PXP</code>
-                <span style="font-size:var(--fs-xs);color:var(--ink-muted);word-break:break-all">otpauth://totp/SmartSurveyX:superadmin?secret=JBSWY3DPEHPK3PXP&amp;issuer=SmartSurveyX</span>
-              </div>
-            </div>
+        <div class="card">
+          <h3>Client Admin Powers</h3>
+          <div class="csub">Least-privilege permissions</div>
+          <div class="powers-grid">
+            <span class="power"><span class="chk">✓</span>🗂 Create surveys</span>
+            <span class="power"><span class="chk">✓</span>✓ Data review</span>
+            <span class="power"><span class="chk">✓</span>🛡 Verify surveyors</span>
+            <span class="power"><span class="chk">✓</span>📞 Proof validation</span>
           </div>
         </div>
-      </main>
+      </div>
+
+      <div>
+        <div class="card">
+          <h3>Audit Log</h3>
+          <div class="csub">Platform administrative trail</div>
+          <div class="audit-row">
+            <div class="ico">✓</div>
+            <div class="ainfo">
+              <div class="aact">Review decision</div>
+              <div class="ameta">@priya · confirmed #62</div>
+            </div>
+            <span class="atime">9:41 AM</span>
+          </div>
+          <div class="audit-row">
+            <div class="ico">🛡</div>
+            <div class="ainfo">
+              <div class="aact">Surveyor verified</div>
+              <div class="ameta">@priya · verified @rajesh01</div>
+            </div>
+            <span class="atime">9:12 AM</span>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
+</main>
 
-</div>
-
-<!-- ══════════ Doctrine footer ══════════ -->
-<div class="doctrine">
-  <h3>How the three lenses fold into one product</h3>
-  <div class="doctrine-grid">
-    <div class="doc-col"><h4>Apple → the surveyor surface</h4><p>Ruthless subtraction, one card at a time, craft in the motion. The locked capture flow feels effortless but enforces GPS + photo + voice — the raw material of trust.</p></div>
-    <div class="doc-col"><h4>Google → one system, legible data</h4><p>A single token set drives phone and portal alike. Complex electoral data stays scannable: fixed party colors, one axis, sequential ramps, the relief rule on every chart.</p></div>
-    <div class="doc-col"><h4>Twitter → sync feel &amp; feed</h4><p>Optimistic local-first save, a live intake feed of one consistent card, and a score that stays explainable — never an opaque ranking.</p></div>
-  </div>
-  <div class="doc-foot"><b>The spine:</b> heavy engineering underneath, weightless surface on top — and the <b>Trust Score</b> is the one artifact that connects field capture → live review → dashboard aggregate → institutional governance. It reuses signals the platform <em>already</em> collects (locks, media, identity, sync health, QA), so proof is a byproduct of doing the survey, not extra work.</div>
-</div>
-
-<!-- ════════ Record-verification modal (Client Admin · Review) ════════ -->
-<div id="review-modal" class="rv-overlay" onclick="closeReviewBg(event)">
-  <div class="rv-panel" role="dialog" aria-modal="true" aria-labelledby="rv-heading">
+<!-- ══════════ Review Modal ══════════ -->
+<div id="review-modal" class="rv-overlay" onclick="closeReview(event)">
+  <div class="rv-panel" onclick="event.stopPropagation()">
     <div class="rv-head">
-      <button class="rv-close" onclick="closeReview()" aria-label="Close">✕</button>
-      <div class="rv-title">🔍 <span id="rv-heading">Review · #—</span></div>
-      <div class="rv-sub">Client Admin · Review — media · confirm → report analytics</div>
-      <div class="rv-kbhint"><kbd>j</kbd><kbd>k</kbd> move · <kbd>Enter</kbd> expand · <kbd>c</kbd> confirm · <kbd>r</kbd> reject · <kbd>e</kbd> edit · <kbd>Esc</kbd> close</div>
-    </div>
-    <div class="rv-pipeline">
-      <span class="step">Users</span><span>→</span>
-      <span class="step">Collect</span><span>→</span>
-      <span class="step active">Review</span><span>→</span>
-      <span class="step">Confirm</span><span>→</span>
-      <span class="step">Report</span>
+      <button class="rv-close" onclick="closeReview()">✕</button>
+      <div class="rv-title" id="rv-title">Review Record</div>
     </div>
     <div class="rv-body" id="rv-body"></div>
     <div class="rv-actions" id="rv-actions"></div>
   </div>
 </div>
+
 <div id="toast"></div>
 
 <script>
-  /* ════════ Validated palette (real product colors) ════════ */
   const PARTIES = [
-    { name: 'Congress',  key: 'congress',  hex: getComputedStyle(document.documentElement).getPropertyValue('--party-congress').trim() },
-    { name: 'BJP',       key: 'bjp',       hex: getComputedStyle(document.documentElement).getPropertyValue('--party-bjp').trim() },
-    { name: 'BRS',       key: 'brs',       hex: getComputedStyle(document.documentElement).getPropertyValue('--party-brs').trim() },
-    { name: 'Others',    key: 'others',    hex: getComputedStyle(document.documentElement).getPropertyValue('--party-others').trim() },
-    { name: 'Undecided', key: 'undecided', hex: getComputedStyle(document.documentElement).getPropertyValue('--party-undecided').trim() },
+    { name: 'Congress', hex: '#16a34a', total: 1335 },
+    { name: 'BJP', hex: '#f97316', total: 1267 },
+    { name: 'BRS', hex: '#ec4899', total: 999 },
+    { name: 'Others', hex: '#94a3b8', total: 224 },
+    { name: 'Undecided', hex: '#64748b', total: 120 }
   ];
 
-  /* ════════ Sample data — cross-foots to 4,026 (from index.html) ════════ */
   const DISTRICTS = [
-    { d: 'Adilabad',    Congress: 78,  BJP: 134, BRS: 56,  Others: 41, Undecided: 19 },
-    { d: 'Nizamabad',   Congress: 145, BJP: 203, BRS: 87,  Others: 35, Undecided: 12 },
-    { d: 'Karimnagar',  Congress: 112, BJP: 178, BRS: 156, Others: 29, Undecided: 15 },
-    { d: 'Warangal (R)',Congress: 134, BJP: 98,  BRS: 201, Others: 22, Undecided: 11 },
-    { d: 'Rangareddy',  Congress: 312, BJP: 245, BRS: 178, Others: 42, Undecided: 23 },
-    { d: 'Medchal',     Congress: 198, BJP: 156, BRS: 134, Others: 31, Undecided: 18 },
-    { d: 'Hanumakonda', Congress: 167, BJP: 189, BRS: 98,  Others: 27, Undecided: 14 },
-    { d: 'Khammam',     Congress: 189, BJP: 67,  BRS: 145, Others: 18, Undecided: 9  },
+    { d: 'Adilabad', total: 328, leadHex: '#f97316' },
+    { d: 'Nizamabad', total: 482, leadHex: '#f97316' },
+    { d: 'Karimnagar', total: 490, leadHex: '#f97316' },
+    { d: 'Warangal (R)', total: 466, leadHex: '#ec4899' },
+    { d: 'Rangareddy', total: 800, leadHex: '#16a34a' },
+    { d: 'Medchal', total: 537, leadHex: '#16a34a' },
+    { d: 'Hanumakonda', total: 495, leadHex: '#f97316' },
+    { d: 'Khammam', total: 428, leadHex: '#16a34a' }
   ];
-  const totalsByDistrict = DISTRICTS.map(r => ({ ...r, total: PARTIES.reduce((s,p)=>s+r[p.name],0) }));
-  const maxTotal = Math.max(...totalsByDistrict.map(r=>r.total));
-  const partyTotals = PARTIES.map(p => ({ ...p, total: DISTRICTS.reduce((s,r)=>s+r[p.name],0) }));
-  const grand = partyTotals.reduce((s,p)=>s+p.total,0);
-  const leadOf = r => PARTIES.reduce((best,p)=> r[p.name] > r[best.name] ? p : best, PARTIES[0]);
 
-  /* ════════ Role / screen / view switching ════════ */
-  function setRole(role, btn) {
-    document.querySelectorAll('.role-panel').forEach(p => p.classList.remove('active'));
-    document.getElementById('panel-' + role).classList.add('active');
-    document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
-    (btn || document.querySelector('[data-role='+role+']')).classList.add('active');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  let FEED = [
+    { id: '63', name: 'Rajesh Kumar', rinit: 'AR', respondent: 'Anjali Reddy', dem: 'Female · 35', loc: 'Rangareddy · Maheshwaram AC', time: '2 min ago', party: 'Congress', partyColor: '#16a34a', sent: 'Positive', sc: '#16a34a', issue: 'Roads', status: 'confirmed', slabel: 'Confirmed', phone: '+91 98490 •••21', aadhaar: 'XXXX XXXX 4417' },
+    { id: '58', name: 'Sunita Patel', rinit: 'IK', respondent: 'Ibrahim Khan', dem: 'Male · 42', loc: 'Medchal · Kukatpally AC', time: 'syncing…', party: 'BJP', partyColor: '#f97316', sent: 'Neutral', sc: '#f59e0b', issue: 'Water supply', status: 'pending', slabel: 'Pending', phone: '+91 90000 •••73', aadhaar: 'XXXX XXXX 9021' },
+    { id: '62', name: 'Amit Kumar', rinit: 'SY', respondent: 'Suresh Yadav', dem: 'Male · 28', loc: 'Hanumakonda · Warangal West AC', time: '5 min ago', party: 'BRS', partyColor: '#ec4899', sent: 'Negative', sc: '#ef4444', issue: 'Drainage', status: 'confirmed', slabel: 'Confirmed', phone: '+91 79955 •••08', aadhaar: 'XXXX XXXX 3390' },
+    { id: '60', name: 'Lakshmi Menon', rinit: 'FB', respondent: 'Fatima Begum', dem: 'Female · 55', loc: 'Nizamabad · Bodhan AC', time: '8 min ago', party: 'Congress', partyColor: '#16a34a', sent: 'Positive', sc: '#16a34a', issue: 'Healthcare', status: 'rejected', slabel: 'Rejected', phone: '+91 88012 •••55', aadhaar: 'not present' }
+  ];
+
+  function setRole(role) {
+    document.querySelectorAll('.role-tab').forEach((t, i) => t.classList.toggle('active', ['surveyor','clientadmin','superadmin'][i] === role));
+    document.querySelectorAll('.role-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + role));
   }
-  function setScreen(id, btn) {
-    const body = btn.closest('.phone').querySelector('.phone-body');
-    body.querySelectorAll('.phone-screen').forEach(s => s.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    btn.closest('.phone-subnav').querySelectorAll('button').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    body.scrollTop = 0;
+
+  function setSurveyorScreen(id) {
+    document.querySelectorAll('.phone-subnav button').forEach(b => b.classList.remove('active'));
+    event?.target?.classList?.add('active');
+    document.querySelectorAll('.phone-screen').forEach(s => s.classList.toggle('active', s.id === id));
   }
-  function setView(id, btn, fromTab) {
-    document.querySelectorAll('.admin-view').forEach(v => v.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    // sync both the sidebar sub-items and the top subtabs
-    const map = { 'v-overview': 'Overview', 'v-analyze': 'Analyze', 'v-report': 'Report', 'v-account': 'Account' };
-    document.querySelectorAll('#panel-clientadmin .subtab').forEach(t => t.classList.toggle('active', t.textContent.trim() === map[id]));
-    document.querySelectorAll('.side-sub').forEach(s => s.classList.remove('active'));
-    if (!fromTab && btn) btn.classList.add('active');
-    else document.querySelectorAll('.side-sub').forEach(s => { if (s.textContent.trim().startsWith(map[id])) s.classList.add('active'); });
-    window.scrollTo({ top: document.querySelector('.appbar').offsetHeight, behavior: 'smooth' });
+
+  function setAdminView(id) {
+    document.querySelectorAll('.subtab').forEach((b, i) => b.classList.toggle('active', ['v-overview','v-analyze','v-report'][i] === id));
+    document.querySelectorAll('.side-sub').forEach((b, i) => b.classList.toggle('active', ['v-overview','v-analyze','v-report'][i] === id));
+    document.querySelectorAll('.admin-view').forEach(v => v.classList.toggle('active', v.id === id));
   }
-  function setSaView(id, btn) {
-    document.querySelectorAll('.sa-view').forEach(v => v.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    document.querySelectorAll('#panel-superadmin .subtab').forEach(t => t.classList.remove('active'));
-    btn.classList.add('active');
-    window.scrollTo({ top: document.querySelector('.appbar').offsetHeight, behavior: 'smooth' });
-  }
-  /* ════════ Surveyor login (full-screen) + settings prefs ════════ */
-  function showLogin() {
-    const phone = document.querySelector('#panel-surveyor .phone');
-    phone.classList.add('login-mode');
-    const body = phone.querySelector('.phone-body');
-    body.querySelectorAll('.phone-screen').forEach(s => s.classList.remove('active'));
-    document.getElementById('s-login').classList.add('active');
-    body.scrollTop = 0;
-  }
-  function exitLogin() {
-    const phone = document.querySelector('#panel-surveyor .phone');
-    phone.classList.remove('login-mode');
-    const body = phone.querySelector('.phone-body');
-    body.querySelectorAll('.phone-screen').forEach(s => s.classList.remove('active'));
-    document.getElementById('s-home').classList.add('active');
-    phone.querySelectorAll('.phone-subnav button').forEach((b, i) => b.classList.toggle('active', i === 0));
-    body.scrollTop = 0;
-  }
-  function togglePw(btn) {
-    const inp = document.getElementById('login-pw');
-    const wasHidden = inp.type === 'password';
-    inp.type = wasHidden ? 'text' : 'password';
-    btn.textContent = wasHidden ? 'Hide' : 'Show';
-  }
-  function pickChip(btn) {
-    btn.parentElement.querySelectorAll('.set-chip').forEach(c => c.classList.remove('selected'));
+
+  function selectParty(btn) {
+    btn.parentElement.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('selected'));
     btn.classList.add('selected');
   }
-  function pickNavMode(btn) {
-    btn.closest('.set-card').querySelectorAll('.nav-mode-opt').forEach(o => o.classList.remove('selected'));
+
+  function toggleSetChip(btn) {
+    btn.parentElement.querySelectorAll('.set-chip').forEach(b => b.classList.remove('selected'));
     btn.classList.add('selected');
   }
-  function pickFont(btn) {
-    btn.parentElement.querySelectorAll('.font-btn').forEach(f => f.classList.remove('selected'));
-    btn.classList.add('selected');
-    const sizes = { Normal: 'var(--fs-base)', Large: '18px', Larger: '21px', Largest: '24px' };
-    const lbl = btn.querySelector('.lbl').textContent.trim();
-    const prev = btn.closest('.set-card').querySelector('.set-preview p');
-    if (prev) prev.style.fontSize = sizes[lbl] || 'var(--fs-base)';
-  }
-  function revealTotp(btn) {
-    document.getElementById('totp-reveal').style.display = 'block';
-    btn.textContent = 'New TOTP generated · secret shown once';
-    btn.disabled = true;
-  }
-  function gotoTrust() {
-    setRole('clientadmin', document.querySelector('[data-role=clientadmin]'));
-    setView('v-analyze', null, true);
-    setTimeout(() => document.getElementById('trust-anchor').scrollIntoView({ behavior:'smooth', block:'center' }), 80);
-  }
 
-  /* ════════ Option pick (Apple: haptic feel) ════════ */
-  function pick(btn, qid) {
-    document.getElementById(qid).querySelectorAll('.opt-btn').forEach(b => b.classList.remove('selected'));
-    btn.classList.add('selected');
-    if (navigator.vibrate) navigator.vibrate(10);
-  }
-
-  /* ════════ Trust rings — compute geometry in JS (no hardcoded offsets) ════════ */
-  function band(p) { return p >= 80 ? 'ok' : p >= 60 ? 'warn' : 'bad'; }
-  function bandColor(p) {
-    const v = { ok: '--ok', warn: '--warn', bad: '--bad' }[band(p)];
-    return getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-  }
-  function drawRings() {
-    document.querySelectorAll('.ring').forEach(ring => {
-      const p = +ring.dataset.p, r = +ring.dataset.r;
-      const C = 2 * Math.PI * r;
-      const fill = ring.querySelector('.ring-fill');
-      fill.style.strokeDasharray = C.toFixed(2);
-      fill.style.strokeDashoffset = (C * (1 - p / 100)).toFixed(2);
-      fill.style.stroke = bandColor(p);
-      const num = ring.querySelector('.ring-center .num');
-      if (num) num.style.color = bandColor(p);
-    });
-  }
-
-  /* ════════ Blue sequential ramp (choropleth Volume) ════════
-     #dbeafe (219,234,254) → #14509f (20,80,159): monotone L, single hue.
-     Lightest recedes (sequential rule); a hairline keeps low tiles legible. */
-  function blueRamp(t) {
-    t = Math.max(0, Math.min(1, t));
-    const r = Math.round(219 + (20 - 219) * t);
-    const g = Math.round(234 + (80 - 234) * t);
-    const b = Math.round(254 + (159 - 254) * t);
-    return 'rgb(' + r + ',' + g + ',' + b + ')';
-  }
-
-  /* ════════ Tile-map choropleth ════════ */
-  let mapMode = 'volume';
-  function setMapMode(mode) {
-    mapMode = mode;
-    document.getElementById('mode-volume').classList.toggle('active', mode === 'volume');
-    document.getElementById('mode-party').classList.toggle('active', mode === 'party');
-    renderTileMap();
-  }
   function renderTileMap() {
-    const wrap = document.getElementById('tilemap');
-    wrap.innerHTML = '';
-    totalsByDistrict.forEach(r => {
-      const pct = (r.total / grand * 100).toFixed(1);
-      const tile = document.createElement('div');
-      tile.className = 'tile';
-      let bg, fg, sub;
-      if (mapMode === 'volume') {
-        // sqrt scaling with a 0.22 floor — faithful to the field map
-        const t = 0.22 + 0.78 * Math.sqrt(r.total / maxTotal);
-        bg = blueRamp(t);
-        fg = t > 0.62 ? '#fff' : '#0d366b';
-        sub = pct + '%';
-      } else {
-        const lead = leadOf(r);
-        bg = lead.hex; fg = '#fff'; sub = lead.name;
-      }
-      tile.style.background = bg;
-      tile.style.color = fg;
-      tile.style.boxShadow = 'inset 0 0 0 1px rgba(15,23,42,.08)';
-      tile.innerHTML = '<div class="tn">' + r.d + '</div><div><div class="tv tnum">' + r.total.toLocaleString() + '</div><div class="tsub">' + sub + '</div></div>';
-      tile.onclick = () => { tile.classList.toggle('selected'); addDistrictChip(r.d); };
-      wrap.appendChild(tile);
-    });
-    renderTileLegend();
-  }
-  function renderTileLegend() {
-    const el = document.getElementById('tile-legend');
-    if (mapMode === 'volume') {
-      el.innerHTML =
-        '<span class="legend-item"><span class="legend-swatch" style="background:' + blueRamp(0.25) + ';box-shadow:inset 0 0 0 1px rgba(15,23,42,.12)"></span>Low</span>' +
-        '<span class="legend-item"><span class="legend-swatch" style="background:' + blueRamp(0.6) + '"></span>Mid</span>' +
-        '<span class="legend-item"><span class="legend-swatch" style="background:' + blueRamp(1) + '"></span>High</span>';
-    } else {
-      el.innerHTML = PARTIES.slice(0, 4).map(p =>
-        '<span class="legend-item"><span class="legend-swatch" style="background:' + p.hex + '"></span>' + p.name + '</span>'
-      ).join('') + '<span class="legend-item"><span class="legend-swatch" style="background:' + PARTIES[4].hex + '"></span>Undecided</span>';
-    }
+    const el = document.getElementById('tilemap');
+    if (!el) return;
+    el.innerHTML = DISTRICTS.map(r => `
+      <div class="tile" style="background:#dbeafe;color:#1e3a8a">
+        <div class="tn">${r.d}</div>
+        <div>
+          <div class="tv tnum">${r.total.toLocaleString()}</div>
+          <div class="tsub">Lead: <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${r.leadHex}"></span></div>
+        </div>
+      </div>
+    `).join('');
   }
 
-  /* ════════ Filter chip from a tile click ════════ */
-  function addDistrictChip(name) {
-    const slot = document.getElementById('filter-slot');
-    if (!name) return;
-    const existing = [...slot.querySelectorAll('.chip')].find(c => c.dataset.d === name);
-    if (existing) { existing.remove(); return; }
-    const chip = document.createElement('span');
-    chip.className = 'chip'; chip.dataset.d = name;
-    chip.innerHTML = 'District: ' + name + ' <button>✕</button>';
-    chip.querySelector('button').onclick = () => {
-      chip.remove();
-      [...document.querySelectorAll('#tilemap .tile')].forEach(t => { if (t.querySelector('.tn').textContent === name) t.classList.remove('selected'); });
-    };
-    slot.appendChild(chip);
-  }
-
-  /* ════════ Party preference bars (identity + relief) ════════ */
   function renderPartyBars() {
-    const legend = document.getElementById('party-legend');
-    legend.innerHTML = PARTIES.map(p => '<span class="legend-item"><span class="legend-swatch" style="background:' + p.hex + '"></span>' + p.name + '</span>').join('');
-    const wrap = document.getElementById('party-bars');
-    const max = Math.max(...partyTotals.map(p => p.total));
-    wrap.innerHTML = partyTotals.map(p => {
+    const el = document.getElementById('party-bars');
+    if (!el) return;
+    const max = Math.max(...PARTIES.map(p => p.total));
+    const grand = PARTIES.reduce((s, p) => s + p.total, 0);
+    el.innerHTML = PARTIES.map(p => {
       const w = (p.total / max * 100);
       const pct = (p.total / grand * 100).toFixed(1);
-      const inside = w > 22;
-      return '<div class="hbar-row"><div class="hbar-label"><span class="swatch" style="background:' + p.hex + '"></span>' + p.name + '</div>' +
-        '<div class="hbar-track"><div class="hbar-fill" style="width:' + w + '%;background:' + p.hex + '">' +
-        (inside ? '<span class="hbar-val">' + p.total.toLocaleString() + ' · ' + pct + '%</span>' : '') + '</div>' +
-        (inside ? '' : '<span class="hbar-val outside" style="position:absolute;left:calc(' + w + '% + 8px);top:4px">' + p.total.toLocaleString() + ' · ' + pct + '%</span>') +
-        '</div></div>';
+      return `
+        <div class="hbar-row">
+          <div class="hbar-label"><span class="swatch" style="background:${p.hex}"></span>${p.name}</div>
+          <div class="hbar-track">
+            <div class="hbar-fill" style="width:${w}%;background:${p.hex}">
+              <span class="hbar-val">${p.total.toLocaleString()} (${pct}%)</span>
+            </div>
+          </div>
+        </div>
+      `;
     }).join('');
   }
 
-  /* ════════ Top districts (magnitude, single accent hue) ════════ */
-  function renderTopDistricts() {
-    const wrap = document.getElementById('top-districts');
-    const sorted = [...totalsByDistrict].sort((a, b) => b.total - a.total);
-    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
-    wrap.innerHTML = sorted.map(r => {
-      const w = (r.total / maxTotal * 100);
-      const lead = leadOf(r);
-      const inside = w > 20;
-      return '<div class="hbar-row"><div class="hbar-label"><span class="swatch" style="background:' + lead.hex + '" title="lead: ' + lead.name + '"></span>' + r.d + '</div>' +
-        '<div class="hbar-track"><div class="hbar-fill" style="width:' + w + '%;background:' + accent + '">' +
-        (inside ? '<span class="hbar-val">' + r.total.toLocaleString() + '</span>' : '') + '</div>' +
-        (inside ? '' : '<span class="hbar-val outside" style="position:absolute;left:calc(' + w + '% + 8px);top:4px">' + r.total.toLocaleString() + '</span>') +
-        '</div></div>';
-    }).join('');
-  }
+  function renderFeeds() {
+    const renderCard = (c) => `
+      <div class="feed-card" onclick="openReview('${c.id}')">
+        <div class="fc-head">
+          <div class="fc-surveyor">
+            <div class="fc-avatar">${c.rinit}</div>
+            <div>
+              <div class="fc-name">${c.respondent} <span style="font-weight:400;color:#64748b;font-size:11px">· ${c.dem}</span></div>
+              <div class="fc-location">${c.loc} · by ${c.name}</div>
+            </div>
+          </div>
+          <span class="fc-time">${c.time}</span>
+        </div>
+        <div class="fc-answers">
+          <span class="fc-pill"><span class="dot" style="background:${c.partyColor}"></span>${c.party}</span>
+          <span class="fc-pill"><span class="dot" style="background:${c.sc}"></span>${c.sent}</span>
+          <span class="fc-pill">${c.issue}</span>
+        </div>
+        <div class="fc-foot">
+          <div class="fc-signals">
+            <span class="sig ok">📍 GPS</span>
+            <span class="sig ok">📷 Photo</span>
+            <span class="sig ok">🎤 Voice</span>
+            <span class="sig ok">🪪 ID</span>
+          </div>
+          <span class="fc-status ${c.status}">${c.slabel}</span>
+        </div>
+      </div>
+    `;
 
-  /* ════════ Responses over time (area/line, single hue) ════════ */
-  function renderTrend() {
-    const series = [120,145,138,167,180,175,203,221,210,245,260,255,289,312];
-    const W = 100, H = 60, max = Math.max(...series), min = Math.min(...series);
-    const x = i => (i / (series.length - 1)) * W;
-    const y = v => H - ((v - min) / (max - min)) * (H - 8) - 4;
-    const line = series.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ');
-    const area = 'M0 ' + H + ' ' + series.map((v, i) => 'L' + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ') + ' L' + W + ' ' + H + ' Z';
-    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
-    document.getElementById('trend').innerHTML =
-      '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" style="width:100%;height:120px;display:block">' +
-      '<defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + accent + '" stop-opacity="0.28"/><stop offset="100%" stop-color="' + accent + '" stop-opacity="0"/></linearGradient></defs>' +
-      '<path d="' + area + '" fill="url(#tg)"/>' +
-      '<path d="' + line + '" fill="none" stroke="' + accent + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>' +
-      '</svg>';
-  }
+    const ofeed = document.getElementById('overview-feed');
+    if (ofeed) ofeed.innerHTML = FEED.slice(0, 2).map(renderCard).join('');
 
-  /* ════════ Live feed cards, each with a Trust Score ════════ */
-  const FEED = [
-    { init:'RK', id:'63', name:'Rajesh Kumar', respondent:'Anjali Reddy', rinit:'AR', loc:'Rangareddy · Maheshwaram AC', time:'2 min ago', party:'congress', plabel:'Congress', sent:'Positive', sc:'#16a34a', issue:'Roads', dem:'Female · 35', voteLikely:'Certain', trust:94, status:'confirmed', slabel:'Confirmed', gps:'17.3210, 78.4001 · ±14 m', audioLen:'0:52', proof:{ phone:'+91 98490 •••21', phoneOk:true, aadhaar:'XXXX XXXX 4417', aadhaarOk:true }, pillars:{ capture:40, identity:20, delivery:14, qa:20 }, signals:[['📍',1],['📷',1],['🎤',1],['🪪',1]] },
-    { init:'SP', id:'58', name:'Sunita Patel', respondent:'Ibrahim Khan', rinit:'IK', loc:'Medchal · Kukatpally AC', time:'syncing…', party:'bjp', plabel:'BJP', sent:'Neutral', sc:'#f59e0b', issue:'Water supply', dem:'Male · 42', voteLikely:'Likely', trust:68, trustConfirmed:88, status:'pending', slabel:'Pending', cls:'syncing', gps:'17.4948, 78.3996 · ±22 m', audioLen:'0:47', proof:{ phone:'+91 90000 •••73', phoneOk:true, aadhaar:'XXXX XXXX 9021', aadhaarOk:true }, pillars:{ capture:40, identity:20, delivery:8, qa:0 }, signals:[['📍',1],['📷',1],['🎤',1],['🪪',1]] },
-    { init:'AK', id:'62', name:'Amit Kumar', respondent:'Suresh Yadav', rinit:'SY', loc:'Hanumakonda · Warangal West AC', time:'5 min ago', party:'brs', plabel:'BRS', sent:'Negative', sc:'#ef4444', issue:'Drainage', dem:'Male · 28', voteLikely:'Certain', trust:97, status:'confirmed', slabel:'Confirmed', gps:'17.9784, 79.5941 · ±9 m', audioLen:'1:03', proof:{ phone:'+91 79955 •••08', phoneOk:true, aadhaar:'XXXX XXXX 3390', aadhaarOk:true }, pillars:{ capture:40, identity:20, delivery:17, qa:20 }, signals:[['📍',1],['📷',1],['🎤',1],['🪪',1]] },
-    { init:'LM', id:'60', name:'Lakshmi Menon', respondent:'Fatima Begum', rinit:'FB', loc:'Nizamabad · Bodhan AC', time:'8 min ago', party:'congress', plabel:'Congress', sent:'Positive', sc:'#16a34a', issue:'Healthcare', dem:'Female · 55', voteLikely:'Unsure', trust:41, status:'rejected', slabel:'Rejected', cls:'failed', gps:'18.6650, 78.0750 · ±31 m', audioLen:'0:38', proof:{ phone:'+91 88012 •••55', phoneOk:true, aadhaar:'not present', aadhaarOk:false }, pillars:{ capture:30, identity:6, delivery:5, qa:0 }, signals:[['📍',1],['📷',0],['🎤',1],['🪪',1]] },
-    { init:'VR', id:'61', name:'Venu Rao', respondent:'Ramesh Goud', rinit:'RG', loc:'Karimnagar · Huzurabad AC', time:'12 min ago', party:'bjp', plabel:'BJP', sent:'Neutral', sc:'#f59e0b', issue:'Electricity', dem:'Male · 38', voteLikely:'Likely', trust:73, trustConfirmed:93, status:'pending', slabel:'Pending', gps:'18.6725, 79.1330 · ±19 m', audioLen:'0:41', proof:{ phone:'+91 96180 •••34', phoneOk:true, aadhaar:'XXXX XXXX 7756', aadhaarOk:true }, pillars:{ capture:40, identity:20, delivery:13, qa:0 }, signals:[['📍',1],['📷',1],['🎤',1],['🪪',1]] },
-  ];
-  function renderFeed() {
-    const feed = document.getElementById('feed');
-    feed.innerHTML = FEED.map((c, i) => {
-      const partyVar = '--party-' + c.party;
-      const sig = c.signals.map(([icon, ok]) => '<span class="sig ' + (ok ? 'ok' : 'bad') + '">' + icon + (ok ? '' : '✕') + '</span>').join('');
-      const actions = c.status === 'pending'
-        ? '<div class="review-actions"><button class="confirm" onclick="event.stopPropagation();confirmRecord(\'' + c.id + '\')">✓ Confirm</button><button onclick="event.stopPropagation();openReview(\'' + c.id + '\')">Edit</button><button class="reject" onclick="event.stopPropagation();rejectRecord(\'' + c.id + '\')">Reject</button></div>'
-        : c.status === 'rejected'
-        ? '<div class="review-actions"><button onclick="event.stopPropagation();reopenRecord(\'' + c.id + '\')">Re-open</button><button class="reject" onclick="event.stopPropagation();deleteRecord(\'' + c.id + '\')">Delete</button></div>'
-        : '';
-      return '<div class="feed-card ' + (c.cls || '') + '" style="cursor:pointer" title="Open review" onclick="openReview(\'' + c.id + '\')">' +
-        '<div class="fc-head"><div class="fc-surveyor"><div class="fc-avatar">' + c.rinit + '</div>' +
-        '<div><div class="fc-name">' + c.respondent + ' <span style="font-weight:var(--fw-normal);color:var(--ink-muted);font-size:var(--fs-xs)">· ' + c.dem + '</span></div><div class="fc-location">' + c.loc + ' · collected by ' + c.name + '</div></div></div>' +
-        '<span class="fc-time">' + c.time + '</span></div>' +
-        '<div class="fc-answers">' +
-        '<span class="fc-pill"><span class="dot" style="background:var(' + partyVar + ')"></span>' + c.plabel + '</span>' +
-        '<span class="fc-pill"><span class="dot" style="background:' + c.sc + '"></span>' + c.sent + '</span>' +
-        '<span class="fc-pill">' + c.issue + '</span></div>' +
-        '<div class="fc-foot"><div class="fc-signals">' + sig + '</div>' +
-        '<div class="fc-right">' +
-        ((c.cls || '').indexOf('syncing') >= 0 ? '<span class="fc-sync">Syncing</span>' : '') +
-        '<div class="ring-wrap ring" data-p="' + c.trust + '" data-r="15" data-w="4"><svg width="38" height="38" viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="15" stroke-width="4"/><circle class="ring-fill" cx="19" cy="19" r="15" stroke-width="4"/></svg>' +
-        '<div class="ring-center"><span class="num tnum" style="font-size:11px">' + c.trust + '</span></div></div>' +
-        '<span class="fc-status ' + c.status + '">' + c.slabel + '</span></div></div>' +
-        actions + '</div>';
-    }).join('');
+    const stream = document.getElementById('feed-stream');
+    if (stream) stream.innerHTML = FEED.map(renderCard).join('');
   }
-
-  /* ════════ Record-verification modal — mirrors src/ReviewQA.jsx ════════ */
-  let currentReviewId = null;
-  function recById(id) { return FEED.find(r => r.id === id); }
-
-  function qaFor(c) {
-    return [
-      ['Which party do you support?', c.plabel],
-      ['Overall sentiment toward local government?', c.sent],
-      ['Most important local issue?', c.issue],
-      ['How likely are you to vote?', c.voteLikely],
-    ];
-  }
-
-  function pillarBars(c) {
-    const defs = [
-      ['Capture locks', c.pillars.capture, 40],
-      ['Identity', c.pillars.identity, 20],
-      ['Delivery integrity', c.pillars.delivery, 20],
-      ['QA confirmation', c.pillars.qa, 20],
-    ];
-    return defs.map(function (d) {
-      const label = d[0], val = d[1], max = d[2];
-      return '<div class="rv-pill-row' + (val === 0 ? ' zero' : '') + '">' +
-        '<span class="plabel">' + label + '</span>' +
-        '<span class="rv-track"><span style="width:' + Math.round(val / max * 100) + '%"></span></span>' +
-        '<span class="pval">' + val + '<span style="color:var(--ink-faint);font-weight:400">/' + max + '</span></span>' +
-      '</div>';
-    }).join('');
-  }
-
-  function waveBars() {
-    /* deterministic faux waveform — a static mock has no audio file to load */
-    const hs = [30,55,80,45,70,95,60,40,75,90,50,65,85,35,60,80,45,70,55,90,40,75,60,85,50,70,95,45,65,80,55,40];
-    return hs.map(function (h) { return '<i style="height:' + h + '%"></i>'; }).join('');
-  }
-  function proofChip(ok) { return '<span class="rv-chip ' + (ok ? 'ok' : 'bad') + '">' + (ok ? '✓ Valid' : '✕ Invalid') + '</span>'; }
 
   function openReview(id) {
-    const c = recById(id);
+    const c = FEED.find(r => r.id === id);
     if (!c) return;
-    currentReviewId = id;
-    document.getElementById('rv-heading').textContent = 'Review · #' + c.id + ' · ' + c.respondent;
-
-    const bandLabel = c.trust >= 80 ? 'High' : c.trust >= 60 ? 'Needs review' : 'Low';
-    let html =
-      '<div class="rv-card"><h5>Record</h5>' +
-        '<div class="rv-kv"><span class="q">Respondent</span><span class="a">' + c.respondent + ' · ' + c.dem + '</span></div>' +
-        '<div class="rv-kv"><span class="q">Surveyor (collected by)</span><span class="a">' + c.name + '</span></div>' +
-        '<div class="rv-kv"><span class="q">Location</span><span class="a">' + c.loc + '</span></div>' +
-      '</div>' +
-      '<div class="rv-card"><h5>Trust Score · why</h5><div class="rv-trust">' +
-        '<div class="ring rv-ring" data-p="' + c.trust + '" data-r="34" data-w="7">' +
-          '<svg width="80" height="80" viewBox="0 0 80 80"><circle class="ring-track" cx="40" cy="40" r="34" stroke-width="7"/><circle class="ring-fill" cx="40" cy="40" r="34" stroke-width="7"/></svg>' +
-          '<div class="ring-center"><span class="num tnum" style="font-size:22px">' + c.trust + '</span><span class="ring-band">' + bandLabel + '</span></div>' +
-        '</div>' +
-        '<div class="rv-pillars">' + pillarBars(c) + '</div>' +
-      '</div>' +
-      (c.status === 'pending'
-        ? '<div class="rv-uplift">✓ Your confirmation adds <b>&nbsp;QA +20&nbsp;</b> → Trust rises to <b>&nbsp;' + (c.trustConfirmed || c.trust) + '</b></div>'
-        : '') +
-      '</div>';
-
-    if (c.status === 'confirmed') {
-      html += '<div class="rv-confirmed-note">✅ <div><b>Confirmed record</b> — Photo &amp; Audio hidden post-verification. Details verified and locked into report analytics.</div></div>';
-    } else {
-      const photoMissing = c.signals.some(function (s) { return s[0] === '📷' && !s[1]; });
-      html += '<div class="rv-card"><h5>Media</h5>';
-      if (photoMissing) {
-        html += '<div class="rv-photo" style="background:var(--bad-bg);color:var(--bad)"><div style="text-align:center"><div class="cam-ico">🚫</div>No photo captured</div></div>';
-      } else {
-        html += '<div class="rv-photo"><span class="cam-ico">📷</span><span class="gps-stamp">📍 ' + c.gps + '</span></div>' +
-          '<button class="rv-dl" onclick="toast(\'Downloading photo…\')">⬇ Download photo</button>';
-      }
-      html += '<div class="rv-audio"><button class="rv-play" onclick="toast(\'▶ Playing voice interview · ' + c.audioLen + '\')">▶</button><div class="rv-wave">' + waveBars() + '</div><span class="rv-dur">' + c.audioLen + '</span></div>' +
-        '<button class="rv-dl" onclick="toast(\'Downloading audio…\')">⬇ Download audio</button>' +
-        '</div>';
-    }
-
-    const p = c.proof;
-    html += '<div class="rv-card"><h5>Respondent proof</h5>' +
-      '<div class="rv-proof-row"><span>Phone<span class="pv">' + p.phone + '</span></span>' + proofChip(p.phoneOk) + '</div>' +
-      '<div class="rv-proof-row"><span>Aadhaar<span class="pv">' + p.aadhaar + '</span></span>' + proofChip(p.aadhaarOk) + '</div>' +
-      '</div>';
-
-    html += '<div class="rv-card"><h5>Answers</h5>' +
-      qaFor(c).map(function (row) { return '<div class="rv-kv"><span class="q">' + row[0] + '</span><span class="a">' + row[1] + '</span></div>'; }).join('') +
-      '</div>';
-
-    const body = document.getElementById('rv-body');
-    body.innerHTML = html;
-    body.scrollTop = 0;
-
-    const actions = document.getElementById('rv-actions');
-    if (c.status === 'pending') {
-      actions.innerHTML =
-        '<button onclick="toast(\'Edit mode — field-level answer editor\')">Edit (e)</button>' +
-        '<button onclick="toast(\'Proof re-validated ✓\',\'ok\')">Validate proof</button>' +
-        '<span class="grow"></span>' +
-        '<button class="reject" onclick="rejectRecord(\'' + c.id + '\')">Reject (r)</button>' +
-        '<button class="confirm" onclick="confirmRecord(\'' + c.id + '\')">✓ Confirm (c)</button>';
-    } else if (c.status === 'rejected') {
-      actions.innerHTML =
-        '<button onclick="reopenRecord(\'' + c.id + '\')">Back to pending</button>' +
-        '<span class="grow"></span>' +
-        '<button class="reject" onclick="deleteRecord(\'' + c.id + '\')">Delete</button>';
-    } else {
-      actions.innerHTML = '<span class="grow"></span><button onclick="closeReview()">Close</button>';
-    }
-
+    document.getElementById('rv-title').textContent = `Review · #${c.id} · ${c.respondent}`;
+    document.getElementById('rv-body').innerHTML = `
+      <div class="rv-card">
+        <h5>Record Details</h5>
+        <div class="rv-kv"><span class="q">Respondent</span><span class="a">${c.respondent} (${c.dem})</span></div>
+        <div class="rv-kv"><span class="q">Surveyor</span><span class="a">${c.name}</span></div>
+        <div class="rv-kv"><span class="q">Location</span><span class="a">${c.loc}</span></div>
+      </div>
+      <div class="rv-card">
+        <h5>Verification Proofs</h5>
+        <div class="rv-proof-row"><span>Phone: ${c.phone}</span><span class="rv-chip ok">✓ Valid</span></div>
+        <div class="rv-proof-row"><span>Aadhaar: ${c.aadhaar}</span><span class="rv-chip ok">✓ Valid</span></div>
+      </div>
+      <div class="rv-card">
+        <h5>Responses</h5>
+        <div class="rv-kv"><span class="q">Party Support</span><span class="a">${c.party}</span></div>
+        <div class="rv-kv"><span class="q">Sentiment</span><span class="a">${c.sent}</span></div>
+        <div class="rv-kv"><span class="q">Top Issue</span><span class="a">${c.issue}</span></div>
+      </div>
+    `;
+    document.getElementById('rv-actions').innerHTML = c.status === 'pending'
+      ? `<button class="reject" onclick="decide('${c.id}', 'rejected')">Reject</button><button class="confirm" onclick="decide('${c.id}', 'confirmed')">✓ Confirm</button>`
+      : `<button onclick="closeReview()">Close</button>`;
     document.getElementById('review-modal').classList.add('open');
-    document.body.style.overflow = 'hidden';
-    drawRings();
   }
 
-  function closeReview() {
-    document.getElementById('review-modal').classList.remove('open');
-    document.body.style.overflow = '';
-    currentReviewId = null;
-  }
-  function closeReviewBg(e) { if (e.target.id === 'review-modal') closeReview(); }
-
-  function confirmRecord(id) {
-    const c = recById(id);
-    if (!c || c.status !== 'pending') return;
-    c.status = 'confirmed'; c.slabel = 'Confirmed'; c.cls = '';
-    c.pillars.qa = 20;
-    c.trust = c.trustConfirmed || c.trust;
-    c.time = 'just now';
-    renderFeed(); drawRings();
+  function decide(id, status) {
+    FEED = FEED.map(c => c.id === id ? { ...c, status, slabel: status === 'confirmed' ? 'Confirmed' : 'Rejected' } : c);
+    renderFeeds();
     closeReview();
-    toast('Confirmed ✓ — included in analytics', 'ok');
-  }
-  function rejectRecord(id) {
-    const c = recById(id);
-    if (!c) return;
-    c.status = 'rejected'; c.slabel = 'Rejected'; c.cls = 'failed'; c.pillars.qa = 0;
-    renderFeed(); drawRings();
-    closeReview();
-    toast('Marked rejected — excluded from analytics', 'bad');
-  }
-  function reopenRecord(id) {
-    const c = recById(id);
-    if (!c) return;
-    c.status = 'pending'; c.slabel = 'Pending'; c.cls = '';
-    renderFeed(); drawRings();
-    closeReview();
-    toast('Back to pending');
-  }
-  function deleteRecord(id) {
-    const i = FEED.findIndex(function (r) { return r.id === id; });
-    if (i < 0) return;
-    FEED.splice(i, 1);
-    renderFeed(); drawRings();
-    closeReview();
-    toast('Record deleted');
+    toast(`Record marked ${status}`, status === 'confirmed' ? 'ok' : 'bad');
   }
 
-  let toastTimer = null;
+  function closeReview(e) {
+    if (!e || e.target.id === 'review-modal' || e.target.classList.contains('rv-close') || e.target.tagName === 'BUTTON') {
+      document.getElementById('review-modal').classList.remove('open');
+    }
+  }
+
   function toast(msg, kind) {
     const t = document.getElementById('toast');
     t.textContent = msg;
-    t.className = 'show' + (kind ? ' ' + kind : '');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { t.className = t.className.replace('show', '').trim(); }, 2600);
+    t.className = 'show ' + (kind || '');
+    setTimeout(() => { t.className = ''; }, 2600);
   }
 
-  document.addEventListener('keydown', function (e) {
-    if (!document.getElementById('review-modal').classList.contains('open')) return;
-    if (e.key === 'Escape') { closeReview(); return; }
-    if (!currentReviewId) return;
-    const c = recById(currentReviewId);
-    if (!c) return;
-    if (e.key === 'c' && c.status === 'pending') confirmRecord(currentReviewId);
-    else if (e.key === 'r' && c.status === 'pending') rejectRecord(currentReviewId);
-    else if (e.key === 'e') toast('Edit mode — field-level answer editor');
-  });
-
-  /* ════════ Init ════════ */
   renderTileMap();
   renderPartyBars();
-  renderTopDistricts();
-  renderTrend();
-  renderFeed();
-  drawRings();
+  renderFeeds();
 </script>
 </body>
 </html>

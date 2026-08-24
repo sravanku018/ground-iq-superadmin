@@ -442,3 +442,65 @@ html, body, #root {
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 #toast.ok { background: #065f46; }
 #toast.bad { background: #991b1b; }
+
+/*
+ * ═══════════════════════════════════════════════
+ *  ANIMATIONS — Apple: craft in feel
+ *  Twitter: optimistic feedback
+ * ═══════════════════════════════════════════════
+ */
+
+/* Card entrance */
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes fcIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Optimistic toggle feedback */
+@keyframes pillFlash {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+/* Success / failure flash */
+@keyframes flashOk {
+  0% { box-shadow: 0 0 0 0 rgba(22,163,74,0.4); }
+  100% { box-shadow: 0 0 0 8px rgba(22,163,74,0); }
+}
+@keyframes flashBad {
+  0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+  100% { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+}
+
+/* Rollback — failed sync shake */
+@keyframes rollback {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+
+/* Ripple — haptic tap feel */
+@keyframes ripple {
+  from { transform: scale(0); opacity: 0.35; }
+  to { transform: scale(2.5); opacity: 0; }
+}
+
+/* Fade-in for reveals */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Animations applied to components */
+.card { animation: cardIn var(--dur-normal) var(--ease-out) both; }
+.feed-card, .fc { animation: fcIn var(--dur-normal) var(--ease-out) both; }
+.feed-card.syncing, .fc.syncing { opacity: 0.65; border-style: dashed; }
+.feed-card.failed, .fc.failed { border-color: var(--bad); background: var(--bad-bg); animation: fcIn var(--dur-normal) var(--ease-out) both, rollback 0.4s ease-out; }
+.kpi { animation: cardIn var(--dur-slow) var(--ease-out) both; }

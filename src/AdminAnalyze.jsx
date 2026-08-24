@@ -8,6 +8,7 @@ import {
 } from './api'
 import SubmissionEditor from './SubmissionEditor'
 import { getDisplayLang, setDisplayLang } from './prefs'
+import FeedCard from './components/FeedCard'
 
 /**
  * Client Admin: filter by date + user, strict geo/voice, complete/incomplete, analyze.
@@ -167,29 +168,32 @@ export default function AdminAnalyzeScreen({ onToast }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
   }, [])
 
+  // Optimistic UI (Twitter principle: tap → instant, sync later)
   async function confirmOne(id, force = false) {
-    setBusyId(id)
+    // 1. Optimistic flip
+    setItems(rs => rs.map(r => r.id === id ? { ...r, status: 'confirmed' } : r))
+    onToast?.('Confirming…', 'ok')
     try {
       await setSubmissionStatus(id, 'confirmed', force ? 'force override' : '', force)
-      onToast?.(force ? 'Force confirmed' : 'Confirmed (strict complete)', 'ok')
+      onToast?.(force ? 'Force confirmed' : 'Confirmed', 'ok')
       await load()
     } catch (e) {
+      // 2. Rollback on failure
       onToast?.(e.message, 'error')
-    } finally {
-      setBusyId(null)
+      await load()
     }
   }
 
   async function rejectOne(id) {
-    setBusyId(id)
+    setItems(rs => rs.map(r => r.id === id ? { ...r, status: 'rejected' } : r))
+    onToast?.('Rejecting…', 'ok')
     try {
       await setSubmissionStatus(id, 'rejected')
-      onToast?.('Marked rejected', 'ok')
+      onToast?.('Rejected', 'ok')
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
-    } finally {
-      setBusyId(null)
+      await load()
     }
   }
 
@@ -810,153 +814,144 @@ export default function AdminAnalyzeScreen({ onToast }) {
         ) : !items.length ? (
           <p className="muted">No rows for this filter. Adjust date/user or collect more.</p>
         ) : (
-          <ul className="user-list review-list">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {items.map((it) => {
               const open = expanded === it.id
               const v = it.verification || {}
-              return (
-                <li key={it.id} className="review-item">
+              const statusLabel = it.draft
+                ? 'draft'
+                : it.work === 'completed' || it.status === 'confirmed'
+                  ? 'confirmed'
+                  : it.status === 'rejected'
+                    ? 'rejected'
+                    : 'pending'
+              const pills = [
+                { label: `media ${it.completeness}`, color: it.completeness === 'complete' ? 'var(--ok)' : 'var(--bad)' },
+                { label: `geo ${it.has_geo ? 'OK' : 'FAIL'}`, color: it.has_geo ? 'var(--ok)' : 'var(--bad)' },
+                { label: `voice ${it.has_voice ? 'OK' : 'FAIL'}`, color: it.has_voice ? 'var(--ok)' : 'var(--bad)' },
+                { label: `photo ${it.has_photo ? 'OK' : '—'}`, color: it.has_photo ? 'var(--ok)' : 'var(--warn)' },
+              ]
+              const signals = []
+              if (it.has_geo) signals.push({ label: 'geo', type: 'ok' })
+              else signals.push({ label: 'no geo', type: 'bad' })
+              if (it.has_voice) signals.push({ label: 'voice', type: 'ok' })
+              else signals.push({ label: 'no voice', type: 'bad' })
+
+              const actionsEl = (
+                <>
                   <button
                     type="button"
-                    className="review-item-toggle"
-                    onClick={() => setExpanded(open ? null : it.id)}
+                    className="btn small primary"
+                    disabled={busyId === it.id}
+                    onClick={(e) => { e.stopPropagation(); setEditingId(it.id) }}
                   >
-                    <strong className="review-item-title">
-                      #{it.id} · {it.submitted_by || '—'} · {it.date}
-                    </strong>
-                    <div className="pill-row">
-                      <span
-                        className={`pill ${
-                          (it.work || it.status) === 'completed' ||
-                          (it.status === 'confirmed' && !it.draft)
-                            ? 'ok'
-                            : it.status === 'rejected'
-                              ? 'bad'
-                              : 'warn'
-                        }`}
-                      >
-                        <span className="dot" />
-                        {it.draft
-                          ? 'draft / pending'
-                          : it.work === 'completed' || it.status === 'confirmed'
-                            ? 'completed'
-                            : it.status === 'pending'
-                              ? 'pending'
-                              : it.status}
-                      </span>
-                      <span className={`pill ${it.completeness === 'complete' ? 'ok' : 'bad'}`}>
-                        <span className="dot" />
-                        media {it.completeness}
-                      </span>
-                      <span className={`pill ${it.has_geo ? 'ok' : 'bad'}`}>
-                        <span className="dot" />
-                        geo {it.has_geo ? 'OK' : 'FAIL'}
-                      </span>
-                      <span className={`pill ${it.has_voice ? 'ok' : 'bad'}`}>
-                        <span className="dot" />
-                        voice {it.has_voice ? 'OK' : 'FAIL'}
-                      </span>
-                      <span className={`pill ${it.has_photo ? 'ok' : 'warn'}`}>
-                        <span className="dot" />
-                        photo {it.has_photo ? 'OK' : '—'}
-                      </span>
-                    </div>
+                    Edit
                   </button>
-                  {open && (
-                    <div className="review-item-body">
-                      {editingId === it.id ? (
-                        <SubmissionEditor
-                          item={it}
-                          onToast={onToast}
-                          onCancel={() => setEditingId(null)}
-                          onSaved={async () => {
-                            setEditingId(null)
-                            await load()
-                          }}
-                          onDeleted={async () => {
-                            setEditingId(null)
-                            await load()
-                          }}
-                        />
-                      ) : (
-                        <>
-                          {v.failures?.length > 0 && (
-                            <p className="muted" style={{ fontSize: 12 }}>
-                              Failures: {v.failures.join(', ')}
-                            </p>
-                          )}
-                          {(it.qa || []).slice(0, 8).map((row) => (
-                            <div key={row.q} className="kv" style={{ marginBottom: 4 }}>
-                              <span className="muted">{row.q}</span>
-                              <strong style={{ display: 'block' }}>{row.a}</strong>
-                            </div>
-                          ))}
-                          <div className="user-actions" style={{ marginTop: 10 }}>
-                            <button
-                              type="button"
-                              className="btn small primary"
-                              disabled={busyId === it.id}
-                              onClick={() => setEditingId(it.id)}
-                            >
-                              Edit data
-                            </button>
-                            {it.status !== 'confirmed' && it.completeness === 'complete' && (
-                              <button
-                                type="button"
-                                className="btn small primary"
-                                disabled={busyId === it.id}
-                                onClick={() => confirmOne(it.id, false)}
-                              >
-                                Confirm complete
-                              </button>
-                            )}
-                            {it.status !== 'confirmed' && it.completeness === 'incomplete' && (
-                              <button
-                                type="button"
-                                className="btn small danger"
-                                disabled={busyId === it.id}
-                                onClick={() => {
-                                  if (
-                                    confirm(
-                                      'STRICT FAIL: missing geo/voice/photo. Force confirm anyway?',
-                                    )
-                                  ) {
-                                    confirmOne(it.id, true)
-                                  }
-                                }}
-                              >
-                                Force confirm
-                              </button>
-                            )}
-                            {it.status !== 'rejected' && (
-                              <button
-                                type="button"
-                                className="btn small"
-                                disabled={busyId === it.id}
-                                onClick={() => rejectOne(it.id)}
-                              >
-                                Reject
-                              </button>
-                            )}
-                            {it.status === 'rejected' && (
-                              <button
-                                type="button"
-                                className="btn small danger"
-                                disabled={busyId === it.id}
-                                onClick={() => deleteRejectedOne(it.id)}
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </div>
+                  {it.status !== 'confirmed' && it.completeness === 'complete' && (
+                    <button
+                      type="button"
+                      className="btn small primary"
+                      disabled={busyId === it.id}
+                      onClick={(e) => { e.stopPropagation(); confirmOne(it.id, false) }}
+                      style={{ background: 'var(--ok)', borderColor: 'var(--ok)', color: '#fff' }}
+                    >
+                      Confirm
+                    </button>
                   )}
-                </li>
+                  {it.status !== 'confirmed' && it.completeness === 'incomplete' && (
+                    <button
+                      type="button"
+                      className="btn small primary"
+                      disabled={busyId === it.id}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (confirm('STRICT FAIL: missing geo/voice/photo. Force confirm anyway?')) {
+                          confirmOne(it.id, true)
+                        }
+                      }}
+                    >
+                      Force confirm
+                    </button>
+                  )}
+                  {it.status !== 'rejected' && (
+                    <button
+                      type="button"
+                      className="btn small"
+                      disabled={busyId === it.id}
+                      onClick={(e) => { e.stopPropagation(); rejectOne(it.id) }}
+                      style={{ color: 'var(--bad)', borderColor: 'var(--bad)' }}
+                    >
+                      Reject
+                    </button>
+                  )}
+                  {it.status === 'rejected' && (
+                    <button
+                      type="button"
+                      className="btn small danger"
+                      disabled={busyId === it.id}
+                      onClick={(e) => { e.stopPropagation(); deleteRejectedOne(it.id) }}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </>
+              )
+
+              const detail = (
+                <>
+                  {v.failures?.length > 0 && (
+                    <p className="muted" style={{ fontSize: 12 }}>
+                      Failures: {v.failures.join(', ')}
+                    </p>
+                  )}
+                  {(it.qa || []).slice(0, 8).map((row) => (
+                    <div key={row.q} className="kv" style={{ marginBottom: 4 }}>
+                      <span className="muted">{row.q}</span>
+                      <strong style={{ display: 'block' }}>{row.a}</strong>
+                    </div>
+                  ))}
+                </>
+              )
+
+              if (editingId === it.id) {
+                return (
+                  <div key={it.id} className="feed-card" style={{ animation: 'fcIn var(--dur-normal) var(--ease-out) both' }}>
+                    <SubmissionEditor
+                      item={it}
+                      onToast={onToast}
+                      onCancel={() => setEditingId(null)}
+                      onSaved={async () => {
+                        setEditingId(null)
+                        await load()
+                      }}
+                      onDeleted={async () => {
+                        setEditingId(null)
+                        await load()
+                      }}
+                    />
+                  </div>
+                )
+              }
+
+              return (
+                <FeedCard
+                  key={it.id}
+                  id={it.id}
+                  avatar={(it.submitted_by || '—')[0]?.toUpperCase()}
+                  name={`#${it.id} · ${it.submitted_by || '—'}`}
+                  location={it.district ? `${it.district}${it.constituency ? ', ' + it.constituency : ''}` : ''}
+                  time={it.date}
+                  pills={pills}
+                  status={statusLabel}
+                  signals={signals}
+                  actions={actionsEl}
+                  detail={detail}
+                  syncing={busyId === it.id}
+                  onClick={() => setExpanded(open ? null : it.id)}
+                />
               )
             })}
-          </ul>
+          </div>
         )}
       </div>
     </div>

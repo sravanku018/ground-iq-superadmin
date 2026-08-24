@@ -744,12 +744,12 @@ export default function AdminPortal({ superAdminOnly = false }) {
 
       <main className="portal-main">
         {nav.filter((n) => n.pages.length > 1 && n.pages.includes(page)).map((n) => (
-          <div className="admin-subtabs" key={n.id}>
+          <div className="portal-subtabs" key={n.id}>
             {n.pages.map((p) => (
               <button
                 key={p}
                 type="button"
-                className={page === p ? 'map-tab active' : 'map-tab'}
+                className={page === p ? 'portal-subtab active' : 'portal-subtab'}
                 onClick={() => goPage(p)}
               >
                 {PAGE_LABELS[p]}

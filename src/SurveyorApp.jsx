@@ -108,19 +108,13 @@ const TABS = [
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ]
 
-/** New install or new APK build must show login — never restore an old session. */
+/** Record build stamp in local storage without clearing active session. */
 function ensureUiVersion() {
   try {
     const key = 'esurvey_ui_build'
     const stamp = `${APP_VERSION}:${APP_VERSION_CODE}:${APP_BUILD}`
     const prev = localStorage.getItem(key)
     if (prev !== stamp) {
-      clearSession()
-      try {
-        localStorage.removeItem('esurvey_ui_version')
-      } catch {
-        /* ignore */
-      }
       localStorage.setItem(key, stamp)
       return true
     }
@@ -256,6 +250,7 @@ function HomeScreen({
   myProgress,
   questionsMeta,
   onNewSurvey,
+  onViewRecords,
   onSync,
   onLogout,
 }) {
@@ -347,6 +342,37 @@ function HomeScreen({
           </p>
         </div>
       )}
+
+      {/* Previous Surveys / Recent Activity Card */}
+      <div className="card" style={{ marginBottom: 12, padding: '14px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <strong style={{ fontSize: 14 }}>Previous Surveys (My Activity)</strong>
+          {onViewRecords && (
+            <button
+              type="button"
+              className="btn small"
+              onClick={onViewRecords}
+              style={{
+                fontSize: 12,
+                padding: '4px 10px',
+                background: 'var(--accent-bg, rgba(5,150,105,0.1))',
+                color: 'var(--accent, #059669)',
+                border: '1px solid var(--accent-border, rgba(5,150,105,0.3))',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontWeight: 600,
+              }}
+            >
+              View Activity →
+            </button>
+          )}
+        </div>
+        <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+          {done > 0
+            ? `${done} survey(s) submitted to server. Tap 'View Activity' to inspect responses, timestamps, and confirmation status.`
+            : 'No surveys submitted yet. Tap Start Collect to begin your first survey.'}
+        </p>
+      </div>
 
       {target > 0 && (
         <div
@@ -1641,6 +1667,9 @@ export default function SurveyorApp() {
                   return
                 }
                 setTab('collect')
+              }}
+              onViewRecords={() => {
+                setTab('records')
               }}
               onSync={() => {
                 forceSyncNow().then(() => notify('Syncing device queue…', 'ok'))

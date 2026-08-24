@@ -35,12 +35,13 @@ const AdminCompaniesScreen = lazy(() => import('./AdminCompanies'))
 const AdminWebSurveyScreen = lazy(() => import('./AdminWebSurvey'))
 const AdminProfileScreen = lazy(() => import('./AdminProfile'))
 
-// Client Admin nav — they create Surveys (Super Admin creates Projects separately)
+// Client Admin nav — Google-style: one entry per intent, no nesting
 const NAV = [
-  { id: 'dashboard', label: 'Dashboard', icon: 'grid', pages: ['overview', 'report', 'analyze'] },
-  { id: 'surveyors', label: 'Surveyors', icon: 'user', pages: ['users'] },
-  { id: 'surveys', label: 'Surveys', icon: 'clipboard', pages: ['surveys'] },
-  { id: 'data', label: 'Data collection', icon: 'menu', pages: ['questions', 'bank', 'web', 'review', 'upload', 'data'] },
+  { id: 'overview',   label: 'Overview',   icon: 'grid',      pages: ['overview'] },
+  { id: 'analytics',  label: 'Analytics',  icon: 'chart',     pages: ['analyze', 'report'] },
+  { id: 'surveyors',  label: 'Surveyors',  icon: 'user',      pages: ['users'] },
+  { id: 'surveys',    label: 'Surveys',    icon: 'clipboard', pages: ['surveys'] },
+  { id: 'data',       label: 'Review & Data', icon: 'menu',   pages: ['review', 'upload', 'data', 'questions', 'bank', 'web'] },
 ]
 
 // Super Admin console only (01-PRD.md): platform governance group
@@ -84,21 +85,20 @@ const PROJECTS_NAV = {
 
 const PAGE_LABELS = {
   overview: 'Overview',
-  report: 'Report',
-  analyze: 'Analyze',
-  users: 'Users & targets',
-  // Client Admin label; Super Admin sidebar uses PROJECTS_NAV ("Projects")
-  surveys: 'Surveys',
+  analyze:  'Charts & Maps',
+  report:   'Live Feed',
+  users:    'Surveyors',
+  surveys:  'Surveys',
   questions: 'Questions',
-  review: 'Review',
-  upload: 'Upload',
-  data: 'Data',
-  audit: 'Audit Log',
-  bank: 'Question Bank',
-  web: 'Web survey',
-  seats: 'Seat Requests',
-  profile: 'Profile',
-  admins: 'Client Admins',
+  review:   'Review',
+  upload:   'Upload',
+  data:     'Data',
+  audit:    'Audit Log',
+  bank:     'Question Bank',
+  web:      'Web survey',
+  seats:    'Seat Requests',
+  profile:  'Profile',
+  admins:   'Client Admins',
   companies: 'Companies',
 }
 
@@ -237,11 +237,11 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
             <span>Create field accounts, set quotas</span>
           </button>
         )}
-        {gated('analyze') && (
+        {(gated('analyze') || gated('report')) && (
           <button type="button" className="portal-action" onClick={() => onNav('analyze')}>
             <span className="portal-action-n">2</span>
-            <strong>Analyze</strong>
-            <span>Charts, maps &amp; filters</span>
+            <strong>Analytics</strong>
+            <span>Charts · Maps · Live Feed</span>
           </button>
         )}
         {gated('review') && (
@@ -251,13 +251,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
             <span>Edit answers · Confirm · Reject</span>
           </button>
         )}
-        {gated('report') && (
-          <button type="button" className="portal-action" onClick={() => onNav('report')}>
-            <span className="portal-action-n">4</span>
-            <strong>Report</strong>
-            <span>Daily / surveyor intake boards</span>
-          </button>
-        )}
+
         {(superAdminOnly || user?.role === 'super_admin') && (
           <button type="button" className="portal-action" onClick={() => onNav('profile')}>
             <span className="portal-action-n">★</span>

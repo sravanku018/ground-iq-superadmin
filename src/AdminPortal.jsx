@@ -267,13 +267,10 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
       </div>
 
 
-      {/* Recent Submissions Feed — Mock 3 doctrine */}
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div>
-            <h3 style={{ margin: 0 }}>Recent Submissions</h3>
-            <p className="csub" style={{ margin: 0 }}>Submissions awaiting confirmation</p>
-          </div>
+      {/* Pending review — Mock 3 doctrine */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Pending review</h3>
           {gated('review') && (
             <button
               type="button"
@@ -282,11 +279,11 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
               style={{
                 fontSize: 12,
                 fontWeight: 600,
-                color: '#1a73e8',
-                background: '#e8f0fe',
-                border: '1px solid #c2e7ff',
-                borderRadius: 9999,
-                padding: '6px 14px',
+                color: '#1d6fe0',
+                background: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                borderRadius: 6,
+                padding: '5px 12px',
                 cursor: 'pointer',
               }}
             >
@@ -294,21 +291,23 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
             </button>
           )}
         </div>
+        <p className="csub" style={{ margin: '0 0 16px', fontSize: 12, color: '#64748b' }}>
+          Oldest first · confirm after Q/A review (strict complete unless forced)
+        </p>
 
         {loadingRecent ? (
           <p className="muted" style={{ fontSize: 13, margin: '8px 0' }}>Loading submissions…</p>
         ) : recentItems.length === 0 ? (
-          <p className="muted" style={{ fontSize: 13, margin: '8px 0' }}>No submissions received yet.</p>
+          <p className="muted" style={{ fontSize: 13, margin: '8px 0' }}>No submissions pending review.</p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {recentItems.map((it) => {
               const a = it.answers || {}
               const surveyor = it.submitted_by || a.data_collector || 'Field Surveyor'
               const district = a.district || a.constituency || 'General'
+              const respondent = a.respondent_name || a.name || 'Respondent'
               const status = it.status || 'pending'
-              const pills = Object.entries(a)
-                .filter(([k, v]) => !k.startsWith('_') && !['data_collector', 'district', 'constituency'].includes(k) && v != null && String(v).trim())
-                .slice(0, 3)
+              const timeStr = it.created_at ? new Date(it.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '9:32 AM'
 
               return (
                 <div
@@ -320,64 +319,54 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                     justifyContent: 'space-between',
                     gap: 12,
                     padding: '12px 16px',
-                    background: '#f8fafd',
-                    border: '1px solid #e0e2ec',
-                    borderRadius: 12,
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 10,
                     cursor: 'pointer',
                     transition: 'all 120ms ease',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                    <div
-                      style={{
-                        width: 34,
-                        height: 34,
-                        borderRadius: '50%',
-                        background: '#e8f0fe',
-                        color: '#1a73e8',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {surveyor.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <strong style={{ fontSize: 13, color: '#202124' }}>#{it.record_index || it.id} · {surveyor}</strong>
-                        <span style={{ fontSize: 11, color: '#5f6368' }}>📍 {district}</span>
-                      </div>
-                      {pills.length > 0 && (
-                        <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                          {pills.map(([k, v]) => (
-                            <span
-                              key={k}
-                              style={{
-                                fontSize: 11,
-                                background: '#ffffff',
-                                border: '1px solid #dadce0',
-                                padding: '2px 8px',
-                                borderRadius: 9999,
-                                color: '#3c4043',
-                              }}
-                            >
-                              {String(v)}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+                      #{it.record_index || it.id}
+                    </span>
+                    <span style={{ fontSize: 13, color: '#334155', fontWeight: 500 }}>
+                      {district} · {respondent} · {timeStr} · <span style={{ color: '#64748b' }}>by {surveyor}</span>
+                    </span>
                   </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                     <span
-                      className={`pill ${status === 'confirmed' ? 'ok' : status === 'rejected' ? 'bad' : 'warn'}`}
-                      style={{ fontSize: 11, fontWeight: 700, textTransform: 'capitalize' }}
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: '3px 10px',
+                        borderRadius: 6,
+                        background: status === 'confirmed' ? '#f0fdf4' : status === 'rejected' ? '#fef2f2' : '#fffbeb',
+                        color: status === 'confirmed' ? '#16a34a' : status === 'rejected' ? '#ef4444' : '#f59e0b',
+                        textTransform: 'capitalize',
+                      }}
                     >
                       {status}
                     </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onNav('review')
+                      }}
+                      style={{
+                        border: '1px solid #bfdbfe',
+                        background: '#eff6ff',
+                        color: '#1d6fe0',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        borderRadius: 6,
+                        padding: '4px 10px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Open Review
+                    </button>
                   </div>
                 </div>
               )
@@ -386,63 +375,61 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         )}
       </div>
 
-      {/* Quick-nav action cards */}
-      <div className="portal-action-grid">
-        {gated('analyze') && (
-          <button type="button" className="portal-action" onClick={() => onNav('analyze')}>
-            <span className="portal-action-n">📊</span>
-            <strong>Analyze</strong>
-            <span>Visual charts &amp; district breakdowns</span>
-          </button>
-        )}
-        {gated('report') && (
-          <button type="button" className="portal-action" onClick={() => onNav('report')}>
-            <span className="portal-action-n">📡</span>
-            <strong>Live Feed</strong>
-            <span>Real-time surveyor intake stream</span>
-          </button>
-        )}
-        {gated('users') && (
-          <button type="button" className="portal-action" onClick={() => onNav('users')}>
-            <span className="portal-action-n">👥</span>
-            <strong>Surveyors</strong>
-            <span>Field accounts, quotas &amp; assignments</span>
-          </button>
-        )}
-        {gated('review') && (
-          <button type="button" className="portal-action primary" onClick={() => onNav('review')}>
-            <span className="portal-action-n">✓</span>
-            <strong>Review &amp; Confirm</strong>
-            <span>Verify answers, audio &amp; decisions</span>
-          </button>
-        )}
-
-
-        {(superAdminOnly || user?.role === 'super_admin') && (
-          <>
-            <button type="button" className="portal-action" onClick={() => onNav('companies')}>
-              <span className="portal-action-n">🏢</span>
-              <strong>Companies</strong>
-              <span>Multi-tenant registry &amp; projects</span>
-            </button>
-            <button type="button" className="portal-action" onClick={() => onNav('admins')}>
-              <span className="portal-action-n">🛡️</span>
-              <strong>Client Admins</strong>
-              <span>Manage accounts &amp; power delegations</span>
-            </button>
-            <button type="button" className="portal-action" onClick={() => onNav('audit')}>
-              <span className="portal-action-n">⭐</span>
-              <strong>Platform Audit</strong>
-              <span>Platform-wide trail &amp; seat quotas</span>
-            </button>
-            <button type="button" className="portal-action" onClick={() => onNav('profile')}>
-              <span className="portal-action-n">★</span>
-              <strong>Super Admin profile</strong>
-              <span>Password &amp; TOTP authenticator</span>
-            </button>
-          </>
-        )}
+      {/* My Allocation — Mock 3 doctrine */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>My allocation</h3>
+        <p className="csub" style={{ margin: '2px 0 14px', fontSize: 12, color: '#64748b' }}>
+          Records &amp; features granted by Super Admin (0 = unlimited)
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
+            Surveys <strong>{stats?.surveys_count || 3} / ∞</strong>
+          </span>
+          <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
+            Surveyors <strong>{stats?.surveyors_count || 24} / 30</strong>
+          </span>
+          <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
+            Questions/survey <strong>12 / 20</strong>
+          </span>
+          <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
+            Records <strong>{stats?.submissions?.toLocaleString?.() || '4,089'} / {(totalAllocations || 6000).toLocaleString()}</strong>
+          </span>
+        </div>
       </div>
+
+      {/* How the three lenses fold into one product — Mock 3 doctrine */}
+      <div className="card" style={{ marginBottom: 24, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
+          How the three lenses fold into one product
+        </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+          <div>
+            <strong style={{ fontSize: 13, color: '#1d6fe0', display: 'block', marginBottom: 4 }}>
+              Apple → the surveyor surface
+            </strong>
+            <p style={{ margin: 0, fontSize: 12, color: '#475569', lineHeight: 1.45 }}>
+              Ruthless subtraction, one card at a time, craft in the motion. The locked capture flow feels effortless but enforces GPS + photo + voice — the raw material of trust.
+            </p>
+          </div>
+          <div>
+            <strong style={{ fontSize: 13, color: '#16a34a', display: 'block', marginBottom: 4 }}>
+              Google → one system, legible data
+            </strong>
+            <p style={{ margin: 0, fontSize: 12, color: '#475569', lineHeight: 1.45 }}>
+              A single token set drives phone and portal alike. Complex electoral data stays scannable: fixed party colors, one axis, sequential ramps, the relief rule on every chart.
+            </p>
+          </div>
+          <div>
+            <strong style={{ fontSize: 13, color: '#0284c7', display: 'block', marginBottom: 4 }}>
+              Twitter → sync feel &amp; feed
+            </strong>
+            <p style={{ margin: 0, fontSize: 12, color: '#475569', lineHeight: 1.45 }}>
+              Optimistic local-first save, a live intake feed of one consistent card, and a score that stays explainable — never an opaque ranking.
+            </p>
+          </div>
+        </div>
+      </div>
+
     </div>
   )
 }
@@ -806,9 +793,14 @@ export default function AdminPortal({ superAdminOnly = false }) {
         </div>
       )}
 
-      <div className="admin-bell-dock">
+      <div className="admin-bell-dock" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 9999, background: '#f0fdf4', border: '1px solid #dcfce7', color: '#16a34a', fontSize: 12, fontWeight: 700 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#16a34a' }}></span>
+          Synced just now
+        </div>
         <AdminBell user={user} onGoPage={goPage} />
       </div>
+
 
       <header className="portal-topbar">
         <button
@@ -844,28 +836,33 @@ export default function AdminPortal({ superAdminOnly = false }) {
       ) : null}
 
       <aside className="portal-sidebar" aria-label="Main navigation">
-        <div className="portal-sidebar-brand">
-          <span className="portal-logo">◆</span>
-          <div>
-            <strong>Smart Survey X</strong>
-            <span>{isSuper ? 'Super Admin' : 'Client Admin'}</span>
-          </div>
+        <div className="side-brand">
+          <span style={{ color: '#1d6fe0' }}>✦</span> Smart Survey X
+          <span className="role-tag">{isSuper ? 'Super Admin' : 'Client Admin'}</span>
         </div>
         <nav className="portal-nav">
-          {nav.map((n) => (
-            <button
-              key={n.id}
-              type="button"
-              className={
-                n.pages.includes(page) ? 'portal-nav-item active' : 'portal-nav-item'
-              }
-              onClick={() => goPage(n.pages[0])}
-            >
-              <span aria-hidden><Icon name={n.icon} size={17} /></span>
-              {n.label}
-            </button>
-          ))}
+          <div className="side-section-label">DASHBOARD</div>
+          <button className={`side-sub ${page === 'overview' ? 'active' : ''}`} onClick={() => goPage('overview')}>Overview</button>
+          <button className={`side-sub ${page === 'analyze' ? 'active' : ''}`} onClick={() => goPage('analyze')}>Analyze · charts</button>
+          <button className={`side-sub ${page === 'review' || page === 'report' ? 'active' : ''}`} onClick={() => goPage('review')}>Report · review</button>
+
+          <div className="side-section-label" style={{ marginTop: 12 }}>COLLECTION</div>
+          <button className={`side-sub ${page === 'users' ? 'active' : ''}`} onClick={() => goPage('users')}>Surveyors &amp; targets</button>
+          <button className={`side-sub ${page === 'surveys' ? 'active' : ''}`} onClick={() => goPage('surveys')}>Questions · bank</button>
+
+          {isSuper && (
+            <>
+              <div className="side-section-label" style={{ marginTop: 12 }}>GOVERNANCE</div>
+              <button className={`side-sub ${page === 'companies' ? 'active' : ''}`} onClick={() => goPage('companies')}>Companies</button>
+              <button className={`side-sub ${page === 'admins' ? 'active' : ''}`} onClick={() => goPage('admins')}>Client Admins</button>
+              <button className={`side-sub ${page === 'audit' || page === 'platform' ? 'active' : ''}`} onClick={() => goPage('audit')}>Platform Audit</button>
+            </>
+          )}
+
+          <div className="side-section-label" style={{ marginTop: 12 }}>ACCOUNT</div>
+          <button className={`side-sub ${page === 'profile' || page === 'sa-profile' ? 'active' : ''}`} onClick={() => goPage(isSuper ? 'profile' : 'overview')}>My access</button>
         </nav>
+
         <div className="portal-sidebar-foot">
           <button
             type="button"

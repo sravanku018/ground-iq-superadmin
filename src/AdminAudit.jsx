@@ -131,7 +131,7 @@ export default function AdminAuditScreen({ onToast }) {
       </div>
 
       {loading ? (
-        <p className="muted">Loading audit trail…</p>
+        <p className="muted" style={{ padding: '12px 0' }}>Loading audit trail…</p>
       ) : entries.length === 0 ? (
         <div className="card">
           <p className="muted" style={{ margin: 0 }}>
@@ -139,53 +139,34 @@ export default function AdminAuditScreen({ onToast }) {
           </p>
         </div>
       ) : (
-        entries.map((e) => (
-          <div
-            key={e.id}
-            className="card"
-            style={{
-              marginBottom: 8,
-              padding: '10px 14px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: 12,
-              flexWrap: 'wrap',
-              borderLeft: '4px solid #38bdf8',
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <strong style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                  {ACTION_LABELS[e.action] ? (
-                    <>
-                      <Icon name={ACTION_LABELS[e.action].icon} size={12} />
-                      {ACTION_LABELS[e.action].text}
-                    </>
-                  ) : (
-                    e.action
+        entries.map((e) => {
+          const aLabel = ACTION_LABELS[e.action]
+          const entityLabel = e.entity_type ? ENTITY_LABELS[e.entity_type] || e.entity_type : 'platform'
+          const meta = metaSummary(e.meta)
+          return (
+            <div key={e.id} className="audit-row">
+              <div className="ico">
+                {aLabel ? <Icon name={aLabel.icon} size={14} /> : '⚙'}
+              </div>
+              <div className="ainfo">
+                <div className="aact">
+                  {aLabel ? aLabel.text : e.action}
+                  {' '}
+                  <span className="pill ok" style={{ fontSize: 10, fontWeight: 700, verticalAlign: 'middle' }}>
+                    {entityLabel}
+                  </span>
+                  {e.entity_id && (
+                    <span className="pill" style={{ fontSize: 10, marginLeft: 4, verticalAlign: 'middle' }}>#{e.entity_id}</span>
                   )}
-                </strong>
-                <span
-                  className="pill ok"
-                  style={{ fontSize: 11, fontWeight: 'bold' }}
-                >
-                  {e.entity_type ? ENTITY_LABELS[e.entity_type] || e.entity_type : 'platform'}
-                </span>
-                {e.entity_id && (
-                  <span className="pill" style={{ fontSize: 11 }}>#{e.entity_id}</span>
-                )}
+                </div>
+                <div className="ameta">
+                  {e.actor_name || 'system'} · {e.actor_role}{meta ? ` · ${meta}` : ''}
+                </div>
               </div>
-              <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>
-                {e.actor_name || e.actor_role || 'system'} · {e.actor_role}
-                {metaSummary(e.meta) ? ` · ${metaSummary(e.meta)}` : ''}
-              </div>
+              <div className="atime">{fmtTime(e.created_at)}</div>
             </div>
-            <div style={{ fontSize: 12, color: '#64748b', textAlign: 'right' }}>
-              {fmtTime(e.created_at)}
-            </div>
-          </div>
-        ))
+          )
+        })
       )}
     </div>
   )

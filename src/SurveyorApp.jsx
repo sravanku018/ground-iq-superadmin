@@ -250,8 +250,9 @@ function HomeScreen({
   myProgress,
   questionsMeta,
   onNewSurvey,
-  onViewRecords,
+  _onViewRecords,
   onSync,
+
   onLogout,
 }) {
   const quality = network?.quality || QUALITY.OFFLINE
@@ -318,79 +319,12 @@ function HomeScreen({
       </div>
 
       {(questionsMeta?.title || (questionsMeta?.surveys || []).length > 0) && (
-        <div className="card" style={{ marginBottom: 12, padding: '12px 14px' }}>
-          <strong style={{ fontSize: 14 }}>
+        <div className="pill-row" style={{ paddingTop: 0 }}>
+          <span className="pill ok" style={{ fontSize: 11 }}>
             {(questionsMeta.surveys || []).length > 1
               ? `${questionsMeta.surveys.length} surveys assigned`
               : questionsMeta.title}
-          </strong>
-          {(questionsMeta.surveys || []).length > 1 && (
-            <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 13 }}>
-              {(questionsMeta.surveys || []).map((s) => (
-                <li key={s.id || s.form_key}>{s.title}</li>
-              ))}
-            </ul>
-          )}
-          <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
-            {(questionsMeta.surveys || []).length > 1
-              ? 'Open Collect and pick which survey to fill'
-              : `${qCount} question(s) loaded`}
-            {questionsMeta.updated_at
-              ? ` · updated ${String(questionsMeta.updated_at).slice(0, 16).replace('T', ' ')}`
-              : ''}
-            . Pull down to fetch latest from Client Admin.
-          </p>
-        </div>
-      )}
-
-      {/* Previous Surveys / Recent Activity Card */}
-      <div className="card" style={{ marginBottom: 12, padding: '14px 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-          <strong style={{ fontSize: 14 }}>Previous Surveys (My Activity)</strong>
-          {onViewRecords && (
-            <button
-              type="button"
-              className="btn small"
-              onClick={onViewRecords}
-              style={{
-                fontSize: 12,
-                padding: '4px 10px',
-                background: 'var(--accent-bg, rgba(5,150,105,0.1))',
-                color: 'var(--accent, #059669)',
-                border: '1px solid var(--accent-border, rgba(5,150,105,0.3))',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
-            >
-              View Activity →
-            </button>
-          )}
-        </div>
-        <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-          {done > 0
-            ? `${done} survey(s) submitted to server. Tap 'View Activity' to inspect responses, timestamps, and confirmation status.`
-            : 'No surveys submitted yet. Tap Start Collect to begin your first survey.'}
-        </p>
-      </div>
-
-      {target > 0 && (
-        <div
-          style={{
-            height: 10,
-            background: 'rgba(15,23,42,0.08)',
-            borderRadius: 99,
-            marginBottom: 14,
-            overflow: 'hidden',
-          }}
-        >
-          <div
-            style={{
-              width: `${myProgress?.pct || Math.min(100, Math.round((done / target) * 100))}%`,
-              height: '100%',
-              background: complete ? '#22c55e' : '#38bdf8',
-            }}
-          />
+          </span>
         </div>
       )}
 

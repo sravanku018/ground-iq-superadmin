@@ -7,8 +7,8 @@ import {
   getToken,
   listSubmissions,
   listSurveys,
-  listUsers,
   logout,
+
   me,
 } from './api'
 import AdminLogin from './AdminLogin'
@@ -189,245 +189,12 @@ function formatDate(v) {
     return String(v)
   }
 }
-
-function formatIstStamp(v) {
-  if (!v) return '—'
-  const d = v instanceof Date ? v : new Date(v)
-  if (Number.isNaN(d.getTime())) return String(v)
-  return new Intl.DateTimeFormat('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).format(d)
-}
-
-/**
- * Client Admin allocation card — shows the logged-in admin's own usage vs the
- * caps Super Admin set on their profile (surveys / surveyors / questions per survey).
- * Loads from /api/auth/me (preferred) then GET /api/users as fallback.
- */
-function AllocationCard({ user }) {
-  const [self, setSelf] = useState(null)
-  const [err, setErr] = useState('')
-  const [resolved, setResolved] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    setResolved(false)
-    setErr('')
-
-    async function load() {
-      // 1) /api/auth/me includes live counts for Client Admin
-      try {
-        const d = await me()
-        if (cancelled) return
-        if (d?.user && Number(d.user.id) === Number(user?.id)) {
-          setSelf(d.user)
-          setResolved(true)
-          return
-        }
-      } catch {
-        /* fall through */
-      }
-      // 2) GET /api/users — self row is included for Client Admin (id = me)
-      try {
-        const d = await listUsers()
-        if (cancelled) return
-        const row = (d.users || []).find((u) => Number(u.id) === Number(user?.id))
-        if (row) {
-          setSelf(row)
-          setResolved(true)
-          return
-        }
-      } catch (e) {
-        if (!cancelled) setErr(e.message || 'Failed to load allocation')
-      }
-      // 3) Session user at least shows Super-Admin-set caps (counts may be 0)
-      if (!cancelled) {
-        setSelf(
-          user
-            ? {
-                ...user,
-                survey_count: user.survey_count ?? 0,
-                surveyor_count: user.surveyor_count ?? 0,
-                question_count: user.question_count ?? 0,
-                survey_team: user.survey_team || [],
-                granted_surveys: user.granted_surveys || [],
-              }
-            : null,
-        )
-        setResolved(true)
-      }
-    }
-
-    void load()
-    return () => {
-      cancelled = true
-    }
-  }, [user?.id, user?.max_surveys, user?.max_surveyors, user?.max_questions_per_survey, user?.max_records])
-
-  if (err && !self) {
-    return (
-      <div className="card" style={{ marginTop: 14 }}>
-        <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="chart" size={16} /> My allocation</h3>
-        <p className="muted" style={{ margin: 0 }}>{err}</p>
-      </div>
-    )
-  }
-  if (!self) {
-    return (
-      <div className="card" style={{ marginTop: 14 }}>
-        <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="chart" size={16} /> My allocation</h3>
-        <p className="muted" style={{ margin: 0 }}>
-          {resolved ? 'Allocation data not available yet — refresh the page.' : 'Loading…'}
-        </p>
-      </div>
-    )
-  }
-
-  const maxSurveys = Number(self.max_surveys ?? user?.max_surveys) || 0
-  const maxSurveyors = Number(self.max_surveyors ?? user?.max_surveyors) || 0
-  const maxQ = Number(self.max_questions_per_survey ?? user?.max_questions_per_survey) || 0
-  const maxRecords = Number(self.max_records ?? user?.max_records) || 0
-  const recordUsed = Number(
-    self.record_count ?? self.surveyor_record_count ?? user?.record_count ?? 0,
-  )
-  const fmt = (used, cap) => `${used ?? 0} / ${cap > 0 ? cap : '∞'}`
-  const team = Array.isArray(self.survey_team) ? self.survey_team : []
-  const features = [
-    self.can_crud_questionnaire && 'Create surveys',
-    self.can_edit_surveys && 'Survey questions',
-    self.can_manage_questions && 'Question bank',
-    self.can_assign_surveyors && 'Assign surveyors',
-    self.can_review_data && 'Review data',
-    self.can_verify_surveyors && 'Verify surveyors',
-    self.can_validate_proof && 'Validate proof',
-    self.can_web_survey && 'Web survey',
-  ].filter(Boolean)
-
-  return (
-    <div className="card" style={{ marginTop: 14 }}>
-      <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="chart" size={16} /> My allocation (created / Super Admin limit)</h3>
-      <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
-        Limits come from your Client Admin profile (set by Super Admin). 0 = unlimited.
-      </p>
-      <div className="stat-row" style={{ marginBottom: 10 }}>
-        <div className="stat">
-          <strong>{fmt(self.survey_count, maxSurveys)}</strong>
-          <span>Surveys</span>
-        </div>
-        <div className="stat">
-          <strong>{fmt(self.surveyor_count, maxSurveyors)}</strong>
-          <span>Surveyors</span>
-        </div>
-        <div className="stat">
-          <strong>{fmt(self.question_count, maxQ)}</strong>
-          <span>Questions used / total</span>
-        </div>
-        <div className="stat">
-          <strong>{fmt(recordUsed, maxRecords)}</strong>
-          <span>
-            Records allotted
-            {maxRecords > 0 ? ` · ${Math.max(0, maxRecords - recordUsed)} left` : ''}
-          </span>
-        </div>
-      </div>
-      {maxRecords > 0 && recordUsed >= maxRecords && (
-        <p style={{ fontSize: 12, margin: '0 0 10px', color: '#b45309' }}>
-          Record limit reached ({recordUsed} / {maxRecords}). Surveyors cannot submit more until Super
-          Admin raises the cap.
-        </p>
-      )}
-      {maxQ > 0 && Number(self.question_count || 0) === 0 && (
-        <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
-          No questions detected yet — open <strong>Surveys</strong> or <strong>Questions</strong> and
-          save questions on a survey. Cap is {maxQ} questions per survey (Super Admin).
-        </p>
-      )}
-      {maxQ > 0 && Number(self.question_count || 0) > maxQ && (
-        <p style={{ fontSize: 12, margin: '0 0 10px', color: '#b45309' }}>
-          Peak {self.question_count} exceeds your limit of {maxQ}. Remove questions or ask Super Admin
-          to raise the cap.
-        </p>
-      )}
-      {features.length > 0 && (
-        <p style={{ fontSize: 12, margin: '0 0 10px' }}>
-          <strong>Features on:</strong>{' '}
-          <span className="muted">{features.join(' · ')}</span>
-        </p>
-      )}
-      <h4 style={{ fontSize: 13, margin: '8px 0 8px' }}>🗺 Survey → Surveyor mapping</h4>
-      {team.length > 0 ? (
-        <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {team.map((s) => (
-            <li key={s.id} style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px' }}>
-              <div style={{ fontWeight: 600, fontSize: 13 }}>
-                📋 {s.title}
-                {s.question_count != null ? (
-                  <span className="muted" style={{ fontWeight: 500, marginLeft: 8 }}>
-                    · {s.question_count}
-                    {maxQ > 0 ? ` / ${maxQ}` : ''} Q
-                  </span>
-                ) : null}
-              </div>
-              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                {Array.isArray(s.surveyors) && s.surveyors.length > 0
-                  ? `👥 ${s.surveyors.map((x) => x.name || x.username).join(', ')}`
-                  : '👥 No surveyors mapped yet'}
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-          No surveys yet — create surveys first, then map surveyors to them.
-        </p>
-      )}
-      {Array.isArray(self.granted_surveys) && self.granted_surveys.length > 0 && (
-        <>
-          <h4 style={{ fontSize: 13, margin: '14px 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="link" size={13} /> Connected projects (shared by Super Admin)</h4>
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {self.granted_surveys.map((s) => (
-              <li key={s.id} style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '8px 10px' }}>
-                <span style={{ fontWeight: 600, fontSize: 13, color: '#5b21b6', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="link" size={13} /> {s.title}</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      <p className="muted" style={{ fontSize: 11, margin: '8px 0 0' }}>
-        Caps are set by Super Admin on your profile. Creating past a limit is blocked until Super Admin
-        raises it. Only your own surveys and surveyors are shown.
-      </p>
-    </div>
-  )
-}
-
 function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => true }) {
   const gated = (p) => {
     // Super Admin (or console mode) always sees every feature
     if (superAdminOnly || user?.role === 'super_admin') return true
     return canPage(p)
   }
-  const [pendingItems, setPendingItems] = useState(null)
-
-  useEffect(() => {
-    let alive = true
-    listSubmissions(30, 'pending')
-      .then((d) => {
-        if (alive) setPendingItems(d.items || [])
-      })
-      .catch(() => {
-        if (alive) setPendingItems([])
-      })
-    return () => {
-      alive = false
-    }
-  }, [stats?.pending])
 
   return (
     <div className="portal-page">
@@ -436,22 +203,18 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           <p className="eyebrow">{superAdminOnly ? 'Super Admin Console' : 'Client Admin'}</p>
           <h1>Overview</h1>
           <p className="portal-lead">
-            Welcome, {user?.name || user?.username}. Pipeline: Surveyors → Surveys → Data
-            collection → Dashboard.
+            Welcome, {user?.name || user?.username}
           </p>
         </div>
       </header>
 
+      {/* KPI tiles — Mock 3 style */}
       <div className="portal-kpi-grid">
         <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
           <strong>{stats?.pending?.toLocaleString?.() ?? '—'}</strong>
           <span>Pending review</span>
         </button>
-        <button
-          type="button"
-          className="portal-kpi"
-          onClick={() => onNav(gated('review') ? 'review' : 'analyze')}
-        >
+        <button type="button" className="portal-kpi" onClick={() => onNav(gated('review') ? 'review' : 'analyze')}>
           <strong>{stats?.confirmed?.toLocaleString?.() ?? '—'}</strong>
           <span>Confirmed</span>
         </button>
@@ -463,147 +226,45 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           <strong>{stats?.districts ?? '—'}</strong>
           <span>Districts in data</span>
         </div>
-        {!superAdminOnly && user?.role !== 'super_admin' && (
-          <>
-            <button
-              type="button"
-              className="portal-kpi"
-              onClick={() => onNav(gated('surveys') ? 'surveys' : 'questions')}
-            >
-              <strong>
-                {Number(user?.question_count) || 0}
-                {' / '}
-                {Number(user?.max_questions_per_survey) > 0
-                  ? Number(user.max_questions_per_survey)
-                  : '∞'}
-              </strong>
-              <span>Questions used / total</span>
-            </button>
-            <div className="portal-kpi">
-              <strong>
-                {Number(user?.record_count ?? user?.surveyor_record_count) || 0}
-                {' / '}
-                {Number(user?.max_records) > 0 ? Number(user.max_records) : '∞'}
-              </strong>
-              <span>Records allotted</span>
-            </div>
-          </>
-        )}
       </div>
 
-      {gated('review') && (
-        <div className="card" style={{ marginBottom: 16, padding: 14 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <strong style={{ fontSize: 14 }}>Pending review</strong>
-            <button type="button" className="btn small" onClick={() => onNav('review')}>
-              Open Review
-            </button>
-          </div>
-          {pendingItems == null ? (
-            <p className="muted" style={{ margin: 0, fontSize: 13 }}>Loading pending records…</p>
-          ) : pendingItems.length === 0 ? (
-            <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-              {Number(stats?.pending) > 0
-                ? 'Count is on the tile — tap Open Review if the list is empty after API refresh.'
-                : 'No pending records.'}
-            </p>
-          ) : (
-            <ul className="user-list" style={{ margin: 0 }}>
-              {pendingItems.map((it) => (
-                <li
-                  key={it.id}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 8,
-                    padding: '8px 10px',
-                    background: '#f1f5f9',
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <strong>#{it.record_index ?? it.id}</strong>
-                    <span className="meta" style={{ display: 'block', marginTop: 2 }}>
-                      {formatIstStamp(it.created_at)}
-                      {it.submitted_by ? ` · ${it.submitted_by}` : ''}
-                      {it.form_key ? ` · ${it.form_key}` : ''}
-                    </span>
-                    <span className="meta" style={{ display: 'block' }}>
-                      {it.answers?.district || it.answers?.respondent_name || '—'}
-                    </span>
-                  </div>
-                  <span style={{ color: '#d97706', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
-                    Pending
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
+      {/* Quick-nav action cards */}
       <div className="portal-action-grid">
         {gated('users') && (
           <button type="button" className="portal-action" onClick={() => onNav('users')}>
             <span className="portal-action-n">1</span>
-            <strong>Users &amp; targets</strong>
-            <span>Create surveyors, set record quotas</span>
-          </button>
-        )}
-        {gated('questions') && (
-          <button type="button" className="portal-action" onClick={() => onNav('questions')}>
-            <span className="portal-action-n">2</span>
-            <strong>Questions bank</strong>
-            <span>Field app loads these automatically</span>
+            <strong>Surveyors</strong>
+            <span>Create field accounts, set quotas</span>
           </button>
         )}
         {gated('analyze') && (
           <button type="button" className="portal-action" onClick={() => onNav('analyze')}>
-            <span className="portal-action-n">3</span>
+            <span className="portal-action-n">2</span>
             <strong>Analyze</strong>
-            <span>Charts, maps &amp; filters (confirmed data)</span>
+            <span>Charts, maps &amp; filters</span>
           </button>
         )}
         {gated('review') && (
-          <button type="button" className="portal-action" onClick={() => onNav('review')}>
-            <span className="portal-action-n">4</span>
-            <strong>Review · edit · confirm</strong>
-            <span>Correct answers, delete bad rows, then confirm</span>
+          <button type="button" className="portal-action primary" onClick={() => onNav('review')}>
+            <span className="portal-action-n">3</span>
+            <strong>Review &amp; Confirm</strong>
+            <span>Edit answers · Confirm · Reject</span>
           </button>
         )}
         {gated('report') && (
-          <button type="button" className="portal-action primary" onClick={() => onNav('report')}>
-            <span className="portal-action-n">5</span>
+          <button type="button" className="portal-action" onClick={() => onNav('report')}>
+            <span className="portal-action-n">4</span>
             <strong>Report</strong>
-            <span>Daily / monthly / surveyor tables · geo + voice boards</span>
-          </button>
-        )}
-        {gated('upload') && (
-          <button type="button" className="portal-action" onClick={() => onNav('upload')}>
-            <span className="portal-action-n">↑</span>
-            <strong>Upload / geo</strong>
-            <span>CSV &amp; geography inventory</span>
+            <span>Daily / surveyor intake boards</span>
           </button>
         )}
         {(superAdminOnly || user?.role === 'super_admin') && (
           <button type="button" className="portal-action" onClick={() => onNav('profile')}>
             <span className="portal-action-n">★</span>
             <strong>Super Admin profile</strong>
-            <span>Name, password, TOTP for this slot</span>
+            <span>Password, TOTP authenticator</span>
           </button>
         )}
-      </div>
-
-      {!superAdminOnly && user?.role !== 'super_admin' && <AllocationCard user={user} />}
-
-      <div className="portal-note card">
-        <strong>Surveyors = app access only</strong>
-        <p>
-          Users you create here are for the <strong>mobile/field app only</strong> — they do not
-          use this web portal. Give them username/password for the APK (or field app URL). They
-          collect offline; you verify and confirm here in
-          {superAdminOnly ? ' Super Admin.' : ' Client Admin.'}
-        </p>
       </div>
     </div>
   )

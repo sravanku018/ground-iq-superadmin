@@ -352,37 +352,120 @@
 /* ── KPI Blocks ── */
 .portal-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
   margin-bottom: 20px;
 }
 
-.portal-kpi-grid .stat, .kpi {
+.portal-kpi {
   background: var(--surface, #ffffff);
   border: 1px solid var(--surface-hover, #e2e8f0);
   border-radius: 12px;
   padding: 16px 18px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  transition: box-shadow 120ms ease;
 }
 
-.kpi .v, .portal-kpi-grid .stat strong {
-  font-size: 22px;
+.portal-kpi:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.portal-kpi strong {
+  font-size: 26px;
   font-weight: 700;
   color: var(--ink, #1e293b);
   display: block;
+  line-height: 1.1;
 }
 
-.kpi .l, .portal-kpi-grid .stat span {
+.portal-kpi span {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: .4px;
   color: var(--ink-muted, #64748b);
-  margin-top: 4px;
+  margin-top: 6px;
   display: block;
 }
 
-/* ── Live Intake Stream (Twitter: FeedCard) ── */
+/* ── Quick-nav action cards ── */
+.portal-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.portal-action {
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--surface-hover, #e2e8f0);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.portal-action:hover {
+  border-color: var(--accent-border, #bfdbfe);
+  box-shadow: 0 4px 12px rgba(29,111,224,0.08);
+}
+
+.portal-action.primary {
+  border-color: var(--accent-border, #bfdbfe);
+  background: var(--accent-bg, #eff6ff);
+}
+
+.portal-action-n {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--accent, #1d6fe0);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.portal-action strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink, #1e293b);
+}
+
+.portal-action span {
+  font-size: 11px;
+  color: var(--ink-muted, #64748b);
+  line-height: 1.4;
+}
+
+/* ── Page header ── */
+.portal-page {
+  max-width: 1100px;
+}
+
+.portal-page-head {
+  margin-bottom: 24px;
+}
+
+.portal-page-head h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 4px 0;
+  color: var(--ink, #1e293b);
+}
+
+.portal-lead {
+  font-size: 13px;
+  color: var(--ink-muted, #64748b);
+  margin: 0;
+}
+
+
 .feed-card {
   background: var(--surface, #ffffff);
   border: 1px solid var(--surface-hover, #e2e8f0);
@@ -438,6 +521,45 @@
   border-radius: 0 8px 8px 0;
   margin-bottom: 10px;
 }
+
+.audit-row .ico {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  border: 1px solid var(--surface-hover, #e2e8f0);
+}
+
+.audit-row .ainfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.audit-row .aact {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink, #1e293b);
+  margin-bottom: 2px;
+}
+
+.audit-row .ameta {
+  font-size: 11px;
+  color: var(--ink-muted, #64748b);
+}
+
+.audit-row .atime {
+  font-size: 11px;
+  color: var(--ink-faint, #94a3b8);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+
 
 /* ── Responsive ── */
 @media (max-width: 960px) {

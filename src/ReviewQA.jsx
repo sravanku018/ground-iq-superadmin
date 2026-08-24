@@ -10,11 +10,11 @@ import {
   listSurveys,
   retryFact,
   setSubmissionStatus,
-  validateSubmissionProof,
 } from './api'
 import { PortalEmpty, PortalError, PortalSkeleton } from './PortalUI'
 import SubmissionEditor from './SubmissionEditor'
 import FeedCard from './components/FeedCard'
+
 
 function partyColor(p) {
   if (!p) return undefined
@@ -33,9 +33,8 @@ function partyColor(p) {
 export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFocusConsumed }) {
   // Data verification power — Super Admin grants it (least privilege)
   const canReview = user?.role === 'super_admin' || !!user?.can_review_data
-  // Proof validation power — phone + Aadhaar format check on records
-  const canValidateProof = user?.role === 'super_admin' || !!user?.can_validate_proof
   const [status, setStatus] = useState('pending')
+
   const [survey, setSurvey] = useState('')
   const [surveys, setSurveys] = useState([])
   const [items, setItems] = useState([])
@@ -251,33 +250,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
     [load, onToast],
   )
 
-  const validateProofFor = useCallback(
-    async (id) => {
-      if (!canValidateProof) {
-        onToast?.('Super Admin has not granted your account proof-validation rights (phone + Aadhaar)', 'error')
-        return
-      }
-      setBusyId(id)
-      try {
-        const res = await validateSubmissionProof(id)
-        const parts = []
-        if (res?.phone?.found) parts.push(`phone ${res.phone.valid ? '✓' : '✗'}`)
-        if (res?.aadhaar?.found) parts.push(`Aadhaar ${res.aadhaar.valid ? '✓' : '✗'}`)
-        onToast?.(
-          parts.length
-            ? `Proof: ${parts.join(' · ')}`
-            : 'No phone/Aadhaar fields found in this record',
-          res?.all_valid || !parts.length ? 'ok' : 'error',
-        )
-        await load()
-      } catch (e) {
-        onToast?.(e.message, 'error')
-      } finally {
-        setBusyId(null)
-      }
-    },
-    [canValidateProof, load, onToast],
-  )
+
 
   async function bulkConfirm() {
     if (!canReview) {
@@ -534,19 +507,9 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                     Back to pending
                   </button>
                 )}
-                {canValidateProof && (
-                  <button
-                    type="button"
-                    className="btn small"
-                    disabled={busyId === item.id}
-                    title="Validate Phone and Aadhaar numbers"
-                    onClick={() => validateProofFor(item.id)}
-                  >
-                    Validate proof
-                  </button>
-                )}
               </div>
             )
+
 
             const detail = (
               <div>

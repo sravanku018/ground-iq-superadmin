@@ -1828,28 +1828,39 @@ export default function FieldCollectScreen({
 
         {surveyChosen || (formMeta?.surveys || []).length === 1 ? (
         <>
-        {/* Lock status — mandatory */}
-        <div className="card lock-bar" style={{ marginBottom: 10, padding: '10px 12px' }}>
-          <p className="muted" style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 700 }}>
-            LOCKED REQUIREMENTS (cannot skip)
-          </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            <span className={`pill ${locks.geo ? 'ok' : 'bad'}`}>
-              <span className="dot" />
-              GPS {locks.geo ? 'LOCKED' : 'OPEN'}
-            </span>
-            <span className={`pill ${locationLocked ? 'ok' : 'bad'}`}>
-              <span className="dot" />
-              Location {locationLocked ? 'LOCKED' : 'OPEN'}
-            </span>
-            <span className={`pill ${locks.photo ? 'ok' : 'bad'}`}>
-              <span className="dot" />
-              Photo {locks.photo ? 'LOCKED' : 'OPEN'}
-            </span>
-            <span className={`pill ${locks.voice ? 'ok' : 'bad'}`}>
-              <span className="dot" />
-              Voice {locks.voice ? 'ON' : 'OFF'}
-            </span>
+        {/* Mock 3 Stepper Flow */}
+        <div className="stepper">
+          <div className={`step ${locks.geo ? 'done' : 'active'}`}>
+            <div className="dot">{locks.geo ? '✓' : '1'}</div>
+            <div className="lbl">GPS</div>
+          </div>
+          <div className={`step ${locks.photo ? 'done' : locks.geo ? 'active' : ''}`}>
+            <div className="dot">{locks.photo ? '✓' : '2'}</div>
+            <div className="lbl">Photo</div>
+          </div>
+          <div className={`step ${locks.voice ? 'done' : (locks.geo && locks.photo) ? 'active' : ''}`}>
+            <div className="dot">{locks.voice ? '✓' : '3'}</div>
+            <div className="lbl">Voice</div>
+          </div>
+          <div className={`step ${(locks.geo && locks.photo && locks.voice) ? 'active' : ''}`}>
+            <div className="dot">4</div>
+            <div className="lbl">Q/A</div>
+          </div>
+        </div>
+
+        {/* Mock 3 Lockbar */}
+        <div className="lockbar">
+          <div className="hd">Locked Requirements (Cannot Skip)</div>
+          <div className="lock-pills">
+            <div className={`lock-pill ${locks.geo ? 'ok' : 'bad'}`}>
+              <span>{locks.geo ? '✓' : '✗'}</span> GPS {locks.geo ? 'LOCKED' : 'OPEN'}
+            </div>
+            <div className={`lock-pill ${locks.photo ? 'ok' : 'bad'}`}>
+              <span>{locks.photo ? '✓' : '✗'}</span> Photo {locks.photo ? 'LOCKED' : 'OPEN'}
+            </div>
+            <div className={`lock-pill ${locks.voice ? 'ok' : 'bad'}`}>
+              <span>{locks.voice ? '✓' : '✗'}</span> Voice {locks.voice ? 'ON' : 'OFF'}
+            </div>
           </div>
         </div>
 

@@ -529,6 +529,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         title: detail.title,
         questions: cleanQuestions(detail.questions),
         display_lang: detail.display_lang === 'te' ? 'te' : 'en',
+        voice_time_limit: Number(detail.voice_time_limit) || 0,
         ...(user?.role === 'super_admin' ? { company_name: detail.company_name || '' } : {}),
       })
       onToast?.(`${Unit} name + questions saved`, 'ok')
@@ -942,6 +943,24 @@ export default function AdminSurveysScreen({ onToast, user }) {
                 onClick={() => setDetail({ ...detail, display_lang: p.id })}
               >
                 {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="card" style={{ marginBottom: 12, padding: 14 }}>
+          <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>🎙 Voice recording limit</p>
+          <p className="muted" style={{ margin: '0 0 10px', fontSize: 12 }}>
+            Maximum recording duration per survey. 0 = no limit. Requires <strong>can_record_voice</strong> power on the Client Admin.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {[{ id: 0, label: 'No limit' }, { id: 2, label: '2 min' }, { id: 5, label: '5 min' }, { id: 10, label: '10 min' }, { id: 15, label: '15 min' }].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`chip ${Number(detail.voice_time_limit || 0) === t.id ? 'selected' : ''}`}
+                onClick={() => setDetail({ ...detail, voice_time_limit: t.id })}
+              >
+                {t.label}
               </button>
             ))}
           </div>

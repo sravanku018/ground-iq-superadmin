@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mock 3 — Admin Feed (Twitter)</title>
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  /* ── Reset ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-family: var(--font); }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    padding: var(--sp-6);
+    display: flex;
+    justify-content: center;
+    gap: var(--sp-5);
+  }
+
+  /* ── Feed column ── */
+  .feed {
+    width: 420px;
+    flex-shrink: 0;
+  }
+  .feed-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--sp-4);
+  }
+  .feed-head h2 {
+    font-size: var(--fs-lg);
+    font-weight: var(--fw-bold);
+  }
+  .live-dot {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    font-size: var(--fs-sm);
+    color: var(--ok);
+    font-weight: var(--fw-bold);
+  }
+  .live-dot::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ok);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── Pull-to-refresh (Twitter: feed mechanics) ── */
+  .pull-indicator {
+    text-align: center;
+    padding: var(--sp-2) 0;
+    font-size: var(--fs-xs);
+    color: var(--ink-faint);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .pull-indicator .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--surface-hover);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Auto-refresh timer ── */
+  .refresh-timer {
+    font-size: 10px;
+    color: var(--ink-faint);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .refresh-timer .countdown {
+    font-weight: var(--fw-bold);
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Status filter chips ── */
+  .filter-chips {
+    display: flex;
+    gap: 6px;
+    margin-bottom: var(--sp-3);
+    flex-wrap: wrap;
+  }
+  .filter-chip {
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+    padding: 4px 10px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--surface-hover);
+    background: var(--surface);
+    color: var(--ink-secondary);
+    cursor: pointer;
+    transition: all var(--dur-fast);
+  }
+  .filter-chip.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .filter-chip .count {
+    background: rgba(255,255,255,0.2);
+    padding: 1px 5px;
+    border-radius: 10px;
+    font-size: 10px;
+    margin-left: 3px;
+  }
+  .filter-chip:not(.active) .count {
+    background: var(--surface-alt);
+    color: var(--ink-muted);
+  }
+
+  /* ── New card entrance (optimistic UI) ── */
+  .feed-card.new {
+    animation: cardSlideIn 0.3s cubic-bezier(0.16,1,0.3,1);
+  }
+  @keyframes cardSlideIn {
+    from { opacity: 0; transform: translateY(-12px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /* ── Expanded card detail ── */
+  .feed-card.expanded .fc-detail { display: block; }
+  .fc-detail {
+    display: none;
+    margin-top: var(--sp-3);
+    padding-top: var(--sp-3);
+    border-top: 1px solid var(--surface-alt);
+    font-size: var(--fs-xs);
+    color: var(--ink-secondary);
+    line-height: 1.6;
+  }
+  .fc-detail .detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+  }
+  .fc-detail .detail-label { color: var(--ink-muted); }
+  .fc-detail .detail-value { font-weight: var(--fw-bold); color: var(--ink); }
+
+  /* ── Feed card (Twitter: one consistent card) ── */
+  .feed-card {
+    background: var(--surface);
+    border: 1px solid var(--surface-hover);
+    border-radius: var(--r-lg);
+    padding: var(--sp-4);
+    margin-bottom: var(--sp-3);
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow var(--dur-normal) var(--ease-out),
+                transform var(--dur-normal) var(--ease-out);
+    cursor: pointer;
+  }
+  .feed-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+  }
+  .feed-card.syncing {
+    opacity: 0.6;
+    border-style: dashed;
+  }
+  .feed-card.failed {
+    border-color: var(--bad);
+    background: var(--bad-bg);
+  }
+
+  /* ── Card header ── */
+  .fc-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--sp-2);
+  }
+  .fc-surveyor {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .fc-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--accent-bg);
+    border: 2px solid var(--accent-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+    color: var(--accent);
+  }
+  .fc-name {
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-bold);
+    color: var(--ink);
+  }
+  .fc-location {
+    font-size: var(--fs-xs);
+    color: var(--ink-muted);
+  }
+  .fc-time {
+    font-size: var(--fs-xs);
+    color: var(--ink-faint);
+  }
+
+  /* ── Card body: key answers ── */
+  .fc-answers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-3);
+  }
+  .fc-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-medium);
+    padding: 3px 8px;
+    border-radius: var(--r-pill);
+    background: var(--surface-alt);
+    color: var(--ink-secondary);
+    border: 1px solid var(--surface-hover);
+  }
+  .fc-pill .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  /* ── Card footer: score + status ── */
+  .fc-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .fc-score {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .score-bar {
+    width: 60px;
+    height: 6px;
+    background: var(--surface-alt);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .score-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width var(--dur-slow) var(--ease-out);
+  }
+  .score-label {
+    font-size: var(--fs-xs);
+    color: var(--ink-muted);
+  }
+  .fc-status {
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+    padding: 2px 8px;
+    border-radius: var(--r-sm);
+  }
+  .fc-status.pending { background: var(--warn-bg); color: var(--warn); }
+  .fc-status.confirmed { background: var(--ok-bg); color: var(--ok); }
+  .fc-status.rejected { background: var(--bad-bg); color: var(--bad); }
+
+  /* ── Scorecard sidebar ── */
+  .scorecard {
+    width: 320px;
+    flex-shrink: 0;
+    position: sticky;
+    top: var(--sp-6);
+    align-self: flex-start;
+  }
+  .sc-card {
+    background: var(--surface);
+    border: 1px solid var(--surface-hover);
+    border-radius: var(--r-lg);
+    padding: var(--sp-5);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: var(--sp-4);
+  }
+  .sc-card h3 {
+    font-size: var(--fs-md);
+    font-weight: var(--fw-bold);
+    margin-bottom: var(--sp-3);
+  }
+  .sc-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--sp-2) 0;
+    border-bottom: 1px solid var(--surface-alt);
+    font-size: var(--fs-sm);
+  }
+  .sc-row:last-child { border-bottom: none; }
+  .sc-row .label { color: var(--ink-secondary); }
+  .sc-row .value { font-weight: var(--fw-bold); color: var(--ink); }
+  .sc-row .value.ok { color: var(--ok); }
+  .sc-row .value.warn { color: var(--warn); }
+  .sc-row .value.bad { color: var(--bad); }
+
+  /* ── Explainability panel (Twitter caution: stay explainable) ── */
+  .explain {
+    background: var(--surface);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-4);
+    box-shadow: var(--shadow-sm);
+  }
+  .explain h4 {
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-bold);
+    color: var(--accent);
+    margin-bottom: var(--sp-2);
+  }
+  .explain p {
+    font-size: var(--fs-sm);
+    color: var(--ink-secondary);
+    line-height: 1.6;
+  }
+  .explain .formula {
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: var(--fs-xs);
+    background: var(--surface-alt);
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--r-sm);
+    margin-top: var(--sp-2);
+    color: var(--ink);
+  }
+
+  /* ── Design notes ── */
+  .design-notes {
+    width: 320px;
+    flex-shrink: 0;
+    position: sticky;
+    top: var(--sp-6);
+    align-self: flex-start;
+  }
+  .design-notes .dn-card {
+    background: var(--surface);
+    border: 1px solid var(--surface-hover);
+    border-radius: var(--r-lg);
+    padding: var(--sp-5);
+    box-shadow: var(--shadow-sm);
+  }
+  .design-notes h3 {
+    font-size: var(--fs-md);
+    font-weight: var(--fw-bold);
+    margin-bottom: var(--sp-3);
+  }
+  .design-notes .principle {
+    display: flex;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-3);
+    font-size: var(--fs-sm);
+    color: var(--ink-secondary);
+    line-height: 1.5;
+  }
+  .design-notes .principle .tag {
+    background: var(--accent-bg);
+    color: var(--accent);
+    border-radius: var(--r-sm);
+    padding: 1px 6px;
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .design-notes ul {
+    margin: var(--sp-2) 0 0 var(--sp-4);
+    font-size: var(--fs-sm);
+    color: var(--ink-secondary);
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════ Live feed ═══════ -->
+<div class="feed">
+  <div class="feed-head">
+    <h2>Live Intake</h2>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span class="refresh-timer">Next refresh: <span class="countdown" id="refreshCountdown">30s</span></span>
+      <span class="live-dot">LIVE</span>
+    </div>
+  </div>
+
+  <!-- Pull-to-refresh indicator -->
+  <div class="pull-indicator" id="pullIndicator" style="display:none;">
+    <div class="spinner"></div>
+    <span>Refreshing feed…</span>
+  </div>
+
+  <!-- Status filter chips -->
+  <div class="filter-chips">
+    <button class="filter-chip active" onclick="filterFeed('all', this)">All <span class="count">5</span></button>
+    <button class="filter-chip" onclick="filterFeed('pending', this)">Pending <span class="count">2</span></button>
+    <button class="filter-chip" onclick="filterFeed('confirmed', this)">Confirmed <span class="count">2</span></button>
+    <button class="filter-chip" onclick="filterFeed('rejected', this)">Rejected <span class="count">1</span></button>
+  </div>
+
+  <!-- Card 1: synced, confirmed -->
+  <div class="feed-card" data-status="confirmed" onclick="toggleDetail(this)">
+    <div class="fc-head">
+      <div class="fc-surveyor">
+        <div class="fc-avatar">RK</div>
+        <div>
+          <div class="fc-name">Rajesh Kumar</div>
+          <div class="fc-location">Rangareddy · Maheshwaram AC</div>
+        </div>
+      </div>
+      <span class="fc-time">2 min ago</span>
+    </div>
+    <div class="fc-answers">
+      <span class="fc-pill"><span class="dot" style="background:var(--party-congress)"></span>Congress</span>
+      <span class="fc-pill"><span class="dot" style="background:#16a34a"></span>Positive</span>
+      <span class="fc-pill">Roads</span>
+      <span class="fc-pill">Female · 35</span>
+    </div>
+    <div class="fc-foot">
+      <div class="fc-score">
+        <div class="score-bar"><div class="score-fill" style="width:92%;background:var(--ok)"></div></div>
+        <span class="score-label">92% complete</span>
+      </div>
+      <span class="fc-status confirmed">Confirmed</span>
+    </div>
+    <div class="fc-detail">
+      <div class="detail-row"><span class="detail-label">GPS</span><span class="detail-value">✓ 17.384°N, 78.487°E (±8m)</span></div>
+      <div class="detail-row"><span class="detail-label">Photo</span><span class="detail-value">✓ 1.4 MB, compressed</span></div>
+      <div class="detail-row"><span class="detail-label">Voice</span><span class="detail-value">✓ 56s, 16kHz WAV</span></div>
+      <div class="detail-row"><span class="detail-label">Answers</span><span class="detail-value">10/10 questions</span></div>
+      <div class="detail-row"><span class="detail-label">Trust Score</span><span class="detail-value" style="color:var(--ok)">92%</span></div>
+    </div>
+  </div>
+
+  <!-- Card 2: syncing (optimistic UI) -->
+  <div class="feed-card syncing new" data-status="pending">
+    <div class="fc-head">
+      <div class="fc-surveyor">
+        <div class="fc-avatar">SP</div>
+        <div>
+          <div class="fc-name">Sunita Patel</div>
+          <div class="fc-location">Medchal · Kukatpally AC</div>
+        </div>
+      </div>
+      <span class="fc-time">syncing…</span>
+    </div>
+    <div class="fc-answers">
+      <span class="fc-pill"><span class="dot" style="background:var(--party-bjp)"></span>BJP</span>
+      <span class="fc-pill"><span class="dot" style="background:#f59e0b"></span>Neutral</span>
+      <span class="fc-pill">Water supply</span>
+      <span class="fc-pill">Male · 42</span>
+    </div>
+    <div class="fc-foot">
+      <div class="fc-score">
+        <div class="score-bar"><div class="score-fill" style="width:78%;background:var(--warn)"></div></div>
+        <span class="score-label">78% complete</span>
+      </div>
+      <span class="fc-status pending">Pending</span>
+    </div>
+  </div>
+
+  <!-- Card 3: confirmed -->
+  <div class="feed-card" data-status="confirmed">
+    <div class="fc-head">
+      <div class="fc-surveyor">
+        <div class="fc-avatar">AK</div>
+        <div>
+          <div class="fc-name">Amit Kumar</div>
+          <div class="fc-location">Hanumakonda · Warangal West AC</div>
+        </div>
+      </div>
+      <span class="fc-time">5 min ago</span>
+    </div>
+    <div class="fc-answers">
+      <span class="fc-pill"><span class="dot" style="background:var(--party-brs)"></span>BRS</span>
+      <span class="fc-pill"><span class="dot" style="background:#ef4444"></span>Negative</span>
+      <span class="fc-pill">Drainage</span>
+      <span class="fc-pill">Male · 28</span>
+    </div>
+    <div class="fc-foot">
+      <div class="fc-score">
+        <div class="score-bar"><div class="score-fill" style="width:100%;background:var(--ok)"></div></div>
+        <span class="score-label">100% complete</span>
+      </div>
+      <span class="fc-status confirmed">Confirmed</span>
+    </div>
+  </div>
+
+  <!-- Card 4: failed -->
+  <div class="feed-card failed" data-status="rejected">
+    <div class="fc-head">
+      <div class="fc-surveyor">
+        <div class="fc-avatar">LM</div>
+        <div>
+          <div class="fc-name">Lakshmi Menon</div>
+          <div class="fc-location">Nizamabad · Arniyal AC</div>
+        </div>
+      </div>
+      <span class="fc-time">8 min ago</span>
+    </div>
+    <div class="fc-answers">
+      <span class="fc-pill"><span class="dot" style="background:var(--party-congress)"></span>Congress</span>
+      <span class="fc-pill"><span class="dot" style="background:#16a34a"></span>Positive</span>
+      <span class="fc-pill">Healthcare</span>
+      <span class="fc-pill">Female · 55</span>
+    </div>
+    <div class="fc-foot">
+      <div class="fc-score">
+        <div class="score-bar"><div class="score-fill" style="width:45%;background:var(--bad)"></div></div>
+        <span class="score-label">45% complete — missing photo</span>
+      </div>
+      <span class="fc-status rejected">Rejected</span>
+    </div>
+  </div>
+
+  <!-- Card 5: pending -->
+  <div class="feed-card" data-status="pending">
+    <div class="fc-head">
+      <div class="fc-surveyor">
+        <div class="fc-avatar">VR</div>
+        <div>
+          <div class="fc-name">Venu Rao</div>
+          <div class="fc-location">Karimnagar · Huzurabad AC</div>
+        </div>
+      </div>
+      <span class="fc-time">12 min ago</span>
+    </div>
+    <div class="fc-answers">
+      <span class="fc-pill"><span class="dot" style="background:var(--party-bjp)"></span>BJP</span>
+      <span class="fc-pill"><span class="dot" style="background:#f59e0b"></span>Neutral</span>
+      <span class="fc-pill">Electricity</span>
+      <span class="fc-pill">Male · 38</span>
+    </div>
+    <div class="fc-foot">
+      <div class="fc-score">
+        <div class="score-bar"><div class="score-fill" style="width:85%;background:var(--ok)"></div></div>
+        <span class="score-label">85% complete</span>
+      </div>
+      <span class="fc-status pending">Pending</span>
+    </div>
+    <div class="fc-detail">
+      <div class="detail-row"><span class="detail-label">GPS</span><span class="detail-value">✓ 17.384°N, 78.487°E (±12m)</span></div>
+      <div class="detail-row"><span class="detail-label">Photo</span><span class="detail-value">✓ 1.2 MB, compressed</span></div>
+      <div class="detail-row"><span class="detail-label">Voice</span><span class="detail-value">✓ 42s, 16kHz WAV</span></div>
+      <div class="detail-row"><span class="detail-label">Answers</span><span class="detail-value">8/10 questions</span></div>
+      <div class="detail-row"><span class="detail-label">Trust Score</span><span class="detail-value">85%</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ Scorecard sidebar ═══════ -->
+<div class="scorecard">
+  <div class="sc-card">
+    <h3>Surveyor Scorecard — Rajesh K.</h3>
+    <div class="sc-row">
+      <span class="label">Today</span>
+      <span class="value">14 surveys</span>
+    </div>
+    <div class="sc-row">
+      <span class="label">Avg completeness</span>
+      <span class="value ok">91%</span>
+    </div>
+    <div class="sc-row">
+      <span class="label">Confirm rate</span>
+      <span class="value ok">96%</span>
+    </div>
+    <div class="sc-row">
+      <span class="label">Avg time / survey</span>
+      <span class="value">4m 12s</span>
+    </div>
+    <div class="sc-row">
+      <span class="label">Photo missing</span>
+      <span class="value bad">2</span>
+    </div>
+    <div class="sc-row">
+      <span class="label">GPS accuracy</span>
+      <span class="value ok">±8m</span>
+    </div>
+  </div>
+
+  <!-- Explainability panel (Twitter caution: stay explainable) -->
+  <div class="explain">
+    <h4>🔍 Why this score?</h4>
+    <p>
+      Completeness = (geo ✓ + voice ✓ + photo ✓ + answers ≥ 1) / 4.<br />
+      Confirm rate = confirmed / (confirmed + rejected).<br />
+      GPS accuracy = avg. satellite fix error across today's submissions.
+    </p>
+    <div class="formula">
+      score = (has_geo + has_voice + has_photo + has_answers) / 4 × 100
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ Design notes ═══════ -->
+<div class="design-notes">
+  <div class="dn-card">
+    <h3>Twitter Principles Applied</h3>
+
+    <div class="principle">
+      <span class="tag">OPTIMISTIC</span>
+      <span>Card appears instantly on submit. "Syncing…" dashed border shows network state without blocking the feed. Tap → instant, network catches up.</span>
+    </div>
+
+    <div class="principle">
+      <span class="tag">SCANNABLE</span>
+      <span>One consistent card: avatar → name → location → answer pills → score → status. Eye scans left-to-right, top-to-bottom. Firehose made glanceable.</span>
+    </div>
+
+    <div class="principle">
+      <span class="tag">EXPLAINABLE</span>
+      <span>Every score has a formula panel. "Why am I seeing this?" is always answered. No opaque algorithm — the score is derived, not guessed.</span>
+    </div>
+
+    <div class="principle">
+      <span class="tag">FEED MECHANICS</span>
+      <span>Pull-to-refresh with spinner. Auto-refresh every 30s. Status filter chips. Live dot pulses. Cards stack newest-first. One job: show incoming data.</span>
+    </div>
+
+    <div class="principle">
+      <span class="tag">REAL-TIME</span>
+      <span>New cards slide in with animation after 5s. Expandable detail on tap (GPS, photo, voice, answers). Filter by Pending/Confirmed/Rejected.</span>
+    </div>
+
+    <h3 style="margin-top: 16px;">Caution from Twitter</h3>
+    <ul>
+      <li><strong>No opaque ranking:</strong> feed is chronological, not algorithmic. Admin decides what matters.</li>
+      <li><strong>No feature creep:</strong> this feed shows incoming records. That's it. No ads, no suggestions, no "you might also like."</li>
+      <li><strong>Score stays explainable:</strong> the formula panel is always visible. The score is a tool, not a black box.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+  // ── Optimistic UI: click card to toggle detail view ──
+  function toggleDetail(card) {
+    card.classList.toggle('expanded');
+  }
+
+  // ── Filter feed by status (Google: data-driven) ──
+  function filterFeed(status, chipEl) {
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    chipEl.classList.add('active');
+    document.querySelectorAll('.feed-card').forEach(card => {
+      if (status === 'all') {
+        card.style.display = '';
+      } else {
+        card.style.display = card.dataset.status === status ? '' : 'none';
+      }
+    });
+  }
+
+  // ── Auto-refresh countdown (Twitter: feed mechanics) ──
+  let countdown = 30;
+  const countdownEl = document.getElementById('refreshCountdown');
+  const pullIndicator = document.getElementById('pullIndicator');
+  setInterval(() => {
+    countdown--;
+    if (countdown <= 0) {
+      // Simulate refresh
+      pullIndicator.style.display = 'flex';
+      setTimeout(() => {
+        pullIndicator.style.display = 'none';
+        countdown = 30;
+      }, 1500);
+    }
+    countdownEl.textContent = countdown + 's';
+  }, 1000);
+
+  // ── Simulate new card arriving (optimistic UI) ──
+  setTimeout(() => {
+    const feed = document.querySelector('.feed');
+    const newCard = document.createElement('div');
+    newCard.className = 'feed-card new';
+    newCard.dataset.status = 'pending';
+    newCard.onclick = function() { toggleDetail(this); };
+    newCard.innerHTML = `
+      <div class="fc-head">
+        <div class="fc-surveyor">
+          <div class="fc-avatar">PD</div>
+          <div>
+            <div class="fc-name">Priya Devi</div>
+            <div class="fc-location">Warangal R · Ward 12</div>
+          </div>
+        </div>
+        <span class="fc-time">just now</span>
+      </div>
+      <div class="fc-answers">
+        <span class="fc-pill"><span class="dot" style="background:var(--party-congress)"></span>Congress</span>
+        <span class="fc-pill"><span class="dot" style="background:#16a34a"></span>Positive</span>
+        <span class="fc-pill">Education</span>
+        <span class="fc-pill">Female · 29</span>
+      </div>
+      <div class="fc-foot">
+        <div class="fc-score">
+          <div class="score-bar"><div class="score-fill" style="width:88%;background:var(--ok)"></div></div>
+          <span class="score-label">88% complete</span>
+        </div>
+        <span class="fc-status pending">Pending</span>
+      </div>
+      <div class="fc-detail">
+        <div class="detail-row"><span class="detail-label">GPS</span><span class="detail-value">✓ 17.978°N, 79.594°E (±6m)</span></div>
+        <div class="detail-row"><span class="detail-label">Photo</span><span class="detail-value">✓ 0.9 MB</span></div>
+        <div class="detail-row"><span class="detail-label">Voice</span><span class="detail-value">✓ 38s</span></div>
+        <div class="detail-row"><span class="detail-label">Answers</span><span class="detail-value">9/10 questions</span></div>
+      </div>
+    `;
+    // Insert after filter chips
+    const firstCard = feed.querySelector('.feed-card');
+    feed.insertBefore(newCard, firstCard);
+  }, 5000);
+</script>
+</body>
+</html>

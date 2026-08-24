@@ -644,33 +644,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                             {new Date(item.proof_validated.checked_at).toLocaleString()}
                           </span>
                         </strong>
-                        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {item.proof_validated.phone && (
-                            <span style={{ fontSize: 12 }}>
-                              <Icon name="phone" size={12} /> Phone: <strong>{item.proof_validated.phone.value || '—'}</strong>{' '}
-                              {item.proof_validated.phone.found
-                                ? item.proof_validated.phone.valid
-                                  ? <span style={{ color: '#0a8f3c', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="check" size={11} /> valid</span>
-                                  : <span style={{ color: '#b3261e', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="cross" size={11} /> invalid format</span>
-                                : <span className="muted">not present</span>}
-                            </span>
-                          )}
-                          {item.proof_validated.aadhaar && (
-                            <span style={{ fontSize: 12 }}>
-                              <Icon name="idCard" size={12} /> Aadhaar: <strong>{item.proof_validated.aadhaar.value || '—'}</strong>{' '}
-                              {item.proof_validated.aadhaar.found
-                                ? item.proof_validated.aadhaar.valid
-                                  ? <span style={{ color: '#0a8f3c', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="check" size={11} /> valid</span>
-                                  : <span style={{ color: '#b3261e', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="cross" size={11} /> invalid format</span>
-                                : <span className="muted">not present</span>}
-                            </span>
-                          )}
-                          {item.proof_validated.note && (
-                            <span className="muted" style={{ fontSize: 11 }}>
-                              Note: {item.proof_validated.note}
-                            </span>
-                          )}
-                        </div>
+
                       </div>
                     )}
                     {qa.map((row) => (
@@ -711,17 +685,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                   >
                     {editingId === item.id ? 'Close edit' : 'Edit (e)'}
                   </button>
-                  {canValidateProof && (
-                    <button
-                      type="button"
-                      className={`btn small ${item.proof_validated?.ok ? '' : 'primary'}`}
-                      disabled={busyId === item.id}
-                      title="Format-check phone number + Aadhaar on this record (Proof validation power)"
-                      onClick={() => validateProofFor(item.id)}
-                    >
-                      {item.proof_validated ? 'Re-validate proof' : 'Validate proof'}
-                    </button>
-                  )}
+
                   {canReview && item.status !== 'confirmed' && (
                     <button
                       type="button"
@@ -771,6 +735,17 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                       onClick={() => setStatusFor(item.id, 'pending')}
                     >
                       Back to pending
+                    </button>
+                  )}
+                  {canValidateProof && (
+                    <button
+                      type="button"
+                      className="btn small"
+                      disabled={busyId === item.id}
+                      title="Validate Phone and Aadhaar numbers"
+                      onClick={() => validateProofFor(item.id)}
+                    >
+                      Validate proof
                     </button>
                   )}
                 </div>

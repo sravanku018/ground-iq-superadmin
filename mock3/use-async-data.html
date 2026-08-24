@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>useAsyncData — Stale Cache + Refresh on Open</title>
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-family: var(--font); }
+  body { background: var(--bg); color: var(--ink); min-height: 100vh; padding: var(--sp-6); display: flex; justify-content: center; flex-wrap: wrap; gap: var(--sp-5); }
+
+  .page-head { width: 100%; max-width: 900px; margin: 0 auto var(--sp-5); }
+  .page-head h1 { font-size: var(--fs-xl); font-weight: var(--fw-bold); }
+  .page-head p { font-size: var(--fs-sm); color: var(--ink-muted); margin-top: 2px; }
+  .page-head .tags { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .page-head .tag { font-size: 10px; font-weight: var(--fw-bold); padding: 3px 8px; border-radius: var(--r-sm); background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border); }
+
+  .card { background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-sm); max-width: 420px; width: 100%; }
+  .card h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); margin-bottom: var(--sp-1); }
+  .card .csub { font-size: var(--fs-xs); color: var(--ink-muted); margin-bottom: var(--sp-4); }
+
+  /* Timeline */
+  .timeline { position: relative; padding-left: 20px; }
+  .timeline::before { content: ''; position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: var(--surface-hover); }
+  .tl-item { position: relative; margin-bottom: var(--sp-3); padding: var(--sp-3); background: var(--surface-alt); border-radius: var(--r-md); }
+  .tl-item::before { content: ''; position: absolute; left: -17px; top: 14px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface-hover); border: 2px solid var(--surface); }
+  .tl-item.stale::before { background: var(--warn); }
+  .tl-item.fresh::before { background: var(--ok); }
+  .tl-item.loading::before { background: var(--accent); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .tl-time { font-size: 10px; color: var(--ink-faint); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .3px; margin-bottom: 4px; }
+  .tl-label { font-size: var(--fs-sm); font-weight: var(--fw-bold); }
+  .tl-detail { font-size: var(--fs-xs); color: var(--ink-muted); margin-top: 2px; }
+
+  /* Cache badge */
+  .cache-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: var(--fw-bold); padding: 2px 8px; border-radius: var(--r-sm); }
+  .cache-badge.stale { background: var(--warn-bg); color: var(--warn); }
+  .cache-badge.fresh { background: var(--ok-bg); color: var(--ok); }
+  .cache-badge.miss { background: var(--bad-bg); color: var(--bad); }
+
+  /* Simulated data card */
+  .data-card { background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-md); padding: var(--sp-3); margin-top: var(--sp-3); }
+  .data-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: var(--fs-xs); border-bottom: 1px solid var(--surface-alt); }
+  .data-row:last-child { border-bottom: none; }
+  .data-row .label { color: var(--ink-muted); }
+  .data-row .value { font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+
+  /* Action buttons */
+  .actions { display: flex; gap: 8px; margin-top: var(--sp-3); }
+  .actions button { flex: 1; min-height: 36px; border-radius: var(--r-md); border: 1px solid var(--surface-hover); background: var(--surface); font-size: var(--fs-xs); font-weight: var(--fw-bold); cursor: pointer; transition: all var(--dur-fast); }
+  .actions button:active { transform: scale(0.97); }
+  .actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* Code block */
+  .code { font-family: 'SF Mono', Menlo, monospace; font-size: 11px; background: var(--surface-alt); padding: var(--sp-3); border-radius: var(--r-sm); margin-top: var(--sp-3); line-height: 1.6; color: var(--ink-secondary); overflow-x: auto; white-space: pre; }
+  .code .kw { color: var(--accent); font-weight: 700; }
+  .code .cm { color: var(--ink-faint); }
+  .code .str { color: var(--ok); }
+
+  /* Notes */
+  .notes { width: 100%; max-width: 900px; margin: var(--sp-5) auto 0; padding: var(--sp-4); background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); }
+  .notes h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); margin-bottom: var(--sp-3); }
+  .notes .principle { display: flex; gap: 8px; margin-bottom: var(--sp-3); font-size: var(--fs-sm); color: var(--ink-secondary); line-height: 1.5; }
+  .notes .principle .tag { background: var(--accent-bg); color: var(--accent); border-radius: var(--r-sm); padding: 1px 7px; font-size: 10px; font-weight: var(--fw-bold); white-space: nowrap; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>useAsyncData — Stale Cache + Refresh on Open</h1>
+  <p>Data loads instantly from cache (stale), then refreshes in background. Built for cheap phones on bad networks.</p>
+  <div class="tags">
+    <span class="tag">[G] LOW-END</span>
+    <span class="tag">[T] REFRESH ON OPEN</span>
+    <span class="tag">[G] OFFLINE-FIRST</span>
+  </div>
+</div>
+
+<!-- ═══ Scenario 1: Fresh data ═══ -->
+<div class="card">
+  <h3>Scenario 1: Fresh cache</h3>
+  <div class="csub">Data < 30s old → show cache, skip network</div>
+
+  <div class="timeline">
+    <div class="tl-item fresh">
+      <div class="tl-time">T+0s · Tab opens</div>
+      <div class="tl-label">Cache hit <span class="cache-badge fresh">FRESH</span></div>
+      <div class="tl-detail">Served from localStorage. No network request.</div>
+    </div>
+    <div class="tl-item fresh">
+      <div class="tl-time">T+0s · Render</div>
+      <div class="tl-label">UI shows cached data instantly</div>
+      <div class="tl-detail">Stats: 2,225 confirmed · 18 surveyors · Congress lead</div>
+    </div>
+  </div>
+
+  <div class="data-card">
+    <div class="data-row"><span class="label">Confirmed</span><span class="value">2,225</span></div>
+    <div class="data-row"><span class="label">Pending</span><span class="value">47</span></div>
+    <div class="data-row"><span class="label">Cache age</span><span class="value" style="color:var(--ok)">12s ago</span></div>
+    <div class="data-row"><span class="label">Network</span><span class="value">Skipped (fresh)</span></div>
+  </div>
+</div>
+
+<!-- ═══ Scenario 2: Stale data ═══ -->
+<div class="card">
+  <h3>Scenario 2: Stale cache</h3>
+  <div class="csub">Data > 30s old → show cache, THEN refresh in background</div>
+
+  <div class="timeline">
+    <div class="tl-item stale">
+      <div class="tl-time">T+0s · Tab opens</div>
+      <div class="tl-label">Cache hit <span class="cache-badge stale">STALE (2m 14s)</span></div>
+      <div class="tl-detail">Served from localStorage. Shows stale data immediately.</div>
+    </div>
+    <div class="tl-item loading">
+      <div class="tl-time">T+0s · Background</div>
+      <div class="tl-label">Network refresh fires</div>
+      <div class="tl-detail">GET /api/stats — loading… UI stays on stale data.</div>
+    </div>
+    <div class="tl-item fresh">
+      <div class="tl-time">T+1.2s · Response</div>
+      <div class="tl-label">Cache updated <span class="cache-badge fresh">FRESH</span></div>
+      <div class="tl-detail">Stats refreshed. UI re-renders with new data. Stale → Fresh.</div>
+    </div>
+  </div>
+
+  <div class="data-card" id="stale-demo">
+    <div class="data-row"><span class="label">Confirmed</span><span class="value" id="stale-val">2,198</span></div>
+    <div class="data-row"><span class="label">Pending</span><span class="value" id="stale-pending">52</span></div>
+    <div class="data-row"><span class="label">Cache age</span><span class="value" id="stale-age" style="color:var(--warn)">2m 14s ago</span></div>
+    <div class="data-row"><span class="label">Network</span><span class="value" id="stale-net" style="color:var(--warn)">Refreshing…</span></div>
+  </div>
+  <div class="actions">
+    <button class="primary" onclick="simulateRefresh()">Simulate refresh</button>
+    <button onclick="simulateOffline()">Simulate offline</button>
+  </div>
+</div>
+
+<!-- ═══ Scenario 3: No cache (cold start) ═══ -->
+<div class="card">
+  <h3>Scenario 3: No cache</h3>
+  <div class="csub">First visit or cleared storage → must hit network</div>
+
+  <div class="timeline">
+    <div class="tl-item">
+      <div class="tl-time">T+0s · Tab opens</div>
+      <div class="tl-label">Cache miss <span class="cache-badge miss">EMPTY</span></div>
+      <div class="tl-detail">No localStorage entry. Skeleton shown.</div>
+    </div>
+    <div class="tl-item loading">
+      <div class="tl-time">T+0s · Network</div>
+      <div class="tl-label">GET /api/stats — loading…</div>
+      <div class="tl-detail">Showing skeleton/spinner. Must wait for network.</div>
+    </div>
+    <div class="tl-item fresh">
+      <div class="tl-time">T+2.1s · Response</div>
+      <div class="tl-label">Data loaded + cached <span class="cache-badge fresh">FRESH</span></div>
+      <div class="tl-detail">Response saved to localStorage. Next open = instant from cache.</div>
+    </div>
+  </div>
+
+  <div class="data-card" style="text-align:center;padding:var(--sp-4);">
+    <div style="font-size:var(--fs-sm);color:var(--ink-faint);">Skeleton placeholder</div>
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:8px;">
+      <div style="width:60px;height:10px;background:var(--surface-hover);border-radius:5px;animation:pulse 1s infinite;"></div>
+      <div style="width:40px;height:10px;background:var(--surface-hover);border-radius:5px;animation:pulse 1s infinite .2s;"></div>
+      <div style="width:50px;height:10px;background:var(--surface-hover);border-radius:5px;animation:pulse 1s infinite .4s;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Implementation ═══ -->
+<div class="card" style="max-width:900px;">
+  <h3>Implementation Pattern</h3>
+  <div class="csub">useAsyncData hook — used by every admin screen</div>
+  <div class="code"><span class="cm">// src/hooks/useAsyncData.js</span>
+<span class="kw">export function</span> useAsyncData(key, fetcher, { staleMs = 30_000 } = {}) {
+  <span class="kw">const</span> [data, setData] = useState(() => readCache(key))
+  <span class="kw">const</span> [loading, setLoading] = useState(!data)
+
+  useEffect(() => {
+    <span class="cm">// 1. Serve from cache immediately</span>
+    <span class="kw">const</span> cached = readCache(key)
+    <span class="kw">if</span> (cached && Date.now() - cached.ts < staleMs) {
+      setData(cached.data)
+      setLoading(<span class="kw">false</span>)
+      <span class="kw">return</span> <span class="cm">// fresh — skip network</span>
+    }
+
+    <span class="cm">// 2. Show stale data while refreshing</span>
+    <span class="kw">if</span> (cached) setData(cached.data)
+
+    <span class="cm">// 3. Fire background refresh</span>
+    setLoading(<span class="kw">true</span>)
+    fetcher()
+      .then(d => { writeCache(key, d); setData(d) })
+      .catch(() => {}) <span class="cm">// keep stale on failure</span>
+      .finally(() => setLoading(<span class="kw">false</span>))
+  }, [key])
+
+  <span class="kw">return</span> { data, loading }
+}</div>
+</div>
+
+<!-- Notes -->
+<div class="notes">
+  <h3>Doctrine: Built for the Low End</h3>
+  <div class="principle">
+    <span class="tag">[G] LOW-END</span>
+    <span>Google assumes a cheap phone on a bad network — your surveyor's exact reality. Cache-first means the UI is always instant. Network is a background optimization, not a gate.</span>
+  </div>
+  <div class="principle">
+    <span class="tag">[T] REFRESH ON OPEN</span>
+    <span>Every tab switch triggers a background refresh. Data is never more than one tab-open stale. "Pull-to-refresh" without the pull — the refresh happens automatically.</span>
+  </div>
+  <div class="principle">
+    <span class="tag">[G] OFFLINE-FIRST</span>
+    <span>Cache persists in localStorage. Kill the app, reopen — data is there. Network failure keeps stale data visible. The app works without a connection.</span>
+  </div>
+</div>
+
+<script>
+  function simulateRefresh() {
+    const age = document.getElementById('stale-age');
+    const net = document.getElementById('stale-net');
+    const val = document.getElementById('stale-val');
+    const pend = document.getElementById('stale-pending');
+
+    age.textContent = 'Refreshing…';
+    age.style.color = 'var(--accent)';
+    net.textContent = 'GET /api/stats…';
+    net.style.color = 'var(--accent)';
+
+    setTimeout(() => {
+      age.textContent = '0s ago';
+      age.style.color = 'var(--ok)';
+      net.textContent = 'Cached ✓';
+      net.style.color = 'var(--ok)';
+      val.textContent = '2,225';
+      pend.textContent = '47';
+    }, 1200);
+  }
+
+  function simulateOffline() {
+    const age = document.getElementById('stale-age');
+    const net = document.getElementById('stale-net');
+
+    age.textContent = '5m 02s ago';
+    age.style.color = 'var(--bad)';
+    net.textContent = 'Offline — showing cache';
+    net.style.color = 'var(--bad)';
+  }
+</script>
+</body>
+</html>

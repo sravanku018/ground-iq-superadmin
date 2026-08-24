@@ -150,7 +150,6 @@ export default function AdminDataScreen({ onToast }) {
     }
     return {
       respondent_name: pick('respondent_name', 'name', 'voter_name', 'respondent'),
-      phone: pick('phone', 'mobile'),
       district: pick('district', 'dist'),
       constituency: pick('constituency', 'assembly', 'assembly_constituency', 'ac'),
       mp_constituency: pick('mp_constituency', 'mp', 'parliament', 'pc'),
@@ -541,7 +540,7 @@ export default function AdminDataScreen({ onToast }) {
                   </thead>
                   <tbody>
                     {preview.slice(0, 8).map((r, i) => (
-                      <tr key={`${r.respondent_name}|${r.phone || ''}|${r.district}|${r.constituency}|${i}`}>
+                      <tr key={`${r.respondent_name}|${r.district}|${r.constituency}|${i}`}>
                         <td>{r.respondent_name || '—'}</td>
                         <td>{r.district || '—'}</td>
                         <td>{r.constituency || '—'}</td>

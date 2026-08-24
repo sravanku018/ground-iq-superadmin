@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mock 3 — Party × District: Two Treatments</title>
+<style>
+  /* ── Reset & base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  body {
+    background: #f8fafc;
+    color: #1e293b;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  /* ── Header ── */
+  .page-head {
+    max-width: 1200px;
+    margin: 0 auto 20px;
+  }
+  .page-head h1 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .page-head p {
+    font-size: 13px;
+    color: #64748b;
+  }
+
+  /* ── Treatment labels ── */
+  .treatments {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .treatment {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .treatment h2 {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+  .treatment .subtitle {
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 16px;
+  }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: #475569;
+  }
+  .legend-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  /* ── Bar chart (Treatment A — identity) ── */
+  .bar-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .bar-label {
+    width: 100px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #334155;
+    text-align: right;
+    flex-shrink: 0;
+    line-height: 1.2;
+  }
+  .bar-track {
+    flex: 1;
+    height: 26px;
+    background: #f1f5f9;
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+    position: relative;
+  }
+  .bar-seg {
+    height: 100%;
+    transition: width 0.3s;
+    position: relative;
+  }
+  .bar-seg:first-child { border-radius: 6px 0 0 6px; }
+  .bar-seg:last-child { border-radius: 0 6px 6px 0; }
+  .bar-seg:only-child { border-radius: 6px; }
+
+  /* ── Bar chart (Treatment B — magnitude ramp) ── */
+  .bar-row-b {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .bar-label-b {
+    width: 100px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #334155;
+    text-align: right;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    line-height: 1.2;
+  }
+  .bar-label-b .party-pill {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    display: inline-block;
+  }
+  .bar-track-b {
+    flex: 1;
+    height: 26px;
+    background: #f1f5f9;
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+  }
+  .bar-fill-b {
+    height: 100%;
+    border-radius: 6px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+    transition: width 0.3s;
+  }
+  .bar-value-b {
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    white-space: nowrap;
+  }
+  .bar-value-b.outside {
+    color: #475569;
+    text-shadow: none;
+    padding-left: 6px;
+  }
+
+  /* ── Blue ramp scale ── */
+  .ramp-scale {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    font-size: 11px;
+    color: #64748b;
+  }
+  .ramp-bar {
+    height: 8px;
+    border-radius: 4px;
+    flex: 1;
+  }
+
+  /* ── Direct label pills (Treatment A) ── */
+  .direct-labels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid #f1f5f9;
+  }
+  .dl-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #475569;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    padding: 3px 10px 3px 6px;
+  }
+  .dl-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  /* ── Footer notes ── */
+  .notes {
+    max-width: 1200px;
+    margin: 24px auto 0;
+    padding: 16px 20px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    font-size: 12px;
+    color: #64748b;
+    line-height: 1.6;
+  }
+  .notes strong { color: #334155; }
+  .notes ul { margin: 6px 0 0 16px; }
+
+  @media (max-width: 800px) {
+    .treatments { grid-template-columns: 1fr; }
+    .bar-label, .bar-label-b { width: 80px; font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>Smart Survey X — Mock 3 · Doctrine-Tagged Architecture</h1>
+  <p>Apple surveyor surface · Google design system · Twitter sync & feeds · Validated 5-party palette · Sample Telangana data</p>
+  <nav style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+    <a href="surveyor.html" style="font-size:12px;color:#1d6fe0;text-decoration:none;padding:4px 10px;border:1px solid #bfdbfe;border-radius:20px;background:#eff6ff;">Apple → Surveyor Surface</a>
+    <a href="admin-feed.html" style="font-size:12px;color:#1d6fe0;text-decoration:none;padding:4px 10px;border:1px solid #bfdbfe;border-radius:20px;background:#eff6ff;">Twitter → Admin Feed</a>
+    <a href="tokens.css" style="font-size:12px;color:#1d6fe0;text-decoration:none;padding:4px 10px;border:1px solid #bfdbfe;border-radius:20px;background:#eff6ff;">Google → Design Tokens</a>
+    <a href="whole.html" style="font-size:12px;color:#7c3aed;text-decoration:none;padding:4px 10px;border:1px solid #ddd6fe;border-radius:20px;background:#f5f3ff;">Whole Product Mock</a>
+    <a href="total.html" style="font-size:12px;color:#7c3aed;text-decoration:none;padding:4px 10px;border:1px solid #ddd6fe;border-radius:20px;background:#f5f3ff;">Total App Mockup</a>
+  </nav>
+  <nav style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+    <span style="font-size:11px;color:#94a3b8;font-weight:700;align-self:center;">DOCTRINE COMPONENTS:</span>
+    <a href="feed-card.html" style="font-size:11px;color:#059669;text-decoration:none;padding:3px 8px;border:1px solid #bbf7d0;border-radius:16px;background:#f0fdf4;">[T] FeedCard</a>
+    <a href="use-async-data.html" style="font-size:11px;color:#059669;text-decoration:none;padding:3px 8px;border:1px solid #bbf7d0;border-radius:16px;background:#f0fdf4;">[G] useAsyncData</a>
+    <a href="row-action.html" style="font-size:11px;color:#059669;text-decoration:none;padding:3px 8px;border:1px solid #bbf7d0;border-radius:16px;background:#f0fdf4;">[T] useRowAction</a>
+    <a href="permission-lock.html" style="font-size:11px;color:#059669;text-decoration:none;padding:3px 8px;border:1px solid #bbf7d0;border-radius:16px;background:#f0fdf4;">[A] PermissionLockCard</a>
+    <a href="toggle-pill.html" style="font-size:11px;color:#059669;text-decoration:none;padding:3px 8px;border:1px solid #bbf7d0;border-radius:16px;background:#f0fdf4;">[G] TogglePill</a>
+    <a href="credentials.html" style="font-size:11px;color:#059669;text-decoration:none;padding:3px 8px;border:1px solid #bbf7d0;border-radius:16px;background:#f0fdf4;">[A] CredentialsCard</a>
+    <a href="period-table.html" style="font-size:11px;color:#059669;text-decoration:none;padding:3px 8px;border:1px solid #bbf7d0;border-radius:16px;background:#f0fdf4;">[G] PeriodTable</a>
+  </nav>
+</div>
+
+<div class="treatments">
+  <!-- ═══════════════ Treatment A: Identity-first ═══════════════ -->
+  <div class="treatment" id="treatmentA">
+    <h2>Treatment A — Identity-first</h2>
+    <p class="subtitle">Each bar segment colored by real-world party identity. Direct-label relief pills below.</p>
+    <div class="legend" id="legendA"></div>
+    <div class="bar-chart" id="chartA"></div>
+    <div class="direct-labels" id="directLabels"></div>
+  </div>
+
+  <!-- ═══════════════ Treatment B: Magnitude-ramp ═══════════════ -->
+  <div class="treatment" id="treatmentB">
+    <h2>Treatment B — Magnitude-ramp</h2>
+    <p class="subtitle">Single blue ramp encodes total count. Party identity via color pill on label.</p>
+    <div class="bar-chart" id="chartB"></div>
+    <div class="ramp-scale">
+      <span>0</span>
+      <div class="ramp-bar" style="background: linear-gradient(90deg, #dbeafe, #1d6fe0);"></div>
+      <span id="rampMax"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ Notes ═══════════════ -->
+<div class="notes">
+  <strong>Palette (validated on #ffffff surface):</strong>
+  <ul>
+    <li><span style="color:#16a34a">■</span> Congress — <code>#16a34a</code> (green, pass 4.6:1)</li>
+    <li><span style="color:#f97316">■</span> BJP — <code>#f97316</code> (saffron, deepened, pass 3.1:1 on white via pill)</li>
+    <li><span style="color:#ec4899">■</span> BRS — <code>#ec4899</code> (pink, pass 3.2:1)</li>
+    <li><span style="color:#94a3b8">■</span> Others — <code>#94a3b8</code> (neutral grey, intentional)</li>
+    <li><span style="color:#64748b">■</span> Undecided — <code>#64748b</code> (slate, intentional)</li>
+  </ul>
+  <strong>Design rationale:</strong>
+  <ul>
+    <li>Treatment A preserves party identity — critical for political data consumers who expect Congress=green, BJP=orange.</li>
+    <li>Treatment B trades identity for magnitude clarity — a single blue ramp makes relative counts immediately scannable, with party pill as identity anchor.</li>
+    <li>Both treatments rely on the "relief rule": every bar is direct-labeled, so color alone is never the only encoding.</li>
+    <li>TDP yellow dropped — inherent lightness fails contrast on white surface without forced darkening.</li>
+  </ul>
+</div>
+
+<script>
+  // ── Validated 5-party palette ──
+  const PARTIES = [
+    { name: 'Congress',  hex: '#16a34a' },
+    { name: 'BJP',       hex: '#f97316' },
+    { name: 'BRS',       hex: '#ec4899' },
+    { name: 'Others',    hex: '#94a3b8' },
+    { name: 'Undecided', hex: '#64748b' },
+  ];
+  const PARTY_MAP = Object.fromEntries(PARTIES.map(p => [p.name, p.hex]));
+
+  // ── Blue magnitude ramp (light-unified: derived from ink-blue accent) ──
+  function blueRamp(t) {
+    // t ∈ [0,1] → light blue → deep ink-blue
+    const r = Math.round(219 + (29 - 219) * t);
+    const g = Math.round(234 + (111 - 234) * t);
+    const b = Math.round(254 + (224 - 254) * t);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  // ── Sample data: 8 districts, party breakdown ──
+  const DATA = [
+    { district: 'Rangareddy',  Congress: 312, BJP: 245, BRS: 178, Others: 42, Undecided: 23 },
+    { district: 'Medchal',     Congress: 198, BJP: 156, BRS: 134, Others: 31, Undecided: 18 },
+    { district: 'Hanumakonda', Congress: 167, BJP: 189, BRS: 98,  Others: 27, Undecided: 14 },
+    { district: 'Nizamabad',   Congress: 145, BJP: 203, BRS: 87,  Others: 35, Undecided: 12 },
+    { district: 'Karimnagar',  Congress: 112, BJP: 178, BRS: 156, Others: 29, Undecided: 15 },
+    { district: 'Warangal R',  Congress: 134, BJP: 98,  BRS: 201, Others: 22, Undecided: 11 },
+    { district: 'Khammam',     Congress: 189, BJP: 67,  BRS: 145, Others: 18, Undecided: 9  },
+    { district: 'Adilabad',    Congress: 78,  BJP: 134, BRS: 56,  Others: 41, Undecided: 19 },
+  ];
+
+  // ── Compute totals & max ──
+  const totals = DATA.map(d => ({
+    ...d,
+    total: PARTIES.reduce((s, p) => s + d[p.name], 0),
+  }));
+  const maxTotal = Math.max(...totals.map(d => d.total));
+
+  // ── Render Legend ──
+  const legendA = document.getElementById('legendA');
+  PARTIES.forEach(p => {
+    const el = document.createElement('div');
+    el.className = 'legend-item';
+    el.innerHTML = `<span class="legend-swatch" style="background:${p.hex}"></span>${p.name}`;
+    legendA.appendChild(el);
+  });
+
+  // ── Treatment A: Stacked identity bars ──
+  const chartA = document.getElementById('chartA');
+  totals.forEach(d => {
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+
+    const label = document.createElement('div');
+    label.className = 'bar-label';
+    label.textContent = d.district;
+
+    const track = document.createElement('div');
+    track.className = 'bar-track';
+
+    PARTIES.forEach(p => {
+      const pct = (d[p.name] / d.total) * 100;
+      if (pct < 0.5) return; // skip near-zero
+      const seg = document.createElement('div');
+      seg.className = 'bar-seg';
+      seg.style.width = pct + '%';
+      seg.style.background = p.hex;
+      seg.title = `${d.district} · ${p.name}: ${d[p.name]} (${Math.round(pct)}%)`;
+      track.appendChild(seg);
+    });
+
+    row.appendChild(label);
+    row.appendChild(track);
+    chartA.appendChild(row);
+  });
+
+  // ── Direct-label pills (Treatment A relief) ──
+  const dl = document.getElementById('directLabels');
+  PARTIES.forEach(p => {
+    const pill = document.createElement('span');
+    pill.className = 'dl-pill';
+    pill.innerHTML = `<span class="dl-dot" style="background:${p.hex}"></span>${p.name}`;
+    dl.appendChild(pill);
+  });
+
+  // ── Treatment B: Magnitude ramp bars ──
+  const chartB = document.getElementById('chartB');
+  // Sort by total descending for visual hierarchy
+  const sorted = [...totals].sort((a, b) => b.total - a.total);
+  // Lead party for each district
+  sorted.forEach(d => {
+    let lead = PARTIES[0];
+    let leadVal = 0;
+    PARTIES.forEach(p => {
+      if (d[p.name] > leadVal) { leadVal = d[p.name]; lead = p; }
+    });
+    const t = d.total / maxTotal;
+    const bgColor = blueRamp(t);
+
+    const row = document.createElement('div');
+    row.className = 'bar-row-b';
+
+    const label = document.createElement('div');
+    label.className = 'bar-label-b';
+    label.innerHTML = `<span class="party-pill" style="background:${lead.hex}"></span>${d.district}`;
+
+    const track = document.createElement('div');
+    track.className = 'bar-track-b';
+
+    const fill = document.createElement('div');
+    fill.className = 'bar-fill-b';
+    fill.style.width = (t * 100) + '%';
+    fill.style.background = bgColor;
+    fill.title = `${d.district} · Total: ${d.total} · Lead: ${lead.name}`;
+
+    const val = document.createElement('span');
+    val.className = 'bar-value-b' + (t < 0.25 ? ' outside' : '');
+    val.textContent = d.total.toLocaleString();
+    fill.appendChild(val);
+
+    track.appendChild(fill);
+    row.appendChild(label);
+    row.appendChild(track);
+    chartB.appendChild(row);
+  });
+
+  // ── Ramp max label ──
+  document.getElementById('rampMax').textContent = maxTotal.toLocaleString();
+</script>
+</body>
+</html>

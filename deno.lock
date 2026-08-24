@@ -1,0 +1,73 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@std/assert@1": "1.0.19",
+    "jsr:@std/internal@^1.0.12": "1.0.14"
+  },
+  "jsr": {
+    "@std/assert@1.0.19": {
+      "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
+    "@std/internal@1.0.14": {
+      "integrity": "291516b3d4c35024d6ffbc0a9df5bf4c64116e05b50012cf846710152d2ffdf7"
+    }
+  },
+  "remote": {
+    "https://esm.sh/fake-indexeddb@6.0.0/auto": "87517e0012a125c1ba1990b37ee7a2ac8b0578d6c1eaa3b98927291cce1278a9",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/auto.mjs": "9d0bc1b086ed5aca51496e37860fbca2480c74a72e2f83a1563a9940741abc8f",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/build/esm/lib/FakeDOMStringList.mjs": "ba1c232921a8aef9a354d0aed6f04916cc161be0561d1d6c72a380f3e63534a7",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/build/esm/lib/FakeEvent.mjs": "570d1b817963d50a9ec758323f6772d462ad73ba120249a598b6cf759e8c3efb",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/build/esm/lib/FakeEventTarget.mjs": "3ad850b7e13542bc93f4dae21f062d9a3d591609f52ef8d22086ff52434b569f",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/build/esm/lib/RecordStore.mjs": "6a7ae485df781eb7d811b0a94d988384d7161267cf1858aa5612d11f47a4953a",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/build/esm/lib/cmp.mjs": "83121ca8ef966b6755abf0fddd8ccd11a74c54572b98c1ee8001c075a6e746de",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/build/esm/lib/enforceRange.mjs": "484fe3c53fe406fe5df1f631f5eb8721d04244a8875fbb4ac7b1cfb151064893",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/build/esm/lib/errors.mjs": "bcbf1b67e8a7b75b9ff1d0379aa796d483a67db409fc329cbfc52973203dee8d",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/build/esm/lib/extractKey.mjs": "503044c45d1725a4fa5fb598fbe630dd7483c533963618c5cbca541cd3a6799c",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/build/esm/lib/scheduling.mjs": "31ddf4f945475c7fab0e08c9ce819fc4e5a956a9ea917c7a55be2d4524e5a4f2",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/build/esm/lib/validateKeyPath.mjs": "0d5cd022760a5c0ac45d2cde13d93a616d2a52a5e3d14c53bb00dcee50fa9cac",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/build/esm/lib/valueToKey.mjs": "61e0674711dbf61e9a815775a5226324dd74fb688b8eb9867e58be49b55a13a8",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/build/esm/lib/valueToKeyRange.mjs": "37e6d12beb695797bcbe7d419231672f07c1fce1ae29f3eeb27a27b340c154f2",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/lib/FDBCursor.mjs": "45db0772d35e5768bbc213d87cc9a9256a5d206c0dbe0e8b54135a3e0ff717ee",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/lib/FDBCursorWithValue.mjs": "6b47ea59c9abcc820b75cbae6a156fbde7e407a7e11071b5563239b3576cfffe",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/lib/FDBDatabase.mjs": "256c113f58ad2ea44365c240f1fb1feb50ccb7ddf60afcffe13c39620eafac17",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/lib/FDBFactory.mjs": "7b5a0ef8fa332c9cedd507cf533018868416d0b9ddf0daa1b0465b3da18b860b",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/lib/FDBIndex.mjs": "3972feb7bb7ad71a958f114356a5b6965a926a66902dd31415c2dde74c783f05",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/lib/FDBKeyRange.mjs": "1a99025bbd8aa2767fd6abed2ff3e5ad14e79b317af3d225eb7dbc3e235c4ef2",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/lib/FDBObjectStore.mjs": "5fe98423c9ea0c854add74c75cbfb354b5a9dcf33043f15569a76cada25f4e89",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/lib/FDBOpenDBRequest.mjs": "343140885327ca54765c922633ebeeb06200e6743603ee678d6a08c2c5c12527",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/lib/FDBRequest.mjs": "deada656534c8fa645ec7bf89f082099797865632f7da638e4574d16b29d2ec4",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/lib/FDBTransaction.mjs": "d685afa7f29cd3fd15549b02c9d018bb6e8ae4c7558967e7bdbb8917f990939c",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/lib/FDBVersionChangeEvent.mjs": "335e023709c026a94d20a64c56fe0427aa5f8325c372ff7de4d734ed25d1c301",
+    "https://esm.sh/fake-indexeddb@6.0.0/denonext/lib/fakeIndexedDB.mjs": "dc5a574927bcdbb72ec33019a8038f2c0c41d83220bf97fed59deb5087468a08"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@capacitor/android@^8.5.0",
+        "npm:@capacitor/app@^8.1.1",
+        "npm:@capacitor/cli@^7.6.8",
+        "npm:@capacitor/core@^8.5.0",
+        "npm:@capacitor/splash-screen@^8.0.2",
+        "npm:@capacitor/status-bar@^8.0.3",
+        "npm:@neondatabase/serverless@^1.1.0",
+        "npm:@types/react-dom@^19.2.3",
+        "npm:@types/react@^19.2.17",
+        "npm:@vitejs/plugin-react@^6.0.4",
+        "npm:concurrently@^9.2.4",
+        "npm:cors@^2.8.6",
+        "npm:dotenv@^17.4.2",
+        "npm:express@^5.2.1",
+        "npm:leaflet@^1.9.4",
+        "npm:oxlint@^1.75.0",
+        "npm:papaparse@^5.5.4",
+        "npm:react-dom@^19.2.8",
+        "npm:react@^19.2.8",
+        "npm:recharts@^3.10.1",
+        "npm:vite@^8.2.0"
+      ]
+    }
+  }
+}

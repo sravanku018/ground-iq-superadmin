@@ -5,7 +5,6 @@ import SubmissionMedia from './SubmissionMedia'
 /** Core fields Client Admin can always edit */
 const CORE_FIELDS = [
   { key: 'respondent_name', label: 'Respondent name' },
-  { key: 'phone', label: 'Phone' },
   { key: 'district', label: 'District' },
   { key: 'constituency', label: 'Assembly constituency' },
   { key: 'mp_constituency', label: 'MP constituency' },

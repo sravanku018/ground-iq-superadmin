@@ -18,7 +18,7 @@ async function call(
   path: string,
   opts: { body?: unknown; headers?: Record<string, string>; token?: string } = {},
 ): Promise<{ status: number; json: Record<string, unknown>; headers: Headers; text: string }> {
-  const headers: Record<string, string> = { Accept: "application/json", ...(opts.headers || {}) };
+  const headers: Record<string, string> = { Accept: "application/json", ...opts.headers };
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
   if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
 

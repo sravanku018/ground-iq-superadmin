@@ -245,6 +245,7 @@ export default function FieldCollectScreen({
   const streamRef = useRef(null)
   const audioCtxRef = useRef(null)
   const audioStartedAt = useRef(null)
+  const audioTimerRef = useRef(null)
   // Swipe-navigation gesture tracking (only used when navMode === 'swipe')
   const touchStartX = useRef(null)
   const touchStartY = useRef(null)
@@ -325,7 +326,11 @@ export default function FieldCollectScreen({
   const geoLocked = isGeoValid(geo)
   const locationLocked = geoLocked && !!locationDetails
   const photoLocked = !!(photoDataUrl && photoDataUrl.length >= MIN_PHOTO_CHARS)
-  const voiceLocked = voiceActivated && (!!audioBlob || recording)
+  // Voice recording: required only when user has can_record_voice power.
+  // Otherwise voice is optional — skip the lock entirely.
+  const voiceRequired = !!user?.can_record_voice || user?.role === 'super_admin'
+  const voiceTimeLimit = Number(formMeta?.voice_time_limit || 0) // minutes, 0 = no limit
+  const voiceLocked = voiceRequired ? (voiceActivated && (!!audioBlob || recording)) : true
   const editingDraft = !!draft?.id
   const locks = {
     geo: geoLocked,
@@ -469,6 +474,12 @@ export default function FieldCollectScreen({
         /* ignore */
       }
       audioCtxRef.current = null
+      try {
+        clearTimeout(audioTimerRef.current)
+      } catch {
+        /* ignore */
+      }
+      audioTimerRef.current = null
       try {
         recognitionRef.current?.abort()
       } catch {
@@ -797,7 +808,18 @@ export default function FieldCollectScreen({
       audioStartedAt.current = Date.now()
       setRecording(true)
       setVoiceActivated(true)
-      onToast?.('Voice activated · Opus 24 kbps', 'ok')
+      onToast?.(voiceTimeLimit ? `Voice activated · ${voiceTimeLimit} min limit` : 'Voice activated · Opus 24 kbps', 'ok')
+      // Auto-stop after voice_time_limit minutes
+      if (voiceTimeLimit > 0) {
+        const timerMs = voiceTimeLimit * 60 * 1000
+        audioTimerRef.current = setTimeout(() => {
+          if (mediaRec.current && recording) {
+            mediaRec.current.stop()
+            setRecording(false)
+            onToast?.(`Voice auto-stopped at ${voiceTimeLimit} min limit`, 'ok')
+          }
+        }, timerMs)
+      }
     } catch (e) {
       setVoiceActivated(false)
       onToast?.(e.message || 'Microphone permission required — voice is locked mandatory', 'error')
@@ -805,6 +827,8 @@ export default function FieldCollectScreen({
   }
 
   function stopAudio() {
+    clearTimeout(audioTimerRef.current)
+    audioTimerRef.current = null
     if (mediaRec.current && recording) {
       mediaRec.current.stop()
       setRecording(false)

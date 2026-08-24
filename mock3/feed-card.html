@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FeedCard — One Card, Three Contexts</title>
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-family: var(--font); }
+  body { background: var(--bg); color: var(--ink); min-height: 100vh; padding: var(--sp-6); }
+
+  .page-head { max-width: 1200px; margin: 0 auto var(--sp-5); }
+  .page-head h1 { font-size: var(--fs-xl); font-weight: var(--fw-bold); }
+  .page-head p { font-size: var(--fs-sm); color: var(--ink-muted); margin-top: 2px; }
+  .page-head .tags { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .page-head .tag { font-size: 10px; font-weight: var(--fw-bold); padding: 3px 8px; border-radius: var(--r-sm); background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border); }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-5); max-width: 1200px; margin: 0 auto; }
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+
+  .context { background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); padding: var(--sp-4); box-shadow: var(--shadow-sm); }
+  .context-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-3); }
+  .context-head h2 { font-size: var(--fs-md); font-weight: var(--fw-bold); }
+  .context-head .badge { font-size: 10px; font-weight: var(--fw-bold); padding: 2px 8px; border-radius: var(--r-sm); }
+  .context-head .badge.t { background: #ede9fe; color: #7c3aed; }
+
+  /* ═══ FeedCard ═══ */
+  .fc {
+    background: var(--surface);
+    border: 1px solid var(--surface-hover);
+    border-radius: var(--r-lg);
+    padding: var(--sp-4);
+    margin-bottom: var(--sp-3);
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow var(--dur-normal) var(--ease-out), transform var(--dur-normal) var(--ease-out);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .fc:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .fc:active { transform: scale(0.99); }
+
+  /* Syncing state */
+  .fc.syncing { opacity: 0.65; border-style: dashed; }
+  .fc.syncing::after {
+    content: '⟳ syncing';
+    position: absolute; top: 8px; right: 8px;
+    font-size: 10px; font-weight: var(--fw-bold); color: var(--warn);
+    background: var(--warn-bg); padding: 2px 7px; border-radius: var(--r-sm);
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Failed state */
+  .fc.failed { border-color: var(--bad); background: var(--bad-bg); }
+
+  /* Optimistic entrance */
+  .fc.new { animation: fcIn 0.3s cubic-bezier(0.16,1,0.3,1); }
+  @keyframes fcIn { from { opacity:0; transform:translateY(-12px); } to { opacity:1; transform:none; } }
+
+  /* Header */
+  .fc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-3); }
+  .fc-surveyor { display: flex; align-items: center; gap: 10px; }
+  .fc-avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--accent-bg); border: 2px solid var(--accent-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--accent); flex-shrink: 0;
+  }
+  .fc-name { font-size: var(--fs-sm); font-weight: var(--fw-bold); }
+  .fc-location { font-size: var(--fs-xs); color: var(--ink-muted); }
+  .fc-time { font-size: var(--fs-xs); color: var(--ink-faint); }
+
+  /* Answer pills */
+  .fc-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--sp-3); }
+  .fc-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: var(--fs-xs); font-weight: var(--fw-medium);
+    padding: 3px 9px; border-radius: var(--r-pill);
+    background: var(--surface-alt); color: var(--ink-secondary); border: 1px solid var(--surface-hover);
+  }
+  .fc-pill .dot { width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
+
+  /* Footer: trust ring + status + actions */
+  .fc-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+  .fc-trust { display: flex; align-items: center; gap: var(--sp-2); }
+  .fc-signals { display: flex; gap: 4px; flex-wrap: wrap; }
+  .sig { font-size: 10px; font-weight: var(--fw-bold); padding: 2px 6px; border-radius: var(--r-sm); display: inline-flex; align-items: center; gap: 3px; }
+  .sig.ok { background: var(--ok-bg); color: var(--ok); }
+  .sig.bad { background: var(--bad-bg); color: var(--bad); }
+  .sig.warn { background: var(--warn-bg); color: var(--warn); }
+  .fc-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .fc-status { font-size: var(--fs-xs); font-weight: var(--fw-bold); padding: 3px 9px; border-radius: var(--r-sm); }
+  .fc-status.pending { background: var(--warn-bg); color: var(--warn); }
+  .fc-status.confirmed { background: var(--ok-bg); color: var(--ok); }
+  .fc-status.rejected { background: var(--bad-bg); color: var(--bad); }
+
+  /* Review actions (optimistic) */
+  .fc-actions { display: flex; gap: 6px; margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--surface-alt); }
+  .fc-actions button { font-size: var(--fs-xs); font-weight: var(--fw-bold); padding: 6px 12px; border-radius: var(--r-sm); border: 1px solid var(--surface-hover); background: var(--surface); color: var(--ink-secondary); cursor: pointer; transition: all var(--dur-fast); }
+  .fc-actions button:active { transform: scale(0.96); }
+  .fc-actions .confirm { background: var(--ok); color: #fff; border-color: var(--ok); }
+  .fc-actions .reject { color: var(--bad); border-color: #fecaca; }
+  .fc-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Trust ring (reusable) */
+  .ring-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .ring-wrap svg { transform: rotate(-90deg); display: block; }
+  .ring-track { fill: none; stroke: var(--surface-hover); }
+  .ring-fill { fill: none; stroke-linecap: round; transition: stroke-dashoffset var(--dur-slow) var(--ease-out); }
+  .ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+  .ring-center .num { font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+  .ring-center .cap { font-size: 8px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .3px; }
+
+  /* Pillar breakdown (expandable) */
+  .fc-detail { display: none; margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--surface-alt); }
+  .fc.expanded .fc-detail { display: block; animation: fcIn 0.2s ease-out; }
+  .pillar-row { display: grid; grid-template-columns: 80px 1fr 36px; align-items: center; gap: 8px; font-size: var(--fs-xs); margin-bottom: 6px; }
+  .pillar-label { color: var(--ink-secondary); }
+  .pillar-track { height: 6px; border-radius: 3px; background: var(--surface-hover); overflow: hidden; }
+  .pillar-track > span { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width var(--dur-slow) var(--ease-out); }
+  .pillar-val { text-align: right; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+
+  /* Notes */
+  .notes { max-width: 1200px; margin: var(--sp-5) auto 0; padding: var(--sp-4); background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); }
+  .notes h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); margin-bottom: var(--sp-3); }
+  .notes .principle { display: flex; gap: 8px; margin-bottom: var(--sp-3); font-size: var(--fs-sm); color: var(--ink-secondary); line-height: 1.5; }
+  .notes .principle .tag { background: var(--accent-bg); color: var(--accent); border-radius: var(--r-sm); padding: 1px 7px; font-size: 10px; font-weight: var(--fw-bold); white-space: nowrap; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>FeedCard — ONE Card, Three Contexts</h1>
+  <p>The same card component serves Report feed, Audit log, and scorecards. Click any card to expand pillar breakdown.</p>
+  <div class="tags">
+    <span class="tag">[T] ONE CARD</span>
+    <span class="tag">[T] EXPLAINABLE</span>
+    <span class="tag">[T] OPTIMISTIC</span>
+    <span class="tag">[G] ONE SYSTEM</span>
+  </div>
+</div>
+
+<div class="grid">
+
+  <!-- ═══ Context 1: Report Feed ═══ -->
+  <div class="context">
+    <div class="context-head">
+      <h2>Report · Live Feed</h2>
+      <span class="badge t">[T] scannable feed</span>
+    </div>
+
+    <div class="fc" onclick="toggleExpand(this)" data-id="1">
+      <div class="fc-head">
+        <div class="fc-surveyor">
+          <div class="fc-avatar">RK</div>
+          <div>
+            <div class="fc-name">Rajesh Kumar <svg width="14" height="14" viewBox="0 0 22 22"><path fill="#1D9BF0" d="M11 2l2.2 1.6 2.7-.2 1 2.5 2.3 1.4-.6 2.7.6 2.7-2.3 1.4-1 2.5-2.7-.2L11 20l-2.2-1.6-2.7.2-1-2.5-2.3-1.4.6-2.7-.6-2.7 2.3-1.4 1-2.5 2.7.2z"/><path fill="#fff" d="M9.6 13.4l-2-2 1-1 1 1 3.2-3.2 1 1z"/></svg></div>
+            <div class="fc-location">Rangareddy · Maheshwaram AC</div>
+          </div>
+        </div>
+        <span class="fc-time">2 min ago</span>
+      </div>
+      <div class="fc-pills">
+        <span class="fc-pill"><span class="dot" style="background:var(--party-congress)"></span>Congress</span>
+        <span class="fc-pill"><span class="dot" style="background:#16a34a"></span>Positive</span>
+        <span class="fc-pill">Roads</span>
+        <span class="fc-pill">Female · 35</span>
+      </div>
+      <div class="fc-foot">
+        <div class="fc-trust">
+          <div class="ring-wrap" style="width:36px;height:36px;">
+            <svg width="36" height="36" viewBox="0 0 36 36"><circle class="ring-track" cx="18" cy="18" r="14" stroke-width="3.5"/><circle class="ring-fill" cx="18" cy="18" r="14" stroke-width="3.5" stroke="var(--ok)" style="stroke-dasharray:87.96;stroke-dashoffset:7.04"/></svg>
+            <div class="ring-center"><span class="num" style="font-size:11px;color:var(--ok)">92</span><span class="cap">Trust</span></div>
+          </div>
+          <div class="fc-signals">
+            <span class="sig ok">📍 GPS</span>
+            <span class="sig ok">📸 Photo</span>
+            <span class="sig ok">🎙 Voice</span>
+          </div>
+        </div>
+        <div class="fc-right">
+          <span class="fc-status confirmed">Confirmed</span>
+        </div>
+      </div>
+      <div class="fc-detail">
+        <div style="font-size:11px;font-weight:var(--fw-bold);color:var(--ink-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px;">Trust Pillar Breakdown</div>
+        <div class="pillar-row"><span class="pillar-label">Identity</span><div class="pillar-track"><span style="width:100%;background:var(--ok)"></span></div><span class="pillar-val">20/20</span></div>
+        <div class="pillar-row"><span class="pillar-label">Geo Lock</span><div class="pillar-track"><span style="width:100%;background:var(--ok)"></span></div><span class="pillar-val">20/20</span></div>
+        <div class="pillar-row"><span class="pillar-label">Media</span><div class="pillar-track"><span style="width:90%;background:var(--ok)"></span></div><span class="pillar-val">18/20</span></div>
+        <div class="pillar-row"><span class="pillar-label">Sync</span><div class="pillar-track"><span style="width:100%;background:var(--ok)"></span></div><span class="pillar-val">20/20</span></div>
+        <div class="pillar-row"><span class="pillar-label">QA</span><div class="pillar-track"><span style="width:70%;background:var(--accent)"></span></div><span class="pillar-val">14/20</span></div>
+      </div>
+    </div>
+
+    <!-- Syncing card (optimistic) -->
+    <div class="fc syncing new" onclick="toggleExpand(this)" data-id="2">
+      <div class="fc-head">
+        <div class="fc-surveyor">
+          <div class="fc-avatar">SP</div>
+          <div>
+            <div class="fc-name">Sunita Patel</div>
+            <div class="fc-location">Medchal · Kukatpally AC</div>
+          </div>
+        </div>
+        <span class="fc-time">just now</span>
+      </div>
+      <div class="fc-pills">
+        <span class="fc-pill"><span class="dot" style="background:var(--party-bjp)"></span>BJP</span>
+        <span class="fc-pill"><span class="dot" style="background:#f59e0b"></span>Neutral</span>
+        <span class="fc-pill">Water supply</span>
+      </div>
+      <div class="fc-foot">
+        <div class="fc-trust">
+          <div class="ring-wrap" style="width:36px;height:36px;">
+            <svg width="36" height="36" viewBox="0 0 36 36"><circle class="ring-track" cx="18" cy="18" r="14" stroke-width="3.5"/><circle class="ring-fill" cx="18" cy="18" r="14" stroke-width="3.5" stroke="var(--warn)" style="stroke-dasharray:87.96;stroke-dashoffset:19.35"/></svg>
+            <div class="ring-center"><span class="num" style="font-size:11px;color:var(--warn)">78</span><span class="cap">Trust</span></div>
+          </div>
+          <div class="fc-signals">
+            <span class="sig ok">📍 GPS</span>
+            <span class="sig warn">📸 Photo</span>
+            <span class="sig ok">🎙 Voice</span>
+          </div>
+        </div>
+        <div class="fc-right">
+          <span class="fc-status pending">Pending</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirm / Reject actions -->
+    <div class="fc" onclick="toggleExpand(this)" data-id="3">
+      <div class="fc-head">
+        <div class="fc-surveyor">
+          <div class="fc-avatar">VR</div>
+          <div>
+            <div class="fc-name">Venu Rao</div>
+            <div class="fc-location">Karimnagar · Huzurabad AC</div>
+          </div>
+        </div>
+        <span class="fc-time">12 min ago</span>
+      </div>
+      <div class="fc-pills">
+        <span class="fc-pill"><span class="dot" style="background:var(--party-bjp)"></span>BJP</span>
+        <span class="fc-pill"><span class="dot" style="background:#f59e0b"></span>Neutral</span>
+        <span class="fc-pill">Electricity</span>
+      </div>
+      <div class="fc-foot">
+        <div class="fc-trust">
+          <div class="ring-wrap" style="width:36px;height:36px;">
+            <svg width="36" height="36" viewBox="0 0 36 36"><circle class="ring-track" cx="18" cy="18" r="14" stroke-width="3.5"/><circle class="ring-fill" cx="18" cy="18" r="14" stroke-width="3.5" stroke="var(--accent)" style="stroke-dasharray:87.96;stroke-dashoffset:13.19"/></svg>
+            <div class="ring-center"><span class="num" style="font-size:11px;color:var(--accent)">85</span><span class="cap">Trust</span></div>
+          </div>
+          <div class="fc-signals">
+            <span class="sig ok">📍 GPS</span>
+            <span class="sig ok">📸 Photo</span>
+            <span class="sig ok">🎙 Voice</span>
+          </div>
+        </div>
+        <div class="fc-right">
+          <span class="fc-status pending">Pending</span>
+        </div>
+      </div>
+      <div class="fc-actions" id="actions-3">
+        <button class="confirm" onclick="event.stopPropagation();confirmCard(3,this)">✓ Confirm</button>
+        <button class="reject" onclick="event.stopPropagation();rejectCard(3,this)">✕ Reject</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Context 2: Audit Log ═══ -->
+  <div class="context">
+    <div class="context-head">
+      <h2>Audit Log</h2>
+      <span class="badge t">[T] same card</span>
+    </div>
+
+    <div class="fc" onclick="toggleExpand(this)" data-id="a1">
+      <div class="fc-head">
+        <div class="fc-surveyor">
+          <div class="fc-avatar" style="background:var(--ok-bg);border-color:#bbf7d0;color:var(--ok);">✓</div>
+          <div>
+            <div class="fc-name">Confirm #62</div>
+            <div class="fc-location">@priya · client admin</div>
+          </div>
+        </div>
+        <span class="fc-time">9:41 AM</span>
+      </div>
+      <div class="fc-pills">
+        <span class="fc-pill"><span class="dot" style="background:var(--ok)"></span>Confirmed</span>
+        <span class="fc-pill">Record #62 · Rajesh Kumar</span>
+        <span class="fc-pill">Trust 92%</span>
+      </div>
+      <div class="fc-foot">
+        <div class="fc-trust">
+          <div class="ring-wrap" style="width:36px;height:36px;">
+            <svg width="36" height="36" viewBox="0 0 36 36"><circle class="ring-track" cx="18" cy="18" r="14" stroke-width="3.5"/><circle class="ring-fill" cx="18" cy="18" r="14" stroke-width="3.5" stroke="var(--ok)" style="stroke-dasharray:87.96;stroke-dashoffset:7.04"/></svg>
+            <div class="ring-center"><span class="num" style="font-size:11px;color:var(--ok)">92</span><span class="cap">Trust</span></div>
+          </div>
+        </div>
+        <div class="fc-right">
+          <span class="fc-status confirmed">Confirmed</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="fc" onclick="toggleExpand(this)" data-id="a2">
+      <div class="fc-head">
+        <div class="fc-surveyor">
+          <div class="fc-avatar" style="background:var(--bad-bg);border-color:#fecaca;color:var(--bad);">✕</div>
+          <div>
+            <div class="fc-name">Reject #57</div>
+            <div class="fc-location">@priya · client admin</div>
+          </div>
+        </div>
+        <span class="fc-time">9:12 AM</span>
+      </div>
+      <div class="fc-pills">
+        <span class="fc-pill"><span class="dot" style="background:var(--bad)"></span>Rejected</span>
+        <span class="fc-pill">Record #57 · Missing photo</span>
+        <span class="fc-pill">Trust 45%</span>
+      </div>
+      <div class="fc-foot">
+        <div class="fc-trust">
+          <div class="ring-wrap" style="width:36px;height:36px;">
+            <svg width="36" height="36" viewBox="0 0 36 36"><circle class="ring-track" cx="18" cy="18" r="14" stroke-width="3.5"/><circle class="ring-fill" cx="18" cy="18" r="14" stroke-width="3.5" stroke="var(--bad)" style="stroke-dasharray:87.96;stroke-dashoffset:48.38"/></svg>
+            <div class="ring-center"><span class="num" style="font-size:11px;color:var(--bad)">45</span><span class="cap">Trust</span></div>
+          </div>
+        </div>
+        <div class="fc-right">
+          <span class="fc-status rejected">Rejected</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="fc" onclick="toggleExpand(this)" data-id="a3">
+      <div class="fc-head">
+        <div class="fc-surveyor">
+          <div class="fc-avatar" style="background:#ede9fe;border-color:#ddd6fe;color:#7c3aed;">🛡</div>
+          <div>
+            <div class="fc-name">Surveyor verified</div>
+            <div class="fc-location">@priya · client admin</div>
+          </div>
+        </div>
+        <span class="fc-time">Aug 23</span>
+      </div>
+      <div class="fc-pills">
+        <span class="fc-pill"><span class="dot" style="background:var(--ok)"></span>Verified</span>
+        <span class="fc-pill">@rajesh01 · Aadhaar confirmed</span>
+      </div>
+      <div class="fc-foot">
+        <div class="fc-right">
+          <span class="fc-status confirmed">Done</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Context 3: Scorecard ═══ -->
+  <div class="context">
+    <div class="context-head">
+      <h2>Scorecard</h2>
+      <span class="badge t">[T] same card</span>
+    </div>
+
+    <div class="fc" onclick="toggleExpand(this)" data-id="s1">
+      <div class="fc-head">
+        <div class="fc-surveyor">
+          <div class="fc-avatar">RK</div>
+          <div>
+            <div class="fc-name">Rajesh Kumar</div>
+            <div class="fc-location">14 surveys today · 91% avg completeness</div>
+          </div>
+        </div>
+        <span class="fc-time">Active</span>
+      </div>
+      <div class="fc-pills">
+        <span class="fc-pill"><span class="dot" style="background:var(--ok)"></span>96% confirm rate</span>
+        <span class="fc-pill">4m 12s avg</span>
+        <span class="fc-pill">±8m GPS</span>
+      </div>
+      <div class="fc-foot">
+        <div class="fc-trust">
+          <div class="ring-wrap" style="width:36px;height:36px;">
+            <svg width="36" height="36" viewBox="0 0 36 36"><circle class="ring-track" cx="18" cy="18" r="14" stroke-width="3.5"/><circle class="ring-fill" cx="18" cy="18" r="14" stroke-width="3.5" stroke="var(--ok)" style="stroke-dasharray:87.96;stroke-dashoffset:7.92"/></svg>
+            <div class="ring-center"><span class="num" style="font-size:11px;color:var(--ok)">91</span><span class="cap">Trust</span></div>
+          </div>
+          <div class="fc-signals">
+            <span class="sig ok">14 sent</span>
+            <span class="sig bad">2 missing photo</span>
+          </div>
+        </div>
+        <div class="fc-right">
+          <span class="fc-status confirmed">Top performer</span>
+        </div>
+      </div>
+      <div class="fc-detail">
+        <div style="font-size:11px;font-weight:var(--fw-bold);color:var(--ink-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px;">Today's Breakdown</div>
+        <div class="pillar-row"><span class="pillar-label">Surveys</span><div class="pillar-track"><span style="width:70%;background:var(--ok)"></span></div><span class="pillar-val">14/20</span></div>
+        <div class="pillar-row"><span class="pillar-label">Complete</span><div class="pillar-track"><span style="width:91%;background:var(--ok)"></span></div><span class="pillar-val">91%</span></div>
+        <div class="pillar-row"><span class="pillar-label">Confirm</span><div class="pillar-track"><span style="width:96%;background:var(--ok)"></span></div><span class="pillar-val">96%</span></div>
+        <div class="pillar-row"><span class="pillar-label">GPS ±</span><div class="pillar-track"><span style="width:85%;background:var(--ok)"></span></div><span class="pillar-val">8m</span></div>
+      </div>
+    </div>
+
+    <div class="fc" onclick="toggleExpand(this)" data-id="s2">
+      <div class="fc-head">
+        <div class="fc-surveyor">
+          <div class="fc-avatar" style="background:var(--warn-bg);border-color:#fde68a;color:var(--warn);">SP</div>
+          <div>
+            <div class="fc-name">Sunita Patel</div>
+            <div class="fc-location">11 surveys today · 88% avg completeness</div>
+          </div>
+        </div>
+        <span class="fc-time">Active</span>
+      </div>
+      <div class="fc-pills">
+        <span class="fc-pill"><span class="dot" style="background:var(--ok)"></span>92% confirm rate</span>
+        <span class="fc-pill">5m 30s avg</span>
+        <span class="fc-pill">±15m GPS</span>
+      </div>
+      <div class="fc-foot">
+        <div class="fc-trust">
+          <div class="ring-wrap" style="width:36px;height:36px;">
+            <svg width="36" height="36" viewBox="0 0 36 36"><circle class="ring-track" cx="18" cy="18" r="14" stroke-width="3.5"/><circle class="ring-fill" cx="18" cy="18" r="14" stroke-width="3.5" stroke="var(--warn)" style="stroke-dasharray:87.96;stroke-dashoffset:17.59"/></svg>
+            <div class="ring-center"><span class="num" style="font-size:11px;color:var(--warn)">80</span><span class="cap">Trust</span></div>
+          </div>
+          <div class="fc-signals">
+            <span class="sig ok">11 sent</span>
+            <span class="sig warn">behind target</span>
+          </div>
+        </div>
+        <div class="fc-right">
+          <span class="fc-status pending">Behind</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Notes -->
+<div class="notes">
+  <h3>Doctrine: ONE Card, Three Contexts</h3>
+  <div class="principle">
+    <span class="tag">[T] ONE CARD</span>
+    <span>FeedCard is the single card component for Report feed, Audit log, and Scorecards. Same structure: avatar → name → pills → trust ring → status. The eye learns one pattern.</span>
+  </div>
+  <div class="principle">
+    <span class="tag">[T] EXPLAINABLE</span>
+    <span>Click any card → trust pillar breakdown expands. "Why this score?" is always one tap away. No opaque algorithm — the score is derived from signals the platform already collects.</span>
+  </div>
+  <div class="principle">
+    <span class="tag">[T] OPTIMISTIC</span>
+    <span>Confirm/Reject fires instantly. Card flips status. Background sync + rollback on failure. "Tap → instant, network catches up." The syncing card with dashed border shows network state.</span>
+  </div>
+  <div class="principle">
+    <span class="tag">[G] ONE SYSTEM</span>
+    <span>Same component, same tokens.css, same trust ring. Admin portal and field app read as one product. No re-deciding the card layout per screen.</span>
+  </div>
+</div>
+
+<script>
+  function toggleExpand(card) {
+    card.classList.toggle('expanded');
+  }
+
+  function confirmCard(id, btn) {
+    const actions = btn.parentElement;
+    const card = actions.closest('.fc');
+    const status = card.querySelector('.fc-status');
+    const ring = card.querySelector('.ring-fill');
+    const ringNum = card.querySelector('.ring-center .num');
+
+    // Optimistic UI: flip instantly
+    btn.disabled = true;
+    actions.querySelector('.reject').disabled = true;
+    status.className = 'fc-status confirmed';
+    status.textContent = 'Confirmed';
+    if (ring) { ring.setAttribute('stroke', 'var(--ok)'); ring.style.strokeDashoffset = '7.04'; }
+    if (ringNum) { ringNum.textContent = '92'; ringNum.style.color = 'var(--ok)'; }
+    card.classList.remove('failed');
+
+    // Simulate bg sync
+    setTimeout(() => {
+      actions.innerHTML = '<span style="font-size:11px;color:var(--ok);font-weight:700;">✓ Confirmed — synced</span>';
+    }, 800);
+  }
+
+  function rejectCard(id, btn) {
+    const actions = btn.parentElement;
+    const card = actions.closest('.fc');
+    const status = card.querySelector('.fc-status');
+    const ring = card.querySelector('.ring-fill');
+    const ringNum = card.querySelector('.ring-center .num');
+
+    // Optimistic UI: flip instantly
+    btn.disabled = true;
+    actions.querySelector('.confirm').disabled = true;
+    status.className = 'fc-status rejected';
+    status.textContent = 'Rejected';
+    card.classList.add('failed');
+    if (ring) { ring.setAttribute('stroke', 'var(--bad)'); ring.style.strokeDashoffset = '48.38'; }
+    if (ringNum) { ringNum.textContent = '45'; ringNum.style.color = 'var(--bad)'; }
+
+    // Simulate bg sync
+    setTimeout(() => {
+      actions.innerHTML = '<span style="font-size:11px;color:var(--bad);font-weight:700;">✕ Rejected — excluded from analytics</span>';
+    }, 800);
+  }
+</script>
+</body>
+</html>

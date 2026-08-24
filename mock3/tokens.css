@@ -1,0 +1,87 @@
+/*
+ * ═══════════════════════════════════════════════
+ *  DESIGN TOKENS — Mock 3
+ *  "One component set shared by field app and
+ *   admin portal so they read as one product."
+ *  Google principle: system, not screens.
+ * ═══════════════════════════════════════════════
+ */
+
+:root {
+  /* ── Surface ── */
+  --bg:           #f8fafc;
+  --surface:      #ffffff;
+  --surface-alt:  #f1f5f9;
+  --surface-hover:#e2e8f0;
+
+  /* ── Ink ── */
+  --ink:          #1e293b;
+  --ink-secondary:#475569;
+  --ink-muted:    #64748b;
+  --ink-faint:    #94a3b8;
+
+  /* ── Accent (ink-blue, derived) ── */
+  --accent:       #1d6fe0;
+  --accent-bg:    #eff6ff;
+  --accent-border:#bfdbfe;
+  --accent-light: #dbeafe;
+
+  /* ── Party palette (validated on #ffffff) ── */
+  --party-congress:  #16a34a;
+  --party-bjp:       #f97316;
+  --party-brs:       #ec4899;
+  --party-others:    #94a3b8;
+  --party-undecided: #64748b;
+
+  /* ── Status ── */
+  --ok:    #16a34a;
+  --ok-bg: #f0fdf4;
+  --warn:  #f59e0b;
+  --warn-bg:#fffbeb;
+  --bad:   #ef4444;
+  --bad-bg:#fef2f2;
+
+  /* ── Typography ── */
+  --font:     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --fs-xs:    11px;
+  --fs-sm:    12px;
+  --fs-base:  14px;
+  --fs-md:    15px;
+  --fs-lg:    18px;
+  --fs-xl:    20px;
+  --fw-normal:400;
+  --fw-medium:500;
+  --fw-bold:  700;
+
+  /* ── Spacing ── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* ── Radius ── */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 12px;
+  --r-pill: 20px;
+
+  /* ── Shadow ── */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.04);
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.06);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.08);
+
+  /* ── Motion (Apple: craft in feel) ── */
+  --ease-out:   cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:cubic-bezier(0.45, 0, 0.55, 1);
+  --dur-fast:   120ms;
+  --dur-normal: 200ms;
+  --dur-slow:   350ms;
+
+  /* ── Layout ── */
+  --max-w: 1200px;
+  --bar-h: 26px;
+  --card-p: 20px;
+}

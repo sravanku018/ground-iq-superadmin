@@ -1,0 +1,18 @@
+Apple → "appealing," and the "simple on top" half.
+Their whole doctrine is the line from last turn: simplicity is the ultimate sophistication. The HIG reduces to clarity, deference (UI gets out of the content's way), depth. Steal two things:
+- Ruthless subtraction — Jobs: "deciding what not to do is as important as what to do." An app used 100×/day wins by removing taps, not adding features.
+- Craft in the feel — motion, haptics, the physicality of a swipe. Exactly the surveyor work you're already doing (swipe cards, elevation, pills). Apple is your model for the surveyor surface: hide the entire engine, obsess the daily feel.
+
+Google → "logical" (and the honest "technical"), the whole admin/data side.
+Google's genius is making enormous complex data legible — Search, Maps — and doing it as a system (Material: tokens, components, documented rules) that scales across teams without re-deciding. Steal:
+- Design as a system, not screens — one component set shared by the field app and admin portal so they read as one product and you move fast. Your "logical" keystone, made concrete.
+- Data-driven, not taste-driven — the famous "41 shades of blue" A/B test. That is your testing phase: measure what feels fast and what actually flags fraud; don't guess.
+- Built for the low end — Android Go, offline Maps. Google assumes a cheap phone on a bad network — your surveyor's exact reality.
+
+Twitter/X → the sync model and feeds — literally your "feel fast."
+On-the-nose history: pull-to-refresh and optimistic UI were born here (Loren Brichter's Tweetie). Tap like → instant, sync later. That is the local-first surveyor pattern and the admin's refresh-on-open. Steal:
+- Optimistic UI — the surveyor's action is instant; the network catches up in the background.
+- The scannable feed — a firehose made glanceable through one consistent card. Your admin live-intake feed and per-surveyor scorecards.
+- The caution — Twitter is also the warning label: it decayed into clutter and an opaque algorithm. Take the feed mechanics; skip the feature creep and the "why am I seeing this?" opacity. Your score must stay explainable.
+
+Synthesis: Apple for the surveyor's surface, Google for the system and the admin's data rigor, Twitter for the sync feel and the feeds. Under all three, the same idea you were reaching for — heavy engineering, weightless surface. 

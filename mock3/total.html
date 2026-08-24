@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mock 3 — Total App Mockup</title>
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-family: var(--font); }
+  body { background: var(--bg); color: var(--ink); min-height: 100vh; }
+
+  /* ── Role switcher ── */
+  .role-bar {
+    position: sticky; top: 0; z-index: 100;
+    background: var(--surface); border-bottom: 1px solid var(--surface-hover);
+    display: flex; align-items: center; gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-5);
+    box-shadow: var(--shadow-sm);
+  }
+  .role-bar h1 { font-size: var(--fs-md); font-weight: var(--fw-bold); flex: 1; }
+  .role-btn {
+    padding: 6px 16px; border-radius: var(--r-pill); border: 2px solid var(--surface-hover);
+    background: var(--surface); font-size: var(--fs-sm); font-weight: var(--fw-bold);
+    cursor: pointer; transition: all var(--dur-fast) var(--ease-out);
+  }
+  .role-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ── Panels ── */
+  .panel { display: none; }
+  .panel.active { display: flex; }
+
+  /* ═══════════════════════════════════════════
+     SURVEYOR FIELD APP — phone frame
+     ═══════════════════════════════════════════ */
+  .field-wrap {
+    width: 100%; padding: var(--sp-6); display: flex; justify-content: center; gap: var(--sp-5);
+    flex-wrap: wrap;
+  }
+  .phone {
+    width: 375px; min-height: 720px; background: var(--surface);
+    border-radius: 32px; box-shadow: var(--shadow-lg), 0 0 0 1px rgba(0,0,0,0.06);
+    overflow: hidden; display: flex; flex-direction: column; position: relative; flex-shrink: 0;
+  }
+  .phone-status {
+    height: 44px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 var(--sp-5); font-size: var(--fs-xs); font-weight: var(--fw-bold);
+  }
+  .phone-status .time { font-size: 15px; font-weight: 600; }
+  .phone-nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--sp-2) var(--sp-5) var(--sp-3); border-bottom: 1px solid var(--surface-alt);
+  }
+  .phone-nav h2 { font-size: var(--fs-lg); font-weight: var(--fw-bold); }
+  .pill-sm {
+    background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border);
+    border-radius: var(--r-pill); padding: 3px 10px; font-size: var(--fs-xs); font-weight: var(--fw-bold);
+  }
+  .phone-body { flex: 1; overflow-y: auto; padding: var(--sp-4) var(--sp-5); }
+  .phone-tabs {
+    display: flex; border-top: 1px solid var(--surface-alt); background: var(--surface);
+  }
+  .phone-tab {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: var(--sp-2) 0; font-size: 10px; color: var(--ink-muted);
+    border: none; background: none; cursor: pointer; transition: color var(--dur-fast);
+  }
+  .phone-tab.active { color: var(--accent); font-weight: var(--fw-bold); }
+  .phone-tab .ico { width: 20px; height: 20px; border-radius: 4px; background: currentColor; opacity: 0.15; }
+  .phone-tab.active .ico { opacity: 1; }
+
+  /* ── Field cards ── */
+  .f-hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: #fff; border-radius: var(--r-lg); padding: var(--sp-5); margin-bottom: var(--sp-3);
+  }
+  .f-hero .eyebrow { font-size: var(--fs-xs); color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+  .f-hero h3 { font-size: var(--fs-lg); margin: var(--sp-1) 0; }
+  .f-hero .sub { font-size: var(--fs-sm); color: #94a3b8; }
+  .f-pills { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
+  .f-pill {
+    display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs);
+    font-weight: var(--fw-bold); padding: 3px 10px; border-radius: var(--r-pill);
+  }
+  .f-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+  .f-pill.ok { background: rgba(34,197,94,0.15); color: #16a34a; }
+  .f-pill.ok::before { background: #16a34a; }
+  .f-pill.warn { background: rgba(245,158,11,0.15); color: #d97706; }
+  .f-pill.warn::before { background: #f59e0b; }
+  .f-pill.bad { background: rgba(239,68,68,0.15); color: #dc2626; }
+  .f-pill.bad::before { background: #ef4444; }
+  .f-stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-2);
+    margin-bottom: var(--sp-3);
+  }
+  .f-stat {
+    text-align: center; padding: var(--sp-3); background: var(--surface-alt);
+    border-radius: var(--r-md);
+  }
+  .f-stat strong { display: block; font-size: var(--fs-lg); }
+  .f-stat span { font-size: var(--fs-xs); color: var(--ink-muted); }
+  .f-cta {
+    width: 100%; min-height: 48px; border: none; border-radius: var(--r-pill);
+    font-size: var(--fs-base); font-weight: var(--fw-bold); cursor: pointer;
+    transition: all var(--dur-fast) var(--ease-out);
+  }
+  .f-cta.primary { background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(29,111,224,0.3); }
+  .f-cta.secondary { background: var(--surface-alt); color: var(--ink-secondary); margin-top: var(--sp-2); }
+  .f-cta:active { transform: scale(0.97); }
+
+  /* ── Question cards ── */
+  .q-card {
+    background: var(--surface); border: 1px solid var(--surface-hover);
+    border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-md);
+    margin-bottom: var(--sp-3);
+  }
+  .q-num { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: var(--sp-2); }
+  .q-text { font-size: var(--fs-md); font-weight: var(--fw-bold); margin-bottom: var(--sp-4); line-height: 1.4; }
+  .q-opts { display: flex; flex-direction: column; gap: var(--sp-2); }
+  .q-btn {
+    width: 100%; min-height: 48px; border: 2px solid var(--surface-hover); border-radius: var(--r-md);
+    background: var(--surface); font-size: var(--fs-base); font-weight: var(--fw-medium);
+    cursor: pointer; transition: all var(--dur-fast) var(--ease-out);
+  }
+  .q-btn:active { transform: scale(0.96); }
+  .q-btn.sel { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); font-weight: var(--fw-bold); }
+  .q-btn.party-congress { border-color: var(--party-congress); }
+  .q-btn.party-congress.sel { background: var(--party-congress); color: #fff; }
+  .q-btn.party-bjp { border-color: var(--party-bjp); }
+  .q-btn.party-bjp.sel { background: var(--party-bjp); color: #fff; }
+  .q-btn.party-brs { border-color: var(--party-brs); }
+  .q-btn.party-brs.sel { background: var(--party-brs); color: #fff; }
+  .sent-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--sp-2); }
+  .sent-btn {
+    min-height: 48px; border-radius: var(--r-md); border: 2px solid transparent;
+    font-size: var(--fs-base); font-weight: var(--fw-bold); cursor: pointer;
+    transition: all var(--dur-fast) var(--ease-out);
+  }
+  .sent-btn:active { transform: scale(0.95); }
+  .sent-btn.neg { background: #fef2f2; color: #ef4444; border-color: #fecaca; }
+  .sent-btn.neu { background: #fffbeb; color: #f59e0b; border-color: #fde68a; }
+  .sent-btn.pos { background: #f0fdf4; color: #16a34a; border-color: #bbf7d0; }
+
+  /* ── Progress ring ── */
+  .progress-strip {
+    display: flex; align-items: center; gap: var(--sp-3);
+    padding: var(--sp-3); background: var(--surface-alt); border-radius: var(--r-md);
+    margin-bottom: var(--sp-3);
+  }
+  .ring { width: 40px; height: 40px; position: relative; flex-shrink: 0; }
+  .ring svg { transform: rotate(-90deg); width: 40px; height: 40px; }
+  .ring .track { fill: none; stroke: var(--surface-hover); stroke-width: 4; }
+  .ring .fill { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 100.53; }
+  .ring .lbl { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: var(--fw-bold); color: var(--accent); }
+  .progress-text { font-size: var(--fs-sm); color: var(--ink-secondary); line-height: 1.4; }
+  .progress-text strong { color: var(--ink); }
+
+  /* ── Pending items ── */
+  .pending-card {
+    background: var(--surface); border: 1px solid var(--surface-hover);
+    border-radius: var(--r-lg); padding: var(--sp-4); margin-bottom: var(--sp-3);
+  }
+  .pending-card.fail { border-color: var(--bad); background: var(--bad-bg); }
+  .pending-card.syncing { opacity: 0.6; border-style: dashed; }
+  .pc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-2); }
+  .pc-name { font-size: var(--fs-sm); font-weight: var(--fw-bold); }
+  .pc-chip {
+    font-size: 10px; font-weight: var(--fw-bold); padding: 2px 8px; border-radius: var(--r-sm);
+  }
+  .pc-chip.draft { background: #e0f2fe; color: #0369a1; }
+  .pc-chip.sync { background: var(--warn-bg); color: var(--warn); }
+  .pc-chip.fail { background: var(--bad-bg); color: var(--bad); }
+  .pc-meta { font-size: var(--fs-xs); color: var(--ink-muted); }
+  .pc-actions { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); }
+  .pc-btn {
+    flex: 1; min-height: 36px; border-radius: var(--r-md); border: 1px solid var(--surface-hover);
+    font-size: var(--fs-xs); font-weight: var(--fw-bold); cursor: pointer;
+    background: var(--surface); transition: all var(--dur-fast);
+  }
+  .pc-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .pc-btn.danger { color: var(--bad); border-color: #fecaca; }
+
+  /* ── Activity day group ── */
+  .act-day { margin-bottom: var(--sp-4); }
+  .act-day-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: var(--sp-2) 0; border-bottom: 1px solid var(--surface-alt);
+    font-size: var(--fs-sm); font-weight: var(--fw-bold); margin-bottom: var(--sp-2);
+  }
+  .act-day-count { font-size: var(--fs-xs); color: var(--ink-muted); font-weight: var(--fw-normal); }
+  .act-item {
+    background: var(--surface); border: 1px solid var(--surface-hover);
+    border-radius: var(--r-md); padding: var(--sp-3); margin-bottom: var(--sp-2);
+  }
+  .act-item-head { display: flex; justify-content: space-between; align-items: center; }
+  .act-item-head strong { font-size: var(--fs-sm); }
+  .act-status { font-size: 10px; font-weight: var(--fw-bold); padding: 2px 8px; border-radius: var(--r-sm); }
+  .act-status.confirmed { background: var(--ok-bg); color: var(--ok); }
+  .act-status.pending { background: var(--warn-bg); color: var(--warn); }
+
+  /* ── Profile ── */
+  .profile-avatar {
+    width: 84px; height: 84px; border-radius: 50%; background: var(--accent-bg);
+    border: 3px solid var(--party-congress); display: flex; align-items: center;
+    justify-content: center; font-size: 32px; font-weight: var(--fw-bold); color: var(--accent);
+    margin: 0 auto var(--sp-3);
+  }
+  .profile-name { text-align: center; font-size: var(--fs-lg); font-weight: var(--fw-bold); margin-bottom: var(--sp-1); }
+  .profile-user { text-align: center; font-size: var(--fs-sm); color: var(--ink-muted); margin-bottom: var(--sp-3); }
+  .profile-badges { display: flex; gap: var(--sp-2); justify-content: center; margin-bottom: var(--sp-4); }
+  .profile-badge {
+    font-size: var(--fs-xs); font-weight: var(--fw-bold); padding: 4px 14px;
+    border-radius: var(--r-pill);
+  }
+  .profile-badge.key { background: rgba(0,229,153,0.12); border: 1px solid rgba(0,229,153,0.3); color: #059669; }
+  .profile-badge.pending { background: rgba(245,158,11,0.15); border: 1px solid #f59e0b; color: #f59e0b; }
+  .profile-section { margin-bottom: var(--sp-4); }
+  .profile-section h3 { font-size: var(--fs-base); font-weight: var(--fw-bold); margin-bottom: var(--sp-2); }
+  .profile-section p { font-size: var(--fs-sm); color: var(--ink-muted); margin-bottom: var(--sp-3); }
+  .aadhaar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+  .aadhaar-slot {
+    border: 1px dashed var(--ink-faint); border-radius: var(--r-md); padding: var(--sp-3);
+    text-align: center; background: rgba(15,23,42,0.03);
+  }
+  .aadhaar-slot .slot-label { font-size: var(--fs-xs); font-weight: var(--fw-bold); margin-bottom: var(--sp-2); }
+  .aadhaar-slot .slot-img {
+    height: 80px; background: rgba(15,23,42,0.06); border-radius: var(--r-sm);
+    display: flex; align-items: center; justify-content: center; color: var(--ink-faint);
+    margin-bottom: var(--sp-2);
+  }
+
+  /* ── Settings ── */
+  .setting-card { background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); padding: var(--sp-4); margin-bottom: var(--sp-3); }
+  .setting-card h3 { font-size: var(--fs-base); font-weight: var(--fw-bold); margin-bottom: var(--sp-1); }
+  .setting-card .desc { font-size: var(--fs-sm); color: var(--ink-muted); margin-bottom: var(--sp-3); }
+  .setting-option {
+    display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3);
+    border: 2px solid var(--surface-hover); border-radius: var(--r-md);
+    cursor: pointer; transition: all var(--dur-fast); margin-bottom: var(--sp-2);
+  }
+  .setting-option.selected { border-color: var(--party-congress); background: rgba(0,229,153,0.06); }
+  .setting-option .radio {
+    width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+    border: 2px solid var(--surface-hover); transition: all var(--dur-fast);
+  }
+  .setting-option.selected .radio { border: 6px solid var(--party-congress); }
+
+  /* ═══════════════════════════════════════════
+     ADMIN PORTAL — desktop layout
+     ═══════════════════════════════════════════ */
+  .admin-wrap { display: flex; min-height: calc(100vh - 52px); }
+  .admin-side {
+    width: 220px; background: #0f172a; color: #94a3b8; padding: var(--sp-4) 0;
+    flex-shrink: 0; display: flex; flex-direction: column;
+  }
+  .admin-side .brand {
+    padding: 0 var(--sp-4) var(--sp-4); border-bottom: 1px solid #1e293b;
+    font-size: var(--fs-md); font-weight: var(--fw-bold); color: #fff;
+  }
+  .admin-side .nav-group { padding: var(--sp-3) 0; }
+  .admin-side .nav-label {
+    padding: var(--sp-1) var(--sp-4); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.5px; color: #475569;
+  }
+  .admin-side .nav-item {
+    display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4);
+    font-size: var(--fs-sm); color: #94a3b8; cursor: pointer; border: none;
+    background: none; width: 100%; text-align: left; transition: all var(--dur-fast);
+  }
+  .admin-side .nav-item:hover { background: rgba(255,255,255,0.05); color: #e2e8f0; }
+  .admin-side .nav-item.active { background: rgba(29,111,224,0.15); color: #60a5fa; font-weight: var(--fw-bold); }
+  .admin-side .nav-item .nav-ico { width: 18px; height: 18px; border-radius: 4px; background: currentColor; opacity: 0.3; flex-shrink: 0; }
+  .admin-side .nav-item.active .nav-ico { opacity: 0.8; }
+
+  .admin-main { flex: 1; padding: var(--sp-5); overflow-y: auto; }
+  .admin-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: var(--sp-5);
+  }
+  .admin-head h2 { font-size: var(--fs-xl); font-weight: var(--fw-bold); }
+  .admin-head .subtitle { font-size: var(--fs-sm); color: var(--ink-muted); }
+
+  /* ── KPI strip ── */
+  .kpi-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-3); margin-bottom: var(--sp-5); }
+  .kpi {
+    background: var(--surface); border: 1px solid var(--surface-hover);
+    border-radius: var(--r-lg); padding: var(--sp-4); text-align: center;
+    box-shadow: var(--shadow-sm);
+  }
+  .kpi strong { display: block; font-size: var(--fs-xl); font-weight: var(--fw-bold); }
+  .kpi span { font-size: var(--fs-xs); color: var(--ink-muted); }
+
+  /* ── Chart cards ── */
+  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); margin-bottom: var(--sp-5); }
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--surface-hover);
+    border-radius: var(--r-lg); padding: var(--sp-4); box-shadow: var(--shadow-sm);
+  }
+  .chart-card h3 { font-size: var(--fs-base); font-weight: var(--fw-bold); margin-bottom: var(--sp-1); }
+  .chart-card .chart-sub { font-size: var(--fs-xs); color: var(--ink-muted); margin-bottom: var(--sp-3); }
+
+  /* ── Bar chart (horizontal) ── */
+  .hbar { display: flex; flex-direction: column; gap: 8px; }
+  .hbar-row { display: flex; align-items: center; gap: 8px; }
+  .hbar-label { width: 90px; font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--ink-secondary); text-align: right; flex-shrink: 0; }
+  .hbar-track { flex: 1; height: 22px; background: var(--surface-alt); border-radius: 4px; overflow: hidden; }
+  .hbar-fill { height: 100%; border-radius: 4px; transition: width var(--dur-slow) var(--ease-out); }
+  .hbar-val { font-size: var(--fs-xs); color: var(--ink-muted); width: 36px; }
+
+  /* ── Stacked bar ── */
+  .stacked { display: flex; flex-direction: column; gap: 10px; }
+  .stacked-row { display: flex; align-items: center; gap: 8px; }
+  .stacked-label { width: 90px; font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--ink-secondary); text-align: right; flex-shrink: 0; }
+  .stacked-track { flex: 1; height: 24px; background: var(--surface-alt); border-radius: 6px; overflow: hidden; display: flex; }
+  .stacked-seg { height: 100%; }
+  .stacked-seg:first-child { border-radius: 6px 0 0 6px; }
+  .stacked-seg:last-child { border-radius: 0 6px 6px 0; }
+
+  /* ── Data table ── */
+  .data-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+  .data-table th {
+    text-align: left; padding: var(--sp-2) var(--sp-3); font-weight: var(--fw-bold);
+    border-bottom: 2px solid var(--surface-hover); color: var(--ink-secondary);
+    font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .data-table td { padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--surface-alt); }
+  .data-table tr:hover { background: var(--surface-alt); }
+
+  /* ── Feed card (admin review) ── */
+  .feed-card {
+    background: var(--surface); border: 1px solid var(--surface-hover);
+    border-radius: var(--r-lg); padding: var(--sp-4); margin-bottom: var(--sp-3);
+    box-shadow: var(--shadow-sm); transition: box-shadow var(--dur-normal);
+  }
+  .feed-card:hover { box-shadow: var(--shadow-md); }
+  .fc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-2); }
+  .fc-surveyor { display: flex; align-items: center; gap: var(--sp-2); }
+  .fc-avatar {
+    width: 32px; height: 32px; border-radius: 50%; background: var(--accent-bg);
+    border: 2px solid var(--accent-border); display: flex; align-items: center;
+    justify-content: center; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--accent);
+  }
+  .fc-name { font-size: var(--fs-sm); font-weight: var(--fw-bold); }
+  .fc-loc { font-size: var(--fs-xs); color: var(--ink-muted); }
+  .fc-time { font-size: var(--fs-xs); color: var(--ink-faint); }
+  .fc-pills { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+  .fc-pill {
+    display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs);
+    font-weight: var(--fw-medium); padding: 3px 8px; border-radius: var(--r-pill);
+    background: var(--surface-alt); color: var(--ink-secondary); border: 1px solid var(--surface-hover);
+  }
+  .fc-pill .dot { width: 6px; height: 6px; border-radius: 2px; }
+  .fc-foot { display: flex; align-items: center; justify-content: space-between; }
+  .fc-score { display: flex; align-items: center; gap: var(--sp-2); }
+  .score-bar { width: 60px; height: 6px; background: var(--surface-alt); border-radius: 3px; overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 3px; }
+  .score-label { font-size: var(--fs-xs); color: var(--ink-muted); }
+  .fc-status { font-size: var(--fs-xs); font-weight: var(--fw-bold); padding: 2px 8px; border-radius: var(--r-sm); }
+  .fc-status.pending { background: var(--warn-bg); color: var(--warn); }
+  .fc-status.confirmed { background: var(--ok-bg); color: var(--ok); }
+  .fc-status.rejected { background: var(--bad-bg); color: var(--bad); }
+  .fc-actions { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); flex-wrap: wrap; }
+  .fc-btn {
+    padding: 4px 12px; border-radius: var(--r-sm); border: 1px solid var(--surface-hover);
+    font-size: var(--fs-xs); font-weight: var(--fw-bold); cursor: pointer;
+    background: var(--surface); transition: all var(--dur-fast);
+  }
+  .fc-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .fc-btn.danger { color: var(--bad); border-color: #fecaca; }
+
+  /* ── Insight chips ── */
+  .insight-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-5); }
+  .insight {
+    background: var(--surface); border: 1px solid var(--surface-hover);
+    border-radius: var(--r-pill); padding: 6px 14px; font-size: var(--fs-sm);
+    color: var(--ink-secondary); box-shadow: var(--shadow-sm);
+  }
+
+  /* ── Filter chips ── */
+  .chip-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+  .chip {
+    padding: 4px 12px; border-radius: var(--r-pill); border: 1px solid var(--surface-hover);
+    font-size: var(--fs-xs); font-weight: var(--fw-medium); cursor: pointer;
+    background: var(--surface); color: var(--ink-secondary); transition: all var(--dur-fast);
+  }
+  .chip.active { background: var(--accent-bg); color: var(--accent); border-color: var(--accent-border); font-weight: var(--fw-bold); }
+
+  /* ── Notes panel ── */
+  .notes-panel {
+    width: 300px; flex-shrink: 0; position: sticky; top: 60px; align-self: flex-start;
+  }
+  .notes-card {
+    background: var(--surface); border: 1px solid var(--surface-hover);
+    border-radius: var(--r-lg); padding: var(--sp-4); box-shadow: var(--shadow-sm);
+  }
+  .notes-card h4 { font-size: var(--fs-sm); font-weight: var(--fw-bold); margin-bottom: var(--sp-3); color: var(--accent); }
+  .notes-card .note-item {
+    display: flex; gap: var(--sp-2); margin-bottom: var(--sp-3);
+    font-size: var(--fs-sm); color: var(--ink-secondary); line-height: 1.5;
+  }
+  .notes-card .tag {
+    background: var(--accent-bg); color: var(--accent); border-radius: var(--r-sm);
+    padding: 1px 6px; font-size: var(--fs-xs); font-weight: var(--fw-bold);
+    white-space: nowrap; flex-shrink: 0;
+  }
+
+  @media (max-width: 1100px) {
+    .admin-side { width: 180px; }
+    .chart-grid { grid-template-columns: 1fr; }
+    .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 800px) {
+    .field-wrap { flex-direction: column; align-items: center; }
+    .admin-wrap { flex-direction: column; }
+    .admin-side { width: 100%; flex-direction: row; overflow-x: auto; padding: 0; }
+    .admin-side .nav-group { display: flex; gap: 0; padding: 0; }
+    .admin-side .nav-label { display: none; }
+    .admin-side .nav-item { padding: var(--sp-3); white-space: nowrap; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════ ROLE SWITCHER ═══════ -->
+<div class="role-bar">
+  <h1>Mock 3 — Total App</h1>
+  <button class="role-btn active" onclick="showRole('field')">📱 Surveyor Field App</button>
+  <button class="role-btn" onclick="showRole('admin')">🖥️ Admin Portal</button>
+  <span style="font-size:11px;color:var(--ink-faint);margin-left:auto;">Tokens: <a href="tokens.css" style="color:var(--accent);">tokens.css</a></span>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     SURVEYOR FIELD APP
+     ═══════════════════════════════════════════ -->
+<div class="panel active" id="panel-field">
+<div class="field-wrap">
+
+<!-- ── Phone 1: HOME ── -->
+<div class="phone">
+  <div class="phone-status"><span class="time">9:41</span><span>●●●●○ WiFi 🔋</span></div>
+  <div class="phone-nav"><h2>Home</h2></div>
+  <div class="phone-body">
+    <div class="f-hero">
+      <div class="eyebrow">Field survey · Surveyor</div>
+      <h3>Hi, Rajesh Kumar ✓</h3>
+      <div class="sub">GPS → Photo → Q/A + audio · saved on device · auto next</div>
+      <div class="f-pills">
+        <span class="f-pill ok">Strong signal</span>
+        <span class="f-pill warn">3 pending on phone</span>
+      </div>
+    </div>
+    <div class="f-stats">
+      <div class="f-stat"><strong>14/20</strong><span>On server</span></div>
+      <div class="f-stat"><strong>3</strong><span>Pending</span></div>
+      <div class="f-stat"><strong>10</strong><span>Questions</span></div>
+      <div class="f-stat"><strong>active</strong><span>Status</span></div>
+    </div>
+    <div style="height:8px;background:rgba(15,23,42,0.08);border-radius:99px;margin-bottom:14px;overflow:hidden;">
+      <div style="width:70%;height:100%;background:#38bdf8;border-radius:99px;"></div>
+    </div>
+    <button class="f-cta primary">Continue activity #15</button>
+    <button class="f-cta secondary">Sync 3 package(s) now</button>
+    <p style="text-align:center;font-size:11px;color:var(--ink-faint);margin-top:16px;">v2.0.0 (20000)</p>
+    <button class="f-cta secondary" style="color:var(--bad);border:1px solid #fecaca;margin-top:8px;">Log out</button>
+  </div>
+  <div class="phone-tabs">
+    <button class="phone-tab active"><div class="ico"></div>Home</button>
+    <button class="phone-tab"><div class="ico"></div>Collect</button>
+    <button class="phone-tab"><div class="ico"></div>Pending</button>
+    <button class="phone-tab"><div class="ico"></div>Activity</button>
+    <button class="phone-tab"><div class="ico"></div>Profile</button>
+    <button class="phone-tab"><div class="ico"></div>Settings</button>
+  </div>
+</div>
+
+<!-- ── Phone 2: COLLECT ── -->
+<div class="phone">
+  <div class="phone-status"><span class="time">9:41</span><span>●●●●○ WiFi 🔋</span></div>
+  <div class="phone-nav"><h2>Collect</h2><span class="pill-sm">3 / 10</span></div>
+  <div class="phone-body">
+    <div class="progress-strip">
+      <div class="ring">
+        <svg viewBox="0 0 36 36">
+          <circle class="track" cx="18" cy="18" r="16" />
+          <circle class="fill" cx="18" cy="18" r="16" style="stroke-dashoffset:70.37" />
+        </svg>
+        <span class="lbl">30%</span>
+      </div>
+      <div class="progress-text"><strong>Question 4 of 10</strong><br/>Party preference</div>
+    </div>
+    <div class="q-card">
+      <div class="q-num">Question 4</div>
+      <div class="q-text">Which party do you support?</div>
+      <div class="q-opts">
+        <button class="q-btn party-congress sel">Congress</button>
+        <button class="q-btn party-bjp">BJP</button>
+        <button class="q-btn party-brs">BRS</button>
+        <button class="q-btn">Others</button>
+        <button class="q-btn">Undecided</button>
+      </div>
+    </div>
+    <div class="q-card">
+      <div class="q-num">Question 5</div>
+      <div class="q-text">How do you feel about local development?</div>
+      <div class="sent-row">
+        <button class="sent-btn neg">👎 Negative</button>
+        <button class="sent-btn neu">😐 Neutral</button>
+        <button class="sent-btn pos">👍 Positive</button>
+      </div>
+    </div>
+  </div>
+  <div class="phone-tabs">
+    <button class="phone-tab"><div class="ico"></div>Home</button>
+    <button class="phone-tab active"><div class="ico"></div>Collect</button>
+    <button class="phone-tab"><div class="ico"></div>Pending</button>
+    <button class="phone-tab"><div class="ico"></div>Activity</button>
+    <button class="phone-tab"><div class="ico"></div>Profile</button>
+    <button class="phone-tab"><div class="ico"></div>Settings</button>
+  </div>
+</div>
+
+<!-- ── Phone 3: PENDING ── -->
+<div class="phone">
+  <div class="phone-status"><span class="time">9:41</span><span>●●●●○ WiFi 🔋</span></div>
+  <div class="phone-nav"><h2>Pending</h2></div>
+  <div class="phone-body">
+    <div class="f-hero" style="padding:16px;">
+      <div class="eyebrow">Pending</div>
+      <h3 style="font-size:16px;">Rajesh Kumar</h3>
+      <div class="sub">3 pending · 1 draft · 2 waiting to sync</div>
+      <div class="f-pills" style="margin-top:8px;">
+        <button class="f-cta secondary" style="width:auto;min-height:32px;font-size:12px;padding:4px 12px;">Refresh</button>
+        <button class="f-cta primary" style="width:auto;min-height:32px;font-size:12px;padding:4px 12px;">Sync now</button>
+      </div>
+    </div>
+    <div class="pending-card">
+      <div class="pc-head">
+        <span class="pc-name">Rangareddy · Maheshwaram <span class="pc-chip draft">Draft #1</span></span>
+      </div>
+      <div class="pc-meta">24 Aug 2026, 9:30 AM · legacy</div>
+      <div class="pc-meta" style="margin-top:4px;">step 2/4 · 5/10 questions answered</div>
+      <div class="pc-actions">
+        <button class="pc-btn primary">Edit</button>
+        <button class="pc-btn">Send</button>
+        <button class="pc-btn danger">Delete</button>
+      </div>
+    </div>
+    <div class="pending-card syncing">
+      <div class="pc-head">
+        <span class="pc-name">Medchal · Kukatpally <span class="pc-chip sync">Queued #2</span></span>
+      </div>
+      <div class="pc-meta">24 Aug 2026, 9:15 AM · legacy</div>
+      <div class="pc-meta" style="margin-top:4px;">Waiting for network — auto-syncs when online.</div>
+      <div class="pc-actions">
+        <button class="pc-btn primary">Edit</button>
+        <button class="pc-btn danger">Delete</button>
+      </div>
+    </div>
+    <div class="pending-card fail">
+      <div class="pc-head">
+        <span class="pc-name">Hanumakonda <span class="pc-chip fail">Failed #3</span></span>
+      </div>
+      <div class="pc-meta">24 Aug 2026, 8:50 AM · legacy</div>
+      <div class="pc-meta" style="margin-top:4px;">Missing GPS, photo or voice lock — delete or fix and retry.</div>
+      <div class="pc-actions">
+        <button class="pc-btn primary">Edit</button>
+        <button class="pc-btn">Retry sync</button>
+        <button class="pc-btn danger">Delete</button>
+      </div>
+    </div>
+  </div>
+  <div class="phone-tabs">
+    <button class="phone-tab"><div class="ico"></div>Home</button>
+    <button class="phone-tab"><div class="ico"></div>Collect</button>
+    <button class="phone-tab active"><div class="ico"></div>Pending</button>
+    <button class="phone-tab"><div class="ico"></div>Activity</button>
+    <button class="phone-tab"><div class="ico"></div>Profile</button>
+    <button class="phone-tab"><div class="ico"></div>Settings</button>
+  </div>
+</div>
+
+<!-- ── Phone 4: ACTIVITY ── -->
+<div class="phone">
+  <div class="phone-status"><span class="time">9:41</span><span>●●●●○ WiFi 🔋</span></div>
+  <div class="phone-nav"><h2>Activity</h2><button class="pill-sm" style="background:var(--surface-alt);color:var(--ink-secondary);border:1px solid var(--surface-hover);">Refresh</button></div>
+  <div class="phone-body">
+    <div class="act-day">
+      <div class="act-day-head"><span>24 Aug 2026</span><span class="act-day-count">5 sent</span></div>
+      <div class="act-item">
+        <div class="act-item-head"><strong>Record #14</strong><span class="act-status confirmed">✓ Confirmed</span></div>
+        <div class="pc-meta" style="margin-top:4px;">9:30 AM · Rajesh Kumar</div>
+      </div>
+      <div class="act-item">
+        <div class="act-item-head"><strong>Record #13</strong><span class="act-status confirmed">✓ Confirmed</span></div>
+        <div class="pc-meta" style="margin-top:4px;">9:15 AM · Rajesh Kumar</div>
+      </div>
+      <div class="act-item">
+        <div class="act-item-head"><strong>Record #12</strong><span class="act-status pending">Pending</span></div>
+        <div class="pc-meta" style="margin-top:4px;">8:50 AM · Rajesh Kumar</div>
+      </div>
+    </div>
+    <div class="act-day">
+      <div class="act-day-head"><span>23 Aug 2026</span><span class="act-day-count">9 sent</span></div>
+      <div class="act-item">
+        <div class="act-item-head"><strong>Record #11</strong><span class="act-status confirmed">✓ Confirmed</span></div>
+        <div class="pc-meta" style="margin-top:4px;">6:30 PM · Rajesh Kumar</div>
+      </div>
+    </div>
+  </div>
+  <div class="phone-tabs">
+    <button class="phone-tab"><div class="ico"></div>Home</button>
+    <button class="phone-tab"><div class="ico"></div>Collect</button>
+    <button class="phone-tab"><div class="ico"></div>Pending</button>
+    <button class="phone-tab active"><div class="ico"></div>Activity</button>
+    <button class="phone-tab"><div class="ico"></div>Profile</button>
+    <button class="phone-tab"><div class="ico"></div>Settings</button>
+  </div>
+</div>
+
+<!-- ── Phone 5: PROFILE ── -->
+<div class="phone">
+  <div class="phone-status"><span class="time">9:41</span><span>●●●●○ WiFi 🔋</span></div>
+  <div class="phone-nav"><h2>Profile</h2></div>
+  <div class="phone-body">
+    <div class="profile-avatar">RK</div>
+    <div class="profile-name">Rajesh Kumar ✓</div>
+    <div class="profile-user">@rajesh_k</div>
+    <div class="profile-badges">
+      <span class="profile-badge key">Key ID: GROUND-KEY</span>
+      <span class="profile-badge pending">Pending</span>
+    </div>
+    <div class="profile-section">
+      <h3>Phone</h3>
+      <p>Indian mobile only — +91 and 10 digits.</p>
+      <div style="display:flex;gap:8px;">
+        <input type="tel" value="+91 98765 43210" style="flex:1;padding:8px 12px;border:1px solid var(--surface-hover);border-radius:var(--r-md);font-size:var(--fs-sm);" />
+        <button class="f-cta primary" style="width:auto;min-height:36px;font-size:12px;padding:4px 16px;">Save</button>
+      </div>
+    </div>
+    <div class="profile-section">
+      <h3>Aadhaar</h3>
+      <p>Upload front & back images of your Aadhaar card.</p>
+      <div class="aadhaar-grid">
+        <div class="aadhaar-slot">
+          <div class="slot-label">Aadhaar Front</div>
+          <div class="slot-img">🪪</div>
+          <button class="pc-btn" style="width:100%;">Upload Front</button>
+        </div>
+        <div class="aadhaar-slot">
+          <div class="slot-label">Aadhaar Back</div>
+          <div class="slot-img">🪪</div>
+          <button class="pc-btn" style="width:100%;">Upload Back</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="phone-tabs">
+    <button class="phone-tab"><div class="ico"></div>Home</button>
+    <button class="phone-tab"><div class="ico"></div>Collect</button>
+    <button class="phone-tab"><div class="ico"></div>Pending</button>
+    <button class="phone-tab"><div class="ico"></div>Activity</button>
+    <button class="phone-tab active"><div class="ico"></div>Profile</button>
+    <button class="phone-tab"><div class="ico"></div>Settings</button>
+  </div>
+</div>
+
+<!-- ── Phone 6: SETTINGS ── -->
+<div class="phone">
+  <div class="phone-status"><span class="time">9:41</span><span>●●●●○ WiFi 🔋</span></div>
+  <div class="phone-nav"><h2>Settings</h2></div>
+  <div class="phone-body">
+    <div class="setting-card">
+      <h3>Display language</h3>
+      <div class="desc">Used when the survey has no language set.</div>
+      <div style="display:flex;gap:8px;">
+        <button class="chip active">English</button>
+        <button class="chip">తెలుగు</button>
+      </div>
+    </div>
+    <div class="setting-card">
+      <h3>Survey question layout</h3>
+      <div class="desc">Choose how questions appear while collecting.</div>
+      <div class="setting-option selected">
+        <div class="radio"></div>
+        <div><strong style="display:block;font-size:14px;">Next button</strong><span style="font-size:12px;color:var(--ink-muted);">One question at a time, with Prev / Next buttons.</span></div>
+      </div>
+      <div class="setting-option">
+        <div class="radio"></div>
+        <div><strong style="display:block;font-size:14px;">Swipe</strong><span style="font-size:12px;color:var(--ink-muted);">One question at a time — swipe left or right to move.</span></div>
+      </div>
+      <div class="setting-option">
+        <div class="radio"></div>
+        <div><strong style="display:block;font-size:14px;">Vertical scroll</strong><span style="font-size:12px;color:var(--ink-muted);">All questions in one scrollable page.</span></div>
+      </div>
+    </div>
+    <div class="setting-card">
+      <h3>Display size</h3>
+      <div class="desc">Make the whole app bigger for easier reading outdoors.</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+        <button class="q-btn sel" style="min-height:52px;display:flex;flex-direction:column;gap:2px;"><span style="font-size:13px;font-weight:700;">A</span><span style="font-size:10px;">Normal</span></button>
+        <button class="q-btn" style="min-height:52px;display:flex;flex-direction:column;gap:2px;"><span style="font-size:16px;font-weight:700;">A</span><span style="font-size:10px;">Large</span></button>
+        <button class="q-btn" style="min-height:52px;display:flex;flex-direction:column;gap:2px;"><span style="font-size:19px;font-weight:700;">A</span><span style="font-size:10px;">Larger</span></button>
+        <button class="q-btn" style="min-height:52px;display:flex;flex-direction:column;gap:2px;"><span style="font-size:22px;font-weight:700;">A</span><span style="font-size:10px;">Largest</span></button>
+      </div>
+    </div>
+  </div>
+  <div class="phone-tabs">
+    <button class="phone-tab"><div class="ico"></div>Home</button>
+    <button class="phone-tab"><div class="ico"></div>Collect</button>
+    <button class="phone-tab"><div class="ico"></div>Pending</button>
+    <button class="phone-tab"><div class="ico"></div>Activity</button>
+    <button class="phone-tab"><div class="ico"></div>Profile</button>
+    <button class="phone-tab active"><div class="ico"></div>Settings</button>
+  </div>
+</div>
+
+</div><!-- field-wrap -->
+</div><!-- panel-field -->
+
+<!-- ═══════════════════════════════════════════
+     ADMIN PORTAL
+     ═══════════════════════════════════════════ -->
+<div class="panel" id="panel-admin">
+<div class="admin-wrap">
+
+<!-- ── Sidebar ── -->
+<div class="admin-side">
+  <div class="brand">Smart Survey X</div>
+  <div class="nav-group">
+    <div class="nav-label">Client Admin</div>
+    <button class="nav-item active"><div class="nav-ico"></div>Dashboard</button>
+    <button class="nav-item"><div class="nav-ico"></div>Surveyors</button>
+    <button class="nav-item"><div class="nav-ico"></div>Surveys</button>
+    <button class="nav-item"><div class="nav-ico"></div>Data collection</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-label">Platform</div>
+    <button class="nav-item"><div class="nav-ico"></div>Audit Log</button>
+    <button class="nav-item"><div class="nav-ico"></div>Question Bank</button>
+    <button class="nav-item"><div class="nav-ico"></div>Seat Requests</button>
+  </div>
+  <div class="nav-group" style="margin-top:auto;">
+    <button class="nav-item"><div class="nav-ico"></div>Profile</button>
+  </div>
+</div>
+
+<!-- ── Main content ── -->
+<div class="admin-main">
+  <div class="admin-head">
+    <div>
+      <h2>Dashboard</h2>
+      <div class="subtitle">2,225 confirmed · charts & maps</div>
+    </div>
+    <button class="pc-btn primary" style="padding:6px 16px;">Refresh</button>
+  </div>
+
+  <!-- KPI strip -->
+  <div class="kpi-strip">
+    <div class="kpi"><strong>2,225</strong><span>Confirmed</span></div>
+    <div class="kpi"><strong>18</strong><span>Surveyors</span></div>
+    <div class="kpi"><strong>Congress</strong><span>Lead party</span></div>
+    <div class="kpi"><strong>Roads</strong><span>Top issue</span></div>
+  </div>
+
+  <!-- Insights -->
+  <div class="insight-row">
+    <div class="insight">🏆 Congress leads with 38% across all districts</div>
+    <div class="insight">📍 Rangareddy has most responses (312)</div>
+    <div class="insight">🔧 Roads & water supply dominate issues</div>
+  </div>
+
+  <!-- Charts grid -->
+  <div class="chart-grid">
+    <!-- Party breakdown -->
+    <div class="chart-card">
+      <h3>Party preference</h3>
+      <div class="chart-sub">Horizontal bar · validated palette</div>
+      <div class="hbar">
+        <div class="hbar-row"><span class="hbar-label">Congress</span><div class="hbar-track"><div class="hbar-fill" style="width:38%;background:var(--party-congress);"></div></div><span class="hbar-val">38%</span></div>
+        <div class="hbar-row"><span class="hbar-label">BJP</span><div class="hbar-track"><div class="hbar-fill" style="width:28%;background:var(--party-bjp);"></div></div><span class="hbar-val">28%</span></div>
+        <div class="hbar-row"><span class="hbar-label">BRS</span><div class="hbar-track"><div class="hbar-fill" style="width:22%;background:var(--party-brs);"></div></div><span class="hbar-val">22%</span></div>
+        <div class="hbar-row"><span class="hbar-label">Others</span><div class="hbar-track"><div class="hbar-fill" style="width:8%;background:var(--party-others);"></div></div><span class="hbar-val">8%</span></div>
+        <div class="hbar-row"><span class="hbar-label">Undecided</span><div class="hbar-track"><div class="hbar-fill" style="width:4%;background:var(--party-undecided);"></div></div><span class="hbar-val">4%</span></div>
+      </div>
+    </div>
+
+    <!-- Top districts -->
+    <div class="chart-card">
+      <h3>Top districts</h3>
+      <div class="chart-sub">Tap a bar to filter</div>
+      <div class="hbar">
+        <div class="hbar-row"><span class="hbar-label">Rangareddy</span><div class="hbar-track"><div class="hbar-fill" style="width:100%;background:var(--accent);"></div></div><span class="hbar-val">312</span></div>
+        <div class="hbar-row"><span class="hbar-label">Nizamabad</span><div class="hbar-track"><div class="hbar-fill" style="width:65%;background:var(--accent);"></div></div><span class="hbar-val">203</span></div>
+        <div class="hbar-row"><span class="hbar-label">Hanumakonda</span><div class="hbar-track"><div class="hbar-fill" style="width:60%;background:var(--accent);"></div></div><span class="hbar-val">189</span></div>
+        <div class="hbar-row"><span class="hbar-label">Khammam</span><div class="hbar-track"><div class="hbar-fill" style="width:60%;background:var(--accent);"></div></div><span class="hbar-val">189</span></div>
+        <div class="hbar-row"><span class="hbar-label">Medchal</span><div class="hbar-track"><div class="hbar-fill" style="width:50%;background:var(--accent);"></div></div><span class="hbar-val">156</span></div>
+      </div>
+    </div>
+
+    <!-- Party × District stacked -->
+    <div class="chart-card" style="grid-column:1/-1;">
+      <h3>Party × District</h3>
+      <div class="chart-sub">Stacked share · identity-first treatment</div>
+      <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+        <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-secondary);"><span style="width:10px;height:10px;border-radius:2px;background:var(--party-congress);"></span>Congress</span>
+        <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-secondary);"><span style="width:10px;height:10px;border-radius:2px;background:var(--party-bjp);"></span>BJP</span>
+        <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-secondary);"><span style="width:10px;height:10px;border-radius:2px;background:var(--party-brs);"></span>BRS</span>
+        <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-secondary);"><span style="width:10px;height:10px;border-radius:2px;background:var(--party-others);"></span>Others</span>
+        <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-secondary);"><span style="width:10px;height:10px;border-radius:2px;background:var(--party-undecided);"></span>Undecided</span>
+      </div>
+      <div class="stacked">
+        <div class="stacked-row"><span class="stacked-label">Rangareddy</span><div class="stacked-track"><div class="stacked-seg" style="width:36%;background:var(--party-congress);"></div><div class="stacked-seg" style="width:28%;background:var(--party-bjp);"></div><div class="stacked-seg" style="width:21%;background:var(--party-brs);"></div><div class="stacked-seg" style="width:10%;background:var(--party-others);"></div><div class="stacked-seg" style="width:5%;background:var(--party-undecided);"></div></div></div>
+        <div class="stacked-row"><span class="stacked-label">Nizamabad</span><div class="stacked-track"><div class="stacked-seg" style="width:27%;background:var(--party-congress);"></div><div class="stacked-seg" style="width:38%;background:var(--party-bjp);"></div><div class="stacked-seg" style="width:16%;background:var(--party-brs);"></div><div class="stacked-seg" style="width:13%;background:var(--party-others);"></div><div class="stacked-seg" style="width:6%;background:var(--party-undecided);"></div></div></div>
+        <div class="stacked-row"><span class="stacked-label">Hanumakonda</span><div class="stacked-track"><div class="stacked-seg" style="width:31%;background:var(--party-congress);"></div><div class="stacked-seg" style="width:35%;background:var(--party-bjp);"></div><div class="stacked-seg" style="width:18%;background:var(--party-brs);"></div><div class="stacked-seg" style="width:10%;background:var(--party-others);"></div><div class="stacked-seg" style="width:6%;background:var(--party-undecided);"></div></div></div>
+        <div class="stacked-row"><span class="stacked-label">Khammam</span><div class="stacked-track"><div class="stacked-seg" style="width:46%;background:var(--party-congress);"></div><div class="stacked-seg" style="width:16%;background:var(--party-bjp);"></div><div class="stacked-seg" style="width:35%;background:var(--party-brs);"></div><div class="stacked-seg" style="width:2%;background:var(--party-others);"></div><div class="stacked-seg" style="width:1%;background:var(--party-undecided);"></div></div></div>
+        <div class="stacked-row"><span class="stacked-label">Medchal</span><div class="stacked-track"><div class="stacked-seg" style="width:38%;background:var(--party-congress);"></div><div class="stacked-seg" style="width:30%;background:var(--party-bjp);"></div><div class="stacked-seg" style="width:26%;background:var(--party-brs);"></div><div class="stacked-seg" style="width:4%;background:var(--party-others);"></div><div class="stacked-seg" style="width:2%;background:var(--party-undecided);"></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filter chips -->
+  <div class="chip-row">
+    <span class="chip active">District: Rangareddy ✕</span>
+    <span class="chip">Party</span>
+    <span class="chip">Gender</span>
+    <span class="chip">Caste</span>
+    <span class="chip">Assembly</span>
+    <span class="chip">Surveyor</span>
+    <span class="chip">Survey</span>
+  </div>
+
+  <!-- Live intake feed (Review section) -->
+  <div style="margin-top:var(--sp-5);">
+    <h3 style="font-size:var(--fs-md);font-weight:var(--fw-bold);margin-bottom:var(--sp-3);">Live Intake — Review Queue</h3>
+    <div class="chip-row" style="margin-bottom:var(--sp-3);">
+      <span class="chip active">Pending</span>
+      <span class="chip">Confirmed</span>
+      <span class="chip">Rejected</span>
+      <span class="chip">All</span>
+    </div>
+
+    <div class="feed-card">
+      <div class="fc-head">
+        <div class="fc-surveyor"><div class="fc-avatar">RK</div><div><div class="fc-name">Rajesh Kumar</div><div class="fc-loc">Rangareddy · Maheshwaram AC</div></div></div>
+        <span class="fc-time">2 min ago</span>
+      </div>
+      <div class="fc-pills">
+        <span class="fc-pill"><span class="dot" style="background:var(--party-congress)"></span>Congress</span>
+        <span class="fc-pill"><span class="dot" style="background:#16a34a"></span>Positive</span>
+        <span class="fc-pill">Roads</span>
+        <span class="fc-pill">Female · 35</span>
+      </div>
+      <div class="fc-foot">
+        <div class="fc-score"><div class="score-bar"><div class="score-fill" style="width:92%;background:var(--ok)"></div></div><span class="score-label">92% complete</span></div>
+        <span class="fc-status confirmed">Confirmed</span>
+      </div>
+    </div>
+
+    <div class="feed-card" style="opacity:0.6;border-style:dashed;">
+      <div class="fc-head">
+        <div class="fc-surveyor"><div class="fc-avatar">SP</div><div><div class="fc-name">Sunita Patel</div><div class="fc-loc">Medchal · Kukatpally AC</div></div></div>
+        <span class="fc-time">syncing…</span>
+      </div>
+      <div class="fc-pills">
+        <span class="fc-pill"><span class="dot" style="background:var(--party-bjp)"></span>BJP</span>
+        <span class="fc-pill"><span class="dot" style="background:#f59e0b"></span>Neutral</span>
+        <span class="fc-pill">Water supply</span>
+      </div>
+      <div class="fc-foot">
+        <div class="fc-score"><div class="score-bar"><div class="score-fill" style="width:78%;background:var(--warn)"></div></div><span class="score-label">78% complete</span></div>
+        <span class="fc-status pending">Pending</span>
+      </div>
+      <div class="fc-actions">
+        <button class="fc-btn primary">Confirm</button>
+        <button class="fc-btn">Edit</button>
+        <button class="fc-btn danger">Reject</button>
+      </div>
+    </div>
+
+    <div class="feed-card" style="border-color:var(--bad);background:var(--bad-bg);">
+      <div class="fc-head">
+        <div class="fc-surveyor"><div class="fc-avatar">LM</div><div><div class="fc-name">Lakshmi Menon</div><div class="fc-loc">Nizamabad · Arniyal AC</div></div></div>
+        <span class="fc-time">8 min ago</span>
+      </div>
+      <div class="fc-pills">
+        <span class="fc-pill"><span class="dot" style="background:var(--party-congress)"></span>Congress</span>
+        <span class="fc-pill"><span class="dot" style="background:#16a34a"></span>Positive</span>
+        <span class="fc-pill">Healthcare</span>
+      </div>
+      <div class="fc-foot">
+        <div class="fc-score"><div class="score-bar"><div class="score-fill" style="width:45%;background:var(--bad)"></div></div><span class="score-label">45% — missing photo</span></div>
+        <span class="fc-status rejected">Rejected</span>
+      </div>
+      <div class="fc-actions">
+        <button class="fc-btn primary">Edit</button>
+        <button class="fc-btn danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Surveyor scorecard table -->
+  <div style="margin-top:var(--sp-5);">
+    <h3 style="font-size:var(--fs-md);font-weight:var(--fw-bold);margin-bottom:var(--sp-3);">Surveyors & Targets</h3>
+    <div style="background:var(--surface);border:1px solid var(--surface-hover);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-sm);">
+      <table class="data-table">
+        <thead><tr><th>Surveyor</th><th>Done</th><th>Target</th><th>Progress</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          <tr><td><strong>Rajesh Kumar</strong></td><td>14</td><td>20</td><td><div style="width:100px;height:6px;background:var(--surface-alt);border-radius:3px;overflow:hidden;"><div style="width:70%;height:100%;background:var(--ok);border-radius:3px;"></div></div></td><td><span class="act-status confirmed">Active</span></td><td><button class="pc-btn" style="font-size:10px;padding:2px 8px;">Profile</button></td></tr>
+          <tr><td><strong>Sunita Patel</strong></td><td>11</td><td>20</td><td><div style="width:100px;height:6px;background:var(--surface-alt);border-radius:3px;overflow:hidden;"><div style="width:55%;height:100%;background:var(--ok);border-radius:3px;"></div></div></td><td><span class="act-status confirmed">Active</span></td><td><button class="pc-btn" style="font-size:10px;padding:2px 8px;">Profile</button></td></tr>
+          <tr><td><strong>Amit Kumar</strong></td><td>18</td><td>20</td><td><div style="width:100px;height:6px;background:var(--surface-alt);border-radius:3px;overflow:hidden;"><div style="width:90%;height:100%;background:#22c55e;border-radius:3px;"></div></div></td><td><span class="act-status confirmed">Active</span></td><td><button class="pc-btn" style="font-size:10px;padding:2px 8px;">Profile</button></td></tr>
+          <tr><td><strong>Venu Rao</strong></td><td>8</td><td>20</td><td><div style="width:100px;height:6px;background:var(--surface-alt);border-radius:3px;overflow:hidden;"><div style="width:40%;height:100%;background:var(--warn);border-radius:3px;"></div></div></td><td><span class="act-status pending">Behind</span></td><td><button class="pc-btn" style="font-size:10px;padding:2px 8px;">Profile</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- admin-main -->
+</div><!-- admin-wrap -->
+</div><!-- panel-admin -->
+
+<script>
+  function showRole(role) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('panel-' + role).classList.add('active');
+    event.target.classList.add('active');
+  }
+</script>
+</body>
+</html>

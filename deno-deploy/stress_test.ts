@@ -22,7 +22,7 @@ async function one(
   path: string,
   opts: { body?: unknown; headers?: Record<string, string> } = {},
 ): Promise<Hit> {
-  const headers: Record<string, string> = { Accept: "application/json", ...(opts.headers || {}) };
+  const headers: Record<string, string> = { Accept: "application/json", ...opts.headers };
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
   const t0 = performance.now();
   let res: Response;

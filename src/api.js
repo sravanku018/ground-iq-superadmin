@@ -928,7 +928,6 @@ export const OPTIONS = {
 export const emptyForm = (agentName = '') => ({
   submittedBy: agentName || '',
   respondentName: '',
-  phone: '',
   district: '',
   constituency: '',
   mpConstituency: '',

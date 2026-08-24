@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PermissionLockCard — Read-Only Account</title>
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-family: var(--font); }
+  body { background: var(--bg); color: var(--ink); min-height: 100vh; padding: var(--sp-6); display: flex; justify-content: center; gap: var(--sp-5); flex-wrap: wrap; }
+
+  .page-head { width: 100%; max-width: 800px; margin: 0 auto var(--sp-5); }
+  .page-head h1 { font-size: var(--fs-xl); font-weight: var(--fw-bold); }
+  .page-head p { font-size: var(--fs-sm); color: var(--ink-muted); margin-top: 2px; }
+  .page-head .tags { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .page-head .tag { font-size: 10px; font-weight: var(--fw-bold); padding: 3px 8px; border-radius: var(--r-sm); background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border); }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--surface-hover);
+    border-radius: var(--r-lg);
+    padding: var(--sp-5);
+    box-shadow: var(--shadow-sm);
+    max-width: 420px;
+    width: 100%;
+  }
+  .card h3 {
+    font-size: var(--fs-md); font-weight: var(--fw-bold); margin-bottom: var(--sp-3);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card .csub { font-size: var(--fs-xs); color: var(--ink-muted); margin-bottom: var(--sp-4); }
+
+  /* Identity */
+  .id-row { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-4); background: var(--surface-alt); border-radius: var(--r-lg); margin-bottom: var(--sp-4); }
+  .id-avatar { width: 52px; height: 52px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: var(--fs-lg); font-weight: var(--fw-bold); flex-shrink: 0; position: relative; }
+  .id-avatar .lock { position: absolute; bottom: -2px; right: -2px; width: 20px; height: 20px; border-radius: 50%; background: var(--ok); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; border: 2px solid var(--surface-alt); }
+  .id-info .id-name { font-size: var(--fs-base); font-weight: var(--fw-bold); display: flex; align-items: center; gap: 5px; }
+  .id-info .id-sub { font-size: var(--fs-xs); color: var(--ink-muted); margin-top: 1px; }
+
+  /* Power grid — all read-only, no toggles */
+  .powers { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: var(--sp-4); }
+  .power {
+    font-size: var(--fs-xs); padding: 8px 10px; border-radius: var(--r-sm);
+    border: 1px solid var(--surface-hover); color: var(--ink-faint);
+    display: flex; align-items: center; gap: 6px;
+    position: relative;
+  }
+  .power.granted {
+    border-color: var(--accent-border); background: var(--accent-bg);
+    color: var(--accent); font-weight: var(--fw-bold);
+  }
+  .power .chk { width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid currentColor; display: flex; align-items: center; justify-content: center; font-size: 9px; flex-shrink: 0; }
+  .power.granted .chk { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .power .lock-icon { margin-left: auto; font-size: 10px; opacity: 0.5; }
+
+  /* Caps */
+  .caps { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--sp-4); }
+  .cap { font-size: var(--fs-xs); padding: 4px 10px; border-radius: var(--r-pill); background: var(--surface-alt); color: var(--ink-secondary); }
+  .cap b { color: var(--ink); }
+
+  /* Read-only notice */
+  .ro-notice {
+    font-size: var(--fs-xs); color: var(--ink-muted); background: var(--surface-alt);
+    border: 1px solid var(--surface-hover); border-radius: var(--r-md);
+    padding: 10px 12px; display: flex; gap: 8px; align-items: flex-start;
+  }
+  .ro-notice .ico { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+
+  /* Phone frame — field app profile */
+  .phone {
+    width: 375px; min-height: 640px; background: var(--surface);
+    border-radius: 32px; box-shadow: var(--shadow-lg), 0 0 0 1px rgba(0,0,0,0.06);
+    overflow: hidden; display: flex; flex-direction: column; flex-shrink: 0;
+  }
+  .phone-status { height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 var(--sp-5); font-size: var(--fs-xs); font-weight: var(--fw-bold); }
+  .phone-status .time { font-size: 15px; }
+  .phone-nav { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-2) var(--sp-5) var(--sp-3); border-bottom: 1px solid var(--surface-alt); }
+  .phone-nav h2 { font-size: var(--fs-lg); font-weight: var(--fw-bold); }
+  .phone-body { flex: 1; overflow-y: auto; padding: var(--sp-4) var(--sp-5); }
+  .phone-tabs { display: flex; border-top: 1px solid var(--surface-alt); background: var(--surface); }
+  .phone-tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: var(--sp-2) 0; font-size: 10px; color: var(--ink-muted); border: none; background: none; cursor: pointer; }
+  .phone-tab.active { color: var(--accent); font-weight: var(--fw-bold); }
+  .phone-tab .ico { width: 20px; height: 20px; border-radius: 4px; background: currentColor; opacity: 0.15; }
+  .phone-tab.active .ico { opacity: 1; }
+
+  /* Profile card inside phone */
+  .prof-avatar { width: 76px; height: 76px; border-radius: 50%; background: var(--accent-bg); border: 2px solid var(--accent-border); margin: 0 auto var(--sp-2); display: flex; align-items: center; justify-content: center; font-size: var(--fs-xl); font-weight: var(--fw-bold); color: var(--accent); position: relative; }
+  .prof-avatar .lock { position: absolute; bottom: -2px; right: -2px; width: 24px; height: 24px; border-radius: 50%; background: var(--ok); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; border: 2px solid var(--surface); }
+  .prof-name { text-align: center; font-size: var(--fs-lg); font-weight: var(--fw-bold); margin-bottom: var(--sp-1); }
+  .prof-user { text-align: center; font-size: var(--fs-sm); color: var(--ink-muted); margin-bottom: var(--sp-3); }
+  .prof-badges { display: flex; gap: var(--sp-2); justify-content: center; margin-bottom: var(--sp-4); }
+  .prof-badge { font-size: var(--fs-xs); font-weight: var(--fw-bold); padding: 4px 14px; border-radius: var(--r-pill); }
+  .prof-badge.key { background: rgba(0,229,153,0.12); border: 1px solid rgba(0,229,153,0.3); color: #059669; }
+  .prof-badge.verified { background: var(--accent-bg); border: 1px solid var(--accent-border); color: var(--accent); }
+
+  .id-card { padding: var(--sp-3); border: 1px solid var(--surface-hover); border-radius: var(--r-md); margin-bottom: var(--sp-3); }
+  .id-card h4 { font-size: var(--fs-sm); font-weight: var(--fw-bold); display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .id-card p { font-size: var(--fs-xs); color: var(--ink-muted); }
+  .id-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .id-tile { aspect-ratio: 8/5; background: var(--surface-alt); border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; font-size: var(--fs-xs); color: var(--ink-faint); border: 1px solid var(--surface-hover); }
+
+  /* Notes */
+  .notes { width: 100%; max-width: 860px; margin: var(--sp-5) auto 0; padding: var(--sp-4); background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); }
+  .notes h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); margin-bottom: var(--sp-3); }
+  .notes .principle { display: flex; gap: 8px; margin-bottom: var(--sp-3); font-size: var(--fs-sm); color: var(--ink-secondary); line-height: 1.5; }
+  .notes .principle .tag { background: var(--accent-bg); color: var(--accent); border-radius: var(--r-sm); padding: 1px 7px; font-size: 10px; font-weight: var(--fw-bold); white-space: nowrap; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>PermissionLockCard — Read-Only Account</h1>
+  <p>Client Admin Account page: powers granted by Super Admin, shown read-only. Apple: ruthless subtraction — nothing to edit here, nothing to accidental-break.</p>
+  <div class="tags">
+    <span class="tag">[A] SUBTRACTIVE</span>
+    <span class="tag">[A] DEFERENCE</span>
+    <span class="tag">[G] ONE SYSTEM</span>
+    <span class="tag">powers.js powersFromUser()</span>
+  </div>
+</div>
+
+<!-- ═══ Client Admin Account Card ═══ -->
+<div class="card">
+  <h3>🔒 Account · Priya N</h3>
+  <div class="csub">Powers granted by Super Admin. Read-only — contact Super Admin to change.</div>
+
+  <div class="id-row">
+    <div class="id-avatar">PN<span class="lock">🔒</span></div>
+    <div class="id-info">
+      <div class="id-name">Priya N
+        <svg width="14" height="14" viewBox="0 0 22 22"><path fill="#1D9BF0" d="M11 2l2.2 1.6 2.7-.2 1 2.5 2.3 1.4-.6 2.7.6 2.7-2.3 1.4-1 2.5-2.7-.2L11 20l-2.2-1.6-2.7.2-1-2.5-2.3-1.4.6-2.7-.6-2.7 2.3-1.4 1-2.5 2.7.2z"/><path fill="#fff" d="M9.6 13.4l-2-2 1-1 1 1 3.2-3.2 1 1z"/></svg>
+      </div>
+      <div class="id-sub">@priya · Acme Research · Client Admin</div>
+    </div>
+  </div>
+
+  <div style="font-size:11px;font-weight:var(--fw-bold);color:var(--ink-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">Granted Powers</div>
+  <div class="powers">
+    <span class="power granted"><span class="chk">✓</span>🗂 Create surveys<span class="lock-icon">🔒</span></span>
+    <span class="power granted"><span class="chk">✓</span>✓ Data review<span class="lock-icon">🔒</span></span>
+    <span class="power granted"><span class="chk">✓</span>🛡 Verify surveyors<span class="lock-icon">🔒</span></span>
+    <span class="power granted"><span class="chk">✓</span>📞 Proof validation<span class="lock-icon">🔒</span></span>
+    <span class="power"><span class="chk"></span>📚 Question bank<span class="lock-icon">🔒</span></span>
+    <span class="power"><span class="chk"></span>✎ Web survey<span class="lock-icon">🔒</span></span>
+  </div>
+
+  <div style="font-size:11px;font-weight:var(--fw-bold);color:var(--ink-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">Caps (set by Super Admin)</div>
+  <div class="caps">
+    <span class="cap">surveys <b>3 / ∞</b></span>
+    <span class="cap">surveyors <b>24 / 30</b></span>
+    <span class="cap">records <b>4,089 / 6,000</b></span>
+  </div>
+
+  <div class="ro-notice">
+    <span class="ico">ℹ️</span>
+    <span>This card is <strong>read-only</strong>. Powers and caps are set by Super Admin. To request changes, contact your platform administrator.</span>
+  </div>
+</div>
+
+<!-- ═══ Surveyor Profile (field app) ═══ -->
+<div class="phone">
+  <div class="phone-status"><span class="time">9:41</span><span>●●●●○ WiFi 🔋</span></div>
+  <div class="phone-nav"><h2>Profile</h2></div>
+  <div class="phone-body">
+    <div class="prof-avatar">RK<span class="lock">🔒</span></div>
+    <div class="prof-name">Rajesh Kumar ✓</div>
+    <div class="prof-user">@rajesh01</div>
+    <div class="prof-badges">
+      <span class="prof-badge key">Key ID: GROUND-KEY</span>
+      <span class="prof-badge verified">Verified ✓</span>
+    </div>
+
+    <div class="id-card">
+      <h4>📞 Phone <span style="font-size:10px;color:var(--ok)">🔒</span></h4>
+      <p>+91 98480 22910 · verified · cannot be changed</p>
+    </div>
+    <div class="id-card">
+      <h4>🪪 Aadhaar Identity <span style="font-size:10px;color:var(--ok)">🔒</span></h4>
+      <p>Verified by Client Admin · documents locked</p>
+      <div class="id-tiles">
+        <div class="id-tile">Front ✓</div>
+        <div class="id-tile">Back ✓</div>
+      </div>
+    </div>
+
+    <div style="background:var(--accent-bg);border:1px solid var(--accent-border);border-radius:var(--r-lg);padding:var(--sp-3);margin-top:var(--sp-3);display:flex;align-items:center;gap:var(--sp-3);">
+      <span style="font-size:20px;">🛡</span>
+      <div>
+        <div style="font-size:var(--fs-sm);font-weight:var(--fw-bold);">Identity feeds Trust</div>
+        <div style="font-size:var(--fs-xs);color:var(--ink-muted);">Verified surveyor + validated proof = 20 of 100 Trust Score points.</div>
+      </div>
+    </div>
+  </div>
+  <div class="phone-tabs">
+    <button class="phone-tab"><div class="ico"></div>Home</button>
+    <button class="phone-tab"><div class="ico"></div>Collect</button>
+    <button class="phone-tab"><div class="ico"></div>Pending</button>
+    <button class="phone-tab active"><div class="ico"></div>Profile</button>
+    <button class="phone-tab"><div class="ico"></div>Settings</button>
+  </div>
+</div>
+
+<!-- Notes -->
+<div class="notes">
+  <h3>Doctrine: Ruthless Subtraction</h3>
+  <div class="principle">
+    <span class="tag">[A] SUBTRACTIVE</span>
+    <span>Account page is read-only. No edit buttons, no save forms, no accidental breakage. "Deciding what not to do is as important as what to do." The only action is viewing.</span>
+  </div>
+  <div class="principle">
+    <span class="tag">[A] DEFERENCE</span>
+    <span>UI recedes — lock icons, muted text, no CTAs. The content (your powers, your caps) dominates. "Get out of the content's way."</span>
+  </div>
+  <div class="principle">
+    <span class="tag">[G] ONE SYSTEM</span>
+    <span>powers.js powersFromUser() derives the same power list for Client Admin Account, Super Admin governance, and field app profile. One canonical matrix — no drift.</span>
+  </div>
+</div>
+</body>
+</html>

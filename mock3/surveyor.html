@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Mock 3 — Surveyor Surface (Apple)</title>
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  /* ── Reset ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-family: var(--font); }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: var(--sp-6);
+  }
+
+  /* ── Phone frame ── */
+  .phone {
+    width: 375px;
+    min-height: 720px;
+    background: var(--surface);
+    border-radius: 32px;
+    box-shadow: var(--shadow-lg), 0 0 0 1px rgba(0,0,0,0.06);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* ── Status bar ── */
+  .status-bar {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--sp-5);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+    color: var(--ink);
+    background: var(--surface);
+  }
+  .status-bar .time { font-size: 15px; font-weight: 600; }
+
+  /* ── Nav bar (Apple: minimal) ── */
+  .nav-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--sp-2) var(--sp-5) var(--sp-3);
+    border-bottom: 1px solid var(--surface-alt);
+  }
+  .nav-bar h1 {
+    font-size: var(--fs-lg);
+    font-weight: var(--fw-bold);
+  }
+  .nav-bar .pill-count {
+    background: var(--accent-bg);
+    color: var(--accent);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--r-pill);
+    padding: 3px 10px;
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+  }
+
+  /* ── Progress ring (Apple: craft feel) ── */
+  .progress-strip {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-5);
+    background: var(--surface-alt);
+  }
+  .progress-ring {
+    width: 40px;
+    height: 40px;
+    position: relative;
+  }
+  .progress-ring svg {
+    transform: rotate(-90deg);
+    width: 40px;
+    height: 40px;
+  }
+  .progress-ring .track {
+    fill: none;
+    stroke: var(--surface-hover);
+    stroke-width: 4;
+  }
+  .progress-ring .fill {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-dasharray: 100.53;
+    stroke-dashoffset: 30.16;
+    transition: stroke-dashoffset var(--dur-slow) var(--ease-out);
+  }
+  .progress-ring .label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+    color: var(--accent);
+  }
+  .progress-text {
+    font-size: var(--fs-sm);
+    color: var(--ink-secondary);
+    line-height: 1.4;
+  }
+  .progress-text strong {
+    color: var(--ink);
+    font-weight: var(--fw-bold);
+  }
+
+  /* ── Question card (Apple: elevation, swipe) ── */
+  .card-stack {
+    flex: 1;
+    padding: var(--sp-4) var(--sp-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    overflow-y: auto;
+  }
+  .q-card {
+    background: var(--surface);
+    border: 1px solid var(--surface-hover);
+    border-radius: var(--r-lg);
+    padding: var(--sp-5);
+    box-shadow: var(--shadow-md);
+    transition: transform var(--dur-normal) var(--ease-out),
+                box-shadow var(--dur-normal) var(--ease-out);
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .q-card:active {
+    transform: scale(0.98);
+    box-shadow: var(--shadow-sm);
+  }
+  .q-card .q-number {
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: var(--sp-2);
+  }
+  .q-card .q-text {
+    font-size: var(--fs-md);
+    font-weight: var(--fw-bold);
+    color: var(--ink);
+    margin-bottom: var(--sp-4);
+    line-height: 1.4;
+  }
+
+  /* ── Option buttons (Apple: large tap targets, haptic feel) ── */
+  .options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+  .opt-btn {
+    width: 100%;
+    min-height: 48px;
+    border: 2px solid var(--surface-hover);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    font-size: var(--fs-base);
+    font-weight: var(--fw-medium);
+    color: var(--ink);
+    cursor: pointer;
+    transition: all var(--dur-fast) var(--ease-out);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 0 var(--sp-4);
+  }
+  .opt-btn:active {
+    transform: scale(0.96);
+  }
+  .opt-btn.selected {
+    border-color: var(--accent);
+    background: var(--accent-bg);
+    color: var(--accent);
+    font-weight: var(--fw-bold);
+  }
+  /* Party-colored option buttons */
+  .opt-btn.party-congress { border-color: var(--party-congress); }
+  .opt-btn.party-congress.selected { background: var(--party-congress); color: #fff; }
+  .opt-btn.party-bjp { border-color: var(--party-bjp); }
+  .opt-btn.party-bjp.selected { background: var(--party-bjp); color: #fff; }
+  .opt-btn.party-brs { border-color: var(--party-brs); }
+  .opt-btn.party-brs.selected { background: var(--party-brs); color: #fff; }
+
+  /* ── Sentiment buttons (Apple: color-coded, large) ── */
+  .sentiment-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: var(--sp-2);
+  }
+  .sent-btn {
+    min-height: 48px;
+    border-radius: var(--r-md);
+    border: 2px solid transparent;
+    font-size: var(--fs-base);
+    font-weight: var(--fw-bold);
+    cursor: pointer;
+    transition: all var(--dur-fast) var(--ease-out);
+  }
+  .sent-btn:active { transform: scale(0.95); }
+  .sent-btn.neg { background: #fef2f2; color: #ef4444; border-color: #fecaca; }
+  .sent-btn.neu { background: #fffbeb; color: #f59e0b; border-color: #fde68a; }
+  .sent-btn.pos { background: #f0fdf4; color: #16a34a; border-color: #bbf7d0; }
+  .sent-btn.selected.neg { background: #ef4444; color: #fff; }
+  .sent-btn.selected.neu { background: #f59e0b; color: #fff; }
+  .sent-btn.selected.pos { background: #16a34a; color: #fff; }
+
+  /* ── Bottom bar (Apple: minimal, one action) ── */
+  .bottom-bar {
+    padding: var(--sp-3) var(--sp-5) var(--sp-5);
+    border-top: 1px solid var(--surface-alt);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .bottom-bar .skip {
+    font-size: var(--fs-sm);
+    color: var(--ink-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--r-sm);
+    transition: background var(--dur-fast);
+  }
+  .bottom-bar .skip:hover { background: var(--surface-alt); }
+  .next-btn {
+    min-height: 44px;
+    padding: 0 var(--sp-6);
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--r-pill);
+    font-size: var(--fs-base);
+    font-weight: var(--fw-bold);
+    cursor: pointer;
+    transition: all var(--dur-fast) var(--ease-out);
+    box-shadow: 0 2px 8px rgba(29,111,224,0.3);
+  }
+  .next-btn:active { transform: scale(0.96); }
+  .next-btn:disabled {
+    background: var(--surface-hover);
+    color: var(--ink-muted);
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+
+  /* ── Swipe hint (Apple: animated gesture guide) ── */
+  .swipe-hint {
+    text-align: center;
+    font-size: var(--fs-xs);
+    color: var(--ink-faint);
+    padding: var(--sp-1) 0 var(--sp-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .swipe-hint .arrow {
+    display: inline-block;
+    animation: swipeArrow 2s ease-in-out infinite;
+  }
+  @keyframes swipeArrow {
+    0%, 100% { transform: translateX(0); opacity: 0.4; }
+    50% { transform: translateX(6px); opacity: 1; }
+  }
+
+  /* ── Offline chip (Google: built for low-end) ── */
+  .offline-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-weight: var(--fw-bold);
+    padding: 3px 8px;
+    border-radius: var(--r-pill);
+    background: var(--ok-bg);
+    color: var(--ok);
+    border: 1px solid #bbf7d0;
+  }
+  .offline-chip .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--ok);
+  }
+  .offline-chip.offline {
+    background: var(--warn-bg);
+    color: var(--warn);
+    border-color: #fde68a;
+  }
+  .offline-chip.offline .dot { background: var(--warn); }
+
+  /* ── Lock indicators (Apple: craft feel) ── */
+  .lock-strip {
+    display: flex;
+    gap: 6px;
+    padding: 0 var(--sp-5) var(--sp-2);
+  }
+  .lock-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: var(--fw-bold);
+    padding: 3px 8px;
+    border-radius: var(--r-pill);
+  }
+  .lock-pill.locked {
+    background: var(--ok-bg);
+    color: var(--ok);
+  }
+  .lock-pill.unlocked {
+    background: var(--surface-alt);
+    color: var(--ink-faint);
+  }
+  .lock-pill .ico { font-size: 10px; }
+
+  /* ── Haptic ripple (Apple: physicality) ── */
+  .opt-btn, .sent-btn {
+    position: relative;
+    overflow: hidden;
+  }
+  .ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(29,111,224,0.15);
+    transform: scale(0);
+    animation: rippleAnim 0.4s ease-out forwards;
+    pointer-events: none;
+  }
+  @keyframes rippleAnim {
+    to { transform: scale(4); opacity: 0; }
+  }
+
+  /* ── Nav tabs (bottom) ── */
+  .tab-bar {
+    display: flex;
+    border-top: 1px solid var(--surface-alt);
+    background: var(--surface);
+  }
+  .tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: var(--sp-2) 0;
+    font-size: var(--fs-xs);
+    color: var(--ink-muted);
+    border: none;
+    background: none;
+    cursor: pointer;
+    transition: color var(--dur-fast);
+  }
+  .tab-item.active { color: var(--accent); }
+  .tab-item .tab-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    background: currentColor;
+    opacity: 0.2;
+  }
+  .tab-item.active .tab-icon { opacity: 1; }
+
+  /* ── Design notes panel ── */
+  .design-notes {
+    width: 375px;
+    margin-left: var(--sp-5);
+    padding: var(--sp-5);
+    background: var(--surface);
+    border: 1px solid var(--surface-hover);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-sm);
+    align-self: flex-start;
+    position: sticky;
+    top: var(--sp-6);
+  }
+  .design-notes h3 {
+    font-size: var(--fs-md);
+    font-weight: var(--fw-bold);
+    margin-bottom: var(--sp-3);
+    color: var(--ink);
+  }
+  .design-notes .principle {
+    display: flex;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-3);
+    font-size: var(--fs-sm);
+    color: var(--ink-secondary);
+    line-height: 1.5;
+  }
+  .design-notes .principle .tag {
+    background: var(--accent-bg);
+    color: var(--accent);
+    border-radius: var(--r-sm);
+    padding: 1px 6px;
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .design-notes ul {
+    margin: var(--sp-2) 0 0 var(--sp-4);
+    font-size: var(--fs-sm);
+    color: var(--ink-secondary);
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════ Phone frame ═══════ -->
+<div class="phone">
+  <div class="status-bar">
+    <span class="time">9:41</span>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="offline-chip"><span class="dot"></span>Online</span>
+      <span>●●●●○ WiFi 🔋</span>
+    </div>
+  </div>
+
+  <div class="nav-bar">
+    <h1>Survey</h1>
+    <span class="pill-count">3 / 10</span>
+  </div>
+
+  <div class="progress-strip">
+    <div class="progress-ring">
+      <svg viewBox="0 0 36 36">
+        <circle class="track" cx="18" cy="18" r="16" />
+        <circle class="fill" cx="18" cy="18" r="16" />
+      </svg>
+      <span class="label">30%</span>
+    </div>
+    <div class="progress-text">
+      <strong>Question 3 of 10</strong><br />
+      Ward issues — what matters most here?
+    </div>
+  </div>
+
+  <!-- Lock strip (Apple: progressive disclosure) -->
+  <div class="lock-strip">
+    <span class="lock-pill locked"><span class="ico">📍</span> GPS ✓</span>
+    <span class="lock-pill locked"><span class="ico">📸</span> Photo ✓</span>
+    <span class="lock-pill unlocked"><span class="ico">🎙</span> Voice</span>
+  </div>
+
+  <div class="card-stack">
+    <div class="swipe-hint">
+      <span class="arrow">←</span> swipe to skip · tap to answer <span class="arrow">→</span>
+    </div>
+
+    <!-- Single card view: only current question visible -->
+    <div class="q-card" id="q1" style="display:block;">
+      <div class="q-number">Question 4</div>
+      <div class="q-text">Which party do you support?</div>
+      <div class="options">
+        <button class="opt-btn party-congress" onclick="select(this, 'q1')">Congress</button>
+        <button class="opt-btn party-bjp" onclick="select(this, 'q1')">BJP</button>
+        <button class="opt-btn party-brs" onclick="select(this, 'q1')">BRS</button>
+        <button class="opt-btn" onclick="select(this, 'q1')">Others</button>
+        <button class="opt-btn" onclick="select(this, 'q1')">Undecided</button>
+      </div>
+    </div>
+
+    <!-- Hidden cards: revealed on swipe -->
+    <div class="q-card" id="q2" style="display:none;">
+      <div class="q-number">Question 5</div>
+      <div class="q-text">How do you feel about local development?</div>
+      <div class="sentiment-row">
+        <button class="sent-btn neg" onclick="selectSent(this, 'q2')">👎 Negative</button>
+        <button class="sent-btn neu" onclick="selectSent(this, 'q2')">😐 Neutral</button>
+        <button class="sent-btn pos" onclick="selectSent(this, 'q2')">👍 Positive</button>
+      </div>
+    </div>
+
+    <div class="q-card" id="q3" style="display:none;">
+      <div class="q-number">Question 6</div>
+      <div class="q-text">What is the biggest issue in your ward?</div>
+      <div class="options">
+        <button class="opt-btn" onclick="select(this, 'q3')">Roads</button>
+        <button class="opt-btn" onclick="select(this, 'q3')">Water supply</button>
+        <button class="opt-btn" onclick="select(this, 'q3')">Drainage</button>
+        <button class="opt-btn" onclick="select(this, 'q3')">Electricity</button>
+        <button class="opt-btn" onclick="select(this, 'q3')">Garbage</button>
+        <button class="opt-btn" onclick="select(this, 'q3')">Healthcare</button>
+        <button class="opt-btn" onclick="select(this, 'q3')">Education</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-bar">
+    <button class="skip">Skip question</button>
+    <button class="next-btn" disabled>Next →</button>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-item active">
+      <div class="tab-icon"></div>
+      Survey
+    </button>
+    <button class="tab-item">
+      <div class="tab-icon"></div>
+      Pending
+    </button>
+    <button class="tab-item">
+      <div class="tab-icon"></div>
+      Map
+    </button>
+    <button class="tab-item">
+      <div class="tab-icon"></div>
+      Profile
+    </button>
+  </div>
+</div>
+
+<!-- ═══════ Design notes ═══════ -->
+<div class="design-notes">
+  <h3>Apple Principles Applied</h3>
+
+  <div class="principle">
+    <span class="tag">SUBTRACT</span>
+    <span>48px min tap targets. One question per card at a time. No back button — swipe is the gesture. "Deciding what not to do."</span>
+  </div>
+
+  <div class="principle">
+    <span class="tag">CRAFT FEEL</span>
+    <span>Elevation on cards (shadow-md), scale-down on press (0.96), progress ring with animated stroke-dashoffset, haptic ripple on tap. Motion = perceived speed.</span>
+  </div>
+
+  <div class="principle">
+    <span class="tag">DEFERENCE</span>
+    <span>UI recedes — white cards, muted chrome. Content (question text, options) dominates. "Get out of the content's way."</span>
+  </div>
+
+  <div class="principle">
+    <span class="tag">DEPTH</span>
+    <span>Single card fills the viewport. Animated card entrance (translateY + scale). Swipe gesture with 80px threshold. Progress strip = persistent context.</span>
+  </div>
+
+  <div class="principle">
+    <span class="tag">OFFLINE</span>
+    <span>Online/offline chip in status bar. GPS + Photo + Voice lock indicators. "Built for the low end" — works on cheap phone, bad network.</span>
+  </div>
+
+  <h3 style="margin-top: 16px;">Implementation Notes</h3>
+  <ul>
+    <li><strong>Party-colored buttons:</strong> Congress green, BJP saffron, BRS pink — validated palette from tokens.css</li>
+    <li><strong>Sentiment buttons:</strong> green/amber/red — instant visual categorization, zero cognitive load</li>
+    <li><strong>Swipe cards:</strong> native touch events; 80px threshold; card entrance animation on transition</li>
+    <li><strong>Offline-first:</strong> answers stored in IndexedDB; sync queue fires on reconnect; online/offline chip</li>
+    <li><strong>Haptics:</strong> navigator.vibrate(10) + CSS ripple on selection — the "physicality of a swipe"</li>
+    <li><strong>Lock strip:</strong> GPS ✓, Photo ✓, Voice — progressive disclosure of capture state</li>
+  </ul>
+</div>
+
+<script>
+  // ── Card navigation (Apple: one card at a time, swipe gesture) ──
+  const cards = document.querySelectorAll('.q-card');
+  let currentCard = 0;
+
+  function showCard(idx) {
+    cards.forEach((c, i) => {
+      c.style.display = i === idx ? 'block' : 'none';
+      if (i === idx) {
+        c.style.animation = 'cardIn 0.25s cubic-bezier(0.16,1,0.3,1)';
+      }
+    });
+    document.querySelector('.next-btn').disabled = true;
+    // Update progress
+    const pct = Math.round(((idx + 1) / cards.length) * 100);
+    document.querySelector('.progress-ring .label').textContent = pct + '%';
+    document.querySelector('.progress-text strong').textContent =
+      'Question ' + (idx + 4) + ' of 10';
+    document.querySelector('.pill-count').textContent = (idx + 1) + ' / 10';
+    // Update progress ring stroke
+    const circ = 100.53;
+    document.querySelector('.progress-ring .fill').style.strokeDashoffset =
+      circ - (circ * pct / 100);
+  }
+
+  // Next button advances card
+  document.querySelector('.next-btn').addEventListener('click', function() {
+    if (currentCard < cards.length - 1) {
+      currentCard++;
+      showCard(currentCard);
+    }
+  });
+
+  // Skip button advances card
+  document.querySelector('.skip').addEventListener('click', function() {
+    if (currentCard < cards.length - 1) {
+      currentCard++;
+      showCard(currentCard);
+    }
+  });
+
+  // ── Swipe gesture (Apple: physicality of a swipe) ──
+  let touchStartX = 0;
+  let touchStartY = 0;
+  const cardStack = document.querySelector('.card-stack');
+  cardStack.addEventListener('touchstart', function(e) {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  cardStack.addEventListener('touchend', function(e) {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy)) {
+      // Swipe left = skip, swipe right = next
+      if (currentCard < cards.length - 1) {
+        currentCard++;
+        showCard(currentCard);
+      }
+    }
+  }, { passive: true });
+
+  // ── Haptic ripple (Apple: craft in feel) ──
+  function addRipple(e, el) {
+    const rect = el.getBoundingClientRect();
+    const rip = document.createElement('span');
+    rip.className = 'ripple';
+    const size = Math.max(rect.width, rect.height);
+    rip.style.width = rip.style.height = size + 'px';
+    rip.style.left = (e.clientX - rect.left - size / 2) + 'px';
+    rip.style.top = (e.clientY - rect.top - size / 2) + 'px';
+    el.appendChild(rip);
+    rip.addEventListener('animationend', () => rip.remove());
+  }
+
+  function select(btn, qId) {
+    const card = document.getElementById(qId);
+    card.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    document.querySelector('.next-btn').disabled = false;
+    addRipple(event, btn);
+    if (navigator.vibrate) navigator.vibrate(10);
+  }
+  function selectSent(btn, qId) {
+    const card = document.getElementById(qId);
+    card.querySelectorAll('.sent-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    document.querySelector('.next-btn').disabled = false;
+    addRipple(event, btn);
+    if (navigator.vibrate) navigator.vibrate(10);
+  }
+
+  // Card entrance animation
+  const style = document.createElement('style');
+  style.textContent = '@keyframes cardIn { from { opacity:0; transform:translateY(12px) scale(0.97); } to { opacity:1; transform:none; } }';
+  document.head.appendChild(style);
+</script>
+</body>
+</html>

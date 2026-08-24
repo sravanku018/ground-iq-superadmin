@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>useRowAction — Optimistic Flip + Rollback</title>
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-family: var(--font); }
+  body { background: var(--bg); color: var(--ink); min-height: 100vh; padding: var(--sp-6); display: flex; justify-content: center; flex-wrap: wrap; gap: var(--sp-5); }
+
+  .page-head { width: 100%; max-width: 900px; margin: 0 auto var(--sp-5); }
+  .page-head h1 { font-size: var(--fs-xl); font-weight: var(--fw-bold); }
+  .page-head p { font-size: var(--fs-sm); color: var(--ink-muted); margin-top: 2px; }
+  .page-head .tags { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .page-head .tag { font-size: 10px; font-weight: var(--fw-bold); padding: 3px 8px; border-radius: var(--r-sm); background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border); }
+
+  .card { background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-sm); max-width: 440px; width: 100%; }
+  .card h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); margin-bottom: var(--sp-1); }
+  .card .csub { font-size: var(--fs-xs); color: var(--ink-muted); margin-bottom: var(--sp-4); }
+
+  /* Row */
+  .row { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--surface-hover); border-radius: var(--r-md); margin-bottom: var(--sp-3); background: var(--surface); transition: all var(--dur-normal) var(--ease-out); }
+  .row.confirmed { border-color: #bbf7d0; background: var(--ok-bg); }
+  .row.rejected { border-color: #fecaca; background: var(--bad-bg); }
+  .row.rolling-back { animation: rollback 0.4s ease-out; }
+  @keyframes rollback { 0%{box-shadow:0 0 0 3px var(--bad)} 100%{box-shadow:none} }
+
+  .row-id { font-size: var(--fs-sm); font-weight: var(--fw-bold); width: 40px; flex-shrink: 0; }
+  .row-info { flex: 1; min-width: 0; }
+  .row-name { font-size: var(--fs-sm); font-weight: var(--fw-bold); }
+  .row-meta { font-size: var(--fs-xs); color: var(--ink-muted); }
+  .row-status { font-size: var(--fs-xs); font-weight: var(--fw-bold); padding: 3px 9px; border-radius: var(--r-sm); flex-shrink: 0; }
+  .row-status.pending { background: var(--warn-bg); color: var(--warn); }
+  .row-status.confirmed { background: var(--ok-bg); color: var(--ok); }
+  .row-status.rejected { background: var(--bad-bg); color: var(--bad); }
+
+  .row-actions { display: flex; gap: 5px; flex-shrink: 0; }
+  .row-actions button { font-size: 10px; font-weight: var(--fw-bold); padding: 5px 10px; border-radius: var(--r-sm); border: 1px solid var(--surface-hover); background: var(--surface); color: var(--ink-secondary); cursor: pointer; transition: all var(--dur-fast); }
+  .row-actions button:active { transform: scale(0.95); }
+  .row-actions .ok { background: var(--ok); color: #fff; border-color: var(--ok); }
+  .row-actions .bad { color: var(--bad); border-color: #fecaca; }
+  .row-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Optimistic flash */
+  .flash-ok { animation: flashOk 0.5s ease-out; }
+  @keyframes flashOk { 0%{box-shadow:0 0 0 4px rgba(22,163,74,0.3)} 100%{box-shadow:none} }
+  .flash-bad { animation: flashBad 0.5s ease-out; }
+  @keyframes flashBad { 0%{box-shadow:0 0 0 4px rgba(239,68,68,0.3)} 100%{box-shadow:none} }
+
+  /* Timeline */
+  .tl { margin-top: var(--sp-3); padding: var(--sp-3); background: var(--surface-alt); border-radius: var(--r-md); font-size: var(--fs-xs); }
+  .tl-title { font-weight: var(--fw-bold); margin-bottom: 6px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .3px; }
+  .tl-row { display: flex; gap: 8px; margin-bottom: 4px; line-height: 1.5; }
+  .tl-time { color: var(--ink-faint); width: 40px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .tl-msg { color: var(--ink-secondary); }
+  .tl-msg.ok { color: var(--ok); font-weight: var(--fw-bold); }
+  .tl-msg.bad { color: var(--bad); font-weight: var(--fw-bold); }
+
+  /* Code */
+  .code { font-family: 'SF Mono', Menlo, monospace; font-size: 11px; background: var(--surface-alt); padding: var(--sp-3); border-radius: var(--r-sm); margin-top: var(--sp-3); line-height: 1.6; color: var(--ink-secondary); overflow-x: auto; white-space: pre; }
+  .code .kw { color: var(--accent); font-weight: 700; }
+  .code .cm { color: var(--ink-faint); }
+  .code .str { color: var(--ok); }
+  .code .fn { color: #7c3aed; }
+
+  .notes { width: 100%; max-width: 900px; margin: var(--sp-5) auto 0; padding: var(--sp-4); background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); }
+  .notes h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); margin-bottom: var(--sp-3); }
+  .notes .principle { display: flex; gap: 8px; margin-bottom: var(--sp-3); font-size: var(--fs-sm); color: var(--ink-secondary); line-height: 1.5; }
+  .notes .principle .tag { background: var(--accent-bg); color: var(--accent); border-radius: var(--r-sm); padding: 1px 7px; font-size: 10px; font-weight: var(--fw-bold); white-space: nowrap; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>useRowAction — Optimistic Flip + Rollback</h1>
+  <p>Confirm/Reject fires instantly. Card flips. Background sync. Rollback on failure. "Tap → instant, network catches up."</p>
+  <div class="tags">
+    <span class="tag">[T] OPTIMISTIC</span>
+    <span class="tag">[T] INSTANT</span>
+    <span class="tag">[T] ROLLBACK</span>
+  </div>
+</div>
+
+<!-- ═══ Scenario 1: Success ═══ -->
+<div class="card">
+  <h3>Scenario 1: Confirm — Success</h3>
+  <div class="csub">Tap Confirm → flip instantly → bg sync succeeds</div>
+
+  <div class="row" id="row-s1">
+    <span class="row-id">#62</span>
+    <div class="row-info">
+      <div class="row-name">Rajesh Kumar</div>
+      <div class="row-meta">Rangareddy · Trust 92%</div>
+    </div>
+    <span class="row-status pending" id="status-s1">Pending</span>
+    <div class="row-actions" id="actions-s1">
+      <button class="ok" onclick="confirmSuccess('s1')">✓ Confirm</button>
+      <button class="bad" onclick="rejectRow('s1')">✕ Reject</button>
+    </div>
+  </div>
+  <div class="tl" id="tl-s1">
+    <div class="tl-title">Event log</div>
+    <div class="tl-row"><span class="tl-time">T+0ms</span><span class="tl-msg">Tap Confirm</span></div>
+    <div class="tl-row"><span class="tl-time">T+1ms</span><span class="tl-msg ok">UI flips to Confirmed (optimistic)</span></div>
+    <div class="tl-row"><span class="tl-time">T+1ms</span><span class="tl-msg">POST /api/review/62 {status:"confirmed"} — background</span></div>
+    <div class="tl-row"><span class="tl-time">T+800ms</span><span class="tl-msg ok">Server 200 OK — synced ✓</span></div>
+  </div>
+</div>
+
+<!-- ═══ Scenario 2: Rollback ═══ -->
+<div class="card">
+  <h3>Scenario 2: Confirm — Rollback</h3>
+  <div class="csub">Tap Confirm → flip instantly → bg sync FAILS → rollback to Pending</div>
+
+  <div class="row" id="row-s2">
+    <span class="row-id">#58</span>
+    <div class="row-info">
+      <div class="row-name">Lakshmi Menon</div>
+      <div class="row-meta">Nizamabad · Trust 67%</div>
+    </div>
+    <span class="row-status pending" id="status-s2">Pending</span>
+    <div class="row-actions" id="actions-s2">
+      <button class="ok" onclick="confirmRollback('s2')">✓ Confirm</button>
+      <button class="bad" onclick="rejectRow('s2')">✕ Reject</button>
+    </div>
+  </div>
+  <div class="tl" id="tl-s2">
+    <div class="tl-title">Event log</div>
+    <div class="tl-row"><span class="tl-time">T+0ms</span><span class="tl-msg">Tap Confirm</span></div>
+    <div class="tl-row"><span class="tl-time">T+1ms</span><span class="tl-msg ok">UI flips to Confirmed (optimistic)</span></div>
+    <div class="tl-row"><span class="tl-time">T+1ms</span><span class="tl-msg">POST /api/review/58 {status:"confirmed"} — background</span></div>
+    <div class="tl-row"><span class="tl-time">T+1.2s</span><span class="tl-msg bad">Server 500 — rollback!</span></div>
+    <div class="tl-row"><span class="tl-time">T+1.2s</span><span class="tl-msg bad">UI reverts to Pending. Toast: "Sync failed"</span></div>
+  </div>
+</div>
+
+<!-- ═══ Scenario 3: Reject ═══ -->
+<div class="card">
+  <h3>Scenario 3: Reject — Success</h3>
+  <div class="csub">Tap Reject → flip instantly → bg sync succeeds</div>
+
+  <div class="row" id="row-s3">
+    <span class="row-id">#57</span>
+    <div class="row-info">
+      <div class="row-name">Unknown Surveyor</div>
+      <div class="row-meta">Missing photo · Trust 45%</div>
+    </div>
+    <span class="row-status pending" id="status-s3">Pending</span>
+    <div class="row-actions" id="actions-s3">
+      <button class="ok" onclick="confirmRow('s3')">✓ Confirm</button>
+      <button class="bad" onclick="rejectSuccess('s3')">✕ Reject</button>
+    </div>
+  </div>
+  <div class="tl" id="tl-s3">
+    <div class="tl-title">Event log</div>
+    <div class="tl-row"><span class="tl-time">T+0ms</span><span class="tl-msg">Tap Reject</span></div>
+    <div class="tl-row"><span class="tl-time">T+1ms</span><span class="tl-msg bad">UI flips to Rejected (optimistic)</span></div>
+    <div class="tl-row"><span class="tl-time">T+1ms</span><span class="tl-msg">POST /api/review/57 {status:"rejected"} — background</span></div>
+    <div class="tl-row"><span class="tl-time">T+600ms</span><span class="tl-msg ok">Server 200 OK — synced ✓</span></div>
+  </div>
+</div>
+
+<!-- ═══ Implementation ═══ -->
+<div class="card" style="max-width:900px;">
+  <h3>Implementation Pattern</h3>
+  <div class="csub">useRowAction hook — optimistic flip + rollback</div>
+  <div class="code"><span class="cm">// src/hooks/useRowAction.js</span>
+<span class="kw">export function</span> <span class="fn">useRowAction</span>(items, setItems) {
+  <span class="kw">return</span> useCallback(<span class="kw">async</span> (id, action, payload) => {
+    <span class="cm">// 1. Snapshot for rollback</span>
+    <span class="kw">const</span> prev = items.find(r => r.id === id)
+    <span class="kw">const</span> snapshot = prev ? { ...prev } : <span class="kw">null</span>
+
+    <span class="cm">// 2. Optimistic flip — UI updates instantly</span>
+    setItems(rs => rs.map(r =>
+      r.id === id ? { ...r, status: action, ...payload } : r
+    ))
+
+    <span class="cm">// 3. Background sync</span>
+    <span class="kw">try</span> {
+      <span class="kw">await</span> fetch(<span class="str">`/api/review/${id}`</span>, {
+        method: <span class="str">'PATCH'</span>,
+        body: JSON.stringify({ status: action })
+      })
+    } <span class="kw">catch</span> (err) {
+      <span class="cm">// 4. Rollback on failure</span>
+      setItems(rs => rs.map(r =>
+        r.id === id ? { ...snapshot } : r
+      ))
+      toast(<span class="str">'Sync failed — reverted'</span>, <span class="str">'error'</span>)
+    }
+  }, [items, setItems])
+}</div>
+</div>
+
+<!-- Notes -->
+<div class="notes">
+  <h3>Doctrine: Twitter's Optimistic UI</h3>
+  <div class="principle">
+    <span class="tag">[T] OPTIMISTIC</span>
+    <span>Loren Brichter's Tweetie: tap like → instant, sync later. Confirm fires immediately. The user sees the result before the network roundtrip. Feels fast because it IS fast.</span>
+  </div>
+  <div class="principle">
+    <span class="tag">[T] ROLLBACK</span>
+    <span>If the server rejects, the row reverts to its previous state. Snapshot before flip, restore on failure. The user sees a brief flash — honest about the failure, not hiding it.</span>
+  </div>
+  <div class="principle">
+    <span class="tag">[G] BUILT FOR THE LOW END</span>
+    <span>On a bad network, the rollback is more likely. But the UI never blocks. The surveyor or admin keeps working. The network catches up when it can.</span>
+  </div>
+</div>
+
+<script>
+  function addLog(tlId, time, msg, cls) {
+    const tl = document.getElementById(tlId);
+    const row = document.createElement('div');
+    row.className = 'tl-row';
+    row.innerHTML = `<span class="tl-time">${time}</span><span class="tl-msg ${cls || ''}">${msg}</span>`;
+    tl.appendChild(row);
+  }
+
+  function confirmSuccess(id) {
+    const row = document.getElementById('row-' + id);
+    const status = document.getElementById('status-' + id);
+    const actions = document.getElementById('actions-' + id);
+
+    // Optimistic flip
+    status.className = 'row-status confirmed';
+    status.textContent = 'Confirmed';
+    row.classList.add('confirmed', 'flash-ok');
+    actions.innerHTML = '<button disabled>✓ Done</button>';
+
+    addLog('tl-' + id, 'T+800ms', 'Server 200 OK — synced ✓', 'ok');
+  }
+
+  function confirmRollback(id) {
+    const row = document.getElementById('row-' + id);
+    const status = document.getElementById('status-' + id);
+    const actions = document.getElementById('actions-' + id);
+
+    // Optimistic flip
+    status.className = 'row-status confirmed';
+    status.textContent = 'Confirmed';
+    row.classList.add('confirmed', 'flash-ok');
+    actions.innerHTML = '<button disabled>…syncing</button>';
+
+    // Rollback after delay
+    setTimeout(() => {
+      status.className = 'row-status pending';
+      status.textContent = 'Pending';
+      row.classList.remove('confirmed');
+      row.classList.add('rolling-back');
+      actions.innerHTML = `
+        <button class="ok" onclick="confirmRollback('${id}')">✓ Confirm</button>
+        <button class="bad" onclick="rejectRow('${id}')">✕ Reject</button>
+      `;
+      addLog('tl-' + id, 'T+1.2s', 'Server 500 — rollback!', 'bad');
+      addLog('tl-' + id, 'T+1.2s', 'UI reverts to Pending. Toast: "Sync failed"', 'bad');
+    }, 1200);
+  }
+
+  function rejectSuccess(id) {
+    const row = document.getElementById('row-' + id);
+    const status = document.getElementById('status-' + id);
+    const actions = document.getElementById('actions-' + id);
+
+    status.className = 'row-status rejected';
+    status.textContent = 'Rejected';
+    row.classList.add('rejected', 'flash-bad');
+    actions.innerHTML = '<button disabled>✕ Done</button>';
+
+    addLog('tl-' + id, 'T+600ms', 'Server 200 OK — synced ✓', 'ok');
+  }
+
+  function rejectRow(id) {
+    const row = document.getElementById('row-' + id);
+    const status = document.getElementById('status-' + id);
+    const actions = document.getElementById('actions-' + id);
+
+    status.className = 'row-status rejected';
+    status.textContent = 'Rejected';
+    row.classList.add('rejected', 'flash-bad');
+    actions.innerHTML = '<button disabled>✕ Done</button>';
+  }
+
+  function confirmRow(id) {
+    const row = document.getElementById('row-' + id);
+    const status = document.getElementById('status-' + id);
+    const actions = document.getElementById('actions-' + id);
+
+    status.className = 'row-status confirmed';
+    status.textContent = 'Confirmed';
+    row.classList.add('confirmed', 'flash-ok');
+    actions.innerHTML = '<button disabled>✓ Done</button>';
+  }
+</script>
+</body>
+</html>

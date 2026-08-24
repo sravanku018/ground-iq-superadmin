@@ -426,6 +426,16 @@ export function getAnalytics(filters = {}) {
   return request(`/api/analytics${q ? `?${q}` : ''}`)
 }
 
+/** One-point unified API for Analytics & Report: fetches metrics + intake stream in parallel */
+export async function getUnifiedAnalytics(filters = {}) {
+  const [analytics, analyze] = await Promise.all([
+    getAnalytics(filters).catch(() => null),
+    getAdminAnalyze(filters).catch(() => null),
+  ])
+  return { analytics, analyze }
+}
+
+
 /** List photo/audio URLs for an export (same filters as CSV). Files are named {id}.jpg / {id}.webm. */
 export function exportSubmissionMedia(filters = {}) {
   return request(

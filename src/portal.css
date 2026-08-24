@@ -609,6 +609,188 @@
 
 
 
+/* ── Google Workspace & Material Design 3 UI Tokens for Portal Elements ── */
+.portal-main .field,
+.portal-main label.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.portal-main .field > span,
+.portal-main label > span {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.portal-main input[type="text"],
+.portal-main input[type="search"],
+.portal-main input[type="password"],
+.portal-main input[type="number"],
+.portal-main input[type="date"],
+.portal-main input[type="month"],
+.portal-main select,
+.portal-main textarea {
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-size: 13.5px;
+  background: #ffffff;
+  color: #202124;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+  box-sizing: border-box;
+}
+
+.portal-main input:focus,
+.portal-main select:focus,
+.portal-main textarea:focus {
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.15);
+}
+
+.portal-main .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border: 1px solid #dadce0;
+  background: #ffffff;
+  color: #3c4043;
+  cursor: pointer;
+  transition: all 140ms ease;
+  text-decoration: none;
+  line-height: 1.25;
+}
+
+.portal-main .btn:hover {
+  background: #f8f9fa;
+  border-color: #bdc1c6;
+  color: #202124;
+}
+
+.portal-main .btn.primary {
+  background: #1a73e8;
+  color: #ffffff;
+  border-color: #1a73e8;
+  box-shadow: 0 1px 2px rgba(26, 115, 232, 0.2);
+}
+
+.portal-main .btn.primary:hover {
+  background: #1557b0;
+  border-color: #1557b0;
+  box-shadow: 0 2px 6px rgba(26, 115, 232, 0.3);
+}
+
+.portal-main .btn.danger {
+  background: #fce8e6;
+  color: #c5221f;
+  border-color: #fad2cf;
+}
+
+.portal-main .btn.danger:hover {
+  background: #c5221f;
+  color: #ffffff;
+  border-color: #c5221f;
+}
+
+.portal-main .btn.small {
+  padding: 5px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+.portal-main .chip,
+.portal-main .chip-row .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #dadce0;
+  background: #f8f9fa;
+  color: #3c4043;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.portal-main .chip:hover {
+  background: #e8f0fe;
+  color: #1a73e8;
+  border-color: #1a73e8;
+}
+
+.portal-main .chip.selected {
+  background: #1a73e8;
+  color: #ffffff;
+  border-color: #1a73e8;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(26, 115, 232, 0.3);
+}
+
+.portal-main table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid #e0e2ec;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+  margin: 12px 0;
+}
+
+.portal-main th {
+  background: #f8fafc;
+  color: #5f6368;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0e2ec;
+  text-align: left;
+}
+
+.portal-main td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f1f3f4;
+  font-size: 13.5px;
+  color: #202124;
+}
+
+.portal-main tr:last-child td {
+  border-bottom: none;
+}
+
+.portal-main tbody tr:hover {
+  background: #f8fafd;
+}
+
+.portal-main .review-item,
+.portal-main .qa-row {
+  border: 1px solid #e0e2ec;
+  border-radius: 12px;
+  padding: 16px 18px;
+  background: #ffffff;
+  margin-bottom: 10px;
+  transition: all 140ms ease;
+}
+
+.portal-main .review-item:hover,
+.portal-main .qa-row:hover {
+  border-color: #1a73e8;
+  box-shadow: 0 3px 10px rgba(60,64,67,0.08);
+}
+
 /* ── Responsive ── */
 @media (max-width: 960px) {
   .portal-sidebar {
@@ -636,3 +818,4 @@
     padding: 16px;
   }
 }
+

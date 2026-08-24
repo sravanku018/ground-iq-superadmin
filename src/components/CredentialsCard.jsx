@@ -188,88 +188,93 @@ export default function CredentialsCard({
         </button>
       </div>
 
-      {/* TOTP section */}
-      <div style={{ marginTop: 24 }}>
-        <h3 style={{ fontSize: 'var(--fs-md)', fontWeight: 700, marginBottom: 4 }}>🔐 Authenticator (TOTP)</h3>
-        <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--ink-muted)', marginBottom: 16 }}>
-          All 3 Super Admin slots sign in with password + a 6-digit app code.
-        </p>
+      {/* TOTP section (Super Admin only) */}
+      {typeof onTotpReset === 'function' && (
+        <>
+          <div style={{ marginTop: 24 }}>
+            <h3 style={{ fontSize: 'var(--fs-md)', fontWeight: 700, marginBottom: 4 }}>🔐 Authenticator (TOTP)</h3>
+            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--ink-muted)', marginBottom: 16 }}>
+              All 3 Super Admin slots sign in with password + a 6-digit app code.
+            </p>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 700 }}>Current TOTP</span>
-          <span
-            style={{
-              fontSize: 10, fontWeight: 700, padding: '3px 8px',
-              borderRadius: 'var(--r-sm)',
-              background: 'var(--ok-bg)', color: 'var(--ok)',
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-            }}
-          >
-            ✓ Active
-          </span>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleTotp}
-          disabled={generating}
-          style={{
-            minHeight: 42, width: '100%', padding: '0 18px',
-            background: 'var(--surface)', color: 'var(--ink-secondary)',
-            border: '1px solid var(--surface-hover)',
-            borderRadius: 'var(--r-md, 10px)',
-            fontSize: 'var(--fs-sm)', fontWeight: 700,
-            cursor: 'pointer',
-          }}
-        >
-          {generating ? 'Generating…' : showTotp ? 'Hide secret' : 'Reset my TOTP'}
-        </button>
-
-        {/* TOTP reveal */}
-        {showTotp && (
-          <div
-            style={{
-              marginTop: 12,
-              background: 'var(--surface-alt)',
-              borderRadius: 'var(--r-md, 10px)',
-              padding: 12,
-              animation: 'fadeIn 200ms ease-out',
-            }}
-          >
-            <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginBottom: 6 }}>
-              New secret — scan or paste into your authenticator app:
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 700 }}>Current TOTP</span>
+              <span
+                style={{
+                  fontSize: 10, fontWeight: 700, padding: '3px 8px',
+                  borderRadius: 'var(--r-sm)',
+                  background: 'var(--ok-bg)', color: 'var(--ok)',
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                }}
+              >
+                ✓ Active
+              </span>
             </div>
-            <code
+
+            <button
+              type="button"
+              onClick={handleTotp}
+              disabled={generating}
               style={{
-                fontFamily: "'SF Mono', Menlo, monospace",
-                fontWeight: 700,
-                wordBreak: 'break-all',
-                fontSize: 'var(--fs-sm)',
-                display: 'block',
-                background: 'var(--surface)',
-                padding: '8px 12px',
-                borderRadius: 'var(--r-sm)',
-                marginBottom: 6,
+                minHeight: 42, width: '100%', padding: '0 18px',
+                background: 'var(--surface)', color: 'var(--ink-secondary)',
                 border: '1px solid var(--surface-hover)',
+                borderRadius: 'var(--r-md, 10px)',
+                fontSize: 'var(--fs-sm)', fontWeight: 700,
+                cursor: 'pointer',
               }}
             >
-              {totpSecret}
-            </code>
-            <div style={{ fontSize: 10, color: 'var(--ink-faint)', wordBreak: 'break-all', lineHeight: 1.5 }}>
-              otpauth://totp/SmartSurveyX:{username}?secret={totpSecret.replace(/\s/g, '')}&issuer=SmartSurveyX
-            </div>
-          </div>
-        )}
-      </div>
+              {generating ? 'Generating…' : showTotp ? 'Hide secret' : 'Reset my TOTP'}
+            </button>
 
-      {/* How TOTP works */}
-      <div style={{ marginTop: 16, fontSize: 'var(--fs-xs)', color: 'var(--ink-muted)', lineHeight: 1.6 }}>
-        <strong>How TOTP works:</strong><br />
-        1. Install Google Authenticator or Authy<br />
-        2. Scan the QR code or paste the secret<br />
-        3. Enter the 6-digit code at login<br />
-        4. Reset if you lose your device
-      </div>
+            {/* TOTP reveal */}
+            {showTotp && (
+              <div
+                style={{
+                  marginTop: 12,
+                  background: 'var(--surface-alt)',
+                  borderRadius: 'var(--r-md, 10px)',
+                  padding: 12,
+                  animation: 'fadeIn 200ms ease-out',
+                }}
+              >
+                <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginBottom: 6 }}>
+                  New secret — scan or paste into your authenticator app:
+                </div>
+                <code
+                  style={{
+                    fontFamily: "'SF Mono', Menlo, monospace",
+                    fontWeight: 700,
+                    wordBreak: 'break-all',
+                    fontSize: 'var(--fs-sm)',
+                    display: 'block',
+                    background: 'var(--surface)',
+                    padding: '8px 12px',
+                    borderRadius: 'var(--r-sm)',
+                    marginBottom: 6,
+                    border: '1px solid var(--surface-hover)',
+                  }}
+                >
+                  {totpSecret}
+                </code>
+                <div style={{ fontSize: 10, color: 'var(--ink-faint)', wordBreak: 'break-all', lineHeight: 1.5 }}>
+                  otpauth://totp/SmartSurveyX:{username}?secret={totpSecret.replace(/\s/g, '')}&issuer=SmartSurveyX
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* How TOTP works */}
+          <div style={{ marginTop: 16, fontSize: 'var(--fs-xs)', color: 'var(--ink-muted)', lineHeight: 1.6 }}>
+            <strong>How TOTP works:</strong><br />
+            1. Install Google Authenticator or Authy<br />
+            2. Scan the QR code or paste the secret<br />
+            3. Enter the 6-digit code at login<br />
+            4. Reset if you lose your device
+          </div>
+        </>
+      )}
     </div>
   )
 }
+

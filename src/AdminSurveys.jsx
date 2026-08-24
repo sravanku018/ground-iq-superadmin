@@ -364,12 +364,14 @@ export default function AdminSurveysScreen({ onToast, user }) {
   // create mode
   const [newTitle, setNewTitle] = useState('')
   const [newVoiceLimit, setNewVoiceLimit] = useState(0)
+  const [newVoiceRequired, setNewVoiceRequired] = useState(false)
   const [saving, setSaving] = useState(false)
   const [exists, setExists] = useState(null) // existing survey with same name
   // Super Admin only: company + Client Admins when creating a Project
   const [newCompany, setNewCompany] = useState('')
   const [checkedAdmins, setCheckedAdmins] = useState({})
   const [companyNames, setCompanyNames] = useState([])
+
 
 
   // detail mode
@@ -488,6 +490,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
       const d = await createSurvey({
         title,
         questions: [],
+        voice_required: Boolean(newVoiceRequired),
         voice_time_limit: Number(newVoiceLimit) || 0,
         ...(isSuper
           ? {
@@ -508,6 +511,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
       setMode('list')
       setNewTitle('')
       setNewVoiceLimit(0)
+      setNewVoiceRequired(false)
       setNewCompany('')
       setCheckedAdmins({})
       setExists(null)
@@ -534,9 +538,11 @@ export default function AdminSurveysScreen({ onToast, user }) {
         title: detail.title,
         questions: cleanQuestions(detail.questions),
         display_lang: detail.display_lang === 'te' ? 'te' : 'en',
+        voice_required: Boolean(detail.voice_required),
         voice_time_limit: Number(detail.voice_time_limit) || 0,
         ...(user?.role === 'super_admin' ? { company_name: detail.company_name || '' } : {}),
       })
+
       onToast?.(`${Unit} name + questions saved`, 'ok')
       await openDetail(detail.id)
     } catch (e) {
@@ -743,29 +749,57 @@ export default function AdminSurveysScreen({ onToast, user }) {
         )}
 
         <div className="card" style={{ marginBottom: 12, padding: 14 }}>
-          <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>🎙 Voice recording limit</p>
+          <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>🎙 Voice recording</p>
           <p className="muted" style={{ margin: '0 0 10px', fontSize: 12 }}>
-            Maximum recording duration per survey. 0 = no limit.
+            Set voice as optional or mandatory, with an optional 2, 5, 10, or 15 min limit.
           </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {[
-              { id: 0, label: 'No limit' },
-              { id: 2, label: '2 min' },
-              { id: 5, label: '5 min' },
-              { id: 10, label: '10 min' },
-              { id: 15, label: '15 min' },
-            ].map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={`chip ${Number(newVoiceLimit || 0) === t.id ? 'selected' : ''}`}
-                onClick={() => setNewVoiceLimit(t.id)}
-              >
-                {t.label}
-              </button>
-            ))}
+
+          <div style={{ marginBottom: 10 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 4, color: '#475569' }}>
+              Requirement:
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {[
+                { id: false, label: 'Optional (Recommended)' },
+                { id: true, label: 'Required (Mandatory)' },
+              ].map((m) => (
+                <button
+                  key={String(m.id)}
+                  type="button"
+                  className={`chip ${Boolean(newVoiceRequired) === m.id ? 'selected' : ''}`}
+                  onClick={() => setNewVoiceRequired(m.id)}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <span style={{ fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 4, color: '#475569' }}>
+              Duration Limit:
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {[
+                { id: 0, label: 'No limit' },
+                { id: 2, label: '2 min' },
+                { id: 5, label: '5 min' },
+                { id: 10, label: '10 min' },
+                { id: 15, label: '15 min' },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={`chip ${Number(newVoiceLimit || 0) === t.id ? 'selected' : ''}`}
+                  onClick={() => setNewVoiceLimit(t.id)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
+
 
         <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
           Questions are added after creating — open the project to edit them (name, questions). Assign surveyors from Surveyors → profile.
@@ -979,23 +1013,57 @@ export default function AdminSurveysScreen({ onToast, user }) {
           </div>
         </div>
         <div className="card" style={{ marginBottom: 12, padding: 14 }}>
-          <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>🎙 Voice recording limit</p>
+          <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>🎙 Voice recording configuration</p>
           <p className="muted" style={{ margin: '0 0 10px', fontSize: 12 }}>
-            Maximum recording duration per survey. 0 = no limit. Requires <strong>can_record_voice</strong> power on the Client Admin.
+            Set voice recording as optional or mandatory, with an optional 2, 5, 10, or 15 min limit.
           </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {[{ id: 0, label: 'No limit' }, { id: 2, label: '2 min' }, { id: 5, label: '5 min' }, { id: 10, label: '10 min' }, { id: 15, label: '15 min' }].map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={`chip ${Number(detail.voice_time_limit || 0) === t.id ? 'selected' : ''}`}
-                onClick={() => setDetail({ ...detail, voice_time_limit: t.id })}
-              >
-                {t.label}
-              </button>
-            ))}
+
+          <div style={{ marginBottom: 12 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 6, color: '#475569' }}>
+              Requirement:
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {[
+                { id: false, label: 'Optional (Recommended)' },
+                { id: true, label: 'Required (Mandatory)' },
+              ].map((m) => (
+                <button
+                  key={String(m.id)}
+                  type="button"
+                  className={`chip ${Boolean(detail.voice_required) === m.id ? 'selected' : ''}`}
+                  onClick={() => setDetail({ ...detail, voice_required: m.id })}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <span style={{ fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 6, color: '#475569' }}>
+              Duration Limit:
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {[
+                { id: 0, label: 'No limit' },
+                { id: 2, label: '2 min' },
+                { id: 5, label: '5 min' },
+                { id: 10, label: '10 min' },
+                { id: 15, label: '15 min' },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={`chip ${Number(detail.voice_time_limit || 0) === t.id ? 'selected' : ''}`}
+                  onClick={() => setDetail({ ...detail, voice_time_limit: t.id })}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
+
         <QuestionEditor
           questions={detail.questions || []}
           onChange={(qs) => setDetail({ ...detail, questions: qs })}

@@ -326,9 +326,8 @@ export default function FieldCollectScreen({
   const geoLocked = isGeoValid(geo)
   const locationLocked = geoLocked && !!locationDetails
   const photoLocked = !!(photoDataUrl && photoDataUrl.length >= MIN_PHOTO_CHARS)
-  // Voice recording: required only when user has can_record_voice power.
-  // Otherwise voice is optional — skip the lock entirely.
-  const voiceRequired = !!user?.can_record_voice || user?.role === 'super_admin'
+  // Voice recording: optional by default, or mandatory if project sets voice_required: true
+  const voiceRequired = formMeta?.voice_required === true
   const voiceTimeLimit = Number(formMeta?.voice_time_limit || 0) // minutes, 0 = no limit
   const voiceLocked = voiceRequired ? (voiceActivated && (!!audioBlob || recording)) : true
   const editingDraft = !!draft?.id
@@ -339,7 +338,8 @@ export default function FieldCollectScreen({
     voice: voiceLocked,
   }
   const allHardLocks = geoLocked && photoLocked && voiceLocked && locationLocked
-  const surveyUnlocked = geoLocked && photoLocked
+  const surveyUnlocked = geoLocked && photoLocked && (!voiceRequired || voiceLocked)
+
 
   useEffect(() => {
     if (step >= 2 && !surveyUnlocked) {
@@ -1863,11 +1863,11 @@ export default function FieldCollectScreen({
             <div className="dot">{locks.photo ? '✓' : '2'}</div>
             <div className="lbl">Photo</div>
           </div>
-          <div className={`step ${locks.voice ? 'done' : (locks.geo && locks.photo) ? 'active' : ''}`}>
-            <div className="dot">{locks.voice ? '✓' : '3'}</div>
-            <div className="lbl">Voice</div>
+          <div className={`step ${voiceActivated ? 'done' : (locks.geo && locks.photo) ? 'active' : ''}`}>
+            <div className="dot">{voiceActivated ? '✓' : '3'}</div>
+            <div className="lbl">{voiceRequired ? 'Voice' : 'Voice (Opt)'}</div>
           </div>
-          <div className={`step ${(locks.geo && locks.photo && locks.voice) ? 'active' : ''}`}>
+          <div className={`step ${(locks.geo && locks.photo && (!voiceRequired || voiceActivated)) ? 'active' : ''}`}>
             <div className="dot">4</div>
             <div className="lbl">Q/A</div>
           </div>
@@ -1883,11 +1883,12 @@ export default function FieldCollectScreen({
             <div className={`lock-pill ${locks.photo ? 'ok' : 'bad'}`}>
               <span>{locks.photo ? '✓' : '✗'}</span> Photo {locks.photo ? 'LOCKED' : 'OPEN'}
             </div>
-            <div className={`lock-pill ${locks.voice ? 'ok' : 'bad'}`}>
-              <span>{locks.voice ? '✓' : '✗'}</span> Voice {locks.voice ? 'ON' : 'OFF'}
+            <div className={`lock-pill ${voiceActivated ? 'ok' : voiceRequired ? 'bad' : 'ok'}`}>
+              <span>{voiceActivated ? '✓' : voiceRequired ? '✗' : '🎙'}</span> Voice {voiceActivated ? 'ON' : voiceRequired ? 'OFF' : 'OPTIONAL'}
             </div>
           </div>
         </div>
+
 
         {/* Live quota + device queue */}
         <div className="card quota-card" style={{ marginBottom: 10, padding: '12px 14px' }}>

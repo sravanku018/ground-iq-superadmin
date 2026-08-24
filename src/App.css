@@ -2362,3 +2362,97 @@ textarea:focus,
   }
 }
 
+/* ── Surveyor Profile (Mock 3 Apple Craft Lens) ── */
+.prof {
+  text-align: center;
+  margin: 16px 20px 20px;
+}
+.prof .avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--accent-bg, #eff6ff);
+  border: 2px solid var(--accent-border, #bfdbfe);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--accent, #1d6fe0);
+}
+.prof .pname {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink, #1e293b);
+  margin-top: 4px;
+}
+.prof .puser {
+  font-size: 12px;
+  color: var(--ink-muted, #64748b);
+  margin-top: 2px;
+}
+.keychip {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--surface-alt, #f1f5f9);
+  border-radius: 999px;
+  padding: 5px 14px;
+  color: var(--ink-secondary, #475569);
+  border: 1px solid var(--surface-hover, #e2e8f0);
+}
+.idcard {
+  margin: 10px 16px;
+  padding: 16px;
+  border: 1px solid var(--surface-hover, #e2e8f0);
+  border-radius: 14px;
+  background: var(--surface, #ffffff);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+.idcard h4 {
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  color: var(--ink, #1e293b);
+}
+.idcard p {
+  font-size: 12px;
+  color: var(--ink-muted, #64748b);
+  margin: 0;
+}
+.id-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+.id-tile {
+  aspect-ratio: 8/5;
+  background: var(--surface-alt, #f1f5f9);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-secondary, #475569);
+  border: 1px solid var(--surface-hover, #e2e8f0);
+  cursor: pointer;
+  transition: all 120ms ease;
+  user-select: none;
+}
+.id-tile:hover {
+  border-color: var(--accent-border, #bfdbfe);
+  background: var(--accent-bg, #eff6ff);
+}
+.id-tile.ok {
+  background: var(--ok-bg, #f0fdf4);
+  color: var(--ok, #16a34a);
+  border-color: rgba(22,163,74,0.3);
+}
+

@@ -500,13 +500,13 @@ function MyRecordsScreen({ user, onToast, questions }) {
 function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
   const [phone, setPhone] = useState(user?.phone || '')
   const [savingPhone, setSavingPhone] = useState(false)
+  const [editingPhone, setEditingPhone] = useState(false)
   const [uploading, setUploading] = useState({ photo: false, front: false, back: false })
 
   useEffect(() => {
     setPhone(user?.phone || '')
   }, [user?.phone])
 
-  // Fetch latest live profile on mount (including verification status from admin)
   useEffect(() => {
     me()
       .then((res) => {
@@ -526,7 +526,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
       const res = await uploadProfileMedia(fieldKey, compressedDataUrl)
       const newUrl = res?.[fieldKey] || compressedDataUrl
       onUserUpdated?.((prev) => ({ ...prev, [fieldKey]: newUrl }))
-      onToast?.(`${fieldKey.replace('_', ' ')} uploaded to DB ✓`, 'ok')
+      onToast?.(`${fieldKey.replace('_', ' ')} updated ✓`, 'ok')
       me().then((m) => m?.user && onUserUpdated?.(m.user)).catch(() => {})
     } catch (err) {
       onToast?.(err.message || 'Upload failed', 'error')
@@ -545,6 +545,7 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
     try {
       await updateUser(user.id, { phone: saved })
       onUserUpdated?.((prev) => ({ ...prev, phone: saved }))
+      setEditingPhone(false)
       onToast?.('Phone number updated ✓', 'ok')
       me().then((m) => m?.user && onUserUpdated?.(m.user)).catch(() => {})
     } catch (err) {
@@ -554,73 +555,55 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
     }
   }
 
+  const initials = (user?.name || user?.username || 'S')
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+
   return (
-    <div className="screen profile-screen" style={{ padding: '12px 14px 110px' }}>
-      {!user?.verified && (
-        <div
-          className="card"
-          role="alert"
-          style={{
-            marginBottom: 14,
-            padding: '14px 16px',
-            border: '2px solid #f59e0b',
-            background: '#fffbeb',
-          }}
-        >
-          <strong style={{ display: 'block', fontSize: 15, color: '#92400e' }}>
-            Profile verification pending
-          </strong>
-          <p style={{ margin: '6px 0 0', fontSize: 13, color: '#78350f' }}>
-            Upload your photo and Aadhaar, then wait for Client Admin to verify you.
-            Home and Collect stay locked until verification is complete.
-          </p>
-        </div>
-      )}
-      <div className="card" style={{ marginBottom: 14, textAlign: 'center', padding: '16px 14px' }}>
-        <div style={{ position: 'relative', display: 'inline-block', marginBottom: 10 }}>
+    <div className="screen profile-screen" style={{ padding: '8px 0 100px' }}>
+      {/* Centered Profile Hero */}
+      <div className="prof">
+        <div style={{ position: 'relative', display: 'inline-block', marginBottom: 8 }}>
           {user?.photo ? (
             <img
               src={user.photo}
               alt="Profile"
-              style={{ width: 84, height: 84, borderRadius: '50%', objectFit: 'cover', border: '3px solid #00e599' }}
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '2px solid #bfdbfe',
+              }}
             />
           ) : (
-            <div
-              style={{
-                width: 84,
-                height: 84,
-                borderRadius: '50%',
-                background: '#e2e8f0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 38,
-                margin: '0 auto',
-              }}
-            >
-              <Icon name="user" size={38} />
+            <div className="avatar">
+              {initials}
             </div>
           )}
           <label
             style={{
               position: 'absolute',
-              bottom: 0,
-              right: 0,
-              background: user?.verified ? '#cbd5e1' : '#059669',
-              color: user?.verified ? '#334155' : '#111',
+              bottom: -2,
+              right: -2,
+              background: '#ffffff',
               borderRadius: '50%',
-              width: 30,
-              height: 30,
+              width: 24,
+              height: 24,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: user?.verified ? 'not-allowed' : 'pointer',
-              fontWeight: 'bold',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+              cursor: user?.verified ? 'default' : 'pointer',
+              fontSize: 12,
+              boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+              border: '1px solid #e2e8f0',
             }}
             title={user?.verified ? 'Photo locked' : 'Upload photo'}
           >
-            {user?.verified ? <Icon name="lock" size={16} /> : <Icon name="camera" size={16} />}
+            {user?.verified ? '🔒' : uploading.photo ? '…' : '📷'}
             {!user?.verified && (
               <input
                 type="file"
@@ -631,157 +614,130 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
             )}
           </label>
         </div>
-        <h2
-          style={{
-            margin: '4px 0 2px',
-            fontSize: 20,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 6,
-            flexWrap: 'wrap',
-          }}
-        >
-          {user?.name || user?.display_name || user?.username}
-          {user?.verified ? <VerifiedBadge size={20} /> : null}
-        </h2>
-        <p className="muted" style={{ margin: '0 0 10px', fontSize: 13 }}>@{user?.username}</p>
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ background: 'rgba(0,229,153,0.12)', border: '1px solid rgba(0,229,153,0.3)', borderRadius: 20, padding: '4px 14px' }}>
-            <span style={{ fontSize: 12, color: '#059669', fontWeight: 'bold' }}>
-              Key ID: {user?.key_id || 'GROUND-KEY'}
-            </span>
-          </div>
-          {!user?.verified && (
-            <div style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid #f59e0b', borderRadius: 20, padding: '4px 14px' }}>
-              <span style={{ fontSize: 12, color: '#f59e0b', fontWeight: 'bold' }}>
-                Pending
-              </span>
-            </div>
-          )}
+        <div className="pname" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+          {user?.name || user?.display_name || user?.username}
+          {user?.verified ? <VerifiedBadge size={16} /> : null}
         </div>
-        <p className="muted" style={{ fontSize: 11, margin: '10px 0 0' }}>
-          ↓ Pull down to refresh verification status
-        </p>
+        <div className="puser">@{user?.username}</div>
+        <div className="keychip">
+          Key ID: {user?.key_id || `GROUND-KEY-${String(user?.id || '0000').padStart(4, '0')}`}
+        </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <h3 style={{ margin: 0, fontSize: 15 }}>Phone</h3>
-          {user?.verified ? (
-            <span aria-label="Locked" title="Locked" style={{ fontSize: 14 }}>
-              <Icon name="lock" size={14} />
-            </span>
-          ) : null}
-        </div>
-        <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
-          {user?.verified
-            ? 'Phone cannot be changed.'
-            : 'Indian mobile only — +91 and 10 digits.'}
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <PhoneIndiaField
-            value={phone}
-            disabled={user?.verified === true}
-            onChange={setPhone}
-          />
-          {!user?.verified && (
+      {/* Phone Card */}
+      <div className="idcard">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h4>📞 Phone {user?.verified ? '🔒' : ''}</h4>
+          {!user?.verified && !editingPhone && (
             <button
               type="button"
-              className="btn primary"
+              onClick={() => setEditingPhone(true)}
               style={{
-                fontSize: 15,
-                fontWeight: 'bold',
-                borderRadius: 12,
-                background: '#059669',
-                color: '#ffffff',
+                background: 'none',
+                border: 'none',
+                color: '#1a73e8',
+                fontSize: 12,
+                fontWeight: 600,
                 cursor: 'pointer',
               }}
-              disabled={savingPhone || phone === (user?.phone || '')}
-              onClick={handleSavePhone}
             >
-              {savingPhone ? 'Saving Phone…' : 'Save Phone Number'}
+              Edit
             </button>
           )}
         </div>
+        {editingPhone ? (
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <PhoneIndiaField value={phone} onChange={setPhone} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                className="btn small primary"
+                disabled={savingPhone}
+                onClick={handleSavePhone}
+                style={{ flex: 1 }}
+              >
+                {savingPhone ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                className="btn small"
+                onClick={() => {
+                  setPhone(user?.phone || '')
+                  setEditingPhone(false)
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p style={{ margin: '2px 0 0' }}>
+            {user?.phone ? `${user.phone} · verified` : 'No phone linked'}
+          </p>
+        )}
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <h3 style={{ margin: 0, fontSize: 15 }}>Aadhaar</h3>
-          {user?.verified ? (
-            <span aria-label="Locked" title="Locked" style={{ fontSize: 14 }}>
-              <Icon name="lock" size={14} />
-            </span>
-          ) : null}
-        </div>
-        <p className="muted" style={{ fontSize: 12, margin: '0 0 12px' }}>
-          {user?.verified
-            ? 'Documents cannot be changed.'
-            : 'Upload front & back images of your Aadhaar card.'}
+      {/* Aadhaar Card with Compact Tiles */}
+      <div className="idcard">
+        <h4>🪪 Aadhaar Identity {user?.verified ? '🔒' : ''}</h4>
+        <p style={{ margin: '2px 0 0' }}>
+          {user?.verified ? 'Verified documents locked' : 'Upload front & back to verify'}
         </p>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          {/* Front */}
-          <div style={{ border: user?.verified ? '1px solid #cbd5e1' : '1px dashed #94a3b8', borderRadius: 8, padding: 10, textAlign: 'center', background: user?.verified ? 'rgba(15,23,42,0.05)' : 'rgba(15,23,42,0.03)' }}>
-            <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 'bold', color: user?.verified ? '#64748b' : '#0f172a' }}>Aadhaar Front</p>
+        <div className="id-tiles">
+          {/* Front Tile */}
+          <label
+            className={`id-tile ${user?.aadhaar_front ? 'ok' : ''}`}
+            style={{ position: 'relative', overflow: 'hidden', cursor: user?.verified ? 'default' : 'pointer' }}
+          >
             {user?.aadhaar_front ? (
-              <img
-                src={user.aadhaar_front}
-                alt="Aadhaar Front"
-                style={{ width: '100%', height: 95, objectFit: 'cover', borderRadius: 6, marginBottom: 8, opacity: user?.verified ? 0.7 : 1 }}
-              />
-            ) : (
-              <div style={{ height: 95, background: 'rgba(15,23,42,0.06)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-                <Icon name="idCard" size={26} />
-              </div>
-            )}
-            <label
-              className="btn small"
-              style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', cursor: user?.verified ? 'not-allowed' : 'pointer', background: user?.verified ? '#e2e8f0' : undefined, color: user?.verified ? '#94a3b8' : undefined, border: user?.verified ? '1px solid #cbd5e1' : undefined }}
-            >
-              {uploading.front ? 'Uploading…' : user?.verified ? <Icon name="lock" size={12} /> : user?.aadhaar_front ? 'Change Front' : 'Upload Front'}
-              {!user?.verified && (
-                <input
-                  type="file"
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                  onChange={(e) => handleMediaUpload('front', e.target.files?.[0])}
+              <>
+                <img
+                  src={user.aadhaar_front}
+                  alt="Front"
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.25 }}
                 />
-              )}
-            </label>
-          </div>
+                <span style={{ position: 'relative', zIndex: 1 }}>Front ✓</span>
+              </>
+            ) : (
+              <span>{uploading.front ? 'Uploading…' : '＋ Front'}</span>
+            )}
+            {!user?.verified && (
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => handleMediaUpload('front', e.target.files?.[0])}
+              />
+            )}
+          </label>
 
-          {/* Back */}
-          <div style={{ border: user?.verified ? '1px solid #cbd5e1' : '1px dashed #94a3b8', borderRadius: 8, padding: 10, textAlign: 'center', background: user?.verified ? 'rgba(15,23,42,0.05)' : 'rgba(15,23,42,0.03)' }}>
-            <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 'bold', color: user?.verified ? '#64748b' : '#0f172a' }}>Aadhaar Back</p>
+          {/* Back Tile */}
+          <label
+            className={`id-tile ${user?.aadhaar_back ? 'ok' : ''}`}
+            style={{ position: 'relative', overflow: 'hidden', cursor: user?.verified ? 'default' : 'pointer' }}
+          >
             {user?.aadhaar_back ? (
-              <img
-                src={user.aadhaar_back}
-                alt="Aadhaar Back"
-                style={{ width: '100%', height: 95, objectFit: 'cover', borderRadius: 6, marginBottom: 8, opacity: user?.verified ? 0.7 : 1 }}
-              />
-            ) : (
-              <div style={{ height: 95, background: 'rgba(15,23,42,0.06)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-                <Icon name="idCard" size={26} />
-              </div>
-            )}
-            <label
-              className="btn small"
-              style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', cursor: user?.verified ? 'not-allowed' : 'pointer', background: user?.verified ? '#e2e8f0' : undefined, color: user?.verified ? '#94a3b8' : undefined, border: user?.verified ? '1px solid #cbd5e1' : undefined }}
-            >
-              {uploading.back ? 'Uploading…' : user?.verified ? <Icon name="lock" size={12} /> : user?.aadhaar_back ? 'Change Back' : 'Upload Back'}
-              {!user?.verified && (
-                <input
-                  type="file"
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                  onChange={(e) => handleMediaUpload('back', e.target.files?.[0])}
+              <>
+                <img
+                  src={user.aadhaar_back}
+                  alt="Back"
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.25 }}
                 />
-              )}
-            </label>
-          </div>
+                <span style={{ position: 'relative', zIndex: 1 }}>Back ✓</span>
+              </>
+            ) : (
+              <span>{uploading.back ? 'Uploading…' : '＋ Back'}</span>
+            )}
+            {!user?.verified && (
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => handleMediaUpload('back', e.target.files?.[0])}
+              />
+            )}
+          </label>
         </div>
       </div>
     </div>

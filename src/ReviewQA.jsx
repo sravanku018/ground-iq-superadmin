@@ -33,6 +33,7 @@ function partyColor(p) {
 export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFocusConsumed }) {
   // Data verification power — Super Admin grants it (least privilege)
   const canReview = user?.role === 'super_admin' || !!user?.can_review_data
+  const isSuper = user?.role === 'super_admin'
   const [status, setStatus] = useState('pending')
 
   const [survey, setSurvey] = useState('')
@@ -342,14 +343,19 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
           <strong>Confirm</strong> → <strong>Report</strong>
         </p>
         <div className="chip-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {['pending', 'confirmed', 'rejected', 'all'].map((s) => (
+          {[
+            { id: 'pending', label: '📁 Pending' },
+            { id: 'confirmed', label: '📁 Confirmed' },
+            { id: 'rejected', label: '📁 Rejected Folder' },
+            { id: 'all', label: '📁 All Records' },
+          ].map((s) => (
             <button
-              key={s}
+              key={s.id}
               type="button"
-              className={`chip ${status === s ? 'selected' : ''}`}
-              onClick={() => setStatus(s)}
+              className={`chip ${status === s.id ? 'selected' : ''}`}
+              onClick={() => setStatus(s.id)}
             >
-              {s}
+              {s.label}
             </button>
           ))}
         </div>
@@ -375,17 +381,28 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
             Confirm all pending (batch)
           </button>
         )}
-        {status === 'rejected' && canReview && items.length > 0 && (
-          <button
-            type="button"
-            className="btn danger"
-            style={{ marginTop: 12, width: '100%' }}
-            onClick={bulkDeleteRejected}
-            disabled={loading}
-          >
-            Delete all rejected in this list
-          </button>
+        {status === 'rejected' && (
+          <div style={{ marginTop: 12, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8 }}>
+            <p style={{ margin: 0, fontSize: 13, color: '#991b1b', fontWeight: 600 }}>
+              📁 Rejected Records Folder · {items.length} record(s) archived
+            </p>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#7f1d1d' }}>
+              Rejected records are preserved for audit and verification history. Click "Back to pending" on any record to re-evaluate.
+            </p>
+            {isSuper && items.length > 0 && (
+              <button
+                type="button"
+                className="btn small danger"
+                style={{ marginTop: 8 }}
+                onClick={bulkDeleteRejected}
+                disabled={loading}
+              >
+                Delete all rejected in this list (Super Admin only)
+              </button>
+            )}
+          </div>
         )}
+
         {status === 'pending' && !canReview && (
           <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>
             🔒 Data verification is locked — Super Admin must grant your account{' '}
@@ -487,7 +504,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                     Reject (r)
                   </button>
                 )}
-                {canReview && item.status === 'rejected' && (
+                {isSuper && item.status === 'rejected' && (
                   <button
                     type="button"
                     className="btn small danger"
@@ -497,6 +514,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                     Delete
                   </button>
                 )}
+
                 {canReview && item.status !== 'pending' && (
                   <button
                     type="button"

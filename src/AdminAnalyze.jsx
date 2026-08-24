@@ -3,9 +3,11 @@ import {
   deleteSubmission,
   getAdminAnalyze,
   getAnalytics,
+  getStoredUser,
   listSubmissions,
   setSubmissionStatus,
 } from './api'
+
 import SubmissionEditor from './SubmissionEditor'
 import { getDisplayLang, setDisplayLang } from './prefs'
 import FeedCard from './components/FeedCard'
@@ -884,7 +886,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
                       Reject
                     </button>
                   )}
-                  {it.status === 'rejected' && (
+                  {getStoredUser()?.role === 'super_admin' && it.status === 'rejected' && (
                     <button
                       type="button"
                       className="btn small danger"
@@ -894,6 +896,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
                       Delete
                     </button>
                   )}
+
                 </>
               )
 

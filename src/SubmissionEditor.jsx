@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { deleteSubmission, updateSubmission } from './api'
+import { deleteSubmission, getStoredUser, updateSubmission } from './api'
 import SubmissionMedia from './SubmissionMedia'
+
 
 /** Core fields Client Admin can always edit */
 const CORE_FIELDS = [
@@ -280,20 +281,23 @@ export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, o
         >
           {saving ? 'Saving…' : 'Save changes'}
         </button>
-        <button
-          type="button"
-          className="btn danger"
-          disabled={saving || deleting}
-          onClick={remove}
-        >
-          {deleting ? 'Deleting…' : 'Delete'}
-        </button>
+        {getStoredUser()?.role === 'super_admin' && (
+          <button
+            type="button"
+            className="btn danger"
+            disabled={saving || deleting}
+            onClick={remove}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
+          </button>
+        )}
         {onCancel && (
           <button type="button" className="btn" disabled={saving} onClick={onCancel}>
             Cancel
           </button>
         )}
       </div>
+
     </div>
   )
 }

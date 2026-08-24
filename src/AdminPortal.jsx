@@ -7,6 +7,7 @@ import {
   getToken,
   listSubmissions,
   listSurveys,
+  listUsers,
   logout,
 
   me,
@@ -199,6 +200,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
   }
 
   const [recentItems, setRecentItems] = useState([])
+  const [totalAllocations, setTotalAllocations] = useState(null)
   const [loadingRecent, setLoadingRecent] = useState(true)
 
   useEffect(() => {
@@ -213,6 +215,16 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
       .finally(() => {
         if (alive) setLoadingRecent(false)
       })
+
+    listUsers()
+      .then((d) => {
+        if (!alive) return
+        const surveyors = d.users || d.surveyors || d || []
+        const total = surveyors.reduce((sum, u) => sum + (Number(u.target) || 0), 0)
+        setTotalAllocations(total)
+      })
+      .catch(() => {})
+
     return () => {
       alive = false
     }
@@ -230,7 +242,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         </div>
       </header>
 
-      {/* KPI tiles — Mock 3 style */}
+      {/* KPI tiles — Mock 3 style with Total Allocations */}
       <div className="portal-kpi-grid">
         <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
           <strong>{stats?.pending?.toLocaleString?.() ?? '—'}</strong>
@@ -244,11 +256,16 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           <strong>{stats?.submissions?.toLocaleString?.() ?? '—'}</strong>
           <span>All submissions</span>
         </button>
+        <button type="button" className="portal-kpi" onClick={() => onNav('users')}>
+          <strong>{totalAllocations != null ? totalAllocations.toLocaleString() : (stats?.total_target?.toLocaleString?.() ?? '—')}</strong>
+          <span>Total Allocations</span>
+        </button>
         <div className="portal-kpi">
           <strong>{stats?.districts ?? '—'}</strong>
           <span>Districts in data</span>
         </div>
       </div>
+
 
       {/* Recent Submissions Feed — Mock 3 doctrine */}
       <div className="card" style={{ marginBottom: 24 }}>

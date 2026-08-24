@@ -1490,13 +1490,38 @@ export default function FieldCollectScreen({
                     ? 'neg'
                     : 'neu'
                 : ''
+            const partyClass =
+              optKey.includes('congress') || optKey.includes('inc')
+                ? 'party-congress'
+                : optKey.includes('bjp')
+                  ? 'party-bjp'
+                  : optKey.includes('brs') || optKey.includes('trs')
+                    ? 'party-brs'
+                    : optKey.includes('others')
+                      ? 'party-others'
+                      : optKey.includes('undecided')
+                        ? 'party-undecided'
+                        : ''
             return (
               <button
                 key={opt}
                 type="button"
-                className={`qa-opt${sel ? ' selected' : ''}${sent ? ` ${sent}` : ''}`}
+                className={`qa-opt opt-btn${sel ? ' selected' : ''}${sent ? ` ${sent}` : ''}${partyClass ? ` ${partyClass}` : ''}`}
                 onClick={() => setAnswers((a) => ({ ...a, [qq.id]: opt }))}
               >
+                {partyClass ? (
+                  <span
+                    className="swatch"
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 2,
+                      marginRight: 6,
+                      display: 'inline-block',
+                      background: `var(--${partyClass})`,
+                    }}
+                  />
+                ) : null}
                 {displayOption(opt, qq, oi, displayLang)}
               </button>
             )

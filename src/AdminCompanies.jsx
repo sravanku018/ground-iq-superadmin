@@ -28,7 +28,9 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
   const [editName, setEditName] = useState('')
   /** Project title draft while creating under the open company */
   const [projectTitle, setProjectTitle] = useState('')
+  const [projectVoiceLimit, setProjectVoiceLimit] = useState(0)
   const [createdProject, setCreatedProject] = useState(null)
+
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -117,6 +119,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
       const d = await createSurvey({
         title,
         questions: [],
+        voice_time_limit: Number(projectVoiceLimit) || 0,
         company_name: c.name,
         admin_ids: adminIds,
       })
@@ -127,6 +130,8 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
         company: c.name,
       })
       setProjectTitle('')
+      setProjectVoiceLimit(0)
+
       onToast?.(`Project "${title}" created under ${c.name}`, 'ok')
       await load()
       // Keep panel open on this company
@@ -424,6 +429,30 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
                           disabled={saving}
                         />
                       </label>
+                      <div style={{ flex: '1 1 100%', marginTop: 6, marginBottom: 6 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 4, color: '#475569' }}>
+                          🎙 Voice Limit:
+                        </span>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {[
+                            { id: 0, label: 'No limit' },
+                            { id: 2, label: '2 min' },
+                            { id: 5, label: '5 min' },
+                            { id: 10, label: '10 min' },
+                            { id: 15, label: '15 min' },
+                          ].map((t) => (
+                            <button
+                              key={t.id}
+                              type="button"
+                              className={`chip ${Number(projectVoiceLimit || 0) === t.id ? 'selected' : ''}`}
+                              onClick={() => setProjectVoiceLimit(t.id)}
+                              style={{ fontSize: 11, padding: '3px 10px' }}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <button
                         type="button"
                         className="btn primary"
@@ -432,6 +461,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
                       >
                         {saving ? '…' : '＋ Create project'}
                       </button>
+
                     </div>
                     {createdProject &&
                     String(createdProject.company || '').toLowerCase() ===

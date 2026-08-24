@@ -363,12 +363,14 @@ export default function AdminSurveysScreen({ onToast, user }) {
 
   // create mode
   const [newTitle, setNewTitle] = useState('')
+  const [newVoiceLimit, setNewVoiceLimit] = useState(0)
   const [saving, setSaving] = useState(false)
   const [exists, setExists] = useState(null) // existing survey with same name
   // Super Admin only: company + Client Admins when creating a Project
   const [newCompany, setNewCompany] = useState('')
   const [checkedAdmins, setCheckedAdmins] = useState({})
   const [companyNames, setCompanyNames] = useState([])
+
 
   // detail mode
   const [detail, setDetail] = useState(null)
@@ -486,6 +488,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
       const d = await createSurvey({
         title,
         questions: [],
+        voice_time_limit: Number(newVoiceLimit) || 0,
         ...(isSuper
           ? {
               company_name: newCompany.trim(),
@@ -504,9 +507,11 @@ export default function AdminSurveysScreen({ onToast, user }) {
       )
       setMode('list')
       setNewTitle('')
+      setNewVoiceLimit(0)
       setNewCompany('')
       setCheckedAdmins({})
       setExists(null)
+
       await load()
       if (d?.survey?.id) openDetail(d.survey.id)
     } catch (e) {
@@ -737,9 +742,35 @@ export default function AdminSurveysScreen({ onToast, user }) {
           </div>
         )}
 
+        <div className="card" style={{ marginBottom: 12, padding: 14 }}>
+          <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>🎙 Voice recording limit</p>
+          <p className="muted" style={{ margin: '0 0 10px', fontSize: 12 }}>
+            Maximum recording duration per survey. 0 = no limit.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {[
+              { id: 0, label: 'No limit' },
+              { id: 2, label: '2 min' },
+              { id: 5, label: '5 min' },
+              { id: 10, label: '10 min' },
+              { id: 15, label: '15 min' },
+            ].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`chip ${Number(newVoiceLimit || 0) === t.id ? 'selected' : ''}`}
+                onClick={() => setNewVoiceLimit(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
           Questions are added after creating — open the project to edit them (name, questions). Assign surveyors from Surveyors → profile.
         </p>
+
 
         <button
           type="button"

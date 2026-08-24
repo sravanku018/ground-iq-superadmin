@@ -14,6 +14,17 @@ import {
 } from './api'
 import { PortalEmpty, PortalError, PortalSkeleton } from './PortalUI'
 import SubmissionEditor from './SubmissionEditor'
+import FeedCard from './components/FeedCard'
+
+function partyColor(p) {
+  if (!p) return undefined
+  const pl = String(p).toLowerCase()
+  if (pl.includes('congress') || pl.includes('inc')) return 'var(--party-congress, #16a34a)'
+  if (pl.includes('bjp')) return 'var(--party-bjp, #f97316)'
+  if (pl.includes('brs') || pl.includes('trs')) return 'var(--party-brs, #ec4899)'
+  if (pl.includes('undecided')) return 'var(--party-undecided, #64748b)'
+  return 'var(--party-others, #94a3b8)'
+}
 
 /**
  * Q/A review → confirm / reject.
@@ -442,88 +453,105 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
             const photoSrc = photo?.playUrl || photo?.url || item.photo_url
             const audioSrc = audio?.playUrl || audio?.url || item.audio_url
 
-            return (
-              <li
-                key={item.id}
-                data-review-id={item.id}
-                data-review-idx={idx}
-                className={`review-item card${focused ? ' is-focus' : ''}`}
-                style={{ marginBottom: 10 }}
-                onClick={() => setFocusIdx(idx)}
-              >
+            const pills = [
+              a.party ? { label: a.party, dot: partyColor(a.party) } : null,
+              a.gender ? { label: a.gender } : null,
+              a.age ? { label: `${a.age} yrs` } : null,
+              a.caste ? { label: a.caste } : null,
+              a.respondent_name ? { label: a.respondent_name } : null,
+            ].filter(Boolean)
+
+            const signals = [
+              { label: 'GPS', status: item.has_geo || a.latitude ? 'ok' : 'warn' },
+              { label: 'Photo', status: item.has_photo || photoSrc ? 'ok' : 'bad' },
+              { label: 'Voice', status: item.has_voice || audioSrc ? 'ok' : 'bad' },
+              { label: 'Q/A', status: qa.length > 0 ? 'ok' : 'warn' },
+            ]
+
+            const actions = (
+              <div className="review-actions-bar user-actions" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', width: '100%' }}>
                 <button
                   type="button"
-                  className="review-head"
+                  className="btn small primary"
+                  disabled={busyId === item.id}
                   onClick={() => {
                     setFocusIdx(idx)
-                    setExpanded(open ? null : item.id)
-                    setEditingId(null)
-                  }}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    background: 'none',
-                    border: 0,
-                    color: 'inherit',
-                    padding: 0,
-                    cursor: 'pointer',
+                    setExpanded(item.id)
+                    setEditingId(editingId === item.id ? null : item.id)
                   }}
                 >
-                  <strong>
-                    #{item.id} · {a.respondent_name || a.district || 'Survey'}
-                  </strong>
-                  <span className="meta">
-                    {' '}
-                    · {item.status || 'pending'}
-                    {item.legacy ? ' · legacy (no GPS/camera)' : ''}
-                    {item.submitted_by ? ` · ${item.submitted_by}` : ''}
-                    {a.district ? ` · ${a.district}` : ''}
-                    {item.has_photo || photoSrc ? ' · 📷' : ''}
-                    {item.has_voice || audioSrc ? ' · 🎤' : ''}
-                    {item.status === 'confirmed' && item.fact_status === 'failed'
-                      ? ' · ⚠ fact failed'
-                      : ''}
-                    {item.proof_validated ? (
-                      item.proof_validated.ok ? (
-                        <span
-                          style={{
-                            marginLeft: 6,
-                            color: '#0a8f3c',
-                            fontWeight: 600,
-                            background: '#e6f6ec',
-                            borderRadius: 10,
-                            padding: '1px 8px',
-                            fontSize: 11,
-                          }}
-                        >
-                          <span style={{display:'inline-flex',alignItems:'center',gap:3}}>Proof <Icon name="check" size={11} /></span>
-                        </span>
-                      ) : (
-                        <span
-                          style={{
-                            marginLeft: 6,
-                            color: '#b3261e',
-                            fontWeight: 600,
-                            background: '#fdecea',
-                            borderRadius: 10,
-                            padding: '1px 8px',
-                            fontSize: 11,
-                          }}
-                        >
-                          <span style={{display:'inline-flex',alignItems:'center',gap:3}}>Proof <Icon name="cross" size={11} /></span>
-                        </span>
-                      )
-                    ) : (
-                      ''
-                    )}
-                  </span>
-                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                    {open ? 'Hide Q/A ▲' : 'Show Q/A + media ▼'}
-                  </div>
+                  {editingId === item.id ? 'Close edit' : 'Edit (e)'}
                 </button>
 
+                {canReview && item.status !== 'confirmed' && (
+                  <button
+                    type="button"
+                    className="btn small primary"
+                    disabled={busyId === item.id}
+                    onClick={() => setStatusFor(item.id, 'confirmed')}
+                  >
+                    Confirm (c)
+                  </button>
+                )}
+                {item.status === 'confirmed' && item.fact_status === 'failed' && (
+                  <button
+                    type="button"
+                    className="btn small"
+                    disabled={busyId === item.id}
+                    title={item.fact_error || 'Fact materialization failed — retry to include on dashboards'}
+                    onClick={() => retryFactFor(item.id)}
+                  >
+                    Retry fact (processing)
+                  </button>
+                )}
+                {canReview && item.status !== 'rejected' && (
+                  <button
+                    type="button"
+                    className="btn small danger"
+                    disabled={busyId === item.id}
+                    onClick={() => setStatusFor(item.id, 'rejected')}
+                  >
+                    Reject (r)
+                  </button>
+                )}
+                {canReview && item.status === 'rejected' && (
+                  <button
+                    type="button"
+                    className="btn small danger"
+                    disabled={busyId === item.id}
+                    onClick={() => deleteRejected(item.id)}
+                  >
+                    Delete
+                  </button>
+                )}
+                {canReview && item.status !== 'pending' && (
+                  <button
+                    type="button"
+                    className="btn small"
+                    disabled={busyId === item.id}
+                    onClick={() => setStatusFor(item.id, 'pending')}
+                  >
+                    Back to pending
+                  </button>
+                )}
+                {canValidateProof && (
+                  <button
+                    type="button"
+                    className="btn small"
+                    disabled={busyId === item.id}
+                    title="Validate Phone and Aadhaar numbers"
+                    onClick={() => validateProofFor(item.id)}
+                  >
+                    Validate proof
+                  </button>
+                )}
+              </div>
+            )
+
+            const detail = (
+              <div>
                 {/* Always-visible mini media strip when open */}
-                {open && editingId !== item.id && (
+                {editingId !== item.id && (
                   <div className="qa-block" style={{ marginTop: 10 }}>
                     {(item.status === 'confirmed' || item.fact_status === 'confirmed' || item.fact_status === 'materialized') ? (
                       <div className="card" style={{ marginBottom: 10, padding: '8px 12px', background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
@@ -543,88 +571,88 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                           }}
                         >
                           {photoSrc ? (
-                          <div>
-                            <div
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                              }}
-                            >
-                              <span className="muted" style={{ fontSize: 12 }}>
-                                Photo
-                                {photo?.storage ? ` · ${photo.storage}` : ''}
-                              </span>
-                              <button
-                                type="button"
-                                className="btn small"
-                                style={{ fontSize: 11, padding: '2px 8px' }}
-                                onClick={() =>
-                                  downloadMediaFile(
-                                    photo?.url || item.photo_url || photoSrc,
-                                    `photo-${item.id}.jpg`,
-                                  )
-                                }
+                            <div>
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                }}
                               >
-                                ⬇ Download
-                              </button>
+                                <span className="muted" style={{ fontSize: 12 }}>
+                                  Photo
+                                  {photo?.storage ? ` · ${photo.storage}` : ''}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="btn small"
+                                  style={{ fontSize: 11, padding: '2px 8px' }}
+                                  onClick={() =>
+                                    downloadMediaFile(
+                                      photo?.url || item.photo_url || photoSrc,
+                                      `photo-${item.id}.jpg`,
+                                    )
+                                  }
+                                >
+                                  ⬇ Download
+                                </button>
+                              </div>
+                              <img
+                                src={photoSrc}
+                                alt="survey photo"
+                                style={{
+                                  display: 'block',
+                                  maxWidth: '100%',
+                                  maxHeight: 280,
+                                  objectFit: 'contain',
+                                  marginTop: 6,
+                                  borderRadius: 8,
+                                  background: '#eef2f7',
+                                }}
+                              />
                             </div>
-                            <img
-                              src={photoSrc}
-                              alt="survey photo"
-                              style={{
-                                display: 'block',
-                                maxWidth: '100%',
-                                maxHeight: 280,
-                                objectFit: 'contain',
-                                marginTop: 6,
-                                borderRadius: 8,
-                                background: '#eef2f7',
-                              }}
-                            />
-                          </div>
-                        ) : null}
-                        {audioSrc ? (
-                          <div>
-                            <div
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                marginBottom: 4,
-                              }}
-                            >
-                              <span className="muted" style={{ fontSize: 12 }}>
-                                Audio
-                                {audio?.storage ? ` · ${audio.storage}` : ''}
-                              </span>
-                              <button
-                                type="button"
-                                className="btn small primary"
-                                style={{ fontSize: 11, padding: '2px 8px' }}
-                                onClick={() =>
-                                  downloadMediaFile(
-                                    audio?.url || item.audio_url || audioSrc,
-                                    `audio-${item.id}.webm`,
-                                  )
-                                }
+                          ) : null}
+                          {audioSrc ? (
+                            <div>
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  marginBottom: 4,
+                                }}
                               >
-                                ⬇ Download
-                              </button>
+                                <span className="muted" style={{ fontSize: 12 }}>
+                                  Audio
+                                  {audio?.storage ? ` · ${audio.storage}` : ''}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="btn small primary"
+                                  style={{ fontSize: 11, padding: '2px 8px' }}
+                                  onClick={() =>
+                                    downloadMediaFile(
+                                      audio?.url || item.audio_url || audioSrc,
+                                      `audio-${item.id}.webm`,
+                                    )
+                                  }
+                                >
+                                  ⬇ Download
+                                </button>
+                              </div>
+                              <audio controls src={audioSrc} style={{ width: '100%' }} />
                             </div>
-                            <audio controls src={audioSrc} style={{ width: '100%' }} />
-                          </div>
-                        ) : null}
-                        {!photoSrc && !audioSrc && (
-                          <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-                            {mediaById[item.id]
-                              ? 'No photo/audio on this record.'
-                              : 'Loading media…'}
-                          </p>
-                        )}
+                          ) : null}
+                          {!photoSrc && !audioSrc && (
+                            <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                              {mediaById[item.id]
+                                ? 'No photo/audio on this record.'
+                                : 'Loading media…'}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
                     {item.proof_validated && (
                       <div
                         className="card"
@@ -644,7 +672,6 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                             {new Date(item.proof_validated.checked_at).toLocaleString()}
                           </span>
                         </strong>
-
                       </div>
                     )}
                     {qa.map((row) => (
@@ -671,84 +698,36 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                     }}
                   />
                 )}
+              </div>
+            )
 
-                <div className="review-actions-bar user-actions">
-                  <button
-                    type="button"
-                    className="btn small primary"
-                    disabled={busyId === item.id}
-                    onClick={() => {
-                      setFocusIdx(idx)
-                      setExpanded(item.id)
-                      setEditingId(editingId === item.id ? null : item.id)
-                    }}
-                  >
-                    {editingId === item.id ? 'Close edit' : 'Edit (e)'}
-                  </button>
-
-                  {canReview && item.status !== 'confirmed' && (
-                    <button
-                      type="button"
-                      className="btn small primary"
-                      disabled={busyId === item.id}
-                      onClick={() => setStatusFor(item.id, 'confirmed')}
-                    >
-                      Confirm (c)
-                    </button>
-                  )}
-                  {item.status === 'confirmed' && item.fact_status === 'failed' && (
-                    <button
-                      type="button"
-                      className="btn small"
-                      disabled={busyId === item.id}
-                      title={item.fact_error || 'Fact materialization failed — retry to include on dashboards'}
-                      onClick={() => retryFactFor(item.id)}
-                    >
-                      Retry fact (processing)
-                    </button>
-                  )}
-                  {canReview && item.status !== 'rejected' && (
-                    <button
-                      type="button"
-                      className="btn small danger"
-                      disabled={busyId === item.id}
-                      onClick={() => setStatusFor(item.id, 'rejected')}
-                    >
-                      Reject (r)
-                    </button>
-                  )}
-                  {canReview && item.status === 'rejected' && (
-                    <button
-                      type="button"
-                      className="btn small danger"
-                      disabled={busyId === item.id}
-                      onClick={() => deleteRejected(item.id)}
-                    >
-                      Delete
-                    </button>
-                  )}
-                  {canReview && item.status !== 'pending' && (
-                    <button
-                      type="button"
-                      className="btn small"
-                      disabled={busyId === item.id}
-                      onClick={() => setStatusFor(item.id, 'pending')}
-                    >
-                      Back to pending
-                    </button>
-                  )}
-                  {canValidateProof && (
-                    <button
-                      type="button"
-                      className="btn small"
-                      disabled={busyId === item.id}
-                      title="Validate Phone and Aadhaar numbers"
-                      onClick={() => validateProofFor(item.id)}
-                    >
-                      Validate proof
-                    </button>
-                  )}
-                </div>
+            return (
+              <li
+                key={item.id}
+                data-review-id={item.id}
+                data-review-idx={idx}
+                className={`review-item${focused ? ' is-focus' : ''}`}
+                style={{ listStyle: 'none', marginBottom: 12 }}
+                onClick={() => setFocusIdx(idx)}
+              >
+                <FeedCard
+                  id={item.id}
+                  avatar={(item.submitted_by || 'S').slice(0, 2).toUpperCase()}
+                  name={item.submitted_by ? `${item.submitted_by} (#${item.id})` : `Survey #${item.id}`}
+                  verified={Boolean(item.proof_validated?.ok)}
+                  location={[a.district, a.constituency || a.assembly, a.mandal].filter(Boolean).join(' · ') || 'Telangana'}
+                  time={item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                  status={item.status || 'pending'}
+                  pills={pills}
+                  signals={signals}
+                  actions={actions}
+                  detail={open ? detail : null}
+                  onClick={() => {
+                    setFocusIdx(idx)
+                    setExpanded(open ? null : item.id)
+                    setEditingId(null)
+                  }}
+                />
               </li>
             )
           })}

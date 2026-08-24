@@ -19,6 +19,7 @@ import {
 import { getAnalytics } from './api'
 import SurveyMap from './SurveyMap'
 import { getDisplayLang, setDisplayLang } from './prefs'
+import PeriodTable from './components/PeriodTable'
 
 const PARTY_COLORS = {
   Congress: '#16a34a',
@@ -1427,6 +1428,32 @@ export default function DashboardScreen({ onToast }) {
                 extra={CLEAR_AC}
               />
             </ChartCard>
+          )}
+
+          {charts?.byParty?.length > 0 && (
+            <PeriodTable
+              title="Party Preference (Legible Table)"
+              subtitle="Validated palette · measured distribution"
+              columns={[
+                { key: 'name', label: 'Party', partyDot: true },
+                { key: 'value', label: 'Count', align: 'right' },
+                { key: 'pct', label: 'Share %', align: 'right', format: (v) => `${v}%`, bar: true },
+              ]}
+              data={{
+                total: (() => {
+                  const byP = charts.byParty || []
+                  const totalN = byP.reduce((s, p) => s + (p.value || 0), 0)
+                  return byP.map((p) => ({
+                    name: p.name,
+                    value: p.value,
+                    pct: totalN > 0 ? Number(((p.value / totalN) * 100).toFixed(1)) : 0,
+                    color: PARTY_COLORS[p.name] || 'var(--party-others)',
+                  }))
+                })(),
+              }}
+              periods={['total']}
+              onRowClick={(row) => onToggleFilter('party', row.name)}
+            />
           )}
 
           {charts?.issues?.length > 0 && (

@@ -112,8 +112,8 @@ export default function FeedCard({
                 border: '1px solid var(--surface-hover)',
               }}
             >
-              {p.color && (
-                <span style={{ width: 7, height: 7, borderRadius: 2, flexShrink: 0, background: p.color }} />
+              {(p.color || p.dot) && (
+                <span style={{ width: 7, height: 7, borderRadius: 2, flexShrink: 0, background: p.color || p.dot }} />
               )}
               {p.label}
             </span>
@@ -126,20 +126,24 @@ export default function FeedCard({
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2, 8px)' }}>
           {signals.length > 0 && (
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              {signals.map((sig, i) => (
-                <span
-                  key={i}
-                  style={{
-                    fontSize: 10, fontWeight: 700, padding: '2px 6px',
-                    borderRadius: 'var(--r-sm)',
-                    display: 'inline-flex', alignItems: 'center', gap: 3,
-                    background: sig.type === 'ok' ? 'var(--ok-bg)' : sig.type === 'bad' ? 'var(--bad-bg)' : 'var(--warn-bg)',
-                    color: sig.type === 'ok' ? 'var(--ok)' : sig.type === 'bad' ? 'var(--bad)' : 'var(--warn)',
-                  }}
-                >
-                  {sig.label}
-                </span>
-              ))}
+              {signals.map((sig, i) => {
+                const isOk = sig.type === 'ok' || sig.status === 'ok'
+                const isBad = sig.type === 'bad' || sig.status === 'bad'
+                return (
+                  <span
+                    key={i}
+                    style={{
+                      fontSize: 10, fontWeight: 700, padding: '2px 6px',
+                      borderRadius: 'var(--r-sm)',
+                      display: 'inline-flex', alignItems: 'center', gap: 3,
+                      background: isOk ? 'var(--ok-bg)' : isBad ? 'var(--bad-bg)' : 'var(--warn-bg)',
+                      color: isOk ? 'var(--ok)' : isBad ? 'var(--bad)' : 'var(--warn)',
+                    }}
+                  >
+                    {sig.label}
+                  </span>
+                )
+              })}
             </div>
           )}
         </div>

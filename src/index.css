@@ -14,9 +14,32 @@
   --accent-2: #00e599;
 
   --ink: #0f172a;
+  --ink-secondary: #475569;
+  --ink-muted: #64748b;
+  --ink-faint: #94a3b8;
   --muted: #64748b;
   --muted-2: #94a3b8;
   --border-soft: #f1f5f9;
+
+  /* Mock 3 Surfaces */
+  --surface: #ffffff;
+  --surface-alt: #f8fafc;
+  --surface-hover: #f1f5f9;
+
+  /* Mock 3 Party Palette */
+  --party-congress: #16a34a;
+  --party-bjp: #f97316;
+  --party-brs: #ec4899;
+  --party-others: #94a3b8;
+  --party-undecided: #64748b;
+
+  /* Mock 3 Status Tokens */
+  --ok: #16a34a;
+  --ok-bg: #f0fdf4;
+  --warn: #f59e0b;
+  --warn-bg: #fffbeb;
+  --bad: #ef4444;
+  --bad-bg: #fef2f2;
 
   --info: #38bdf8;
   --info-bg: rgba(56, 189, 248, 0.12);

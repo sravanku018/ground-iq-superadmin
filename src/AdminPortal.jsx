@@ -374,64 +374,82 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         )}
       </div>
 
-      {/* My Allocation — Mock 3 doctrine */}
-      <div className="card" style={{ marginBottom: 20 }}>
-        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>My allocation</h3>
-        <p className="csub" style={{ margin: '2px 0 14px', fontSize: 12, color: '#64748b' }}>
-          Records &amp; features granted by Super Admin (0 = unlimited)
-        </p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
-            Surveys <strong>{stats?.surveys_count || 3} / ∞</strong>
-          </span>
-          <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
-            Surveyors <strong>{stats?.surveyors_count || 24} / 30</strong>
-          </span>
-          <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
-            Questions/survey <strong>12 / 20</strong>
-          </span>
-          <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
-            Records <strong>{stats?.submissions?.toLocaleString?.() || '4,089'} / {(totalAllocations || 6000).toLocaleString()}</strong>
-          </span>
-        </div>
-      </div>
-
-      {/* How the three lenses fold into one product — Mock 3 doctrine */}
-      <div className="card" style={{ marginBottom: 24, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-        <h3 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
-          How the three lenses fold into one product
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
-          <div>
-            <strong style={{ fontSize: 13, color: '#1d6fe0', display: 'block', marginBottom: 4 }}>
-              Apple → the surveyor surface
-            </strong>
-            <p style={{ margin: 0, fontSize: 12, color: '#475569', lineHeight: 1.45 }}>
-              Ruthless subtraction, one card at a time, craft in the motion. The locked capture flow feels effortless but enforces GPS + photo + voice — the raw material of trust.
-            </p>
-          </div>
-          <div>
-            <strong style={{ fontSize: 13, color: '#16a34a', display: 'block', marginBottom: 4 }}>
-              Google → one system, legible data
-            </strong>
-            <p style={{ margin: 0, fontSize: 12, color: '#475569', lineHeight: 1.45 }}>
-              A single token set drives phone and portal alike. Complex electoral data stays scannable: fixed party colors, one axis, sequential ramps, the relief rule on every chart.
-            </p>
-          </div>
-          <div>
-            <strong style={{ fontSize: 13, color: '#0284c7', display: 'block', marginBottom: 4 }}>
-              Twitter → sync feel &amp; feed
-            </strong>
-            <p style={{ margin: 0, fontSize: 12, color: '#475569', lineHeight: 1.45 }}>
-              Optimistic local-first save, a live intake feed of one consistent card, and a score that stays explainable — never an opaque ranking.
-            </p>
+      {/* My Allocation for Client Admin / Platform Governance Quick Actions for Super Admin */}
+      {isSuper ? (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Platform Governance Quick Actions</h3>
+          <p className="csub" style={{ margin: '2px 0 14px', fontSize: 12, color: '#64748b' }}>
+            Multi-tenant control, power delegation, audit trails, and projects
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+            <button
+              type="button"
+              className="portal-action"
+              onClick={() => onNav('companies')}
+              style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#ffffff', cursor: 'pointer', textAlign: 'left' }}
+            >
+              <span style={{ fontSize: 16, display: 'block', marginBottom: 4 }}>🏢</span>
+              <strong style={{ fontSize: 13, display: 'block', color: '#0f172a' }}>Companies</strong>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Manage organizations &amp; projects</span>
+            </button>
+            <button
+              type="button"
+              className="portal-action"
+              onClick={() => onNav('admins')}
+              style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#ffffff', cursor: 'pointer', textAlign: 'left' }}
+            >
+              <span style={{ fontSize: 16, display: 'block', marginBottom: 4 }}>🛡️</span>
+              <strong style={{ fontSize: 13, display: 'block', color: '#0f172a' }}>Client Admins</strong>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Power delegation &amp; accounts</span>
+            </button>
+            <button
+              type="button"
+              className="portal-action"
+              onClick={() => onNav('surveys')}
+              style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#ffffff', cursor: 'pointer', textAlign: 'left' }}
+            >
+              <span style={{ fontSize: 16, display: 'block', marginBottom: 4 }}>📋</span>
+              <strong style={{ fontSize: 13, display: 'block', color: '#0f172a' }}>Projects</strong>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Questions &amp; assignments</span>
+            </button>
+            <button
+              type="button"
+              className="portal-action"
+              onClick={() => onNav('audit')}
+              style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#ffffff', cursor: 'pointer', textAlign: 'left' }}
+            >
+              <span style={{ fontSize: 16, display: 'block', marginBottom: 4 }}>⭐</span>
+              <strong style={{ fontSize: 13, display: 'block', color: '#0f172a' }}>Platform Audit</strong>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Platform activity log &amp; quotas</span>
+            </button>
           </div>
         </div>
-      </div>
-
+      ) : (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>My allocation</h3>
+          <p className="csub" style={{ margin: '2px 0 14px', fontSize: 12, color: '#64748b' }}>
+            Records &amp; features granted by Super Admin (0 = unlimited)
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
+              Surveys <strong>{stats?.surveys_count || 3} / ∞</strong>
+            </span>
+            <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
+              Surveyors <strong>{stats?.surveyors_count || 24} / 30</strong>
+            </span>
+            <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
+              Questions/survey <strong>12 / 20</strong>
+            </span>
+            <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
+              Records <strong>{stats?.submissions?.toLocaleString?.() || '4,089'} / {(totalAllocations || 6000).toLocaleString()}</strong>
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
 
 function DataList({ items, loading, onRefresh, surveys, surveyFilter, onSurveyChange }) {
   return (
@@ -847,7 +865,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
 
           <div className="side-section-label" style={{ marginTop: 12 }}>COLLECTION</div>
           <button className={`side-sub ${page === 'users' ? 'active' : ''}`} onClick={() => goPage('users')}>Surveyors &amp; targets</button>
-          <button className={`side-sub ${page === 'surveys' ? 'active' : ''}`} onClick={() => goPage('surveys')}>Questions · bank</button>
+          <button className={`side-sub ${page === 'surveys' ? 'active' : ''}`} onClick={() => goPage('surveys')}>{isSuper ? 'Projects' : 'Questions · bank'}</button>
 
           {isSuper && (
             <>
@@ -859,8 +877,9 @@ export default function AdminPortal({ superAdminOnly = false }) {
           )}
 
           <div className="side-section-label" style={{ marginTop: 12 }}>ACCOUNT</div>
-          <button className={`side-sub ${page === 'profile' ? 'active' : ''}`} onClick={() => goPage('profile')}>My access</button>
+          <button className={`side-sub ${page === 'profile' ? 'active' : ''}`} onClick={() => goPage('profile')}>{isSuper ? 'Super Admin profile' : 'My access'}</button>
         </nav>
+
 
 
         <div className="portal-sidebar-foot">

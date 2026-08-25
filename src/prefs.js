@@ -12,7 +12,6 @@ const FONT_SCALE_KEY = 'esurvey_font_scale'
 const DISPLAY_LANG_KEY = 'esurvey_display_lang'
 const LEGACY_FILTER_LANG_KEY = 'esurvey_filter_lang'
 
-export const DISPLAY_LANGS = ['en', 'te']
 
 const OPTION_TE = {
   Yes: 'అవును',

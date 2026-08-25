@@ -39,10 +39,6 @@ export function getStoredUser() {
   }
 }
 
-export function setSession(token, user) {
-  localStorage.setItem(TOKEN_KEY, token || '')
-  localStorage.setItem(USER_KEY, JSON.stringify(user || null))
-}
 
 export function clearSession() {
   try {
@@ -212,14 +208,6 @@ export function seedSuperAdminSlots() {
   return request('/api/super-admin/seed-slots', { method: 'POST' })
 }
 
-/** Reset the ONLY existing Super Admin's password (bootstrap escape hatch) — portal admin */
-export function resetSuperAdminPassword(password) {
-  return request('/api/super-admin/reset', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
-  })
-}
 
 /** Platform-wide audit log (Super Admin only) — FR-AUD-02 */
 export function getAuditLog(params = {}) {
@@ -325,9 +313,6 @@ export function getStats() {
   return request('/api/stats')
 }
 
-export function getGeo() {
-  return request('/api/geo')
-}
 
 export function getMandals(district) {
   const q = district ? `?district=${encodeURIComponent(district)}` : ''
@@ -373,14 +358,6 @@ export function getSubmission(id) {
   return request(`/api/submissions/${id}`)
 }
 
-/** Proof validation — format-check phone + Aadhaar on a record (grantable power) */
-export function validateSubmissionProof(id, body = {}) {
-  return request(`/api/submissions/${id}/proof`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-}
 
 /**
  * Client Admin: edit survey data
@@ -542,10 +519,6 @@ export function getQuestions() {
   return request('/api/questions')
 }
 
-/** Surveyor's assigned surveys with their questions (field app) */
-export function getMySurveys() {
-  return request('/api/my-surveys')
-}
 
 /**
  * Form for the field app: surveys assigned to this surveyor (GET /api/my-surveys).
@@ -713,32 +686,7 @@ export function getCompanyDashboard(idOrName) {
   return request(`/api/companies/${encodeURIComponent(idOrName)}/dashboard`)
 }
 
-/** Admin: add respondent to a survey */
-export function addRespondent(id, { name, phone }) {
-  return request(`/api/surveys/${id}/respondents`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, phone }),
-  })
-}
 
-/** Admin: mark respondent done/pending */
-export function setRespondentStatus(surveyId, respondentId, status) {
-  return request(`/api/surveys/${surveyId}/respondents/${respondentId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
-  })
-}
-
-/** Admin: remove respondent */
-export function deleteRespondent(surveyId, respondentId) {
-  return request(`/api/surveys/${surveyId}/respondents/${respondentId}`, {
-    method: 'DELETE',
-  })
-}
-
-/** Admin save question bank */
 export function saveQuestions({ title, questions }) {
   return request('/api/admin/questions', {
     method: 'PUT',
@@ -747,39 +695,6 @@ export function saveQuestions({ title, questions }) {
   })
 }
 
-/** Q/A only (no media blobs) */
-export function submitSurveyQA({
-  form_key,
-  form_id,
-  source,
-  submitted_by,
-  answers,
-  geo,
-}) {
-  return request('/api/submissions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      form_key,
-      form_id,
-      source: source || 'mobile-field-survey',
-      submitted_by,
-      answers,
-      geo,
-      app_version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : undefined,
-      app_build: typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : undefined,
-    }),
-  })
-}
-
-/** Separate photo/audio upload */
-export function uploadSubmissionMedia(submissionId, { kind, data, mime, meta }) {
-  return request(`/api/submissions/${submissionId}/media`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ kind, data, mime, meta }),
-  })
-}
 
 export function listSubmissionMedia(submissionId, full = false) {
   return request(`/api/submissions/${submissionId}/media${full ? '?full=1' : ''}`)
@@ -914,45 +829,3 @@ export async function submitSurveyOrQueue({
   void forceSyncNow()
   return { mode: 'queued', id }
 }
-
-export const OPTIONS = {
-  caste: ['BC', 'SC', 'ST', 'OC', 'Minority', 'Other'],
-  party: ['Congress', 'BJP', 'BRS', 'Others', 'Undecided'],
-  pm: ['Narendra Modi', 'Rahul Gandhi', 'Other', 'Undecided'],
-  issues: ['Water', 'Roads', 'Jobs', 'Electricity', 'Healthcare', 'Education', 'Housing'],
-  employment: [
-    'Private Sector',
-    'Government',
-    'Self-Employed',
-    'Student',
-    'Unemployed',
-    'Retired',
-    'Farmer',
-    'Other',
-  ],
-  education: ['Illiterate', 'Primary', 'Secondary', 'Graduate', 'Post Graduate', 'Other'],
-  gender: ['Male', 'Female', 'Other'],
-  performance: ['Excellent', 'Good', 'Average', 'Poor', 'Very Poor'],
-}
-
-export const emptyForm = (agentName = '') => ({
-  submittedBy: agentName || '',
-  respondentName: '',
-  district: '',
-  constituency: '',
-  mpConstituency: '',
-  mandal: '',
-  revenueDivision: '',
-  ward: '',
-  gender: '',
-  caste: '',
-  age: '',
-  employment: '',
-  education: '',
-  winningParty: '',
-  pmPreference: '',
-  performance: '',
-  issues: [],
-  notes: '',
-})
-

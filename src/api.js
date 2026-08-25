@@ -39,6 +39,25 @@ export function getStoredUser() {
   }
 }
 
+export function setSession(token, user) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    else localStorage.removeItem(TOKEN_KEY)
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user))
+    else localStorage.removeItem(USER_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+export function setStoredUser(user) {
+  try {
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user))
+    else localStorage.removeItem(USER_KEY)
+  } catch {
+    /* ignore */
+  }
+}
 
 export function clearSession() {
   try {

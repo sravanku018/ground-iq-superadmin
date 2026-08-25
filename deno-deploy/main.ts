@@ -4073,13 +4073,13 @@ async function rawHandler(req: Request): Promise<Response> {
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.1",
-          versionCode: 20001,
+          version: "2.0.2",
+          versionCode: 20002,
           minSupportedVersionCode: 20000,
           apkUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-release.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
           releaseUrl: `https://github.com/${repo}/releases/latest`,
-          changelog: "Instant offline geo caching, optimized 1-roundtrip API calls, and privacy updates.",
+          changelog: "Streamlined 4-tab mobile navigation, instant geo caching, and in-app OTA updates.",
           publishedAt: new Date().toISOString(),
         },
         200,

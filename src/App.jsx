@@ -40,6 +40,8 @@ function FieldBoot() {
   )
 }
 
+import AppUpdateModal from './AppUpdateModal'
+
 export default function App() {
   // Store running build version; self-heal stale cached bundles; set document title
   useEffect(() => {
@@ -52,15 +54,18 @@ export default function App() {
     }
   }, [])
 
-  if (SUPER_ADMIN_CONSOLE) {
-    return <AdminPortal superAdminOnly />
-  }
-  if (!FIELD_APP_ENABLED || isAdminPath()) {
-    return <AdminPortal />
-  }
   return (
-    <Suspense fallback={<FieldBoot />}>
-      <SurveyorApp />
-    </Suspense>
+    <>
+      {SUPER_ADMIN_CONSOLE ? (
+        <AdminPortal superAdminOnly />
+      ) : !FIELD_APP_ENABLED || isAdminPath() ? (
+        <AdminPortal />
+      ) : (
+        <Suspense fallback={<FieldBoot />}>
+          <SurveyorApp />
+        </Suspense>
+      )}
+      <AppUpdateModal />
+    </>
   )
 }

@@ -4067,6 +4067,26 @@ async function rawHandler(req: Request): Promise<Response> {
       });
     }
 
+    // App Version & In-App OTA Update Metadata (Telegram-style auto-update)
+    if (path === "/api/app-version" && method === "GET") {
+      const repo = "sravanku018/ground-iq-web";
+      return json(
+        {
+          appName: "Smart Survey X",
+          version: "2.0.1",
+          versionCode: 20001,
+          minSupportedVersionCode: 20000,
+          apkUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-release.apk`,
+          apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
+          releaseUrl: `https://github.com/${repo}/releases/latest`,
+          changelog: "Instant offline geo caching, optimized 1-roundtrip API calls, and privacy updates.",
+          publishedAt: new Date().toISOString(),
+        },
+        200,
+        { "cache-control": "public, max-age=300" },
+      );
+    }
+
     // Login — admin portal OR surveyor field app (accounts created by Client Admin only)
     if (path === "/api/auth/login" && method === "POST") {
       const ip = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown";

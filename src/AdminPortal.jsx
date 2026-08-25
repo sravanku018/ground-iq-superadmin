@@ -454,12 +454,19 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
             <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
               Questions/survey <strong>12 / 20</strong>
             </span>
+            <span className="chip" style={{ background: '#f0fdf4', border: '1px solid #dcfce7', color: '#16a34a', fontSize: 12, fontWeight: 600 }}>
+              Confirmed <strong>{stats?.confirmed?.toLocaleString?.() ?? '0'}</strong>
+            </span>
+            <span className="chip" style={{ background: '#fef2f2', border: '1px solid #fee2e2', color: '#ef4444', fontSize: 12, fontWeight: 600 }}>
+              Rejected <strong>{((stats?.rejected != null ? stats.rejected : stats?.submissions != null && stats?.confirmed != null && stats?.pending != null ? Math.max(0, stats.submissions - stats.confirmed - stats.pending) : 0)).toLocaleString()}</strong>
+            </span>
             <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
               Records <strong>{stats?.submissions?.toLocaleString?.() || '4,089'} / {(totalAllocations || 6000).toLocaleString()}</strong>
             </span>
           </div>
         </div>
       )}
+
     </div>
   )
 }

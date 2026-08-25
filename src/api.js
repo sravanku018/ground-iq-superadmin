@@ -266,12 +266,20 @@ export function createSeatRequest(body) {
   })
 }
 
+export function decideSeatRequest(id, decision) {
+  return request(`/api/seat-limit-requests/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision }),
+  })
+}
+
 export function approveSeatRequest(id) {
-  return request(`/api/seat-limit-requests/${id}/approve`, { method: 'POST' })
+  return decideSeatRequest(id, 'approve')
 }
 
 export function denySeatRequest(id) {
-  return request(`/api/seat-limit-requests/${id}/deny`, { method: 'POST' })
+  return decideSeatRequest(id, 'deny')
 }
 
 export function deleteUser(id) {
@@ -309,10 +317,16 @@ export function setProgressQuota(body) {
   })
 }
 
+/** KPI summary counts (pending, confirmed, rejected, submissions, districts) */
 export function getStats() {
-  return request('/api/stats')
+  return request('/api/analytics?group_by=kpi')
 }
 
+/** Combined geo children (mandals + revenue divisions) for a district */
+export function getGeoChildren(district) {
+  const q = district ? `?district=${encodeURIComponent(district)}` : ''
+  return request(`/api/geo/children${q}`)
+}
 
 export function getMandals(district) {
   const q = district ? `?district=${encodeURIComponent(district)}` : ''
@@ -702,7 +716,7 @@ export function listSubmissionMedia(submissionId, full = false) {
 
 /** Surveyor's own submitted records (field app "My records") */
 export function getMySubmissions() {
-  return request('/api/submissions/me')
+  return request('/api/submissions?mine=1')
 }
 
 /**

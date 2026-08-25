@@ -202,11 +202,11 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
   const [recentItems, setRecentItems] = useState([])
   const [totalAllocations, setTotalAllocations] = useState(null)
   const [loadingRecent, setLoadingRecent] = useState(true)
-
+  const [activityFilter, setActivityFilter] = useState('all')
 
   useEffect(() => {
     let alive = true
-    listSubmissions(5, '')
+    listSubmissions(10, '')
       .then((d) => {
         if (alive) setRecentItems(d.items || [])
       })
@@ -230,6 +230,17 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
       alive = false
     }
   }, [stats?.submissions])
+
+  const pendingCount = recentItems.filter((i) => (i.status || 'pending') === 'pending').length
+  const confirmedCount = recentItems.filter((i) => i.status === 'confirmed').length
+  const rejectedCount = recentItems.filter((i) => i.status === 'rejected').length
+
+  const displayedItems = recentItems.filter((it) => {
+    if (activityFilter === 'all') return true
+    const st = it.status || 'pending'
+    return st === activityFilter
+  })
+
 
   return (
     <div className="portal-page">
@@ -280,41 +291,115 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
 
 
 
-      {/* Pending review — Mock 3 doctrine */}
+      {/* Mixed Live Intake & Activity Stream — Mock 3 doctrine */}
       <div className="card" style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Pending review</h3>
-          {gated('review') && (
-            <button
-              type="button"
-              className="btn small"
-              onClick={() => onNav('review')}
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                color: '#1d6fe0',
-                background: '#eff6ff',
-                border: '1px solid #bfdbfe',
-                borderRadius: 6,
-                padding: '5px 12px',
-                cursor: 'pointer',
-              }}
-            >
-              Open Review →
-            </button>
-          )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 6 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Live Activity &amp; Intake Stream</h3>
+            <p className="csub" style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b' }}>
+              Real-time submission flow · Pending review, Confirmed &amp; Rejected
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', padding: 3, borderRadius: 8 }}>
+              <button
+                type="button"
+                onClick={() => setActivityFilter('all')}
+                style={{
+                  border: 0,
+                  background: activityFilter === 'all' ? '#ffffff' : 'transparent',
+                  color: activityFilter === 'all' ? '#0f172a' : '#64748b',
+                  fontWeight: activityFilter === 'all' ? 700 : 500,
+                  fontSize: 11,
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  boxShadow: activityFilter === 'all' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                }}
+              >
+                All ({recentItems.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivityFilter('pending')}
+                style={{
+                  border: 0,
+                  background: activityFilter === 'pending' ? '#ffffff' : 'transparent',
+                  color: activityFilter === 'pending' ? '#d97706' : '#64748b',
+                  fontWeight: activityFilter === 'pending' ? 700 : 500,
+                  fontSize: 11,
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  boxShadow: activityFilter === 'pending' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                }}
+              >
+                Pending ({pendingCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivityFilter('confirmed')}
+                style={{
+                  border: 0,
+                  background: activityFilter === 'confirmed' ? '#ffffff' : 'transparent',
+                  color: activityFilter === 'confirmed' ? '#16a34a' : '#64748b',
+                  fontWeight: activityFilter === 'confirmed' ? 700 : 500,
+                  fontSize: 11,
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  boxShadow: activityFilter === 'confirmed' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                }}
+              >
+                Confirmed ({confirmedCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivityFilter('rejected')}
+                style={{
+                  border: 0,
+                  background: activityFilter === 'rejected' ? '#ffffff' : 'transparent',
+                  color: activityFilter === 'rejected' ? '#ef4444' : '#64748b',
+                  fontWeight: activityFilter === 'rejected' ? 700 : 500,
+                  fontSize: 11,
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  boxShadow: activityFilter === 'rejected' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                }}
+              >
+                Rejected ({rejectedCount})
+              </button>
+            </div>
+            {gated('review') && (
+              <button
+                type="button"
+                className="btn small"
+                onClick={() => onNav('review')}
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: '#1d6fe0',
+                  background: '#eff6ff',
+                  border: '1px solid #bfdbfe',
+                  borderRadius: 6,
+                  padding: '5px 12px',
+                  cursor: 'pointer',
+                }}
+              >
+                Open Review →
+              </button>
+            )}
+          </div>
         </div>
-        <p className="csub" style={{ margin: '0 0 16px', fontSize: 12, color: '#64748b' }}>
-          Oldest first · confirm after Q/A review (strict complete unless forced)
-        </p>
 
         {loadingRecent ? (
-          <p className="muted" style={{ fontSize: 13, margin: '8px 0' }}>Loading submissions…</p>
-        ) : recentItems.length === 0 ? (
-          <p className="muted" style={{ fontSize: 13, margin: '8px 0' }}>No submissions pending review.</p>
+          <p className="muted" style={{ fontSize: 13, margin: '14px 0 8px' }}>Loading live stream…</p>
+        ) : displayedItems.length === 0 ? (
+          <p className="muted" style={{ fontSize: 13, margin: '14px 0 8px' }}>No submissions matching this filter.</p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {recentItems.map((it) => {
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+            {displayedItems.map((it) => {
               const a = it.answers || {}
               const surveyor = it.submitted_by || a.data_collector || 'Field Surveyor'
               const district = a.district || a.constituency || 'General'
@@ -332,8 +417,9 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                     justifyContent: 'space-between',
                     gap: 12,
                     padding: '12px 16px',
-                    background: '#ffffff',
-                    border: '1px solid #e2e8f0',
+                    background: status === 'pending' ? '#ffffff' : '#f8fafc',
+                    border: `1px solid ${status === 'pending' ? '#e2e8f0' : '#e2e8f0'}`,
+                    borderLeft: `3px solid ${status === 'confirmed' ? '#16a34a' : status === 'rejected' ? '#ef4444' : '#f59e0b'}`,
                     borderRadius: 10,
                     cursor: 'pointer',
                     transition: 'all 120ms ease',
@@ -369,7 +455,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                       }}
                       style={{
                         border: '1px solid #bfdbfe',
-                        background: '#eff6ff',
+                        background: status === 'pending' ? '#eff6ff' : '#ffffff',
                         color: '#1d6fe0',
                         fontSize: 12,
                         fontWeight: 600,
@@ -378,7 +464,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                         cursor: 'pointer',
                       }}
                     >
-                      Open Review
+                      {status === 'pending' ? 'Open Review' : 'Inspect'}
                     </button>
                   </div>
                 </div>
@@ -387,6 +473,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           </div>
         )}
       </div>
+
 
       {/* My Allocation for Client Admin / Platform Governance Quick Actions for Super Admin */}
       {isSuper ? (

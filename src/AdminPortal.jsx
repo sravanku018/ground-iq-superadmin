@@ -243,7 +243,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         </div>
       </header>
 
-      {/* KPI tiles — Mock 3 style with Total Allocations */}
+      {/* KPI tiles — Mock 3 style with Total Allocations and Rejected */}
       <div className="portal-kpi-grid">
         <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
           <strong>{stats?.pending?.toLocaleString?.() ?? '—'}</strong>
@@ -252,6 +252,17 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         <button type="button" className="portal-kpi" onClick={() => onNav(gated('review') ? 'review' : 'analyze')}>
           <strong>{stats?.confirmed?.toLocaleString?.() ?? '—'}</strong>
           <span>Confirmed</span>
+        </button>
+        <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
+          <strong style={{ color: (stats?.rejected || 0) > 0 ? '#ef4444' : undefined }}>
+            {(stats?.rejected != null
+              ? stats.rejected
+              : stats?.submissions != null && stats?.confirmed != null && stats?.pending != null
+                ? Math.max(0, stats.submissions - stats.confirmed - stats.pending)
+                : 0
+            ).toLocaleString()}
+          </strong>
+          <span>Rejected</span>
         </button>
         <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
           <strong>{stats?.submissions?.toLocaleString?.() ?? '—'}</strong>
@@ -266,6 +277,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           <span>Districts in data</span>
         </div>
       </div>
+
 
 
       {/* Pending review — Mock 3 doctrine */}

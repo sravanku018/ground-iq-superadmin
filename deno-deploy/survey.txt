@@ -586,13 +586,18 @@ function corsPreflight(): Response {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
-function json(data: unknown, status = 200): Response {
+function json(
+  data: unknown,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store, no-cache, must-revalidate",
       ...CORS_HEADERS,
+      ...extraHeaders,
     },
   });
 }
@@ -8854,7 +8859,7 @@ async function rawHandler(req: Request): Promise<Response> {
       });
     }
 
-    // Minimal geo for cascading dropdowns
+    // Minimal geo for cascading dropdowns (cached 1 day)
     if (path === "/api/geo" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
       try {
@@ -8879,13 +8884,13 @@ async function rawHandler(req: Request): Promise<Response> {
           constituencies,
           districts: [...districtSet].sort(),
           mpConstituencies: [],
-        });
+        }, 200, { "cache-control": "public, max-age=86400" });
       } catch {
         return json({ constituencies: [], districts: [], mpConstituencies: [] });
       }
     }
 
-    // Combined geo children lists (mandals + revenue divisions for a district)
+    // Combined geo children lists (mandals + revenue divisions for a district, cached 1 day)
     if (m === "GET" && url.pathname === "/api/geo/children") {
       if (!me) return json({ error: "Login required" }, 401);
       const raw = String(url.searchParams.get("district") || "").trim();
@@ -8910,7 +8915,7 @@ async function rawHandler(req: Request): Promise<Response> {
           mandals,
           divisions: revenueDivisions,
           revenueDivisions,
-        });
+        }, 200, { "cache-control": "public, max-age=86400" });
       } catch {
         return json({ district, mandals: [], divisions: [], revenueDivisions: [] });
       }
@@ -8931,7 +8936,7 @@ async function rawHandler(req: Request): Promise<Response> {
                      revenue_division AS "revenueDivision", mandal_code AS "mandalCode"
               FROM mandals ORDER BY district, mandal_name LIMIT 500
             `;
-        return json({ mandals: rows });
+        return json({ mandals: rows }, 200, { "cache-control": "public, max-age=86400" });
       } catch {
         return json({ mandals: [] });
       }
@@ -8941,7 +8946,7 @@ async function rawHandler(req: Request): Promise<Response> {
       if (!me) return json({ error: "Login required" }, 401);
       try {
         const rows = await sql`SELECT name, district FROM revenue_divisions ORDER BY name LIMIT 200`;
-        return json({ revenueDivisions: rows });
+        return json({ revenueDivisions: rows }, 200, { "cache-control": "public, max-age=86400" });
       } catch {
         return json({ revenueDivisions: [] });
       }

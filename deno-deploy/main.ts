@@ -20,6 +20,8 @@
  */
 
 import { neon } from "npm:@neondatabase/serverless@0.10.4";
+import { scryptSync, timingSafeEqual } from "node:crypto";
+import { Buffer } from "node:buffer";
 
 // ── Geo aliases (inlined so the Deno Playground deploys a single file) ──
 
@@ -389,7 +391,6 @@ async function verifyPassword(
   stored: string,
 ): Promise<boolean> {
   if (!stored) return false;
-  // Node scrypt format: salt:hash (no prefix) — cannot verify on Deno edge easily
   // Accept PBKDF2: pbkdf2:salt:hash
   if (stored.startsWith("pbkdf2:")) {
     const [, saltHex, hash] = stored.split(":");
@@ -399,7 +400,19 @@ async function verifyPassword(
     next = await pbkdf2Hash(password, saltHex, 100_000);
     return next === `pbkdf2:${saltHex}:${hash}`;
   }
-  // Fallback: for playground demo, allow plain env seed passwords via re-seed
+  // Node scrypt format: salt:hash
+  if (stored.includes(":")) {
+    try {
+      const [salt, key] = stored.split(":");
+      const derivedKey = scryptSync(password, salt, 64);
+      const keyBuffer = Buffer.from(key, "hex");
+      if (keyBuffer.length === derivedKey.length && timingSafeEqual(keyBuffer, derivedKey)) {
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+  }
   return false;
 }
 
@@ -1556,8 +1569,8 @@ function normParty(v: string) {
 function normGender(v: string) {
   const s = String(v || "").trim();
   if (!s) return "Unknown";
-  if (/^f|female|woman|స్త్రీ/i.test(s)) return "Female";
-  if (/^m|male|man\b|పురుష/i.test(s)) return "Male";
+  if (/^female\b|^woman\b|స్త్రీ/i.test(s)) return "Female";
+  if (/^male\b|^man\b|పురుష/i.test(s)) return "Male";
   return s;
 }
 function normCaste(v: string) {
@@ -2728,8 +2741,17 @@ async function autoConfirmIfComplete(
     SELECT id, payload FROM submissions WHERE id = ${submissionId} LIMIT 1
   `.catch(() => []);
   if (!rows.length) return { auto_confirmed: false, completeness: "incomplete" };
-  let payload = stripDraftFlags(parsePayload((rows[0] as { payload: unknown }).payload));
+
+  const rawPayload = parsePayload((rows[0] as { payload: unknown }).payload);
+  let payload = stripDraftFlags(rawPayload);
   const cur = payloadStatus(payload);
+
+  if (isDraftSubmission(rawPayload)) {
+    await sqlFn`
+      UPDATE submissions SET payload = ${JSON.stringify(payload)}::jsonb WHERE id = ${submissionId}
+    `.catch(() => null);
+  }
+
   if (cur === "confirmed") return { auto_confirmed: false, completeness: "complete" };
   if (cur === "rejected") return { auto_confirmed: false, completeness: "incomplete" };
 
@@ -2883,17 +2905,20 @@ async function adminFormKeyScope(
   return [...new Set((rows as { form_key: string }[]).map((r) => String(r.form_key)))];
 }
 
-async function loadAnalyticsRows(
-  sqlFn: NonNullable<typeof sql>,
-  limit = 10000,
-  scopeKeys: string[] | null = null,
-): Promise<Row[]> {
-  // AC name → first covering district (excel often puts AC in respondent_name)
+// In-memory cache for assembly_constituencies — this table is only ever
+// changed by a manual seed script run outside the app (see REDEPLOY.md,
+// which already says to re-seed after a redeploy, i.e. after a fresh Deno
+// isolate anyway), never by any endpoint. So a plain per-isolate cache with
+// no TTL is correct, not just faster: previously this was queried and
+// re-parsed from scratch on every single analytics request.
+type AcEntry = { canonical: string; district: string; covering: string[]; mp: string };
+let acListCache: AcEntry[] | null = null;
+
+async function getAcList(sqlFn: NonNullable<typeof sql>): Promise<AcEntry[]> {
+  if (acListCache) return acListCache;
   const acRows = await sqlFn`
     SELECT name, covering_districts, mp_constituency FROM assembly_constituencies
   `.catch(() => []);
-
-  type AcEntry = { canonical: string; district: string; covering: string[]; mp: string };
   const acList: AcEntry[] = [];
   for (const ac of acRows as {
     name: string;
@@ -2911,6 +2936,42 @@ async function loadAnalyticsRows(
       mp: String(ac.mp_constituency || "").replace(/\s*\(.*?\)\s*$/, "").trim(),
     });
   }
+  acListCache = acList;
+  return acList;
+}
+
+function normKeyStatic(s: string) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/\(([^)]*)\)/g, " $1 ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+let mandalLookupCache: Map<string, string> | null = null;
+
+async function getMandalLookup(sqlFn: NonNullable<typeof sql>): Promise<Map<string, string>> {
+  if (mandalLookupCache) return mandalLookupCache;
+  const mandalRows = await sqlFn`
+    SELECT mandal_name, district FROM mandals LIMIT 30000
+  `.catch(() => []);
+  const lookup = new Map<string, string>();
+  for (const m of mandalRows as { mandal_name?: string; district?: string }[]) {
+    const k = normKeyStatic(String(m.mandal_name || ""));
+    const d = String(m.district || "").trim();
+    if (k && d && !lookup.has(k)) lookup.set(k, d);
+  }
+  mandalLookupCache = lookup;
+  return lookup;
+}
+
+async function loadAnalyticsRows(
+  sqlFn: NonNullable<typeof sql>,
+  limit = 10000,
+  scopeKeys: string[] | null = null,
+): Promise<Row[]> {
+  const acList = await getAcList(sqlFn);
 
   function softNameEq(a: string, b: string) {
     const n = (s: string) =>
@@ -3071,16 +3132,10 @@ async function loadAnalyticsRows(
     return null;
   }
 
-  // Mandal name → district (auto district when AC is unknown)
-  const mandalRows = await sqlFn`
-    SELECT mandal_name, district FROM mandals LIMIT 30000
-  `.catch(() => []);
-  const mandalLookup = new Map<string, string>();
-  for (const m of mandalRows as { mandal_name?: string; district?: string }[]) {
-    const k = normKey(String(m.mandal_name || ""));
-    const d = String(m.district || "").trim();
-    if (k && d && !mandalLookup.has(k)) mandalLookup.set(k, d);
-  }
+  // Mandal name → district (auto district when AC is unknown). Same
+  // caching rationale as assembly_constituencies above — mandals is only
+  // ever changed by the manual seed script, never by a live endpoint.
+  const mandalLookup = await getMandalLookup(sqlFn);
 
   // BR-004: Client Admin scope = own/assigned projects' form_keys (null = unrestricted).
   const raw = scopeKeys
@@ -7038,6 +7093,14 @@ async function rawHandler(req: Request): Promise<Response> {
         }
         if (payloadStatus(payload) !== "pending") continue;
         payload = translateGeoEnglish(payload);
+
+        // FIX: Strip draft flags before confirming, mirroring single-confirm logic
+        payload.draft = false;
+        const ans = { ...((payload.answers || {}) as Record<string, unknown>) };
+        delete ans._draft;
+        delete ans.draft;
+        payload.answers = ans;
+
         payload = {
           ...payload,
           status: "confirmed",

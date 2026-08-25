@@ -281,13 +281,17 @@ class VersionHandler(http.server.BaseHTTPRequestHandler):
                 all_logs.append(out.strip() if out else "Build completed.")
 
             if data.get("push"):
-                all_logs.append("==> Committing and pushing to Git…")
+                all_logs.append("==> Staging all changes (git add -A)…")
                 run_cmd("git add -A")
-                ok, out = run_cmd(f"git commit -m \"Bump version to v{new_v} (versionCode {new_c})\"")
+                _, st = run_cmd("git status --short")
+                if st.strip():
+                    all_logs.append(f"Staged files:\n{st.strip()}")
+                all_logs.append("==> Committing and pushing to Git…")
+                ok, out = run_cmd(f'git commit -m "Bump version to v{new_v} (versionCode {new_c})"')
                 all_logs.append(out.strip() if out else "Committed.")
                 ok, out = run_cmd("git push ground-iq ground-sync:main && git push ground-iq-superadmin ground-sync:main")
                 all_logs.append(out.strip() if out else "Pushed to remotes.")
-                all_logs.append(f"✓ Pushed v{new_v} to both GitHub remotes!")
+                all_logs.append(f"✓ Staged, committed & pushed v{new_v} to both GitHub remotes!")
 
             if data.get("apk"):
                 all_logs.append("==> Building Release APK…")

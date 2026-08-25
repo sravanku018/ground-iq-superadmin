@@ -4234,6 +4234,22 @@ async function rawHandler(req: Request): Promise<Response> {
       return redispatch(req, next.pathname + next.search);
     }
 
+    // GET /api/stats → GET /api/analytics?group_by=kpi
+    if (m === "GET" && url.pathname === "/api/stats") {
+      const next = new URL("/api/analytics", req.url);
+      next.search = url.search;
+      next.searchParams.set("group_by", "kpi");
+      return redispatch(req, next.pathname + next.search);
+    }
+
+    // GET /api/admin/geo-summary → GET /api/analytics?group_by=geo
+    if (m === "GET" && url.pathname === "/api/admin/geo-summary") {
+      const next = new URL("/api/analytics", req.url);
+      next.search = url.search;
+      next.searchParams.set("group_by", "geo");
+      return redispatch(req, next.pathname + next.search);
+    }
+
     if (path === "/api/auth/me" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
       // Profile photos live on /me only — never on login or every session lookup.
@@ -4328,171 +4344,6 @@ async function rawHandler(req: Request): Promise<Response> {
       return json({ ok: true });
     }
 
-    if (path === "/api/stats" && method === "GET") {
-      if (!me) return json({ error: "Login required" }, 401);
-      const statsScope = await adminFormKeyScope(sql, me);
-      const [dists] = await sql`SELECT COUNT(*)::int AS n FROM districts`.catch(() => [{ n: 0 }]);
-      const [mands] = await sql`SELECT COUNT(*)::int AS n FROM mandals`.catch(() => [{ n: 0 }]);
-      const [acs] = await sql`SELECT COUNT(*)::int AS n FROM assembly_constituencies`.catch(() => [{ n: 0 }]);
-      const [srs] = await sql`SELECT COUNT(*)::int AS n FROM survey_responses`.catch(() => [{ n: 0 }]);
-
-      const [factGeo] = await sql`
-        SELECT COUNT(DISTINCT district)::int AS dist_count,
-               COUNT(DISTINCT constituency)::int AS ac_count
-        FROM record_facts
-      `.catch(() => [{ dist_count: 0, ac_count: 0 }]);
-
-      // Review outcome lives on payload.status. fact_status is the
-      // materialization pipeline only (materialized/failed/NULL) — it is
-      // cleared on reject, so counting it merges rejected into pending.
-      // Field drafts (even if status was set confirmed) count as pending.
-      const [statusRow] = statsScope
-        ? await sql`
-            SELECT
-              COUNT(*) FILTER (
-                WHERE NOT (
-                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
-                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
-                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
-                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
-                )
-                AND COALESCE(payload->>'status', 'pending') = 'confirmed'
-              )::int AS confirmed,
-              COUNT(*) FILTER (
-                WHERE NOT (
-                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
-                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
-                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
-                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
-                )
-                AND COALESCE(payload->>'status', 'pending') = 'rejected'
-              )::int AS rejected,
-              COUNT(*) FILTER (
-                WHERE (
-                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
-                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
-                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
-                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
-                )
-                OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
-              )::int AS pending
-            FROM submissions WHERE payload->>'form_key' = ANY(${statsScope})
-          `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }])
-        : await sql`
-            SELECT
-              COUNT(*) FILTER (
-                WHERE NOT (
-                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
-                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
-                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
-                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
-                )
-                AND COALESCE(payload->>'status', 'pending') = 'confirmed'
-              )::int AS confirmed,
-              COUNT(*) FILTER (
-                WHERE NOT (
-                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
-                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
-                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
-                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
-                )
-                AND COALESCE(payload->>'status', 'pending') = 'rejected'
-              )::int AS rejected,
-              COUNT(*) FILTER (
-                WHERE (
-                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
-                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
-                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
-                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
-                )
-                OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
-              )::int AS pending
-            FROM submissions
-          `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }]);
-
-      const confirmed = Number((statusRow as Record<string, unknown>)?.confirmed || 0);
-      const rejected = Number((statusRow as Record<string, unknown>)?.rejected || 0);
-      const pending = Number((statusRow as Record<string, unknown>)?.pending || 0);
-
-      // Districts / ACs in *survey data*, not the master geo tables (those
-      // would show ~30 Telangana districts even with two confirmed records).
-      const [distFromData] = statsScope
-        ? await sql`
-            SELECT COUNT(DISTINCT NULLIF(TRIM(payload->'answers'->>'district'), ''))::int AS n
-            FROM submissions
-            WHERE payload->>'form_key' = ANY(${statsScope})
-              AND COALESCE(payload->>'status', 'pending') = 'confirmed'
-              AND NOT (
-                COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
-                OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
-                OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
-                OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
-              )
-          `.catch(() => [{ n: 0 }])
-        : await sql`
-            SELECT COUNT(DISTINCT NULLIF(TRIM(payload->'answers'->>'district'), ''))::int AS n
-            FROM submissions
-            WHERE COALESCE(payload->>'status', 'pending') = 'confirmed'
-              AND NOT (
-                COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
-                OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
-                OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
-                OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
-              )
-          `.catch(() => [{ n: 0 }]);
-      const [acFromData] = statsScope
-        ? await sql`
-            SELECT COUNT(DISTINCT NULLIF(TRIM(COALESCE(
-              payload->'answers'->>'constituency',
-              payload->'answers'->>'assembly_constituency'
-            )), ''))::int AS n
-            FROM submissions
-            WHERE payload->>'form_key' = ANY(${statsScope})
-              AND COALESCE(payload->>'status', 'pending') = 'confirmed'
-              AND NOT (
-                COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
-                OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
-                OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
-                OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
-              )
-          `.catch(() => [{ n: 0 }])
-        : await sql`
-            SELECT COUNT(DISTINCT NULLIF(TRIM(COALESCE(
-              payload->'answers'->>'constituency',
-              payload->'answers'->>'assembly_constituency'
-            )), ''))::int AS n
-            FROM submissions
-            WHERE COALESCE(payload->>'status', 'pending') = 'confirmed'
-              AND NOT (
-                COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
-                OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
-                OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
-                OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
-              )
-          `.catch(() => [{ n: 0 }]);
-      const dataDistricts = Number((distFromData as Record<string, unknown>)?.n || 0);
-      const dataAcs = Number((acFromData as Record<string, unknown>)?.n || 0);
-      const surveyDistrictsLive = dataDistricts || Number((factGeo as Record<string, unknown>)?.dist_count || 0);
-      const surveyAcsLive = dataAcs || Number((factGeo as Record<string, unknown>)?.ac_count || 0);
-
-      return json({
-        submissions: confirmed + pending + rejected,
-        survey_responses: srs?.n ?? 0,
-        pending,
-        confirmed,
-        rejected,
-        // Survey coverage from confirmed records (not master geo tables)
-        districts: surveyDistrictsLive,
-        assembly_constituencies: surveyAcsLive,
-        districts_master: dists?.n ?? 0,
-        mandals: mands?.n ?? 0,
-        assembly_constituencies_master: acs?.n ?? 0,
-        my_submissions: 0,
-        role: me.role,
-        platform: "deno",
-        pipeline: "users → Q/A → confirm → analytics",
-      });
-    }
 
     // Count finished records for one surveyor (by user_id or username/name).
     // Excludes drafts and rejected rows so targets reflect real completed work.
@@ -9096,10 +8947,207 @@ async function rawHandler(req: Request): Promise<Response> {
       }
     }
 
-    // Dashboard + filters — full super-set / sub-set analytics
-    if (path === "/api/analytics" && method === "GET") {
+    // Dashboard + filters — full super-set / sub-set analytics (and consolidated kpi / geo groups)
+    if (m === "GET" && url.pathname === "/api/analytics") {
       if (!me) return json({ error: "Login required" }, 401);
+      const groupBy = (url.searchParams.get("group_by") || "").trim().toLowerCase();
       const envScope = await adminFormKeyScope(sql, me);
+
+      // KPI group (formerly /api/stats)
+      if (groupBy === "kpi") {
+        const [dists] = await sql`SELECT COUNT(*)::int AS n FROM districts`.catch(() => [{ n: 0 }]);
+        const [mands] = await sql`SELECT COUNT(*)::int AS n FROM mandals`.catch(() => [{ n: 0 }]);
+        const [acs] = await sql`SELECT COUNT(*)::int AS n FROM assembly_constituencies`.catch(() => [{ n: 0 }]);
+        const [srs] = await sql`SELECT COUNT(*)::int AS n FROM survey_responses`.catch(() => [{ n: 0 }]);
+        const [factGeo] = await sql`
+          SELECT COUNT(DISTINCT district)::int AS dist_count,
+                 COUNT(DISTINCT constituency)::int AS ac_count
+          FROM record_facts
+        `.catch(() => [{ dist_count: 0, ac_count: 0 }]);
+
+        const [statusRow] = envScope
+          ? await sql`
+              SELECT
+                COUNT(*) FILTER (
+                  WHERE NOT (
+                    COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                    OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                  )
+                  AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+                )::int AS confirmed,
+                COUNT(*) FILTER (
+                  WHERE NOT (
+                    COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                    OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                  )
+                  AND COALESCE(payload->>'status', 'pending') = 'rejected'
+                )::int AS rejected,
+                COUNT(*) FILTER (
+                  WHERE (
+                    COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                    OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                  )
+                  OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
+                )::int AS pending
+              FROM submissions WHERE payload->>'form_key' = ANY(${envScope})
+            `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }])
+          : await sql`
+              SELECT
+                COUNT(*) FILTER (
+                  WHERE NOT (
+                    COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                    OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                  )
+                  AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+                )::int AS confirmed,
+                COUNT(*) FILTER (
+                  WHERE NOT (
+                    COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                    OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                  )
+                  AND COALESCE(payload->>'status', 'pending') = 'rejected'
+                )::int AS rejected,
+                COUNT(*) FILTER (
+                  WHERE (
+                    COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                    OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                  )
+                  OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
+                )::int AS pending
+              FROM submissions
+            `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }]);
+
+        const confirmed = Number((statusRow as Record<string, unknown>)?.confirmed || 0);
+        const rejected = Number((statusRow as Record<string, unknown>)?.rejected || 0);
+        const pending = Number((statusRow as Record<string, unknown>)?.pending || 0);
+
+        const [distFromData] = envScope
+          ? await sql`
+              SELECT COUNT(DISTINCT NULLIF(TRIM(payload->'answers'->>'district'), ''))::int AS n
+              FROM submissions
+              WHERE payload->>'form_key' = ANY(${envScope})
+                AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+                AND NOT (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+            `.catch(() => [{ n: 0 }])
+          : await sql`
+              SELECT COUNT(DISTINCT NULLIF(TRIM(payload->'answers'->>'district'), ''))::int AS n
+              FROM submissions
+              WHERE COALESCE(payload->>'status', 'pending') = 'confirmed'
+                AND NOT (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+            `.catch(() => [{ n: 0 }]);
+
+        const [acFromData] = envScope
+          ? await sql`
+              SELECT COUNT(DISTINCT NULLIF(TRIM(COALESCE(
+                payload->'answers'->>'constituency',
+                payload->'answers'->>'assembly_constituency'
+              )), ''))::int AS n
+              FROM submissions
+              WHERE payload->>'form_key' = ANY(${envScope})
+                AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+                AND NOT (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+            `.catch(() => [{ n: 0 }])
+          : await sql`
+              SELECT COUNT(DISTINCT NULLIF(TRIM(COALESCE(
+                payload->'answers'->>'constituency',
+                payload->'answers'->>'assembly_constituency'
+              )), ''))::int AS n
+              FROM submissions
+              WHERE COALESCE(payload->>'status', 'pending') = 'confirmed'
+                AND NOT (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+            `.catch(() => [{ n: 0 }]);
+
+        const dataDistricts = Number((distFromData as Record<string, unknown>)?.n || 0);
+        const dataAcs = Number((acFromData as Record<string, unknown>)?.n || 0);
+        const surveyDistrictsLive = dataDistricts || Number((factGeo as Record<string, unknown>)?.dist_count || 0);
+        const surveyAcsLive = dataAcs || Number((factGeo as Record<string, unknown>)?.ac_count || 0);
+
+        return json({
+          submissions: confirmed + pending + rejected,
+          survey_responses: srs?.n ?? 0,
+          pending,
+          confirmed,
+          rejected,
+          districts: surveyDistrictsLive,
+          constituencies: surveyAcsLive,
+          master_districts: dists?.n ?? 0,
+          mandals: mands?.n ?? 0,
+          assembly_constituencies: acs?.n ?? 0,
+          coverage: {
+            districtsWithFacts: factGeo?.dist_count ?? 0,
+            constituenciesWithFacts: factGeo?.ac_count ?? 0,
+          },
+        });
+      }
+
+      // Geo summary group (formerly /api/admin/geo-summary)
+      if (groupBy === "geo") {
+        if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+        try {
+          const [d] = await sql`SELECT COUNT(*)::int AS n FROM districts`;
+          const [m] = await sql`SELECT COUNT(*)::int AS n FROM mandals`;
+          const [a] = await sql`SELECT COUNT(*)::int AS n FROM assembly_constituencies`;
+          const [p] = await sql`SELECT COUNT(*)::int AS n FROM mp_constituencies`;
+          const [r] = await sql`SELECT COUNT(*)::int AS n FROM revenue_divisions`;
+          const [s] = envScope
+            ? await sql`SELECT COUNT(*)::int AS n FROM submissions WHERE payload->>'form_key' = ANY(${envScope})`
+            : await sql`SELECT COUNT(*)::int AS n FROM submissions`;
+          const districts = await sql`SELECT * FROM districts ORDER BY name LIMIT 100`;
+          const acs = await sql`
+            SELECT name, covering_districts, mp_constituency, reservation
+            FROM assembly_constituencies ORDER BY name LIMIT 150
+          `;
+          const mps = await sql`SELECT * FROM mp_constituencies ORDER BY name LIMIT 50`;
+          return json({
+            counts: {
+              districts: d?.n ?? 0,
+              mandals: m?.n ?? 0,
+              assembly_constituencies: a?.n ?? 0,
+              mp_constituencies: p?.n ?? 0,
+              revenue_divisions: r?.n ?? 0,
+              submissions: s?.n ?? 0,
+            },
+            districts,
+            assembly_constituencies: acs,
+            mp_constituencies: mps,
+          });
+        } catch (e) {
+          return json({ error: (e as Error).message }, 500);
+        }
+      }
+
       const result = await buildAnalytics(sql, url, envScope);
       // Envelope: data_as_of watermark + fact health (09-ANALYTICS-SPEC §5/§8, ADR-014/016)
       const [w] = envScope
@@ -9113,7 +9161,6 @@ async function rawHandler(req: Request): Promise<Response> {
         ? String((w as { as_of?: unknown }).as_of)
         : null;
       if (!dataAsOf) {
-        // transient window before backfill — fall back to freshest confirmed stamp
         const [f] = envScope
           ? await sql`
               SELECT MAX((payload->>'confirmed_at')::timestamptz) AS as_of
@@ -9154,44 +9201,6 @@ async function rawHandler(req: Request): Promise<Response> {
           failed,
         },
       });
-    }
-
-    // Admin geo summary (for Upload tab)
-    if (path === "/api/admin/geo-summary" && method === "GET") {
-      if (!me) return json({ error: "Login required" }, 401);
-      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      try {
-        const [d] = await sql`SELECT COUNT(*)::int AS n FROM districts`;
-        const [m] = await sql`SELECT COUNT(*)::int AS n FROM mandals`;
-        const [a] = await sql`SELECT COUNT(*)::int AS n FROM assembly_constituencies`;
-        const [p] = await sql`SELECT COUNT(*)::int AS n FROM mp_constituencies`;
-        const [r] = await sql`SELECT COUNT(*)::int AS n FROM revenue_divisions`;
-        const geoScope = await adminFormKeyScope(sql, me);
-        const [s] = geoScope
-          ? await sql`SELECT COUNT(*)::int AS n FROM submissions WHERE payload->>'form_key' = ANY(${geoScope})`
-          : await sql`SELECT COUNT(*)::int AS n FROM submissions`;
-        const districts = await sql`SELECT * FROM districts ORDER BY name LIMIT 100`;
-        const acs = await sql`
-          SELECT name, covering_districts, mp_constituency, reservation
-          FROM assembly_constituencies ORDER BY name LIMIT 150
-        `;
-        const mps = await sql`SELECT * FROM mp_constituencies ORDER BY name LIMIT 50`;
-        return json({
-          counts: {
-            districts: d?.n ?? 0,
-            mandals: m?.n ?? 0,
-            assembly_constituencies: a?.n ?? 0,
-            mp_constituencies: p?.n ?? 0,
-            revenue_divisions: r?.n ?? 0,
-            submissions: s?.n ?? 0,
-          },
-          districts,
-          assembly_constituencies: acs,
-          mp_constituencies: mps,
-        });
-      } catch (e) {
-        return json({ error: (e as Error).message }, 500);
-      }
     }
 
     // Admin data export: text/CSV of submissions with photo + audio links.

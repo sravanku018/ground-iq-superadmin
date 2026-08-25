@@ -3951,6 +3951,20 @@ async function buildAnalytics(
   };
 }
 
+/** Alias support: re-run rawHandler with a rewritten path/method/body. */
+function redispatch(req: Request, pathAndQuery: string, method?: string, body?: string): Promise<Response> {
+  const next = new Request(new URL(pathAndQuery, req.url), {
+    method: method || req.method,
+    headers: req.headers,
+    body: (method || req.method) === "GET" || (method || req.method) === "HEAD"
+      ? undefined
+      : (body !== undefined ? body : req.body),
+    // @ts-expect-error — required by Deno when streaming a body
+    duplex: "half",
+  });
+  return rawHandler(next);
+}
+
 // ── Router ────────────────────────────────────────────────
 async function rawHandler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return corsPreflight();
@@ -4176,6 +4190,49 @@ async function rawHandler(req: Request): Promise<Response> {
     // Auth-required helpers
     const token = bearer(req);
     const me = await getUser(token);
+
+    // ── Removed routes → explicit 410 Gone ───────────────────
+    const REMOVED: Array<[RegExp, string]> = [
+      [/^\/api\/super-admin\/seed-slots$/, "Slots are seeded automatically at deploy time (ensureSchema)."],
+      [/^\/api\/submissions\/\d+\/proof$/, "Proof validation removed — submissions no longer store respondent phone/Aadhaar."],
+      [/^\/api\/surveys\/\d+\/respondents(\/\d+)?$/, "Respondent CRUD removed — survey collection uses /api/submissions."],
+    ];
+    for (const [re, why] of REMOVED) {
+      if (re.test(url.pathname)) return json({ error: "gone", detail: why }, 410);
+    }
+
+    // ── Route aliases (Tier 1 merges) — DELETE after clients migrate ─────────
+    const m = req.method;
+
+    // POST /api/users/profile-media          → self-upload
+    if (m === "POST" && url.pathname === "/api/users/profile-media" && me) {
+      return redispatch(req, `/api/users/${me.id}/media`);
+    }
+    // POST /api/users/:id/profile-media      → same as :id/media
+    if (m === "POST" && /^\/api\/users\/(\d+)\/profile-media$/.test(url.pathname)) {
+      return redispatch(req, url.pathname.replace("/profile-media", "/media"));
+    }
+
+    // POST /api/seat-limit-requests/:id/approve|deny → PATCH with body
+    {
+      const hit = url.pathname.match(/^\/api\/seat-limit-requests\/(\d+)\/(approve|deny)$/);
+      if (m === "POST" && hit) {
+        return redispatch(
+          req,
+          `/api/seat-limit-requests/${hit[1]}`,
+          "PATCH",
+          JSON.stringify({ decision: hit[2] }),
+        );
+      }
+    }
+
+    // GET /api/submissions/me → role-scoped list
+    if (m === "GET" && url.pathname === "/api/submissions/me") {
+      const next = new URL("/api/submissions", req.url);
+      next.search = url.search;
+      next.searchParams.set("mine", "1");
+      return redispatch(req, next.pathname + next.search);
+    }
 
     if (path === "/api/auth/me" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
@@ -5306,18 +5363,12 @@ async function rawHandler(req: Request): Promise<Response> {
     }
 
     // Profile media upload endpoint (photo, aadhaar_front, aadhaar_back)
-    if (
-      (path === "/api/users/profile-media" ||
-        path.match(/^\/api\/users\/\d+\/media$/) ||
-        path.match(/^\/api\/users\/\d+\/profile-media$/)) &&
-      method === "POST"
-    ) {
+    if (m === "POST" && /^\/api\/users\/\d+\/media$/.test(url.pathname)) {
       if (!me) return json({ error: "Login required" }, 401);
-      const urlParts = path.split("/");
-      const pathId = urlParts.length >= 4 && /^\d+$/.test(urlParts[3]) ? Number(urlParts[3]) : null;
+      const urlParts = url.pathname.split("/");
+      const targetId = Number(urlParts[3]);
+      if (!targetId || !Number.isFinite(targetId)) return json({ error: "Invalid user id" }, 400);
       const body = await readBody(req);
-      const targetId = pathId || Number(body.user_id) || Number(body.id) || me.id;
-      if (!targetId) return json({ error: "Invalid user id" }, 400);
 
       if (me.role !== "admin" && me.id !== targetId) {
         return json({ error: "Forbidden — can only edit own profile media" }, 403);
@@ -6096,56 +6147,52 @@ async function rawHandler(req: Request): Promise<Response> {
       return json({ request: r }, 201);
     }
 
-    // Approve / Deny seat limit request (PATCH /api/seat-limit-requests/:id with {decision: "approve"|"deny"}
-    // or legacy POST /api/seat-limit-requests/:id/(approve|deny))
-    if (
-      ((path.match(/^\/api\/seat-limit-requests\/\d+$/) && method === "PATCH") ||
-        (path.match(/^\/api\/seat-limit-requests\/\d+\/(approve|deny)$/) && method === "POST"))
-    ) {
-      if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
-      const id = Number(path.split("/")[3]);
-      const body = await readBody(req).catch(() => ({}));
-      const decision = path.endsWith("/approve")
-        ? "approve"
-        : path.endsWith("/deny")
-        ? "deny"
-        : String(body.decision || body.status || "approve").trim().toLowerCase();
-      const approve = decision === "approve";
-      const rows = await sql`SELECT * FROM seat_limit_requests WHERE id = ${id}`.catch(() => []);
-      const r = rows[0] as Record<string, unknown> | undefined;
-      if (!r) return json({ error: "Not found" }, 404);
-      if (r.status !== "pending") return json({ error: "Request already decided" }, 409);
-      if (approve) {
+    // Approve / Deny seat limit request (PATCH /api/seat-limit-requests/:id with {decision: "approve"|"deny"})
+    {
+      const hit = url.pathname.match(/^\/api\/seat-limit-requests\/(\d+)$/);
+      if (m === "PATCH" && hit) {
+        if (!me) return json({ error: "Login required" }, 401);
+        if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+        const id = Number(hit[1]);
+        const b = await readBody(req);
+        const decision = b.decision === "approve" ? "approve" : b.decision === "deny" ? "deny" : null;
+        if (!decision) return json({ error: "decision must be 'approve' or 'deny'" }, 400);
+        const approve = decision === "approve";
+        const rows = await sql`SELECT * FROM seat_limit_requests WHERE id = ${id}`.catch(() => []);
+        const r = rows[0] as Record<string, unknown> | undefined;
+        if (!r) return json({ error: "Not found" }, 404);
+        if (r.status !== "pending") return json({ error: "Request already decided" }, 409);
+        if (approve) {
+          await sql`
+            INSERT INTO seat_limits (seat_role, approved_limit, updated_at, updated_by)
+            VALUES (${String(r.seat_role || "admin")}, ${Number(r.requested_limit)}, NOW(), ${me.name || me.username})
+            ON CONFLICT (seat_role)
+            DO UPDATE SET approved_limit = ${Number(r.requested_limit)}, updated_at = NOW(), updated_by = ${me.name || me.username}
+          `.catch(() => null);
+        }
         await sql`
-          INSERT INTO seat_limits (seat_role, approved_limit, updated_at, updated_by)
-          VALUES (${String(r.seat_role || "admin")}, ${Number(r.requested_limit)}, NOW(), ${me.name || me.username})
-          ON CONFLICT (seat_role)
-          DO UPDATE SET approved_limit = ${Number(r.requested_limit)}, updated_at = NOW(), updated_by = ${me.name || me.username}
+          UPDATE seat_limit_requests
+          SET status = ${approve ? "approved" : "denied"}, decided_by = ${me.id},
+              decided_by_name = ${me.name || me.username}, decided_at = NOW()
+          WHERE id = ${id}
         `.catch(() => null);
+        logAudit(me, approve ? "seat_request_approve" : "seat_request_deny", "seat_limit_requests", id, {
+          seat_role: r.seat_role,
+          requested_limit: r.requested_limit,
+          requested_by: r.requested_by_name,
+        });
+        return json({ ok: true, status: approve ? "approved" : "denied" });
       }
-      await sql`
-        UPDATE seat_limit_requests
-        SET status = ${approve ? "approved" : "denied"}, decided_by = ${me.id},
-            decided_by_name = ${me.name || me.username}, decided_at = NOW()
-        WHERE id = ${id}
-      `.catch(() => null);
-      logAudit(me, approve ? "seat_request_approve" : "seat_request_deny", "seat_limit_requests", id, {
-        seat_role: r.seat_role,
-        requested_limit: r.requested_limit,
-        requested_by: r.requested_by_name,
-      });
-      return json({ ok: true, status: approve ? "approved" : "denied" });
     }
 
-    if ((path === "/api/submissions" || path === "/api/submissions/me") && method === "GET") {
+    if (m === "GET" && url.pathname === "/api/submissions") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role) && me.role !== "surveyor") {
         return json({ error: "Access denied" }, 403);
       }
 
-      // Surveyor's own records (field app "My records" screen / role-scoped query)
-      if (me.role === "surveyor" || path === "/api/submissions/me") {
+      const mine = url.searchParams.get("mine") === "1";
+      if (mine || !isPortalAdmin(me.role)) {
         const uId = String(me.id);
         const names = [me.name, me.username].filter(Boolean);
         const rows = await sql`
@@ -8988,9 +9035,10 @@ async function rawHandler(req: Request): Promise<Response> {
     }
 
     // Combined geo children lists (mandals + revenue divisions for a district)
-    if (path === "/api/geo/children" && method === "GET") {
+    if (m === "GET" && url.pathname === "/api/geo/children") {
       if (!me) return json({ error: "Login required" }, 401);
-      const district = (url.searchParams.get("district") || "").trim();
+      const raw = String(url.searchParams.get("district") || "").trim();
+      const district = GEO_ALIASES.districts[raw.toLowerCase()] ?? raw;
       try {
         const mandals = district
           ? await sql`
@@ -9007,12 +9055,13 @@ async function rawHandler(req: Request): Promise<Response> {
           ? await sql`SELECT name, district FROM revenue_divisions WHERE district = ${district} ORDER BY name LIMIT 200`
           : await sql`SELECT name, district FROM revenue_divisions ORDER BY name LIMIT 200`;
         return json({
+          district,
           mandals,
-          revenueDivisions,
           divisions: revenueDivisions,
+          revenueDivisions,
         });
       } catch {
-        return json({ mandals: [], revenueDivisions: [], divisions: [] });
+        return json({ district, mandals: [], divisions: [], revenueDivisions: [] });
       }
     }
 

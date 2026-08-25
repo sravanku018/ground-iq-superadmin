@@ -4172,13 +4172,6 @@ async function rawHandler(req: Request): Promise<Response> {
       });
     }
 
-    // Public registration disabled — only Client Admin creates accounts
-    if (path === "/api/auth/register" && method === "POST") {
-      return json({
-        error:
-          "No self-signup. Client Admin must create your surveyor login in the Users screen.",
-      }, 403);
-    }
 
     // Auth-required helpers
     const token = bearer(req);
@@ -5136,22 +5129,21 @@ async function rawHandler(req: Request): Promise<Response> {
       }
     }
 
-    // Fill remaining Super Admin seats (superadmin2 / superadmin3, starter password).
-    // Does not change existing accounts — the first slot's changed password is kept.
+    // Check & fill remaining Super Admin seats (superadmin2 / superadmin3).
     if (path === "/api/super-admin/seed-slots" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
       if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
       const out = await seedMissingSuperAdminSlots(sql);
-      logAudit(me, "super_admin_seed_slots", "user", null, { created: out.created });
       return json({
         ok: true,
         created: out.created,
         starter_password: out.created.length ? SA_SLOT_STARTER_PASSWORD : null,
         note: out.created.length
-          ? "New slots: username + admin123 + TOTP on first login. Existing accounts were not changed."
+          ? "New slots initialized. Existing accounts were not changed."
           : "All 3 slots already exist — nothing created.",
       });
     }
+
 
     // Reset TOTP for a Super Admin slot — Super Admin console only. New secret shown once.
     if (path.match(/^\/api\/super-admin\/\d+\/totp\/reset$/) && method === "POST") {
@@ -6104,11 +6096,22 @@ async function rawHandler(req: Request): Promise<Response> {
       return json({ request: r }, 201);
     }
 
-    if (path.match(/^\/api\/seat-limit-requests\/\d+\/(approve|deny)$/) && method === "POST") {
+    // Approve / Deny seat limit request (PATCH /api/seat-limit-requests/:id with {decision: "approve"|"deny"}
+    // or legacy POST /api/seat-limit-requests/:id/(approve|deny))
+    if (
+      ((path.match(/^\/api\/seat-limit-requests\/\d+$/) && method === "PATCH") ||
+        (path.match(/^\/api\/seat-limit-requests\/\d+\/(approve|deny)$/) && method === "POST"))
+    ) {
       if (!me) return json({ error: "Login required" }, 401);
       if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
       const id = Number(path.split("/")[3]);
-      const approve = path.endsWith("/approve");
+      const body = await readBody(req).catch(() => ({}));
+      const decision = path.endsWith("/approve")
+        ? "approve"
+        : path.endsWith("/deny")
+        ? "deny"
+        : String(body.decision || body.status || "approve").trim().toLowerCase();
+      const approve = decision === "approve";
       const rows = await sql`SELECT * FROM seat_limit_requests WHERE id = ${id}`.catch(() => []);
       const r = rows[0] as Record<string, unknown> | undefined;
       if (!r) return json({ error: "Not found" }, 404);
@@ -6135,9 +6138,66 @@ async function rawHandler(req: Request): Promise<Response> {
       return json({ ok: true, status: approve ? "approved" : "denied" });
     }
 
-    if (path === "/api/submissions" && method === "GET") {
+    if ((path === "/api/submissions" || path === "/api/submissions/me") && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!isPortalAdmin(me.role) && me.role !== "surveyor") {
+        return json({ error: "Access denied" }, 403);
+      }
+
+      // Surveyor's own records (field app "My records" screen / role-scoped query)
+      if (me.role === "surveyor" || path === "/api/submissions/me") {
+        const uId = String(me.id);
+        const names = [me.name, me.username].filter(Boolean);
+        const rows = await sql`
+          SELECT id, payload, created_at FROM submissions
+          WHERE payload->>'user_id' = ${uId}
+             OR payload->>'submitted_by' = ANY(${names})
+          ORDER BY created_at DESC LIMIT 500
+        `.catch(() => []);
+        const mediaRows = await sql`
+          SELECT submission_id, kind, url, storage, meta FROM survey_media
+        `.catch(() => []);
+        const mediaMap = new Map<number, { url: string | null; kind: string }[]>();
+        for (const m of mediaRows as {
+          submission_id: number;
+          kind: string;
+          url: string | null;
+          storage: string | null;
+          meta: unknown;
+        }[]) {
+          const meta =
+            typeof m.meta === "string"
+              ? parsePayload(m.meta)
+              : (m.meta as Record<string, unknown>) || {};
+          const url = m.url || (meta.url as string) || null;
+          const arr = mediaMap.get(Number(m.submission_id)) || [];
+          arr.push({ url, kind: m.kind });
+          mediaMap.set(Number(m.submission_id), arr);
+        }
+        const items = (rows as Record<string, unknown>[])
+          .map((r) => {
+            const payload = parsePayload(r.payload);
+            const answers = (payload?.answers || {}) as Record<string, unknown>;
+            const media = mediaMap.get(Number(r.id)) || [];
+            return {
+              id: r.id,
+              created_at: r.created_at,
+              status: payloadStatus(payload),
+              submitted_by: String(
+                payload?.submitted_by || answers?.data_collector || "",
+              ),
+              record_index: recordIndexOf(payload),
+              form_key: String(payload?.form_key || "default"),
+              answers,
+              photo_url: media.find((m) => m.kind === "photo")?.url || null,
+              audio_url: media.find((m) => m.kind === "audio")?.url || null,
+              media,
+            };
+          })
+          .filter(Boolean);
+        return json({ items, count: items.length });
+      }
+
       const limit = Math.min(Number(url.searchParams.get("limit") || 200), 1000);
       const statusQ = (url.searchParams.get("status") || "").trim().toLowerCase();
       let dateFrom = (url.searchParams.get("date_from") || "").trim();
@@ -7038,90 +7098,7 @@ async function rawHandler(req: Request): Promise<Response> {
       });
     }
 
-    // Proof validation — phone number + Aadhaar format check on a record (grantable power)
-    if (path.match(/^\/api\/submissions\/\d+\/proof$/) && method === "PATCH") {
-      if (!me) return json({ error: "Login required" }, 401);
-      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      if (!hasPower(me, "can_validate_proof")) {
-        return json({
-          error: "Super Admin has not granted your account proof-validation rights (phone + Aadhaar)",
-        }, 403);
-      }
-      const id = Number(path.split("/")[3]);
-      const body = await readBody(req);
-      const scopeKeys = await adminFormKeyScope(sql, me);
-      const rows = scopeKeys
-        ? await sql`SELECT id, payload FROM submissions WHERE id = ${id} AND payload->>'form_key' = ANY(${scopeKeys})`
-        : await sql`SELECT id, payload FROM submissions WHERE id = ${id}`;
-      if (!rows.length) return json({ error: "Not found" }, 404);
-      const payload = parsePayload(rows[0].payload);
-      const answers = ((payload.answers || {}) as Record<string, unknown>);
 
-      // Find proof fields by common key names (case-insensitive, underscore-boundary match
-      // so e.g. "uuid"/"guid" never get treated as Aadhaar)
-      let phoneRaw = "";
-      let aadhaarRaw = "";
-      const phoneKeys = ["phone", "mobile", "phone_number", "contact", "contact_number", "mobile_number"];
-      const aadhaarKeys = ["aadhaar", "aadhaar_no", "aadhaar_number", "uid", "aadhaar_id", "id_proof"];
-      const norm = (s: string) => String(s).trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
-      const matchesKey = (key: string, known: string) => {
-        const k = norm(known);
-        return key === k || key.startsWith(k + "_") || key.endsWith("_" + k);
-      };
-      for (const [k, v] of Object.entries(answers)) {
-        const key = norm(k);
-        const val = v == null ? "" : String(v);
-        if (!phoneRaw && phoneKeys.some((pk) => matchesKey(key, pk))) phoneRaw = val;
-        if (!aadhaarRaw && aadhaarKeys.some((ak) => matchesKey(key, ak))) aadhaarRaw = val;
-      }
-
-      // Strip separators and optional +91 / 91 country prefix before checking
-      const strip = (s: string) =>
-        String(s).replace(/[\s\-().]/g, "").replace(/^\+?91/, "");
-      const phone = strip(phoneRaw);
-      const aadhaar = strip(aadhaarRaw);
-      const phoneValid = /^[6-9]\d{9}$/.test(phone); // Indian mobile: 10 digits, starts 6-9
-      const aadhaarValid = /^\d{12}$/.test(aadhaar); // Aadhaar: 12 digits
-
-      const anyFound = !!phoneRaw || !!aadhaarRaw;
-      const result = {
-        phone: {
-          found: !!phoneRaw,
-          value: phoneRaw || null,
-          valid: phoneValid,
-        },
-        aadhaar: {
-          found: !!aadhaarRaw,
-          value: aadhaarRaw || null,
-          valid: aadhaarValid,
-        },
-        all_valid: (!phoneRaw || phoneValid) && (!aadhaarRaw || aadhaarValid),
-      };
-      // Only mark proof-validated when at least one proof field exists and all present ones pass
-      const proofValidated = anyFound && result.all_valid;
-
-      payload.proof_validated = {
-        ok: proofValidated,
-        phone: result.phone,
-        aadhaar: result.aadhaar,
-        checked_at: new Date().toISOString(),
-        checked_by: me.name || me.username,
-        note: body.note ? String(body.note).slice(0, 500) : null,
-      };
-      await sql`
-        UPDATE submissions
-        SET payload = ${JSON.stringify(payload)}::jsonb
-        WHERE id = ${id}
-      `;
-
-      logAudit(me, "proof_validation", "submission", id, {
-        phone_valid: result.phone.valid,
-        aadhaar_valid: result.aadhaar.valid,
-        ok: proofValidated,
-        note: (payload.proof_validated as Record<string, unknown>)?.note ?? null,
-      });
-      return json({ ok: true, id, ...result, proof_validated: payload.proof_validated });
-    }
 
     // Bulk confirm all pending (bootstrap / after review)
     if (path === "/api/submissions/confirm-pending" && method === "POST") {
@@ -7979,6 +7956,33 @@ async function rawHandler(req: Request): Promise<Response> {
         `;
       }
       if (Array.isArray(body.questions)) {
+        if (body.translate === true && canQuestionCopy(me)) {
+          // Auto-fill missing label_te and options_te via Google Translate
+          const toTrans: string[] = [];
+          for (const q of body.questions as Record<string, unknown>[]) {
+            if (q.label && !q.label_te) toTrans.push(String(q.label));
+            if (Array.isArray(q.options)) {
+              for (const opt of q.options) {
+                if (typeof opt === "string" && opt) toTrans.push(opt);
+              }
+            }
+          }
+          if (toTrans.length) {
+            try {
+              const transMap = new Map<string, string>();
+              const translated = await googleTranslateToTelugu(toTrans);
+              toTrans.forEach((t, i) => transMap.set(t, translated[i] || t));
+              for (const q of body.questions as Record<string, unknown>[]) {
+                if (q.label && !q.label_te) q.label_te = transMap.get(String(q.label)) || q.label;
+                if (Array.isArray(q.options) && (!Array.isArray(q.options_te) || !q.options_te.length)) {
+                  q.options_te = q.options.map((opt: unknown) => (typeof opt === "string" ? transMap.get(opt) || opt : opt));
+                }
+              }
+            } catch {
+              /* ignore translation failures */
+            }
+          }
+        }
         body.questions = stripTeluguUnlessAllowed(me, body.questions);
         // Reject malformed question ids before saving — an empty or
         // duplicate id collapses multiple questions onto one key in every
@@ -8240,50 +8244,6 @@ async function rawHandler(req: Request): Promise<Response> {
       return json({ items, count: items.length });
     }
 
-    // Respondents per survey
-    if (path.match(/^\/api\/surveys\/\d+\/respondents$/) && method === "POST") {
-      if (!me) return json({ error: "Login required" }, 401);
-      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      const id = Number(path.split("/")[3]);
-      const body = await readBody(req);
-      const name = String(body.name || "").trim();
-      if (!name) return json({ error: "Name required" }, 400);
-      const rows = await sql`
-        INSERT INTO survey_respondents (survey_id, name, phone)
-        VALUES (${id}, ${name}, ${String(body.phone || "").trim() || null})
-        RETURNING id, name, phone, status, created_at
-      `;
-      return json({ ok: true, respondent: rows[0] }, 201);
-    }
-
-    if (path.match(/^\/api\/surveys\/\d+\/respondents\/\d+$/) && method === "PATCH") {
-      if (!me) return json({ error: "Login required" }, 401);
-      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      const body = await readBody(req);
-      const status = String(body.status || "").toLowerCase();
-      if (status === "done") {
-        await sql`
-          UPDATE survey_respondents SET status = 'done', done_at = NOW()
-          WHERE id = ${Number(path.split("/")[5])} AND survey_id = ${Number(path.split("/")[3])}
-        `;
-      } else if (status === "pending") {
-        await sql`
-          UPDATE survey_respondents SET status = 'pending', done_at = NULL
-          WHERE id = ${Number(path.split("/")[5])} AND survey_id = ${Number(path.split("/")[3])}
-        `;
-      }
-      return json({ ok: true });
-    }
-
-    if (path.match(/^\/api\/surveys\/\d+\/respondents\/\d+$/) && method === "DELETE") {
-      if (!me) return json({ error: "Login required" }, 401);
-      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      await sql`
-        DELETE FROM survey_respondents
-        WHERE id = ${Number(path.split("/")[5])} AND survey_id = ${Number(path.split("/")[3])}
-      `;
-      return json({ ok: true, deleted: true });
-    }
 
     // ── Dynamic questions (field app loads automatically) ───
     if (path === "/api/questions" && method === "GET") {
@@ -8385,62 +8345,6 @@ async function rawHandler(req: Request): Promise<Response> {
       return json({ ok: true, title, questions, count: questions.length });
     }
 
-    // Surveyor's own records (field app "My records" screen)
-    if (path === "/api/submissions/me" && method === "GET") {
-      if (!me) return json({ error: "Login required" }, 401);
-      const uId = String(me.id);
-      const names = [me.name, me.username].filter(Boolean);
-      const rows = await sql`
-        SELECT id, payload, created_at FROM submissions
-        WHERE payload->>'user_id' = ${uId}
-           OR payload->>'submitted_by' = ANY(${names})
-        ORDER BY created_at DESC LIMIT 500
-      `.catch(() => []);
-      const mediaRows = await sql`
-        SELECT submission_id, kind, url, storage, meta FROM survey_media
-      `.catch(() => []);
-      const mediaMap = new Map<number, { url: string | null; kind: string }[]>();
-      for (const m of mediaRows as {
-        submission_id: number;
-        kind: string;
-        url: string | null;
-        storage: string | null;
-        meta: unknown;
-      }[]) {
-        const meta =
-          typeof m.meta === "string"
-            ? parsePayload(m.meta)
-            : (m.meta as Record<string, unknown>) || {};
-        const url = m.url || (meta.url as string) || null;
-        const arr = mediaMap.get(Number(m.submission_id)) || [];
-        arr.push({ url, kind: m.kind });
-        mediaMap.set(Number(m.submission_id), arr);
-      }
-      const items = (rows as Record<string, unknown>[])
-        .map((r) => {
-          const payload = parsePayload(r.payload);
-          // Phone-only drafts are never inserted. Rows tagged _draft were Sent
-          // from Pending and must still show in My activity.
-          const answers = (payload?.answers || {}) as Record<string, unknown>;
-          const media = mediaMap.get(Number(r.id)) || [];
-          return {
-            id: r.id,
-            created_at: r.created_at,
-            status: payloadStatus(payload),
-            submitted_by: String(
-              payload?.submitted_by || answers?.data_collector || "",
-            ),
-            record_index: recordIndexOf(payload),
-            form_key: String(payload?.form_key || "default"),
-            answers,
-            photo_url: media.find((m) => m.kind === "photo")?.url || null,
-            audio_url: media.find((m) => m.kind === "audio")?.url || null,
-            media,
-          };
-        })
-        .filter(Boolean);
-      return json({ items, count: items.length });
-    }
 
     if (path === "/api/web-survey" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
@@ -9080,6 +8984,35 @@ async function rawHandler(req: Request): Promise<Response> {
         });
       } catch {
         return json({ constituencies: [], districts: [], mpConstituencies: [] });
+      }
+    }
+
+    // Combined geo children lists (mandals + revenue divisions for a district)
+    if (path === "/api/geo/children" && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      const district = (url.searchParams.get("district") || "").trim();
+      try {
+        const mandals = district
+          ? await sql`
+              SELECT mandal_name AS "mandalName", district,
+                     revenue_division AS "revenueDivision", mandal_code AS "mandalCode"
+              FROM mandals WHERE district = ${district} ORDER BY mandal_name
+            `
+          : await sql`
+              SELECT mandal_name AS "mandalName", district,
+                     revenue_division AS "revenueDivision", mandal_code AS "mandalCode"
+              FROM mandals ORDER BY district, mandal_name LIMIT 500
+            `;
+        const revenueDivisions = district
+          ? await sql`SELECT name, district FROM revenue_divisions WHERE district = ${district} ORDER BY name LIMIT 200`
+          : await sql`SELECT name, district FROM revenue_divisions ORDER BY name LIMIT 200`;
+        return json({
+          mandals,
+          revenueDivisions,
+          divisions: revenueDivisions,
+        });
+      } catch {
+        return json({ mandals: [], revenueDivisions: [], divisions: [] });
       }
     }
 

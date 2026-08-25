@@ -1,0 +1,82 @@
+================================================================================
+SMART SURVEY X / GROUND IQ — PROJECT & GITHUB LINKS DIRECTORY
+================================================================================
+
+1. GITHUB REPOSITORIES
+--------------------------------------------------------------------------------
+- Primary Web & Field App:
+  https://github.com/sravanku018/ground-iq-web
+
+- Super Admin Repository:
+  https://github.com/sravanku018/ground-iq-superadmin
+
+- Git Remote Clone (Web):
+  git clone https://github.com/sravanku018/ground-iq-web.git
+
+- Git Remote Clone (Super Admin):
+  git clone https://github.com/sravanku018/ground-iq-superadmin.git
+
+
+2. GITHUB RELEASES & APK DOWNLOADS (OTA IN-APP UPDATES)
+--------------------------------------------------------------------------------
+- Publish New APK Release:
+  https://github.com/sravanku018/ground-iq-web/releases/new
+
+- View All Releases:
+  https://github.com/sravanku018/ground-iq-web/releases
+
+- Latest Release Page:
+  https://github.com/sravanku018/ground-iq-web/releases/latest
+
+- Direct Download Link (Release APK - Telegram-style updater):
+  https://github.com/sravanku018/ground-iq-web/releases/latest/download/ElectionSurvey-release.apk
+
+- Direct Download Link (Debug APK):
+  https://github.com/sravanku018/ground-iq-web/releases/latest/download/ElectionSurvey-debug.apk
+
+- GitHub Releases API Endpoint (Automated Version Checker):
+  https://api.github.com/repos/sravanku018/ground-iq-web/releases/latest
+
+
+3. LIVE DEPLOYMENTS & PORTALS
+--------------------------------------------------------------------------------
+- Client Admin Web Portal:
+  https://ground-iq-web-lake.vercel.app/admin
+
+- Field App Web Version:
+  https://ground-iq-web-lake.vercel.app
+
+- Deno Deploy Serverless API:
+  https://jazzy-crocodile-7790.sravanku018.deno.net
+
+
+4. LIVE API ENDPOINTS
+--------------------------------------------------------------------------------
+- Server Health Check:
+  https://jazzy-crocodile-7790.sravanku018.deno.net/api/health
+
+- App Version & In-App Update Metadata:
+  https://jazzy-crocodile-7790.sravanku018.deno.net/api/app-version
+
+- Analytics KPI Summary:
+  https://jazzy-crocodile-7790.sravanku018.deno.net/api/analytics?group_by=kpi
+
+- Geo Reference Lookups (Cached 1 Day):
+  https://jazzy-crocodile-7790.sravanku018.deno.net/api/geo/children?district=hyderabad
+
+
+5. COMMON COMMANDS CHEATSHEET
+--------------------------------------------------------------------------------
+- Bump Version & Build APK:
+  npm run version:bump
+  npm run build:apk:release
+
+- Push to Both GitHub Repositories:
+  git push ground-iq ground-sync:main && git push ground-iq-superadmin ground-sync:main
+
+- Run Code Linter:
+  npm run lint
+
+- Run Production Build:
+  npm run build
+================================================================================

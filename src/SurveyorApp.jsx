@@ -83,7 +83,6 @@ import {
   getDisplayLang,
   setDisplayLang as persistDisplayLang,
   NAV_MODES,
-  FONT_SCALES,
 } from './prefs'
 import './App.css'
 
@@ -98,14 +97,12 @@ function mergeUserKeepMedia(prev, next) {
   }
 }
 
-/** Surveyor-only field app (mobile / APK) */
+/** Surveyor-only field app (mobile / APK) — 4 focused tabs */
 const TABS = [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'collect', label: 'Collect', icon: 'pencil' },
-  { id: 'drafts', label: 'Pending', icon: 'box' },
-  { id: 'records', label: 'Activity', icon: 'menu' },
+  { id: 'submissions', label: 'Submissions', icon: 'box' },
   { id: 'profile', label: 'Profile', icon: 'user' },
-  { id: 'settings', label: 'Settings', icon: 'settings' },
 ]
 
 /** Record build stamp in local storage without clearing active session. */
@@ -740,6 +737,100 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
           </label>
         </div>
       </div>
+
+      {/* App Preferences & Settings */}
+      <div className="card" style={{ marginTop: 14, padding: 16 }}>
+        <h4 style={{ marginTop: 0, marginBottom: 8, fontSize: 15 }}>🌐 Display Language</h4>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+          {[
+            { id: 'en', label: 'English' },
+            { id: 'te', label: 'తెలుగు' },
+          ].map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`chip ${displayLang === p.id ? 'selected' : ''}`}
+              onClick={() => onDisplayLangChange?.(p.id)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        <h4 style={{ marginTop: 0, marginBottom: 8, fontSize: 15 }}>📝 Question Layout</h4>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {NAV_MODES.map((mode) => {
+            const info = NAV_MODE_INFO[mode]
+            const selected = navMode === mode
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => onNavModeChange?.(mode)}
+                aria-pressed={selected}
+                style={{
+                  textAlign: 'left',
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  border: selected ? '2px solid #00e599' : '1px solid #e2e8f0',
+                  background: selected ? 'rgba(0,229,153,0.08)' : '#fff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <span
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: '50%',
+                    border: selected ? '5px solid #00e599' : '2px solid #cbd5e1',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <span style={{ fontSize: 13, fontWeight: selected ? 700 : 500 }}>{info.title}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* App Version & OTA Updates */}
+      <div className="card" style={{ marginTop: 14, padding: 16, textAlign: 'center' }}>
+        <p style={{ margin: '0 0 8px', fontSize: 13, color: '#64748b', fontWeight: 600 }}>
+          {versionLabel()}
+        </p>
+        <button
+          type="button"
+          className="btn small"
+          style={{ width: '100%', marginBottom: 10 }}
+          onClick={async () => {
+            onToast?.('Checking for updates…', 'ok')
+            try {
+              const res = await checkForAppUpdate({ ignoreDismissed: true })
+              if (res.hasUpdate) {
+                launchApkUpdate(res.latest.apkUrl)
+              } else {
+                onToast?.('App is up to date ✓', 'ok')
+              }
+            } catch {
+              onToast?.('Could not check updates', 'error')
+            }
+          }}
+        >
+          ⚡ Check for Updates
+        </button>
+
+        <button
+          type="button"
+          className="cta secondary danger-cta"
+          style={{ width: '100%', marginTop: 6 }}
+          onClick={onLogout}
+        >
+          Log out
+        </button>
+      </div>
     </div>
   )
 }
@@ -970,115 +1061,102 @@ const NAV_MODE_INFO = {
   swipe: { title: 'Swipe', desc: 'One question at a time — swipe left or right to move.' },
   scroll: { title: 'Vertical scroll', desc: 'All questions in one scrollable page.' },
 }
-const FONT_SCALE_LABELS = ['Normal', 'Large', 'Larger', 'Largest']
 
-/** Device-local UI preferences: survey question layout + app display size. */
-function SurveyorSettingsScreen({ navMode, onNavModeChange, fontScale, onFontScaleChange, displayLang, onDisplayLangChange }) {
+/**
+ * Combined Submissions tab: switch between Pending Drafts and Sent Activity.
+ */
+function SubmissionsScreen({ user, onToast, onEdit, questions, initialSubTab = 'drafts' }) {
+  const [subTab, setSubTab] = useState(initialSubTab)
+  const [draftsN, setDraftsN] = useState(0)
+
+  useEffect(() => {
+    const updateCount = async () => {
+      try {
+        const [d, q] = await Promise.all([listDrafts({ media: false }), listPendingPackages()])
+        setDraftsN((d?.length || 0) + (q?.length || 0))
+      } catch {
+        setDraftsN(0)
+      }
+    }
+    void updateCount()
+    window.addEventListener('esurvey-queue-change', updateCount)
+    return () => window.removeEventListener('esurvey-queue-change', updateCount)
+  }, [])
+
   return (
-    <div className="screen settings-screen" style={{ padding: '12px 14px 110px' }}>
-      <div className="card" style={{ marginBottom: 14, padding: 16 }}>
-        <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 16 }}>Display language</h3>
-        <p className="muted" style={{ marginTop: 0, marginBottom: 14, fontSize: 13 }}>
-          Used when the survey has no language set. A survey’s own English / Telugu setting
-          (chosen when questions are prepared) wins on Collect.
-        </p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {[
-            { id: 'en', label: 'English' },
-            { id: 'te', label: 'తెలుగు' },
-          ].map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              className={`chip ${displayLang === p.id ? 'selected' : ''}`}
-              onClick={() => onDisplayLangChange(p.id)}
+    <div className="screen submissions-shell" style={{ paddingBottom: 90 }}>
+      <div
+        style={{
+          display: 'flex',
+          background: '#f1f5f9',
+          border: '1px solid #e2e8f0',
+          borderRadius: 12,
+          padding: 4,
+          margin: '10px 14px 12px',
+          gap: 4,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setSubTab('drafts')}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            borderRadius: 8,
+            border: 'none',
+            fontWeight: 600,
+            fontSize: 13,
+            cursor: 'pointer',
+            background: subTab === 'drafts' ? '#ffffff' : 'transparent',
+            color: subTab === 'drafts' ? '#0f172a' : '#64748b',
+            boxShadow: subTab === 'drafts' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+          }}
+        >
+          📦 Pending Sync
+          {draftsN > 0 && (
+            <span
+              style={{
+                background: '#ef4444',
+                color: '#fff',
+                fontSize: 11,
+                padding: '1px 6px',
+                borderRadius: 999,
+                fontWeight: 700,
+              }}
             >
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="card" style={{ marginBottom: 14, padding: 16 }}>
-        <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 16 }}>Survey question layout</h3>
-        <p className="muted" style={{ marginTop: 0, marginBottom: 14, fontSize: 13 }}>
-          Choose how questions appear while collecting a survey. Saved on this device only.
-        </p>
-        <div style={{ display: 'grid', gap: 10 }}>
-          {NAV_MODES.map((mode) => {
-            const info = NAV_MODE_INFO[mode]
-            const selected = navMode === mode
-            return (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => onNavModeChange(mode)}
-                aria-pressed={selected}
-                style={{
-                  textAlign: 'left',
-                  padding: '12px 14px',
-                  borderRadius: 12,
-                  border: selected ? '2px solid #00e599' : '2px solid #e2e8f0',
-                  background: selected ? 'rgba(0,229,153,0.10)' : '#fff',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: '50%',
-                    flexShrink: 0,
-                    boxSizing: 'border-box',
-                    border: selected ? '6px solid #00e599' : '2px solid #cbd5e1',
-                  }}
-                />
-                <span>
-                  <strong style={{ display: 'block', fontSize: 15 }}>{info.title}</strong>
-                  <span className="muted" style={{ fontSize: 12.5 }}>{info.desc}</span>
-                </span>
-              </button>
-            )
-          })}
-        </div>
+              {draftsN}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab('records')}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            borderRadius: 8,
+            border: 'none',
+            fontWeight: 600,
+            fontSize: 13,
+            cursor: 'pointer',
+            background: subTab === 'records' ? '#ffffff' : 'transparent',
+            color: subTab === 'records' ? '#0f172a' : '#64748b',
+            boxShadow: subTab === 'records' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+          }}
+        >
+          📜 Sent Activity
+        </button>
       </div>
 
-      <div className="card" style={{ padding: 16 }}>
-        <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 16 }}>Display size</h3>
-        <p className="muted" style={{ marginTop: 0, marginBottom: 14, fontSize: 13 }}>
-          Make the whole app bigger for easier reading outdoors.
-        </p>
-        <div
-          className="qa-options"
-          style={{ display: 'grid', gridTemplateColumns: `repeat(${FONT_SCALES.length}, 1fr)`, gap: 8 }}
-        >
-          {FONT_SCALES.map((scale, i) => {
-            const selected = fontScale === scale
-            return (
-              <button
-                key={scale}
-                type="button"
-                className={`qa-opt${selected ? ' selected' : ''}`}
-                onClick={() => onFontScaleChange(scale)}
-                aria-pressed={selected}
-                style={{ display: 'flex', flexDirection: 'column', gap: 2, minHeight: 52 }}
-              >
-                <span style={{ fontSize: `${Math.round(13 * scale)}px`, fontWeight: 700, lineHeight: 1 }}>A</span>
-                <span style={{ fontSize: 10.5 }}>{FONT_SCALE_LABELS[i]}</span>
-              </button>
-            )
-          })}
-        </div>
-        <div className="card" style={{ marginTop: 14, background: '#f8fafc', padding: '12px 14px' }}>
-          <span className="muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-            Preview
-          </span>
-          <p style={{ margin: '6px 0 0' }}>The quick brown fox jumps — 1234567890</p>
-        </div>
-      </div>
+      {subTab === 'drafts' ? (
+        <DraftsScreen user={user} questions={questions} onToast={onToast} onEdit={onEdit} />
+      ) : (
+        <MyRecordsScreen user={user} onToast={onToast} questions={questions} />
+      )}
     </div>
   )
 }
@@ -1163,12 +1241,13 @@ export default function SurveyorApp() {
         return
       }
 
-      if (tab === 'records') {
-        // Records tab: user + progress + sent list
+      if (tab === 'submissions') {
+        // Submissions tab: user + progress + sent list + queue
         const prog = await getMyProgress().catch(() => null)
         if (prog) setMyProgress(prog)
         window.dispatchEvent(new Event('esurvey-activity-refresh'))
-        notify('Activity refreshed ✓', 'ok')
+        window.dispatchEvent(new Event('esurvey-queue-change'))
+        notify('Submissions refreshed ✓', 'ok')
         return
       }
 
@@ -1539,8 +1618,8 @@ export default function SurveyorApp() {
         <PullToRefresh
           disabled={tab === 'collect'}
           onRefresh={pullRefreshAll}
-          label={tab === 'profile' ? '↓ Pull to refresh profile' : tab === 'records' ? '↓ Pull to refresh activity' : '↓ Pull to refresh'}
-          refreshingLabel={tab === 'profile' ? 'Refreshing profile…' : tab === 'records' ? 'Refreshing activity…' : 'Refreshing…'}
+          label={tab === 'profile' ? '↓ Pull to refresh profile' : tab === 'submissions' ? '↓ Pull to refresh submissions' : '↓ Pull to refresh'}
+          refreshingLabel={tab === 'profile' ? 'Refreshing profile…' : tab === 'submissions' ? 'Refreshing submissions…' : 'Refreshing…'}
         >
           {tab === 'home' && (
             <HomeScreen
@@ -1559,7 +1638,7 @@ export default function SurveyorApp() {
                 setTab('collect')
               }}
               onViewRecords={() => {
-                setTab('records')
+                setTab('submissions')
               }}
               onSync={() => {
                 forceSyncNow().then(() => notify('Syncing device queue…', 'ok'))
@@ -1582,8 +1661,9 @@ export default function SurveyorApp() {
               />
             </CollectErrorBoundary>
           </div>
-          {tab === 'drafts' && (
-            <DraftsScreen
+
+          {tab === 'submissions' && (
+            <SubmissionsScreen
               user={user}
               questions={questionsMeta?.questions}
               onToast={notify}
@@ -1609,13 +1689,6 @@ export default function SurveyorApp() {
               }}
             />
           )}
-          {tab === 'records' && (
-            <MyRecordsScreen
-              user={user}
-              onToast={notify}
-              questions={questionsMeta?.questions}
-            />
-          )}
           {tab === 'profile' && (
             <SurveyorProfileScreen
               user={user}
@@ -1623,16 +1696,13 @@ export default function SurveyorApp() {
               onUserUpdated={(next) =>
                 setUser((prev) => mergeUserKeepMedia(prev, typeof next === 'function' ? next(prev) : next))
               }
-            />
-          )}
-          {tab === 'settings' && (
-            <SurveyorSettingsScreen
               navMode={navMode}
               onNavModeChange={changeNavMode}
               fontScale={fontScale}
               onFontScaleChange={changeFontScale}
               displayLang={displayLang}
               onDisplayLangChange={changeDisplayLang}
+              onLogout={handleLogout}
             />
           )}
         </PullToRefresh>
@@ -1661,7 +1731,7 @@ export default function SurveyorApp() {
           >
             <span className="nav-icon" aria-hidden>
               <Icon name={t.icon} size={20} />
-              {t.id === 'drafts' && draftsCount > 0 && (
+              {t.id === 'submissions' && draftsCount > 0 && (
                 <span className="nav-badge" aria-label={`${draftsCount} pending`}>
                   {draftsCount > 99 ? '99+' : draftsCount}
                 </span>

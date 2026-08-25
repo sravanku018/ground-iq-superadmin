@@ -1,0 +1,16 @@
+ # 1. Bump the version (e.g. from 2.0.1 to 2.0.2)
+npm run version:bump
+
+# 2. Build the new release APK
+npm run build:apk:release
+
+# 3. Push code changes to Git
+git add -A && git commit -m "Release v2.0.2"
+git push ground-iq ground-sync:main && git push ground-iq-superadmin ground-sync:main
+
+
+npm run dev
+# or
+npm run build
+# or
+npm run build:apk:release

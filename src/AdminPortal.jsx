@@ -966,26 +966,24 @@ export default function AdminPortal({ superAdminOnly = false }) {
           <span className="role-tag">{isSuper ? 'Super Admin' : 'Client Admin'}</span>
         </div>
         <nav className="portal-nav">
-          <div className="side-section-label">DASHBOARD</div>
-          <button className={`side-sub ${page === 'overview' ? 'active' : ''}`} onClick={() => goPage('overview')}>Overview</button>
-          <button className={`side-sub ${page === 'analyze' ? 'active' : ''}`} onClick={() => goPage('analyze')}>Analyze · charts</button>
-          <button className={`side-sub ${page === 'review' || page === 'report' ? 'active' : ''}`} onClick={() => goPage('review')}>Report · review</button>
+          <div className="side-section-label">MONITORING</div>
+          <button className={`side-sub ${page === 'overview' ? 'active' : ''}`} onClick={() => goPage('overview')}>📊 Dashboard</button>
+          <button className={`side-sub ${page === 'analyze' || page === 'data' ? 'active' : ''}`} onClick={() => goPage('analyze')}>📈 Analyze &amp; Export</button>
+          <button className={`side-sub ${page === 'review' || page === 'report' ? 'active' : ''}`} onClick={() => goPage('review')}>✅ Review QA</button>
 
-          <div className="side-section-label" style={{ marginTop: 12 }}>COLLECTION</div>
-          <button className={`side-sub ${page === 'users' ? 'active' : ''}`} onClick={() => goPage('users')}>Surveyors &amp; targets</button>
-          <button className={`side-sub ${page === 'surveys' ? 'active' : ''}`} onClick={() => goPage('surveys')}>{isSuper ? 'Projects' : 'Questions · bank'}</button>
+          <div className="side-section-label" style={{ marginTop: 14 }}>SETUP &amp; TEAM</div>
+          <button className={`side-sub ${page === 'users' ? 'active' : ''}`} onClick={() => goPage('users')}>👥 Surveyors &amp; Quotas</button>
+          <button className={`side-sub ${['surveys', 'questions', 'bank', 'web'].includes(page) ? 'active' : ''}`} onClick={() => goPage('surveys')}>📋 Surveys &amp; Forms</button>
+          <button className={`side-sub ${page === 'profile' ? 'active' : ''}`} onClick={() => goPage('profile')}>🏢 Organization</button>
 
           {isSuper && (
             <>
-              <div className="side-section-label" style={{ marginTop: 12 }}>GOVERNANCE</div>
-              <button className={`side-sub ${page === 'companies' ? 'active' : ''}`} onClick={() => goPage('companies')}>Companies</button>
-              <button className={`side-sub ${page === 'admins' ? 'active' : ''}`} onClick={() => goPage('admins')}>Client Admins</button>
-              <button className={`side-sub ${page === 'audit' || page === 'platform' ? 'active' : ''}`} onClick={() => goPage('audit')}>Platform Audit</button>
+              <div className="side-section-label" style={{ marginTop: 14 }}>GOVERNANCE</div>
+              <button className={`side-sub ${page === 'companies' ? 'active' : ''}`} onClick={() => goPage('companies')}>🏢 Companies</button>
+              <button className={`side-sub ${page === 'admins' ? 'active' : ''}`} onClick={() => goPage('admins')}>🛡️ Client Admins</button>
+              <button className={`side-sub ${['audit', 'platform', 'seats'].includes(page) ? 'active' : ''}`} onClick={() => goPage('audit')}>💺 Seats &amp; Audit</button>
             </>
           )}
-
-          <div className="side-section-label" style={{ marginTop: 12 }}>ACCOUNT</div>
-          <button className={`side-sub ${page === 'profile' ? 'active' : ''}`} onClick={() => goPage('profile')}>{isSuper ? 'Super Admin profile' : 'My access'}</button>
         </nav>
 
 

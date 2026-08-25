@@ -32,7 +32,6 @@ if (!DATABASE_URL) {
 }
 
 const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
-const ROLES = ["admin"] as const;
 
 // ── Rate Limiting (In-Memory) ────────────────────────────
 const loginAttempts = new Map<string, { count: number; reset: number }>();
@@ -109,12 +108,177 @@ function newToken(): string {
   return [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 
+// ── Super Admin TOTP (RFC 6238, SHA-1, 30s, 6 digits) ────────────────────
+const TOTP_B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+const SUPER_ADMIN_SLOTS = 3;
+
+function bytesToBase32(bytes: Uint8Array): string {
+  let bits = 0;
+  let value = 0;
+  let out = "";
+  for (const b of bytes) {
+    value = (value << 8) | b;
+    bits += 8;
+    while (bits >= 5) {
+      out += TOTP_B32[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) out += TOTP_B32[(value << (5 - bits)) & 31];
+  return out;
+}
+
+function base32ToBytes(s: string): Uint8Array {
+  const clean = String(s || "").toUpperCase().replace(/=+$/g, "").replace(/[^A-Z2-7]/g, "");
+  let bits = 0;
+  let value = 0;
+  const out: number[] = [];
+  for (const c of clean) {
+    const i = TOTP_B32.indexOf(c);
+    if (i < 0) continue;
+    value = (value << 5) | i;
+    bits += 5;
+    if (bits >= 8) {
+      out.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  return new Uint8Array(out);
+}
+
+function newTotpSecret(): string {
+  const b = new Uint8Array(20);
+  crypto.getRandomValues(b);
+  return bytesToBase32(b);
+}
+
+function otpauthUrl(username: string, secret: string): string {
+  const label = encodeURIComponent(`Smart Survey X:${username}`);
+  const issuer = encodeURIComponent("Smart Survey X");
+  return `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
+}
+
+async function hotpSha1(secret: Uint8Array, counter: number): Promise<string> {
+  const buf = new ArrayBuffer(8);
+  const view = new DataView(buf);
+  // 64-bit big-endian counter (high then low)
+  view.setUint32(0, Math.floor(counter / 0x100000000));
+  view.setUint32(4, counter >>> 0);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    secret,
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"],
+  );
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, buf));
+  const off = sig[sig.length - 1] & 0xf;
+  const code =
+    ((sig[off] & 0x7f) << 24) |
+    ((sig[off + 1] & 0xff) << 16) |
+    ((sig[off + 2] & 0xff) << 8) |
+    (sig[off + 3] & 0xff);
+  return String(code % 1_000_000).padStart(6, "0");
+}
+
+async function verifyTotp(secretB32: string, code: unknown): Promise<boolean> {
+  const digits = String(code || "").replace(/\s/g, "");
+  if (!/^\d{6}$/.test(digits) || !secretB32) return false;
+  const secret = base32ToBytes(secretB32);
+  if (secret.length < 10) return false;
+  const step = Math.floor(Date.now() / 1000 / 30);
+  for (const d of [-1, 0, 1]) {
+    if ((await hotpSha1(secret, step + d)) === digits) return true;
+  }
+  return false;
+}
+
+function totpSetupPayload(username: string, secret: string) {
+  return {
+    totp_setup: true,
+    totp_secret: secret,
+    otpauth_url: otpauthUrl(username, secret),
+    issuer: "Smart Survey X",
+    account: username,
+    digits: 6,
+    period: 30,
+  };
+}
+
+const SA_SLOT_USERNAMES = ["superadmin", "superadmin2", "superadmin3"] as const;
+const SA_SLOT_STARTER_PASSWORD = "admin123";
+
+/** Create only missing Super Admin usernames. Never updates an existing row. */
+async function seedMissingSuperAdminSlots(
+  sqlFn: NonNullable<typeof sql>,
+): Promise<{ created: string[] }> {
+  const created: string[] = [];
+  const countRows = await sqlFn`SELECT COUNT(*)::int AS n FROM app_users WHERE role = 'super_admin'`.catch(() => [{ n: 0 }]);
+  let count = sqlCountN(countRows[0]);
+  if (count >= SUPER_ADMIN_SLOTS) return { created };
+
+  await sqlFn`ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_role_check`.catch(() => null);
+  await sqlFn`ALTER TABLE app_users ADD CONSTRAINT app_users_role_check CHECK (role IN ('super_admin','admin','field','user','surveyor'))`.catch(() => null);
+
+  const starterHash = await hashPasswordAsync(SA_SLOT_STARTER_PASSWORD);
+  for (let i = 0; i < SA_SLOT_USERNAMES.length && count < SUPER_ADMIN_SLOTS; i++) {
+    const username = SA_SLOT_USERNAMES[i];
+    const exists = await sqlFn`SELECT id FROM app_users WHERE LOWER(username) = ${username} LIMIT 1`.catch(() => []);
+    if (exists.length) continue;
+    const totpSecret = newTotpSecret();
+    const name = i === 0 ? "Super Admin" : `Super Admin ${i + 1}`;
+    const ins = await sqlFn`
+      INSERT INTO app_users (username, password_hash, display_name, role, active, key_id, totp_secret, totp_enabled)
+      VALUES (${username}, ${starterHash}, ${name}, 'super_admin', TRUE, ${await uniqueUserKeyId()}, ${totpSecret}, FALSE)
+      ON CONFLICT (username) DO NOTHING
+      RETURNING id
+    `.catch(() => []);
+    if ((ins as { id?: unknown }[]).length) {
+      created.push(username);
+      count += 1;
+    }
+  }
+  return { created };
+}
+
+// ── CORS allowlist ────────────────────────────────────────────────────────
+// The API (Deno) is called cross-origin by the Vercel-hosted portals and by the
+// Capacitor Android app (origin https://localhost, from androidScheme: "https").
+// Override the list at runtime with an ALLOWED_ORIGINS env var (comma-separated).
+const ALLOWED_ORIGINS = new Set(
+  Deno.env.get("ALLOWED_ORIGINS")
+    ?.split(",").map((s) => s.trim()).filter(Boolean) ?? [
+      "https://ground-iq-web-lake.vercel.app",   // Client Admin portal
+      "https://ground-iq-superadmin.vercel.app", // Super Admin console
+      "https://localhost",                       // Android APK
+      "http://localhost",                        // Android cleartext fallback
+      "http://localhost:5173",                   // vite dev
+      "http://localhost:4173",                   // vite preview
+    ],
+);
+/** The request's Origin iff it is allow-listed, else null. */
+function resolveAllowedOrigin(req?: Request): string | null {
+  const origin = req?.headers.get("origin");
+  if (!origin) return null; // non-browser client (curl / server-to-server): CORS N/A
+  return ALLOWED_ORIGINS.has(origin) ? origin : null;
+}
+/** Single choke point: stamp the correct CORS origin on every outgoing response. */
+function withCors(req: Request, res: Response): Response {
+  try {
+    const allowed = resolveAllowedOrigin(req);
+    if (allowed) res.headers.set("access-control-allow-origin", allowed);
+    else res.headers.delete("access-control-allow-origin"); // block disallowed origins
+    res.headers.append("vary", "Origin");
+  } catch { /* streamed/guarded headers — leave as-is */ }
+  return res;
+}
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "access-control-allow-origin": "*",
+      "cache-control": "no-store, no-cache, must-revalidate",
       "access-control-allow-headers": "authorization, content-type, x-auth-token",
       "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
     },
@@ -122,8 +286,8 @@ function json(data: unknown, status = 200) {
 }
 
 function corsHeaders(_req?: Request): Record<string, string> {
+  // access-control-allow-origin is applied centrally by withCors().
   return {
-    "access-control-allow-origin": "*",
     "access-control-allow-headers": "authorization, content-type, x-auth-token, accept, origin, range, content-disposition",
     "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
     "access-control-expose-headers": "content-disposition, content-type, content-length, location",
@@ -169,6 +333,7 @@ async function getUser(token: string | null) {
            COALESCE(u.can_assign_surveyors, FALSE) AS can_assign_surveyors,
            COALESCE(u.can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
            COALESCE(u.can_validate_proof, FALSE) AS can_validate_proof,
+           COALESCE(u.can_web_survey, FALSE) AS can_web_survey,
            COALESCE(u.max_questions_per_survey, 0) AS max_questions_per_survey,
            COALESCE(u.max_surveys, 0) AS max_surveys,
            COALESCE(u.max_surveyors, 0) AS max_surveyors,
@@ -187,7 +352,7 @@ async function getUser(token: string | null) {
              NULL AS key_id, NULL AS phone, NULL AS photo, NULL AS aadhaar_front, NULL AS aadhaar_back,
              FALSE AS verified, FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
              FALSE AS can_review_data, FALSE AS can_verify_surveyors, FALSE AS can_assign_surveyors, FALSE AS can_crud_questionnaire,
-             FALSE AS can_validate_proof, 0 AS max_questions_per_survey, 0 AS max_surveys,
+             FALSE AS can_validate_proof, FALSE AS can_web_survey, 0 AS max_questions_per_survey, 0 AS max_surveys,
              0 AS max_surveyors, 0 AS max_records
       FROM app_sessions s
       JOIN app_users u ON u.id = s.user_id
@@ -219,6 +384,7 @@ async function getUser(token: string | null) {
     can_assign_surveyors: sqlBool((u as Record<string, unknown>).can_assign_surveyors),
     can_crud_questionnaire: sqlBool((u as Record<string, unknown>).can_crud_questionnaire),
     can_validate_proof: sqlBool((u as Record<string, unknown>).can_validate_proof),
+    can_web_survey: sqlBool((u as Record<string, unknown>).can_web_survey),
     max_questions_per_survey: Number((u as Record<string, unknown>).max_questions_per_survey) || 0,
     max_surveys: Number((u as Record<string, unknown>).max_surveys) || 0,
     max_surveyors: Number((u as Record<string, unknown>).max_surveyors) || 0,
@@ -275,6 +441,44 @@ function parseQuestionsArray(raw: unknown): unknown[] {
   return Array.isArray(qs) ? qs : [];
 }
 
+/** Surveys assigned to a surveyor, with questions parsed for the field app. */
+async function listAssignedSurveys(
+  sqlFn: NonNullable<typeof sql>,
+  userId: number,
+): Promise<{
+  id: unknown;
+  form_key: unknown;
+  title: unknown;
+  display_lang: "en" | "te";
+  questions: unknown[];
+  updated_at: unknown;
+}[]> {
+  let rows = await sqlFn`
+    SELECT f.id, f.form_key, f.title, f.display_lang, f.questions, f.updated_at
+    FROM survey_assignments sa
+    JOIN survey_form f ON f.id = sa.survey_id
+    WHERE sa.user_id = ${userId}
+    ORDER BY f.title
+  `.catch(() => null);
+  if (!rows) {
+    rows = await sqlFn`
+      SELECT f.id, f.form_key, f.title, f.questions, f.updated_at
+      FROM survey_assignments sa
+      JOIN survey_form f ON f.id = sa.survey_id
+      WHERE sa.user_id = ${userId}
+      ORDER BY f.title
+    `.catch(() => []);
+  }
+  return (rows as Record<string, unknown>[]).map((r) => ({
+    id: r.id,
+    form_key: r.form_key,
+    title: r.title,
+    display_lang: surveyDisplayLang(r.display_lang),
+    questions: parseQuestionsArray(r.questions),
+    updated_at: r.updated_at,
+  }));
+}
+
 /**
  * Peak questions in any one survey a Client Admin can use (owned + shared + company projects).
  * Used for "Questions / survey (peak)" vs max_questions_per_survey.
@@ -320,6 +524,161 @@ function hasPower(
   key: string,
 ): boolean {
   return !!me && (me.role === "super_admin" || sqlBool(me[key]));
+}
+
+/**
+ * Surveyor ↔ survey mapping. ON CONFLICT needs UNIQUE(survey_id, user_id);
+ * if an older table is missing that constraint, fall back to a plain INSERT.
+ */
+async function upsertSurveyAssignment(surveyId: number, userId: number): Promise<boolean> {
+  if (!sql || !Number.isFinite(surveyId) || !Number.isFinite(userId)) return false;
+  try {
+    await sql`
+      INSERT INTO survey_assignments (survey_id, user_id)
+      VALUES (${surveyId}, ${userId})
+      ON CONFLICT (survey_id, user_id) DO NOTHING
+    `;
+    return true;
+  } catch {
+    try {
+      await sql`
+        INSERT INTO survey_assignments (survey_id, user_id)
+        VALUES (${surveyId}, ${userId})
+      `;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** Telugu add / type / auto-translate — question-management powers only (no separate grant). */
+function canQuestionCopy(
+  me: { role: unknown } & Record<string, unknown> | null,
+): boolean {
+  return hasPower(me, "can_manage_questions") || hasPower(me, "can_crud_questionnaire");
+}
+
+function stripTeluguUnlessAllowed(
+  me: { role: unknown } & Record<string, unknown> | null,
+  questions: unknown[],
+): unknown[] {
+  if (canQuestionCopy(me)) return questions;
+  return questions.map((q) => {
+    if (!q || typeof q !== "object") return q;
+    const rec = { ...(q as Record<string, unknown>) };
+    delete rec.label_te;
+    delete rec.options_te;
+    delete rec.options_te_text;
+    return rec;
+  });
+}
+
+function decodeTranslateHtml(s: string): string {
+  return String(s || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"');
+}
+
+/** Google Translate (official Cloud key, else public translate endpoint). */
+async function googleTranslateToTelugu(texts: string[]): Promise<string[]> {
+  const items = texts.map((t) => String(t || ""));
+  if (!items.length) return [];
+  const official =
+    Deno.env.get("GOOGLE_TRANSLATE_API_KEY") || Deno.env.get("GOOGLE_API_KEY") || "";
+  if (official) {
+    const res = await fetch(
+      `https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(official)}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ q: items, source: "en", target: "te", format: "text" }),
+      },
+    );
+    const data = await res.json().catch(() => ({})) as {
+      data?: { translations?: { translatedText?: string }[] };
+      error?: { message?: string };
+    };
+    if (!res.ok) {
+      const err = new Error(data.error?.message || `Google Translate failed (${res.status})`);
+      (err as { status?: number }).status = 502;
+      throw err;
+    }
+    const rows = data.data?.translations || [];
+    return items.map((_, i) => decodeTranslateHtml(String(rows[i]?.translatedText || "")));
+  }
+
+  const out: string[] = [];
+  for (const t of items) {
+    if (!t.trim()) {
+      out.push("");
+      continue;
+    }
+    const url =
+      `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=te&dt=t&q=${encodeURIComponent(t)}`;
+    const res = await fetch(url);
+    const arr = await res.json().catch(() => null) as unknown;
+    if (!res.ok || !Array.isArray(arr)) {
+      const err = new Error(`Google Translate failed (${res.status})`);
+      (err as { status?: number }).status = 502;
+      throw err;
+    }
+    const chunks = Array.isArray(arr[0]) ? arr[0] : [];
+    const te = chunks.map((c) => (Array.isArray(c) ? String(c[0] || "") : "")).join("");
+    out.push(te.trim());
+  }
+  return out;
+}
+
+async function translateQuestionToTelugu(
+  text: string,
+  options: string[],
+): Promise<{ text_te: string; options_te: string[] }> {
+  try {
+    const batch = [text, ...options];
+    const te = await googleTranslateToTelugu(batch);
+    return { text_te: te[0] || "", options_te: te.slice(1) };
+  } catch (googleErr) {
+    const xai = Deno.env.get("XAI_API_KEY") || "";
+    if (!xai) throw googleErr;
+    const res = await fetch("https://api.x.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${xai}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "grok-4.5",
+        temperature: 0.2,
+        messages: [
+          {
+            role: "system",
+            content:
+              'Translate English survey questions into Telugu (te-IN). Reply with JSON only: {"text_te":"...","options_te":[...]}. options_te must match the input options in length and order. Keep numbers and party names readable.',
+          },
+          { role: "user", content: JSON.stringify({ text, options }) },
+        ],
+      }),
+    });
+    const raw = await res.text();
+    if (!res.ok) throw googleErr;
+    let parsed: { choices?: { message?: { content?: string } }[] } = {};
+    try {
+      parsed = JSON.parse(raw) as typeof parsed;
+    } catch {
+      throw googleErr;
+    }
+    let content = String(parsed.choices?.[0]?.message?.content || "").trim();
+    content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+    const out = JSON.parse(content) as { text_te?: string; options_te?: unknown };
+    const optionsTe = Array.isArray(out.options_te)
+      ? out.options_te.map((s) => String(s ?? ""))
+      : [];
+    return { text_te: String(out.text_te || "").trim(), options_te: optionsTe };
+  }
 }
 
 /**
@@ -377,15 +736,14 @@ async function listAdminInbox(
 ) {
   const after = Math.max(0, Number(afterId) || 0);
   if (admin.role === "super_admin") {
+    // Surveyor profile verification notifications (profile_media) belong exclusively to the Client Admin
+    // profile who created/manages those surveyors. Exclude profile_media from Super Admin inbox.
     return await sqlFn`
       SELECT a.id, a.actor_id, a.actor_name, a.action, a.entity_type, a.entity_id, a.meta, a.created_at,
              COALESCE(u.verified, FALSE) AS surveyor_verified
       FROM audit_log a
-      LEFT JOIN app_users u ON u.id = CASE
-        WHEN a.action = 'profile_media' AND a.entity_id ~ '^[0-9]+$' THEN a.entity_id::int
-        ELSE a.actor_id
-      END
-      WHERE a.action IN ('profile_media', 'submission_create')
+      LEFT JOIN app_users u ON u.id = a.actor_id
+      WHERE a.action = 'submission_create'
         AND a.id > ${after}
       ORDER BY a.id DESC
       LIMIT 50
@@ -396,13 +754,32 @@ async function listAdminInbox(
            COALESCE(u.verified, FALSE) AS surveyor_verified
     FROM audit_log a
     LEFT JOIN app_users u ON u.id = CASE
-      WHEN a.action = 'profile_media' THEN COALESCE(a.entity_id, a.actor_id)
+      WHEN a.action = 'profile_media' AND a.entity_id ~ '^[0-9]+$' THEN a.entity_id::int
       ELSE a.actor_id
     END
     WHERE a.action IN ('profile_media', 'submission_create')
       AND a.id > ${after}
-      AND a.actor_id IN (
-        SELECT id FROM app_users WHERE role = 'surveyor' AND created_by = ${admin.id}
+      AND (
+        a.actor_id IN (
+          SELECT id FROM app_users
+          WHERE role = 'surveyor'
+            AND (
+              created_by = ${admin.id}
+              OR company_id = (SELECT company_id FROM app_users WHERE id = ${admin.id} AND company_id IS NOT NULL)
+            )
+        )
+        OR (
+          a.action = 'profile_media'
+          AND a.entity_id ~ '^[0-9]+$'
+          AND a.entity_id::int IN (
+            SELECT id FROM app_users
+            WHERE role = 'surveyor'
+              AND (
+                created_by = ${admin.id}
+                OR company_id = (SELECT company_id FROM app_users WHERE id = ${admin.id} AND company_id IS NOT NULL)
+              )
+          )
+        )
       )
     ORDER BY a.id DESC
     LIMIT 50
@@ -645,11 +1022,16 @@ async function ensureSchema() {
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_assign_surveyors BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_crud_questionnaire BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_validate_proof BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_web_survey BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
+  // Super Admin TOTP (3 seats). Secret never returned after confirm except on reset/setup.
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_secret TEXT`.catch(() => null);
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
   // Super-Admin-set cap on how many questions a Client Admin may put into one survey (0 = unlimited)
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_questions_per_survey INT NOT NULL DEFAULT 0`.catch(() => null);
   // Super-Admin-set cap on how many surveys a Client Admin may create (0 = unlimited)
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveys INT NOT NULL DEFAULT 0`.catch(() => null);
   await sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS created_by INT`.catch(() => null);
+  await sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS display_lang TEXT NOT NULL DEFAULT 'en'`.catch(() => null);
   // Company a project is mapped under (registered at creation by the Super Admin).
   await sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_name TEXT`.catch(() => null);
   // Companies registry (Super Admin creates them; Client Admins are added to them).
@@ -724,6 +1106,13 @@ async function ensureSchema() {
     console.log("super admin bootstrap skipped:", (e as Error).message);
   }
   }
+
+  // Fill empty Super Admin seats as superadmin2 / superadmin3 with starter
+  // password admin123. Never overwrites an existing account (so a changed
+  // superadmin password stays). Each new slot must enroll TOTP on first login.
+  await seedMissingSuperAdminSlots(sql).catch((e) => {
+    console.log("super admin slot seed skipped:", (e as Error).message);
+  });
 
   await sql`
     CREATE TABLE IF NOT EXISTS app_sessions (
@@ -983,6 +1372,18 @@ async function ensureSchema() {
   await sql`CREATE INDEX IF NOT EXISTS idx_survey_admin_access_admin ON survey_admin_access(admin_id)`.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_survey_admin_access_survey ON survey_admin_access(survey_id)`.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_survey_assignments_survey ON survey_assignments(survey_id)`.catch(() => null);
+  await sql`CREATE INDEX IF NOT EXISTS idx_survey_assignments_user ON survey_assignments(user_id)`.catch(() => null);
+  // Dedupe then enforce UNIQUE so ON CONFLICT (survey_id, user_id) works on
+  // databases whose original table was created without the constraint.
+  await sql`
+    DELETE FROM survey_assignments a
+    USING survey_assignments b
+    WHERE a.ctid < b.ctid AND a.survey_id = b.survey_id AND a.user_id = b.user_id
+  `.catch(() => null);
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_survey_assignments_pair
+    ON survey_assignments(survey_id, user_id)
+  `.catch(() => null);
   await sql`CREATE INDEX IF NOT EXISTS idx_survey_form_created_by ON survey_form(created_by)`.catch(() => null);
 
   // Keep legacy field/user inactive; surveyors are created from admin dashboard
@@ -1096,7 +1497,7 @@ async function ensureCompanyExists(
       `.catch(() => null);
       return comp;
     }
-  } catch (_e) {
+  } catch {
     /* ignore fallback to re-select below */
   }
 
@@ -1133,6 +1534,10 @@ function ready() {
  * Answer lookup keyed by the Client Admin's question naming — matches
  * question id OR label, case-insensitively (question "Gender" ↔ answer "gender").
  */
+function surveyDisplayLang(v: unknown): "en" | "te" {
+  return String(v || "en").trim().toLowerCase() === "te" ? "te" : "en";
+}
+
 function slugQuestionKeyServer(label: string) {
   return String(label || "")
     .trim()
@@ -1171,7 +1576,6 @@ function aliasesForQuestions(
     if (!arr.includes(key)) arr.push(key);
     aliases.set(qid, arr);
   };
-  const currentIds = new Set(questions.map((q) => q.id).filter(Boolean));
   const leftover = new Set<string>();
   for (const a of answerBags) {
     for (const k of Object.keys(a || {})) {
@@ -1187,22 +1591,101 @@ function aliasesForQuestions(
       else leftover.add(k);
     }
   }
-  const unusedQs = questions.filter((q) => {
-    const appears = answerBags.some((a) => {
-      if (!a) return false;
-      if (q.id && a[q.id] != null) return true;
-      if (q.label && a[q.label] != null) return true;
-      const slug = slugQuestionKeyServer(q.label);
-      return !!(slug && a[slug] != null);
-    });
-    return !appears;
-  });
-  const stamps = [...leftover].filter((k) => !currentIds.has(k)).sort();
-  for (let i = 0; i < stamps.length; i++) {
-    const q = unusedQs[i];
-    if (q?.id) add(q.id, stamps[i]);
+  function scoreKeyToQuestion(key: string, q: { id: string; label: string }): number {
+    const kk = key.toLowerCase().replace(/^_+|_+$/g, "");
+    if (!kk || /^q_\d+$/i.test(key)) return 0;
+    const id = String(q.id || "").toLowerCase();
+    const slug = slugQuestionKeyServer(q.label);
+    const toks = (s: string) => s.split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
+    const kt = toks(kk);
+    const against = (c: string): number => {
+      if (!c) return 0;
+      if (c === kk) return 100;
+      if (c.startsWith(kk) || kk.startsWith(c)) {
+        const ratio = Math.min(c.length, kk.length) / Math.max(c.length, kk.length);
+        if (ratio >= 0.5) return Math.round(ratio * 90);
+      }
+      let i = 0;
+      while (i < c.length && i < kk.length && c[i] === kk[i]) i++;
+      if (i >= 10) return Math.round((i / Math.max(c.length, kk.length)) * 85);
+      const ct = toks(c);
+      if (!kt.length || !ct.length) return 0;
+      const set = new Set(ct);
+      const hit = kt.filter((t) => set.has(t));
+      const distinctive = hit.filter((t) => t.length >= 4);
+      if (distinctive.length === 0 && hit.length < 2) return 0;
+      const union = new Set([...kt, ...ct]).size || 1;
+      return Math.round((hit.length / union) * 75);
+    };
+    return Math.max(against(id), against(slug));
+  }
+
+  // Attach renamed Field IDs to every question, including those that already
+  // have today's answers under the current id — otherwise only new records count.
+  for (const k of leftover) {
+    if (/^q_\d+$/i.test(k)) continue;
+    let bestQ: { id: string } | null = null;
+    let best = 0;
+    let second = 0;
+    for (const q of questions) {
+      if (!q.id) continue;
+      const s = scoreKeyToQuestion(k, q);
+      if (s > best) {
+        second = best;
+        best = s;
+        bestQ = q;
+      } else if (s > second) {
+        second = s;
+      }
+    }
+    if (bestQ && best >= 45 && best >= second + 8) add(bestQ.id, k);
   }
   return aliases;
+}
+
+/** Per-record answers: current id/label/slug/aliases, then leftover q_<time> in form order. */
+function answersByQuestionId(
+  answers: Record<string, unknown> | undefined | null,
+  questions: { id: string; label: string; aliases: string[] }[],
+): Map<string, unknown> {
+  const a = answers || {};
+  const taken = new Set<string>();
+  const out = new Map<string, unknown>();
+  const take = (q: { id: string; label: string; aliases: string[] }, keys: string[]) => {
+    for (const want of keys) {
+      const w = String(want || "").trim();
+      if (!w) continue;
+      if (a[w] != null && a[w] !== "" && !taken.has(w)) {
+        taken.add(w);
+        out.set(q.id, a[w]);
+        return true;
+      }
+      const low = w.toLowerCase();
+      for (const [k, v] of Object.entries(a)) {
+        if (taken.has(k) || v == null || v === "") continue;
+        if (k.toLowerCase() === low) {
+          taken.add(k);
+          out.set(q.id, v);
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  for (const q of questions) {
+    take(q, [q.id, q.label, slugQuestionKeyServer(q.label), ...(q.aliases || [])]);
+  }
+  const stamps = Object.keys(a)
+    .filter((k) => /^q_\d+$/i.test(k) && !taken.has(k) && a[k] != null && a[k] !== "")
+    .sort();
+  let si = 0;
+  for (const q of questions) {
+    if (out.has(q.id) || si >= stamps.length) continue;
+    const k = stamps[si++];
+    taken.add(k);
+    out.set(q.id, a[k]);
+  }
+  return out;
 }
 
 function answerOf(
@@ -1455,6 +1938,30 @@ function isDraftSubmission(payload: Record<string, unknown>): boolean {
   );
 }
 
+/** Field Send / POST must not keep phone-only draft markers on the server row. */
+function stripDraftFlags(payload: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...payload, draft: false };
+  const ans = { ...((next.answers || {}) as Record<string, unknown>) };
+  delete ans._draft;
+  delete ans.draft;
+  next.answers = ans;
+  if (String(next.content_type || "").toLowerCase() === "draft") next.content_type = "qa";
+  return next;
+}
+
+/** Field record number (1, 2, 3…) — not the database id. */
+function recordIndexOf(payload: Record<string, unknown>): number | null {
+  const a = (payload?.answers || {}) as Record<string, unknown>;
+  const n = Number(
+    payload?.record_index ??
+      payload?.recordIndex ??
+      a._recordIndex ??
+      a.recordIndex,
+  );
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+
 /**
  * Surveyor work status for Report boards:
  * - completed = Client Admin confirmed AND not a draft
@@ -1635,14 +2142,16 @@ async function loadMediaKindsMap(
 
 /** Apply media kinds onto payload flags then verify (single source of truth). */
 function verifyWithMedia(
-  payload: Record<string, unknown>,
+  payload: Record<string, unknown> | null | undefined,
   mediaMap: Map<number, string[]>,
   id: number | string,
 ) {
+  const p: Record<string, unknown> =
+    payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
   const kinds = mediaMap.get(Number(id)) || [];
-  if (kinds.includes("audio")) payload.has_audio = true;
-  if (kinds.includes("photo")) payload.has_photo = true;
-  return verifySubmission(payload, kinds);
+  if (kinds.includes("audio")) p.has_audio = true;
+  if (kinds.includes("photo")) p.has_photo = true;
+  return verifySubmission(p, kinds);
 }
 
 /** Telugu place names → English (district etc.), applied when confirming */
@@ -1650,6 +2159,178 @@ const TELUGU_ALIAS: Record<string, string> = (GEO_ALIASES as {
   telugu?: Record<string, string>;
 }).telugu || {};
 const TELUGU_SCRIPT = /[\u0C00-\u0C7F]/;
+
+/** English canonical place → Telugu (longest alias wins). */
+const EN_TO_TE_PLACE = (() => {
+  const m = new Map<string, string>();
+  for (const [te, en] of Object.entries(TELUGU_ALIAS)) {
+    const key = String(en || "").trim().toLowerCase();
+    if (!key) continue;
+    const prev = m.get(key);
+    if (!prev || te.length > prev.length) m.set(key, te);
+  }
+  return m;
+})();
+
+const EXPORT_FIXED_TE: Record<string, string> = {
+  id: "ఐడి",
+  date: "తేదీ",
+  survey: "సర్వే",
+  surveyor: "సర్వేయర్",
+  district: "జిల్లా",
+  constituency: "అసెంబ్లీ",
+  mandal: "మండలం",
+  latitude: "అక్షాంశం",
+  longitude: "రేఖాంశం",
+  party: "పార్టీ",
+  gender: "లింగం",
+  caste: "కులం",
+  age: "వయస్సు",
+  respondent: "ప్రతివాది",
+  photo_url: "ఫోటో లింక్",
+  audio_url: "ఆడియో లింక్",
+  photo_file: "ఫోటో ఫైల్",
+  audio_file: "ఆడియో ఫైల్",
+};
+
+const EXPORT_VALUE_TE: Record<string, string> = {
+  yes: "అవును",
+  no: "కాదు",
+  male: "పురుషుడు",
+  female: "స్త్రీ",
+  other: "ఇతరులు",
+  others: "ఇతరులు",
+  positive: "సానుకూలం",
+  neutral: "తటస్థం",
+  negative: "ప్రతికూలం",
+  congress: "కాంగ్రెస్",
+  bjp: "బీజేపీ",
+  brs: "బీఆర్ఎస్",
+  undecided: "నిర్ణయం కాలేదు",
+  unknown: "తెలియదు",
+};
+
+function toTeluguPlace(v: unknown): string {
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  if (TELUGU_SCRIPT.test(s)) return s;
+  return EN_TO_TE_PLACE.get(s.toLowerCase()) || s;
+}
+
+function toTeluguValue(v: unknown, optTe?: Map<string, string>): string {
+  if (v == null) return "";
+  if (Array.isArray(v)) return v.map((x) => toTeluguValue(x, optTe)).join(" | ");
+  const s = String(v).trim();
+  if (!s) return "";
+  if (TELUGU_SCRIPT.test(s)) return s;
+  const hit = optTe?.get(s) || optTe?.get(s.toLowerCase());
+  if (hit) return hit;
+  const common = EXPORT_VALUE_TE[s.toLowerCase()];
+  if (common) return common;
+  return toTeluguPlace(s);
+}
+
+/** Keep `name` (English, used for filters/maps/colors) and add `label` for Telugu UI. */
+function withTeLabels<T extends { name: string }>(
+  arr: T[],
+  kind: "place" | "value" = "value",
+  optTe?: Map<string, string>,
+): (T & { label: string })[] {
+  return arr.map((d) => ({
+    ...d,
+    label: kind === "place" ? toTeluguPlace(d.name) : toTeluguValue(d.name, optTe),
+  }));
+}
+
+function coerceOptionName(o: unknown): string {
+  if (o == null) return "";
+  if (typeof o === "object") {
+    const rec = o as Record<string, unknown>;
+    return String(rec.label || rec.value || rec.name || "").trim();
+  }
+  return String(o).trim();
+}
+
+const CHOICE_Q_TYPES = new Set([
+  "yesno",
+  "abc",
+  "choice",
+  "sentiment",
+  "sentiment_text",
+  "meter",
+  "age",
+  "range",
+  "numeric_range",
+]);
+
+function defaultQuestionOptions(type: string): string[] {
+  if (type === "age") return [...AGE_OPTIONS];
+  if (type === "yesno") return ["Yes", "No"];
+  if (type === "abc") return ["A", "B", "C", "D"];
+  if (type === "sentiment" || type === "sentiment_text" || type === "meter") {
+    return ["Positive", "Neutral", "Negative"];
+  }
+  if (type === "range" || type === "numeric_range") {
+    return ["10-20", "21-30", "31-40", "41-50", "50+"];
+  }
+  return [];
+}
+
+/** Map a raw answer onto chart/filter option name(s). */
+function chartNamesFromAnswer(
+  type: string,
+  raw: unknown,
+  options: string[],
+): string[] {
+  const vals = Array.isArray(raw) ? raw : [raw];
+  const out: string[] = [];
+  for (const v of vals) {
+    const s = String(v ?? "").trim();
+    if (!s || s === "Unknown" || s === "undefined") continue;
+    if (type === "age") {
+      const b = ageBucket(s);
+      if (b) out.push(b);
+      continue;
+    }
+    if (type === "meter") {
+      const n = Number(s.replace("%", "").replace(/[^0-9.+-]/g, ""));
+      if (Number.isFinite(n) && n > 0) {
+        out.push(n <= 33 ? "Negative" : n <= 66 ? "Neutral" : "Positive");
+        continue;
+      }
+    }
+    if (type === "sentiment" || type === "sentiment_text") {
+      const tag = s.match(/\[(Positive|Neutral|Negative)\]/i);
+      if (tag) {
+        const t = tag[1].toLowerCase();
+        out.push(t.charAt(0).toUpperCase() + t.slice(1));
+        continue;
+      }
+      const low = s.toLowerCase();
+      if (/\bpositive\b/.test(low)) out.push("Positive");
+      else if (/\bnegative\b/.test(low)) out.push("Negative");
+      else if (/\bneutral\b/.test(low)) out.push("Neutral");
+      continue;
+    }
+    const hit = options.find((o) => o.toLowerCase() === s.toLowerCase());
+    out.push(hit || s);
+  }
+  return out;
+}
+
+function optionTeMap(options: unknown, optionsTe: unknown): Map<string, string> {
+  const opts = Array.isArray(options) ? options.map(coerceOptionName) : [];
+  const tes = Array.isArray(optionsTe) ? optionsTe.map((x) => String(x ?? "")) : [];
+  const m = new Map<string, string>();
+  opts.forEach((en, i) => {
+    const te = String(tes[i] || "").trim();
+    if (en && te) {
+      m.set(en, te);
+      m.set(en.toLowerCase(), te);
+    }
+  });
+  return m;
+}
 
 function translateGeoEnglish(
   payload: Record<string, unknown>,
@@ -1703,22 +2384,40 @@ function translateGeoEnglish(
 }
 
 function parsePayload(raw: unknown): Record<string, unknown> {
-  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-    return raw as Record<string, unknown>;
-  }
-  if (typeof raw === "string") {
+  let v: unknown = raw;
+  if (typeof v === "string") {
     try {
-      return JSON.parse(raw) as Record<string, unknown>;
+      v = JSON.parse(v);
     } catch {
       return {};
     }
   }
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    return v as Record<string, unknown>;
+  }
   return {};
+}
+
+/**
+ * Strip a data URL header, including MIME parameters such as
+ * `data:audio/webm;codecs=opus;base64,...` (MediaRecorder Opus).
+ */
+function splitDataUrl(raw: string): { mime: string; b64: string } {
+  const s = String(raw || "").trim();
+  if (!/^data:/i.test(s)) return { mime: "", b64: s };
+  const comma = s.indexOf(",");
+  if (comma < 0) return { mime: "", b64: s };
+  const header = s.slice(5, comma);
+  const payload = s.slice(comma + 1);
+  const mime = header.split(";").map((p) => p.trim()).find((p) => p.includes("/")) || "";
+  return { mime, b64: payload };
 }
 
 /** Decode base64 (optionally data-URL stripped already) → bytes */
 function b64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
-  const clean = b64.replace(/\s/g, "");
+  let clean = String(b64 || "").replace(/\s/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  const pad = clean.length % 4;
+  if (pad) clean += "=".repeat(4 - pad);
   const bin = atob(clean);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
@@ -2057,8 +2756,27 @@ async function storeMediaLinked(
   };
 }
 
+/** India Standard Time (this product is IST-only). */
+const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+
+function istCalendarDate(v: unknown): string {
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    return new Date(v.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+  }
+  const s = String(v || "").trim();
+  if (!s) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s.slice(0, 10);
+  return new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
 function dayKey(iso: string) {
-  return String(iso || "").slice(0, 10);
+  return istCalendarDate(iso);
+}
+
+function istToday(): string {
+  return new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 // Neon returns TIMESTAMPTZ as Date objects; String(Date) yields locale text
@@ -2199,10 +2917,7 @@ async function autoConfirmIfComplete(
     SELECT id, payload FROM submissions WHERE id = ${submissionId} LIMIT 1
   `.catch(() => []);
   if (!rows.length) return { auto_confirmed: false, completeness: "incomplete" };
-  let payload = parsePayload((rows[0] as { payload: unknown }).payload);
-  if (isDraftSubmission(payload)) {
-    return { auto_confirmed: false, completeness: "incomplete" };
-  }
+  let payload = stripDraftFlags(parsePayload((rows[0] as { payload: unknown }).payload));
   const cur = payloadStatus(payload);
   if (cur === "confirmed") return { auto_confirmed: false, completeness: "complete" };
   if (cur === "rejected") return { auto_confirmed: false, completeness: "incomplete" };
@@ -2576,15 +3291,8 @@ async function loadAnalyticsRows(
   const mediaMap = await loadMediaKindsMap(sqlFn);
 
   const allRows: Row[] = (raw as Record<string, unknown>[]).map((row) => {
-    let payload = row.payload as Record<string, unknown>;
-    if (typeof payload === "string") {
-      try {
-        payload = JSON.parse(payload);
-      } catch {
-        payload = {};
-      }
-    }
-    const a = (payload?.answers as Record<string, unknown>) || payload || {};
+    const payload = parsePayload(row.payload);
+    const a = (payload.answers as Record<string, unknown>) || payload || {};
     let dist = String(a.district || "").trim();
     let ac = String(a.constituency || a.assembly_constituency || "").trim();
     const respondent = String(a.respondent_name || a.respondentName || "").trim();
@@ -2610,7 +3318,10 @@ async function loadAnalyticsRows(
     }
     if (!Array.isArray(issues)) issues = [];
 
-    const status = payloadStatus(payload);
+    // Drafts (even if status was wrongly set to confirmed) stay out of
+    // dashboard confirmed counts — same rule as workStatusOf().
+    const work = workStatusOf(payload);
+    const status = work === "completed" ? "confirmed" : work;
     const verify = verifyWithMedia(payload, mediaMap, Number(row.id));
     const surveyor = surveyorNameOf(payload);
     return {
@@ -2676,13 +3387,18 @@ async function buildAnalytics(
   let dateFrom = (url.searchParams.get("date_from") || url.searchParams.get("from") || "").trim();
   let dateTo = (url.searchParams.get("date_to") || url.searchParams.get("to") || "").trim();
   const userFilter = (url.searchParams.get("user") || url.searchParams.get("submitted_by") || "").trim();
-  const formFilter = (url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim();
+  let formFilter = (url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim();
+  // Client Admin: never load another tenant's questionnaire via a guessable form_key.
+  // Super Admin (scopeKeys = null) may still select any survey.
+  if (scopeKeys && formFilter && !scopeKeys.includes(formFilter)) {
+    formFilter = "";
+  }
   // period: total | day | month | today — Client Admin data scopes
   const period = (url.searchParams.get("period") || "total").trim().toLowerCase();
   const dayParam = (url.searchParams.get("day") || "").trim(); // YYYY-MM-DD
   const monthParam = (url.searchParams.get("month") || "").trim(); // YYYY-MM
   if (period === "today") {
-    const t = new Date().toISOString().slice(0, 10);
+    const t = istToday();
     dateFrom = t;
     dateTo = t;
   } else if (period === "day" && dayParam) {
@@ -2741,9 +3457,14 @@ async function buildAnalytics(
   const surveyQuestions: {
     id: string;
     label: string;
+    label_te: string;
     type: string;
+    visible: boolean;
     options: string[];
+    authored: string[];
+    options_te: string[];
     aliases: string[];
+    optTe: Map<string, string>;
   }[] = [];
   {
     // Never pull platform `legacy` / `default` into a new account's filter bar
@@ -2751,9 +3472,15 @@ async function buildAnalytics(
     const PLATFORM_FORM_KEYS = new Set(["default", "legacy"]);
     let formRows: { questions?: unknown }[] = [];
     if (formFilter) {
-      formRows = await sqlFn`
-        SELECT form_key, questions FROM survey_form WHERE form_key = ${formFilter} LIMIT 1
-      `.catch(() => []);
+      formRows = scopeKeys
+        ? await sqlFn`
+            SELECT form_key, questions FROM survey_form
+            WHERE form_key = ${formFilter} AND form_key = ANY(${scopeKeys})
+            LIMIT 1
+          `.catch(() => [])
+        : await sqlFn`
+            SELECT form_key, questions FROM survey_form WHERE form_key = ${formFilter} LIMIT 1
+          `.catch(() => []);
     } else {
       const scoped = Array.isArray(scopeKeys)
         ? scopeKeys.map(String).filter(Boolean)
@@ -2796,8 +3523,8 @@ async function buildAnalytics(
     const aliasesById = new Map<string, string[]>();
     for (const form of parsedForms) {
       const qs = form.qs.map((q) => ({
-        id: String(q.id || q.label || "").trim(),
-        label: String(q.label || q.id || "").trim(),
+        id: String(q.id || slugQuestionKeyServer(String(q.label || ""))).trim(),
+        label: String(q.label || "").trim(),
       })).filter((q) => q.id);
       const bags = universe
         .filter((r) => !form.form_key || String(r.formKey || "") === form.form_key)
@@ -2810,28 +3537,50 @@ async function buildAnalytics(
     }
     for (const form of parsedForms) {
       for (const q of form.qs) {
-        const id = String(q.id || q.label || "").trim();
+        const id = String(q.id || "").trim() || slugQuestionKeyServer(String(q.label || ""));
         if (!id || seen.has(id)) continue;
         seen.add(id);
         const type = String(q.type || "text");
-        const defined = Array.isArray(q.options) ? q.options.map(String) : [];
-        const opts = type === "age" ? [...AGE_OPTIONS] : [...defined];
+        const defined = Array.isArray(q.options)
+          ? q.options.map(coerceOptionName).filter(Boolean)
+          : [];
         const aliases = aliasesById.get(id) || [];
-        if (type === "text" || !opts.length) {
-          const seenVals = new Set<string>(opts);
-          for (const r of universe) {
-            const av = answerOf(r.answers, id, String(q.label || ""), aliases);
-            const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
-            for (const v of vals) if (v && v !== "Unknown" && v !== "undefined") seenVals.add(v);
+        const opts: string[] = [];
+        const authored: string[] = [];
+        const pushOpt = (name: string, intoAuthored = false) => {
+          const n = String(name || "").trim();
+          if (!n) return;
+          if (!opts.some((o) => o.toLowerCase() === n.toLowerCase())) opts.push(n);
+          if (
+            intoAuthored &&
+            !authored.some((o) => o.toLowerCase() === n.toLowerCase())
+          ) {
+            authored.push(n);
           }
-          opts.push(...seenVals);
+        };
+        // Authored choices only. Type defaults fill in when the form has none.
+        if (defined.length) {
+          for (const d of defined) pushOpt(d, true);
+        } else {
+          for (const d of defaultQuestionOptions(type)) pushOpt(d, true);
         }
+        for (const r of universe) {
+          const av = answerOf(r.answers, id, String(q.label || ""), aliases);
+          for (const n of chartNamesFromAnswer(type, av, opts)) pushOpt(n, false);
+        }
+        const optionsTe = Array.isArray(q.options_te) ? q.options_te.map(String) : [];
+        const optTe = optionTeMap(defined.length ? defined : authored, optionsTe);
         surveyQuestions.push({
           id,
-          label: String(q.label || id),
+          label: String(q.label || "").trim() || "Question",
+          label_te: String(q.label_te || "").trim(),
           type,
-          options: [...new Set(opts)].slice(0, 100),
+          visible: q.visible !== false,
+          options: opts,
+          authored,
+          options_te: optionsTe,
           aliases,
+          optTe,
         });
       }
     }
@@ -2844,14 +3593,13 @@ async function buildAnalytics(
   }
   if (dynFilters.size) {
     universe = universe.filter((r) => {
+      const bag = answersByQuestionId(r.answers, surveyQuestions);
       for (const [qid, want] of dynFilters) {
         const q = surveyQuestions.find((sq) => sq.id === qid || sq.aliases.includes(qid));
-        const av = answerOf(r.answers, qid, q?.label, q?.aliases);
-        const hit = q?.type === "age"
-          ? ageBucket(av) === want
-          : Array.isArray(av)
-            ? av.map(String).includes(want)
-            : String(av ?? "") === want;
+        const av = q ? bag.get(q.id) : answerOf(r.answers, qid, q?.label, q?.aliases);
+        const names = chartNamesFromAnswer(q?.type || "", av, q?.options || []);
+        const hit = names.some((n) => n === want) ||
+          (Array.isArray(av) ? av.map(String).includes(want) : String(av ?? "") === want);
         if (!hit) return false;
       }
       return true;
@@ -2861,7 +3609,11 @@ async function buildAnalytics(
   // Survey titles for the by_survey board (participants + locations per survey)
   const surveyTitles = new Map<string, string>();
   {
-    const trows = await sqlFn`SELECT form_key, title FROM survey_form`.catch(() => []);
+    const trows = scopeKeys
+      ? await sqlFn`
+          SELECT form_key, title FROM survey_form WHERE form_key = ANY(${scopeKeys})
+        `.catch(() => [])
+      : await sqlFn`SELECT form_key, title FROM survey_form`.catch(() => []);
     for (const t of trows as { form_key?: string; title?: string }[]) {
       surveyTitles.set(String(t.form_key || ""), String(t.title || ""));
     }
@@ -2908,34 +3660,41 @@ async function buildAnalytics(
       ),
     );
 
-  const byParty = countKey(rows, "party");
+  const byParty = withTeLabels(countKey(rows, "party"), "value");
   // ALL districts with data for maps (no artificial top-N cut that hides small districts)
   const byDistrictRaw = countBy(
     rows.map((r) => ({ key: r.district })),
     (r) => r.key,
   );
-  const byDistrict = withPct(
-    byDistrictRaw.filter((d) => d.name !== "Unknown"),
+  const byDistrict = withTeLabels(
+    withPct(byDistrictRaw.filter((d) => d.name !== "Unknown")),
+    "place",
   );
-  const byGender = countKey(rows, "gender");
-  const byCaste = countKey(rows, "caste");
-  const byPm = countKey(rows, "pm");
-  const byPerformance = countKey(rows, "performance").slice(0, 10);
-  const byEducation = countKey(rows, "education").slice(0, 10);
-  const byEmployment = countKey(rows, "employment").slice(0, 10);
+  const byGender = withTeLabels(countKey(rows, "gender"), "value");
+  const byCaste = withTeLabels(countKey(rows, "caste"), "value");
+  const byPm = withTeLabels(countKey(rows, "pm"), "value");
+  const byPerformance = withTeLabels(countKey(rows, "performance").slice(0, 10), "value");
+  const byEducation = withTeLabels(countKey(rows, "education").slice(0, 10), "value");
+  const byEmployment = withTeLabels(countKey(rows, "employment").slice(0, 10), "value");
   // Full AC list for assembly map coloring (not just top 12)
-  const byConstituency = withPct(
-    countBy(
-      rows.filter((r) => r.constituency !== "Unknown").map((r) => ({ key: r.constituency })),
-      (r) => r.key,
+  const byConstituency = withTeLabels(
+    withPct(
+      countBy(
+        rows.filter((r) => r.constituency !== "Unknown").map((r) => ({ key: r.constituency })),
+        (r) => r.key,
+      ),
     ),
+    "place",
   );
-  const byAge = countKey(rows, "age");
-  const byMp = withPct(
-    countBy(
-      rows.filter((r) => r.mp).map((r) => ({ key: r.mp })),
-      (r) => r.key,
+  const byAge = withTeLabels(countKey(rows, "age"), "value");
+  const byMp = withTeLabels(
+    withPct(
+      countBy(
+        rows.filter((r) => r.mp).map((r) => ({ key: r.mp })),
+        (r) => r.key,
+      ),
     ),
+    "place",
   );
 
   const issueMap = new Map<string, number>();
@@ -2946,11 +3705,14 @@ async function buildAnalytics(
       issueMap.set(name, (issueMap.get(name) || 0) + 1);
     }
   }
-  const issues = withPct(
-    [...issueMap.entries()]
-      .map(([name, value]) => ({ name, value, pct: 0 }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 12),
+  const issues = withTeLabels(
+    withPct(
+      [...issueMap.entries()]
+        .map(([name, value]) => ({ name, value, pct: 0 }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 12),
+    ),
+    "value",
   );
 
   const dayMap = new Map<string, number>();
@@ -2964,33 +3726,71 @@ async function buildAnalytics(
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-60);
 
-  // Per-question distribution charts — report forms from the Client Admin's
-  // question naming (every survey, or the selected survey only).
-  const questionCharts = surveyQuestions
-    .map((q) => {
-      const map = new Map<string, number>();
-      for (const r of rows) {
-        const av = answerOf(r.answers, q.id, q.label, q.aliases);
-        const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
-        for (const v of vals) {
-          const name = q.type === "age" ? ageBucket(v) : String(v).trim();
-          if (!name || name === "Unknown" || name === "undefined") continue;
-          map.set(name, (map.get(name) || 0) + 1);
-        }
+  function meterStatsForQuestion(
+    q: (typeof surveyQuestions)[number],
+    list: Row[],
+  ): { avg: number; n: number } | null {
+    if (q.type !== "meter" && q.type !== "tapometer") return null;
+    const nums: number[] = [];
+    for (const r of list) {
+      const av = answersByQuestionId(r.answers, surveyQuestions).get(q.id);
+      const n = Number(String(av ?? "").replace("%", "").replace(/[^0-9.+-]/g, ""));
+      if (Number.isFinite(n) && n > 0) nums.push(Math.min(100, Math.max(1, n)));
+    }
+    if (!nums.length) return { avg: 0, n: 0 };
+    const avg = Math.round((nums.reduce((s, x) => s + x, 0) / nums.length) * 10) / 10;
+    return { avg, n: nums.length };
+  }
+
+  function countsForQuestion(
+    q: (typeof surveyQuestions)[number],
+    list: Row[],
+  ) {
+    const map = new Map<string, number>();
+    const seed = q.authored?.length ? q.authored : q.options;
+    const choice = CHOICE_Q_TYPES.has(q.type) || (q.type !== "text" && seed.length > 0);
+    if (choice) {
+      for (const opt of seed) map.set(opt, 0);
+    }
+    for (const r of list) {
+      const av = answersByQuestionId(r.answers, surveyQuestions).get(q.id);
+      for (const name of chartNamesFromAnswer(q.type, av, q.options)) {
+        map.set(name, (map.get(name) || 0) + 1);
       }
-      return {
-        id: q.id,
-        label: q.label,
-        type: q.type,
-        counts: withPct(
-          [...map.entries()]
-            .map(([name, value]) => ({ name, value, pct: 0 }))
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 12),
-        ),
-      };
-    })
-    .filter((q) => q.counts.length > 0);
+    }
+    const order = q.options;
+    let entries = [...map.entries()];
+    entries.sort((a, b) => {
+      const ia = order.findIndex((o) => o.toLowerCase() === a[0].toLowerCase());
+      const ib = order.findIndex((o) => o.toLowerCase() === b[0].toLowerCase());
+      if (ia >= 0 && ib >= 0) return ia - ib;
+      if (ia >= 0) return -1;
+      if (ib >= 0) return 1;
+      return b[1] - a[1] || a[0].localeCompare(b[0]);
+    });
+    if (!choice && entries.length > 50) {
+      entries = [...entries].sort((a, b) => b[1] - a[1]).slice(0, 50);
+    }
+    return withTeLabels(
+      withPct(entries.map(([name, value]) => ({ name, value, pct: 0 }))),
+      "value",
+      q.optTe,
+    );
+  }
+
+  // Per-question charts: every survey question, every defined option (0 counts stay visible).
+  const questionCharts = surveyQuestions.filter((q) => q.visible).map((q) => ({
+    id: q.id,
+    label: q.label,
+    label_en: q.label,
+    label_te: q.label_te || "",
+    type: q.type,
+    visible: q.visible,
+    options: q.options,
+    authored: q.authored,
+    counts: countsForQuestion(q, rows),
+    meter: meterStatsForQuestion(q, rows),
+  }));
 
   // Cross-tabs for maps
   const partyOrder = ["Congress", "BJP", "BRS", "Others", "Undecided"];
@@ -3004,7 +3804,14 @@ async function buildAnalytics(
       row[ck] = Number(row[ck] || 0) + 1;
       row.total = Number(row.total || 0) + 1;
     }
-    const columns = partyOrder;
+    const seen = new Set<string>();
+    for (const r of rowMap.values()) {
+      for (const k of Object.keys(r)) {
+        if (k !== "name" && k !== "total") seen.add(k);
+      }
+    }
+    const extra = [...seen].filter((c) => !partyOrder.includes(c)).sort();
+    const columns = [...partyOrder, ...extra];
     const outRows = [...rowMap.values()]
       .map((r) => {
         for (const c of columns) if (r[c] == null) r[c] = 0;
@@ -3017,7 +3824,13 @@ async function buildAnalytics(
   const partyByDistrict = crossTab(rows, "district", "party");
   const partyByDistrictChart = {
     columns: partyByDistrict.columns,
-    rows: partyByDistrict.rows.slice(0, 12),
+    column_labels: Object.fromEntries(
+      partyByDistrict.columns.map((c) => [c, toTeluguValue(c)]),
+    ),
+    rows: partyByDistrict.rows.slice(0, 12).map((r) => ({
+      ...r,
+      label: toTeluguPlace(String(r.name || "")),
+    })),
   };
   const partyByCaste = crossTab(rows, "caste", "party");
   const partyByGender = crossTab(rows, "gender", "party");
@@ -3033,36 +3846,45 @@ async function buildAnalytics(
   );
 
   const contrastParty = isFiltered
-    ? compareSets(pctDist(subset, "party"), pctDist(restRows, "party"), pctDist(universe, "party"))
+    ? withTeLabels(compareSets(pctDist(subset, "party"), pctDist(restRows, "party"), pctDist(universe, "party")), "value")
     : [];
   const contrastGender = isFiltered
-    ? compareSets(pctDist(subset, "gender"), pctDist(restRows, "gender"), pctDist(universe, "gender"))
+    ? withTeLabels(compareSets(pctDist(subset, "gender"), pctDist(restRows, "gender"), pctDist(universe, "gender")), "value")
     : [];
   const contrastCaste = isFiltered
-    ? compareSets(pctDist(subset, "caste"), pctDist(restRows, "caste"), pctDist(universe, "caste"))
+    ? withTeLabels(compareSets(pctDist(subset, "caste"), pctDist(restRows, "caste"), pctDist(universe, "caste")), "value")
     : [];
   const contrastPm = isFiltered
-    ? compareSets(pctDist(subset, "pm"), pctDist(restRows, "pm"), pctDist(universe, "pm"))
+    ? withTeLabels(compareSets(pctDist(subset, "pm"), pctDist(restRows, "pm"), pctDist(universe, "pm")), "value")
     : [];
   const contrastConstituency = isFiltered
-    ? compareSets(
-        pctDist(subset.filter((r) => r.constituency && r.constituency !== "Unknown"), "constituency"),
-        pctDist(restRows.filter((r) => r.constituency && r.constituency !== "Unknown"), "constituency"),
-        pctDist(universe.filter((r) => r.constituency && r.constituency !== "Unknown"), "constituency"),
-      ).slice(0, 25)
+    ? withTeLabels(
+        compareSets(
+          pctDist(subset.filter((r) => r.constituency && r.constituency !== "Unknown"), "constituency"),
+          pctDist(restRows.filter((r) => r.constituency && r.constituency !== "Unknown"), "constituency"),
+          pctDist(universe.filter((r) => r.constituency && r.constituency !== "Unknown"), "constituency"),
+        ).slice(0, 25),
+        "place",
+      )
     : [];
   const contrastDistrict = isFiltered
-    ? compareSets(
-        pctDist(subset.filter((r) => r.district && r.district !== "Unknown"), "district"),
-        pctDist(restRows.filter((r) => r.district && r.district !== "Unknown"), "district"),
-        pctDist(universe.filter((r) => r.district && r.district !== "Unknown"), "district"),
+    ? withTeLabels(
+        compareSets(
+          pctDist(subset.filter((r) => r.district && r.district !== "Unknown"), "district"),
+          pctDist(restRows.filter((r) => r.district && r.district !== "Unknown"), "district"),
+          pctDist(universe.filter((r) => r.district && r.district !== "Unknown"), "district"),
+        ),
+        "place",
       )
     : [];
   const contrastMp = isFiltered
-    ? compareSets(
-        pctDist(subset.filter((r) => r.mp), "mp"),
-        pctDist(restRows.filter((r) => r.mp), "mp"),
-        pctDist(universe.filter((r) => r.mp), "mp"),
+    ? withTeLabels(
+        compareSets(
+          pctDist(subset.filter((r) => r.mp), "mp"),
+          pctDist(restRows.filter((r) => r.mp), "mp"),
+          pctDist(universe.filter((r) => r.mp), "mp"),
+        ),
+        "place",
       )
     : [];
 
@@ -3168,29 +3990,19 @@ async function buildAnalytics(
       // Counts come from `subset` (all active filters applied — district/party/
       // gender/caste/q_* included) so the numbers shown next to each option
       // match what the charts are currently displaying, not the unfiltered universe.
-      questions: surveyQuestions.map((q) => {
-        const map = new Map<string, number>();
-        for (const r of subset) {
-          const av = answerOf(r.answers, q.id, q.label, q.aliases);
-          const vals = Array.isArray(av) ? av.map(String) : [String(av ?? "")];
-          for (const v of vals) {
-            const name = q.type === "age" ? ageBucket(v) : v;
-            if (!name || name === "Unknown") continue;
-            map.set(name, (map.get(name) || 0) + 1);
-          }
-        }
-        const counts = [...map.entries()]
-          .map(([name, value]) => ({ name, value }))
-          .sort((a, b) => b.value - a.value)
-          .slice(0, 100);
-        return {
-          id: q.id,
-          label: q.label,
-          type: q.type,
-          options: q.options,
-          counts,
-        };
-      }),
+      questions: surveyQuestions.filter((q) => q.visible).map((q) => ({
+        id: q.id,
+        label: q.label,
+        label_en: q.label,
+        label_te: q.label_te || "",
+        type: q.type,
+        visible: q.visible,
+        options: q.options,
+        authored: q.authored,
+        options_te: q.options_te,
+        counts: countsForQuestion(q, subset),
+        meter: meterStatsForQuestion(q, subset),
+      })),
       // Surveyor × month (each surveyor's monthly totals)
       by_surveyor_month: (() => {
         const map = new Map<string, { surveyor: string; month: string; value: number }>();
@@ -3253,6 +4065,23 @@ async function buildAnalytics(
       })(),
     },
     filterOptions,
+    filterLabels: {
+      districts: Object.fromEntries(
+        (filterOptions.districts as string[]).map((n) => [n, toTeluguPlace(n)]),
+      ),
+      parties: Object.fromEntries(
+        (filterOptions.parties as string[]).map((n) => [n, toTeluguValue(n)]),
+      ),
+      genders: Object.fromEntries(
+        (filterOptions.genders as string[]).map((n) => [n, toTeluguValue(n)]),
+      ),
+      castes: Object.fromEntries(
+        (filterOptions.castes as string[]).map((n) => [n, toTeluguValue(n)]),
+      ),
+      constituencies: Object.fromEntries(
+        (filterOptions.constituencies as string[]).map((n) => [n, toTeluguPlace(n)]),
+      ),
+    },
     formula: {
       name: "Super-set / Sub-set",
       description:
@@ -3317,7 +4146,7 @@ async function buildAnalytics(
 }
 
 // ── Router ────────────────────────────────────────────────
-Deno.serve(async (req) => {
+async function rawHandler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return corsPreflight();
 
   const url = new URL(req.url);
@@ -3343,7 +4172,7 @@ Deno.serve(async (req) => {
       };
       if (path === "/") {
         return json({
-          message: "Election Survey API on Deno Deploy",
+          message: "Smart Survey X API on Deno Deploy",
           platform: "deno",
           auth: true,
           r2: r2Status,
@@ -3382,6 +4211,9 @@ Deno.serve(async (req) => {
                COALESCE(can_assign_surveyors, FALSE) AS can_assign_surveyors,
                COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
                COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
+               COALESCE(can_web_survey, FALSE) AS can_web_survey,
+               COALESCE(totp_enabled, FALSE) AS totp_enabled,
+               totp_secret,
                COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                COALESCE(max_surveys, 0) AS max_surveys,
                COALESCE(max_surveyors, 0) AS max_surveyors,
@@ -3449,6 +4281,33 @@ Deno.serve(async (req) => {
         }, 401);
       }
 
+      // Super Admin: password + authenticator TOTP (3 slots). Client Admin / surveyor unchanged.
+      if (user.role === "super_admin") {
+        const totpCode = (body as { totp?: unknown }).totp ?? (body as { otp?: unknown }).otp;
+        const rec = user as Record<string, unknown>;
+        let secret = String(rec.totp_secret || "").trim();
+        const enabled = sqlBool(rec.totp_enabled);
+        if (!secret) {
+          secret = newTotpSecret();
+          await sql`UPDATE app_users SET totp_secret = ${secret}, totp_enabled = FALSE WHERE id = ${user.id}`
+            .catch(() => null);
+        }
+        const totpOk = await verifyTotp(secret, totpCode);
+        if (!totpOk) {
+          return json({
+            error: enabled
+              ? "Enter the 6-digit code from your authenticator app."
+              : "Scan the authenticator QR / secret, then enter the 6-digit code.",
+            totp_required: true,
+            totp_setup: !enabled,
+            ...(enabled ? {} : totpSetupPayload(user.username, secret)),
+          }, 401);
+        }
+        if (!enabled) {
+          await sql`UPDATE app_users SET totp_enabled = TRUE WHERE id = ${user.id}`.catch(() => null);
+        }
+      }
+
       const token = newToken();
       const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       await sql`
@@ -3484,6 +4343,8 @@ Deno.serve(async (req) => {
           can_assign_surveyors: sqlBool(uu.can_assign_surveyors),
           can_crud_questionnaire: sqlBool(uu.can_crud_questionnaire),
           can_validate_proof: sqlBool(uu.can_validate_proof),
+          can_web_survey: sqlBool(uu.can_web_survey),
+          totp_enabled: uu.role === "super_admin" ? sqlBool(uu.totp_enabled) : undefined,
           max_questions_per_survey: Number(uu.max_questions_per_survey) || 0,
           max_surveys: Number(uu.max_surveys) || 0,
           max_surveyors: Number(uu.max_surveyors) || 0,
@@ -3520,15 +4381,23 @@ Deno.serve(async (req) => {
     if (path === "/api/auth/me" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
       // Profile photos live on /me only — never on login or every session lookup.
+      // If this SELECT fails, omit the keys so the app does not replace a
+      // displayed photo with null.
       const mediaRows = await sql`
         SELECT photo, aadhaar_front, aadhaar_back FROM app_users WHERE id = ${me.id} LIMIT 1
-      `.catch(() => []);
-      const media = (mediaRows[0] || {}) as Record<string, unknown>;
+      `.catch(() => null);
+      const media = Array.isArray(mediaRows) && mediaRows[0]
+        ? (mediaRows[0] as Record<string, unknown>)
+        : null;
       const withMedia = {
         ...me,
-        photo: media.photo || null,
-        aadhaar_front: media.aadhaar_front || null,
-        aadhaar_back: media.aadhaar_back || null,
+        ...(media
+          ? {
+              photo: media.photo || null,
+              aadhaar_front: media.aadhaar_front || null,
+              aadhaar_back: media.aadhaar_back || null,
+            }
+          : {}),
       };
       // Client Admin: attach live usage vs Super-Admin-set caps so Overview "My allocation" works
       // without relying only on GET /api/users (which can be filtered / slow).
@@ -3606,9 +4475,6 @@ Deno.serve(async (req) => {
     if (path === "/api/stats" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
       const statsScope = await adminFormKeyScope(sql, me);
-      const [subs] = statsScope
-        ? await sql`SELECT COUNT(*)::int AS n FROM submissions WHERE payload->>'form_key' = ANY(${statsScope})`
-        : await sql`SELECT COUNT(*)::int AS n FROM submissions`;
       const [dists] = await sql`SELECT COUNT(*)::int AS n FROM districts`.catch(() => [{ n: 0 }]);
       const [mands] = await sql`SELECT COUNT(*)::int AS n FROM mandals`.catch(() => [{ n: 0 }]);
       const [acs] = await sql`SELECT COUNT(*)::int AS n FROM assembly_constituencies`.catch(() => [{ n: 0 }]);
@@ -3620,25 +4486,71 @@ Deno.serve(async (req) => {
         FROM record_facts
       `.catch(() => [{ dist_count: 0, ac_count: 0 }]);
 
-      const surveyDistricts = Number((factGeo as Record<string, unknown>)?.dist_count || dists?.n || 0);
-      const surveyAcs = Number((factGeo as Record<string, unknown>)?.ac_count || acs?.n || 0);
-
       // Review outcome lives on payload.status. fact_status is the
       // materialization pipeline only (materialized/failed/NULL) — it is
       // cleared on reject, so counting it merges rejected into pending.
+      // Field drafts (even if status was set confirmed) count as pending.
       const [statusRow] = statsScope
         ? await sql`
             SELECT
-              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') = 'confirmed')::int AS confirmed,
-              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') = 'rejected')::int AS rejected,
-              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected'))::int AS pending
+              COUNT(*) FILTER (
+                WHERE NOT (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+                AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+              )::int AS confirmed,
+              COUNT(*) FILTER (
+                WHERE NOT (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+                AND COALESCE(payload->>'status', 'pending') = 'rejected'
+              )::int AS rejected,
+              COUNT(*) FILTER (
+                WHERE (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+                OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
+              )::int AS pending
             FROM submissions WHERE payload->>'form_key' = ANY(${statsScope})
           `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }])
         : await sql`
             SELECT
-              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') = 'confirmed')::int AS confirmed,
-              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') = 'rejected')::int AS rejected,
-              COUNT(*) FILTER (WHERE COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected'))::int AS pending
+              COUNT(*) FILTER (
+                WHERE NOT (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+                AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+              )::int AS confirmed,
+              COUNT(*) FILTER (
+                WHERE NOT (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+                AND COALESCE(payload->>'status', 'pending') = 'rejected'
+              )::int AS rejected,
+              COUNT(*) FILTER (
+                WHERE (
+                  COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                  OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                  OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                )
+                OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
+              )::int AS pending
             FROM submissions
           `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }]);
 
@@ -3646,15 +4558,76 @@ Deno.serve(async (req) => {
       const rejected = Number((statusRow as Record<string, unknown>)?.rejected || 0);
       const pending = Number((statusRow as Record<string, unknown>)?.pending || 0);
 
+      // Districts / ACs in *survey data*, not the master geo tables (those
+      // would show ~30 Telangana districts even with two confirmed records).
+      const [distFromData] = statsScope
+        ? await sql`
+            SELECT COUNT(DISTINCT NULLIF(TRIM(payload->'answers'->>'district'), ''))::int AS n
+            FROM submissions
+            WHERE payload->>'form_key' = ANY(${statsScope})
+              AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+              AND NOT (
+                COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+              )
+          `.catch(() => [{ n: 0 }])
+        : await sql`
+            SELECT COUNT(DISTINCT NULLIF(TRIM(payload->'answers'->>'district'), ''))::int AS n
+            FROM submissions
+            WHERE COALESCE(payload->>'status', 'pending') = 'confirmed'
+              AND NOT (
+                COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+              )
+          `.catch(() => [{ n: 0 }]);
+      const [acFromData] = statsScope
+        ? await sql`
+            SELECT COUNT(DISTINCT NULLIF(TRIM(COALESCE(
+              payload->'answers'->>'constituency',
+              payload->'answers'->>'assembly_constituency'
+            )), ''))::int AS n
+            FROM submissions
+            WHERE payload->>'form_key' = ANY(${statsScope})
+              AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+              AND NOT (
+                COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+              )
+          `.catch(() => [{ n: 0 }])
+        : await sql`
+            SELECT COUNT(DISTINCT NULLIF(TRIM(COALESCE(
+              payload->'answers'->>'constituency',
+              payload->'answers'->>'assembly_constituency'
+            )), ''))::int AS n
+            FROM submissions
+            WHERE COALESCE(payload->>'status', 'pending') = 'confirmed'
+              AND NOT (
+                COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+              )
+          `.catch(() => [{ n: 0 }]);
+      const dataDistricts = Number((distFromData as Record<string, unknown>)?.n || 0);
+      const dataAcs = Number((acFromData as Record<string, unknown>)?.n || 0);
+      const surveyDistrictsLive = dataDistricts || Number((factGeo as Record<string, unknown>)?.dist_count || 0);
+      const surveyAcsLive = dataAcs || Number((factGeo as Record<string, unknown>)?.ac_count || 0);
+
       return json({
-        submissions: subs?.n ?? 0,
+        submissions: confirmed + pending + rejected,
         survey_responses: srs?.n ?? 0,
         pending,
         confirmed,
         rejected,
-        // Survey coverage from confirmed analytics universe
-        districts: surveyDistricts,
-        assembly_constituencies: surveyAcs,
+        // Survey coverage from confirmed records (not master geo tables)
+        districts: surveyDistrictsLive,
+        assembly_constituencies: surveyAcsLive,
         districts_master: dists?.n ?? 0,
         mandals: mands?.n ?? 0,
         assembly_constituencies_master: acs?.n ?? 0,
@@ -3908,7 +4881,13 @@ Deno.serve(async (req) => {
         SELECT sa.user_id, f.id AS survey_id, f.title, f.form_key
         FROM survey_assignments sa JOIN survey_form f ON f.id = sa.survey_id
         ORDER BY f.title
-      `.catch(() => []);
+      `.catch(async () =>
+        await sql`
+          SELECT sa.user_id, sa.survey_id, COALESCE(f.title, '') AS title, COALESCE(f.form_key, '') AS form_key
+          FROM survey_assignments sa
+          LEFT JOIN survey_form f ON f.id = sa.survey_id
+        `.catch(() => [])
+      );
       const assignedMap = new Map<number, { id: number; title: string; form_key: string }[]>();
       for (const a of assignedRows as {
         user_id: number;
@@ -3938,6 +4917,8 @@ Deno.serve(async (req) => {
                    COALESCE(can_assign_surveyors, FALSE) AS can_assign_surveyors,
                    COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
                    COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
+               COALESCE(can_web_survey, FALSE) AS can_web_survey,
+                   COALESCE(totp_enabled, FALSE) AS totp_enabled,
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                    COALESCE(max_surveys, 0) AS max_surveys,
                    COALESCE(max_surveyors, 0) AS max_surveyors,
@@ -3950,7 +4931,7 @@ Deno.serve(async (req) => {
                      FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
                      FALSE AS can_assign_surveyors,
-                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof,
+                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey,
                      0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records
               FROM app_users ORDER BY id
             `
@@ -3967,6 +4948,8 @@ Deno.serve(async (req) => {
                    COALESCE(can_assign_surveyors, FALSE) AS can_assign_surveyors,
                    COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
                    COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
+               COALESCE(can_web_survey, FALSE) AS can_web_survey,
+                   COALESCE(totp_enabled, FALSE) AS totp_enabled,
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                    COALESCE(max_surveys, 0) AS max_surveys,
                    COALESCE(max_surveyors, 0) AS max_surveyors,
@@ -3980,7 +4963,7 @@ Deno.serve(async (req) => {
                      FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
                      FALSE AS can_assign_surveyors,
-                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof,
+                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey,
                      0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records
               FROM app_users
               WHERE (id = ${me.id} OR created_by = ${me.id})
@@ -4082,6 +5065,8 @@ Deno.serve(async (req) => {
           can_assign_surveyors: sqlBool(r.can_assign_surveyors),
           can_crud_questionnaire: sqlBool(r.can_crud_questionnaire),
           can_validate_proof: sqlBool(r.can_validate_proof),
+          can_web_survey: sqlBool(r.can_web_survey),
+          totp_enabled: r.role === "super_admin" ? sqlBool(r.totp_enabled) : undefined,
           max_questions_per_survey: Number(r.max_questions_per_survey) || 0,
           max_surveys: Number(r.max_surveys) || 0,
           max_surveyors: Number(r.max_surveyors) || 0,
@@ -4155,6 +5140,7 @@ Deno.serve(async (req) => {
         const canAssignSurveyors = canSuper && body.can_assign_surveyors === true;
         const canCrudQuestionnaire = canSuper && body.can_crud_questionnaire === true;
         const canValidateProof = canSuper && body.can_validate_proof === true;
+        const canWebSurvey = canSuper && body.can_web_survey === true;
         const maxQuestionsPerSurvey = canSuper
           ? Math.max(0, Math.min(Number(body.max_questions_per_survey) || 0, 100000))
           : 0;      const maxSurveysCreate = canSuper
@@ -4190,9 +5176,9 @@ Deno.serve(async (req) => {
           }
         }
         const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, company_name, company_id, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors, max_records, created_by)
-          VALUES (${username}, ${password_hash}, ${name}, ${finalCompanyName}, ${companyId}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canAssignSurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${maxRecordsCreate}, ${me.id})
-          RETURNING id, username, display_name, company_name, company_id, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors, max_records
+          INSERT INTO app_users (username, password_hash, display_name, company_name, company_id, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, max_questions_per_survey, max_surveys, max_surveyors, max_records, created_by)
+          VALUES (${username}, ${password_hash}, ${name}, ${finalCompanyName}, ${companyId}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canAssignSurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${canWebSurvey}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${maxRecordsCreate}, ${me.id})
+          RETURNING id, username, display_name, company_name, company_id, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, max_questions_per_survey, max_surveys, max_surveyors, max_records
         `;
         const u = inserted[0] as Record<string, unknown>;
 
@@ -4205,11 +5191,7 @@ Deno.serve(async (req) => {
               AND form_key NOT IN ('default', 'legacy')
           `.catch(() => []);
           for (const s of mySurveys as { id: number }[]) {
-            await sql`
-              INSERT INTO survey_assignments (survey_id, user_id)
-              VALUES (${Number(s.id)}, ${Number(u.id)})
-              ON CONFLICT (survey_id, user_id) DO NOTHING
-            `.catch(() => null);
+            await upsertSurveyAssignment(Number(s.id), Number(u.id));
           }
         }
 
@@ -4252,6 +5234,7 @@ Deno.serve(async (req) => {
           can_assign_surveyors: canAssignSurveyors,
           can_crud_questionnaire: canCrudQuestionnaire,
           can_validate_proof: canValidateProof,
+          can_web_survey: canWebSurvey,
           max_questions_per_survey: maxQuestionsPerSurvey,
           max_surveys: maxSurveysCreate,
           max_surveyors: maxSurveyorsCreate,
@@ -4275,6 +5258,9 @@ Deno.serve(async (req) => {
             can_review_data: u.can_review_data === true,
             can_verify_surveyors: u.can_verify_surveyors === true,
             can_assign_surveyors: u.can_assign_surveyors === true,
+            can_crud_questionnaire: u.can_crud_questionnaire === true,
+            can_validate_proof: u.can_validate_proof === true,
+            can_web_survey: u.can_web_survey === true,
             starter_form_key: starterFormKey,
           },
           field_app_access: role === "surveyor",
@@ -4314,13 +5300,14 @@ Deno.serve(async (req) => {
       try {
         const password_hash = await hashPasswordAsync(password);
         const key_id = await uniqueUserKeyId();
+        const totpSecret = newTotpSecret();
         const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, role, active, key_id)
-          VALUES (${username}, ${password_hash}, ${name}, 'super_admin', TRUE, ${key_id})
+          INSERT INTO app_users (username, password_hash, display_name, role, active, key_id, totp_secret, totp_enabled)
+          VALUES (${username}, ${password_hash}, ${name}, 'super_admin', TRUE, ${key_id}, ${totpSecret}, FALSE)
           RETURNING id, username, display_name, role, active, created_at, key_id
         `;
         const u = inserted[0] as Record<string, unknown>;
-        logAudit(me, "super_admin_create", "user", u.id, { username: u.username });
+        logAudit(me, "super_admin_create", "user", u.id, { username: u.username, totp: true });
         return json({
           user: {
             id: u.id,
@@ -4330,7 +5317,9 @@ Deno.serve(async (req) => {
             active: u.active !== false,
             created_at: u.created_at,
             key_id: u.key_id || key_id,
+            totp_enabled: false,
           },
+          ...totpSetupPayload(String(u.username), totpSecret),
         }, 201);
       } catch (e) {
         const msg = (e as Error).message || "";
@@ -4339,6 +5328,47 @@ Deno.serve(async (req) => {
         }
         return json({ error: msg || "Could not create super admin" }, 500);
       }
+    }
+
+    // Fill remaining Super Admin seats (superadmin2 / superadmin3, starter password).
+    // Does not change existing accounts — the first slot's changed password is kept.
+    if (path === "/api/super-admin/seed-slots" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+      const out = await seedMissingSuperAdminSlots(sql);
+      logAudit(me, "super_admin_seed_slots", "user", null, { created: out.created });
+      return json({
+        ok: true,
+        created: out.created,
+        starter_password: out.created.length ? SA_SLOT_STARTER_PASSWORD : null,
+        note: out.created.length
+          ? "New slots: username + admin123 + TOTP on first login. Existing accounts were not changed."
+          : "All 3 slots already exist — nothing created.",
+      });
+    }
+
+    // Reset TOTP for a Super Admin slot — Super Admin console only. New secret shown once.
+    if (path.match(/^\/api\/super-admin\/\d+\/totp\/reset$/) && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") {
+        return json({ error: "Super Admin only" }, 403);
+      }
+      const id = Number(path.split("/")[3]);
+      const rows = await sql`
+        SELECT id, username, role FROM app_users WHERE id = ${id} AND role = 'super_admin' LIMIT 1
+      `.catch(() => []);
+      const u = rows[0] as { id: number; username: string } | undefined;
+      if (!u) return json({ error: "Super Admin slot not found" }, 404);
+      const secret = newTotpSecret();
+      await sql`
+        UPDATE app_users SET totp_secret = ${secret}, totp_enabled = FALSE WHERE id = ${u.id}
+      `;
+      logAudit(me, "super_admin_totp_reset", "user", u.id, { username: u.username });
+      return json({
+        ok: true,
+        user: { id: u.id, username: u.username, totp_enabled: false },
+        ...totpSetupPayload(u.username, secret),
+      });
     }
 
     // Super Admin password reset — Super Admin console only (not Client Admin).
@@ -4443,11 +5473,7 @@ Deno.serve(async (req) => {
                 AND form_key NOT IN ('default', 'legacy')
             `.catch(() => []);
             for (const s of mySurveys as { id: number }[]) {
-              await sql`
-                INSERT INTO survey_assignments (survey_id, user_id)
-                VALUES (${Number(s.id)}, ${newId})
-                ON CONFLICT (survey_id, user_id) DO NOTHING
-              `.catch(() => null);
+              await upsertSurveyAssignment(Number(s.id), newId);
             }
           }
           created.push({
@@ -4540,9 +5566,9 @@ Deno.serve(async (req) => {
       // Store in Cloudflare R2 if configured
       const processR2 = async (field: "photo" | "aadhaar_front" | "aadhaar_back", val: string | null) => {
         if (!val || !val.startsWith("data:image/")) return val;
-        const mimeMatch = val.match(/^data:([^;]+);base64,/);
-        const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
-        const b64Data = mimeMatch ? val.slice(mimeMatch[0].length) : val;
+        const parsed = splitDataUrl(val);
+        const mime = parsed.mime || "image/jpeg";
+        const b64Data = parsed.b64;
         try {
           const bytes = b64ToBytes(b64Data);
           const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
@@ -4740,6 +5766,7 @@ Deno.serve(async (req) => {
         "can_assign_surveyors",
         "can_crud_questionnaire",
         "can_validate_proof",
+        "can_web_survey",
       ] as const;
       const nextPowers: Record<string, boolean> = {};
       for (const k of POWER_KEYS) {
@@ -4791,12 +5818,13 @@ Deno.serve(async (req) => {
               can_assign_surveyors = ${nextPowers.can_assign_surveyors},
               can_crud_questionnaire = ${nextPowers.can_crud_questionnaire},
               can_validate_proof = ${nextPowers.can_validate_proof},
+              can_web_survey = ${nextPowers.can_web_survey},
               max_questions_per_survey = ${nextMaxQuestionsPerSurvey},
               max_surveys = ${nextMaxSurveys},
               max_surveyors = ${nextMaxSurveyors},
               max_records = ${nextMaxRecords}
           WHERE id = ${id}
-          RETURNING id, username, display_name, company_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, max_questions_per_survey, max_surveys, max_surveyors, max_records
+          RETURNING id, username, display_name, company_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, max_questions_per_survey, max_surveys, max_surveyors, max_records
         `;
       } catch (e) {
         const msg = (e as Error).message || "";
@@ -4877,6 +5905,7 @@ Deno.serve(async (req) => {
           can_assign_surveyors: sqlBool(u.can_assign_surveyors),
           can_crud_questionnaire: sqlBool(u.can_crud_questionnaire),
           can_validate_proof: sqlBool(u.can_validate_proof),
+          can_web_survey: sqlBool(u.can_web_survey),
           max_questions_per_survey: Number(u.max_questions_per_survey) || 0,
           max_surveys: Number(u.max_surveys) || 0,
           max_surveyors: Number(u.max_surveyors) || 0,
@@ -4997,6 +6026,29 @@ Deno.serve(async (req) => {
 
     // FR-QB-02: Global Question Bank — Super Admin authors is_global templates;
     // Client Admins see global + their own, and can copy any into a survey.
+    if (path === "/api/questions/translate" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!canQuestionCopy(me)) {
+        return json({
+          error: "Super Admin has not granted question-management rights (needed for Telugu translate)",
+        }, 403);
+      }
+      const body = await readBody(req);
+      const text = String(body.text || "").trim();
+      const options = Array.isArray(body.options)
+        ? body.options.map((s: unknown) => String(s ?? "").trim()).filter(Boolean)
+        : [];
+      if (!text) return json({ error: "Question text required" }, 400);
+      try {
+        const out = await translateQuestionToTelugu(text, options);
+        return json(out);
+      } catch (e) {
+        const status = Number((e as { status?: number }).status) || 502;
+        return json({ error: (e as Error).message || "Translate failed" }, status);
+      }
+    }
+
     if (path === "/api/question-bank" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
@@ -5288,7 +6340,7 @@ Deno.serve(async (req) => {
       const dayParam = (url.searchParams.get("day") || "").trim();
       const monthParam = (url.searchParams.get("month") || "").trim();
       if (periodQ === "today") {
-        const t = new Date().toISOString().slice(0, 10);
+        const t = istToday();
         dateFrom = t;
         dateTo = t;
       } else if (periodQ === "day" && dayParam) {
@@ -5373,17 +6425,28 @@ Deno.serve(async (req) => {
           audio_url: payload?.audio_url || null,
           media_storage: payload?.media_storage || null,
           proof_validated: payload?.proof_validated || null,
+          record_index: recordIndexOf(payload),
         };
       });
 
       if (statusQ && statusQ !== "all") {
-        items = items.filter((x) => x.status === statusQ);
+        if (statusQ === "pending") {
+          // Same as Overview "Pending review": not confirmed work, including
+          // rows still tagged _draft after Send from the field app.
+          items = items.filter((x) => x.work === "pending" || x.status === "pending");
+        } else if (statusQ === "confirmed") {
+          items = items.filter((x) => x.work === "completed");
+        } else {
+          items = items.filter((x) => x.status === statusQ);
+        }
       }
       if (qFilters.length) {
         // question id → type, so age-type filters bucket-match ranges
         const qTypeMap = new Map<string, string>();
         {
-          const frows = await sql`SELECT questions FROM survey_form`.catch(() => []);
+          const frows = scopeKeys
+            ? await sql`SELECT questions FROM survey_form WHERE form_key = ANY(${scopeKeys})`.catch(() => [])
+            : await sql`SELECT questions FROM survey_form`.catch(() => []);
           for (const f of frows as { questions?: unknown }[]) {
             let qs = f.questions;
             if (typeof qs === "string") { try { qs = JSON.parse(qs); } catch { qs = []; } }
@@ -5556,7 +6619,7 @@ Deno.serve(async (req) => {
         if (k.startsWith("q_") && v.trim()) qFilters.push([k.slice(2), v.trim()]);
       }
       if (period === "today") {
-        const t = new Date().toISOString().slice(0, 10);
+        const t = istToday();
         dateFrom = t;
         dateTo = t;
       } else if (period === "day" && dayParam) {
@@ -5584,7 +6647,9 @@ Deno.serve(async (req) => {
       // question id → type, so age-type q_ filters bucket-match ranges
       const qTypeMap = new Map<string, string>();
       {
-        const frows = await sql`SELECT questions FROM survey_form`.catch(() => []);
+        const frows = scopeKeys
+          ? await sql`SELECT questions FROM survey_form WHERE form_key = ANY(${scopeKeys})`.catch(() => [])
+          : await sql`SELECT questions FROM survey_form`.catch(() => []);
         for (const f of frows as { questions?: unknown }[]) {
           let qs = f.questions;
           if (typeof qs === "string") { try { qs = JSON.parse(qs); } catch { qs = []; } }
@@ -6046,7 +7111,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Client Admin: DELETE survey record
+    // Client Admin / Super Admin: DELETE survey record
     if (path.match(/^\/api\/submissions\/\d+$/) && method === "DELETE") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
@@ -6061,8 +7126,13 @@ Deno.serve(async (req) => {
         ? await sql`SELECT id FROM submissions WHERE id = ${id} AND payload->>'form_key' = ANY(${scopeKeys})`
         : await sql`SELECT id FROM submissions WHERE id = ${id}`;
       if (!rows.length) return json({ error: "Not found" }, 404);
+      // Older DBs may lack ON DELETE CASCADE on record_facts — delete children first
+      // or Client Admin Analyze/Overview keeps showing the row after Super Admin delete.
+      await sql`DELETE FROM record_facts WHERE submission_id = ${id}`.catch(() => null);
       await sql`DELETE FROM survey_media WHERE submission_id = ${id}`.catch(() => null);
+      await sql`UPDATE survey_respondents SET submission_id = NULL WHERE submission_id = ${id}`.catch(() => null);
       await sql`DELETE FROM submissions WHERE id = ${id}`;
+      logAudit(me, "submission_delete", "submission", id, {});
       return json({
         ok: true,
         id,
@@ -6334,22 +7404,37 @@ Deno.serve(async (req) => {
       // Client Admin: own surveys + explicit shares only — no company
       // predicate (see SCHEMA.md: company is a display label, never a
       // live access check).
-      const rows = me.role === "super_admin"
-        ? (q
-            ? await sql`SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form WHERE LOWER(title) LIKE ${'%' + q + '%'} ORDER BY title`
-            : await sql`SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form ORDER BY title`)
-        : (q
-              ? await sql`
-                  SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
-                  WHERE (created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
-                    AND LOWER(title) LIKE ${'%' + q + '%'}
-                  ORDER BY title
-                `
-              : await sql`
-                  SELECT id, form_key, title, jsonb_array_length(COALESCE(questions, '[]'::jsonb))::int AS question_count, updated_at, created_by, company_name FROM survey_form
-                  WHERE created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-                  ORDER BY title
-                `);
+      let rows: Record<string, unknown>[] = [];
+      try {
+        rows = (me.role === "super_admin"
+          ? (q
+              ? await sql`SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name FROM survey_form WHERE LOWER(title) LIKE ${'%' + q + '%'} ORDER BY title`
+              : await sql`SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name FROM survey_form ORDER BY title`)
+          : (q
+                ? await sql`
+                    SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name FROM survey_form
+                    WHERE (created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
+                      AND LOWER(title) LIKE ${'%' + q + '%'}
+                    ORDER BY title
+                  `
+                : await sql`
+                    SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name FROM survey_form
+                    WHERE created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                    ORDER BY title
+                  `)) as Record<string, unknown>[];
+      } catch {
+        const fallback = me.role === "super_admin"
+          ? await sql`SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form ORDER BY title`.catch(() => [])
+          : await sql`
+              SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form
+              WHERE created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+              ORDER BY title
+            `.catch(() => []);
+        rows = (fallback as Record<string, unknown>[]).map((r) => ({
+          ...r,
+          question_count: parseQuestionsArray(r.questions).length,
+        }));
+      }
 
       // Project → Client Admin connections for the Super Admin project list.
       const adminAccess = await sql`
@@ -6425,6 +7510,7 @@ Deno.serve(async (req) => {
           id: r.id,
           form_key: r.form_key,
           title: r.title,
+          display_lang: surveyDisplayLang((r as { display_lang?: unknown }).display_lang),
           company_name: r.company_name || null,
           owner_company: owner?.company_name ?? null,
           owner_name: owner?.name ?? null,
@@ -6458,7 +7544,10 @@ Deno.serve(async (req) => {
           error: me.role === "super_admin" ? "Project name required" : "Survey name required",
         }, 400);
       }
-      const questions = Array.isArray(body.questions) ? body.questions : [];
+      const questions = stripTeluguUnlessAllowed(
+        me,
+        Array.isArray(body.questions) ? body.questions : [],
+      );
       // Same validation as PUT /api/surveys/:id — reject empty/duplicate
       // question ids before they ever reach the database.
       {
@@ -6597,12 +7686,7 @@ Deno.serve(async (req) => {
         for (const t of team as { id: number }[]) {
           const uid = Number(t.id);
           if (!Number.isFinite(uid)) continue;
-          await sql`
-            INSERT INTO survey_assignments (survey_id, user_id)
-            VALUES (${surveyId}, ${uid})
-            ON CONFLICT (survey_id, user_id) DO NOTHING
-          `.catch(() => null);
-          autoAssigned += 1;
+          if (await upsertSurveyAssignment(Number(surveyId), uid)) autoAssigned += 1;
         }
       }
       logAudit(me, "survey_create", "survey", surveyId, {
@@ -6626,21 +7710,29 @@ Deno.serve(async (req) => {
       const id = Number(path.split("/")[3]);
       // Client Admin: own survey or explicit share only — no company
       // predicate (see SCHEMA.md).
-      const rows = me.role === "super_admin"
-        ? await sql`SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form WHERE id = ${id}`
+      let rows = me.role === "super_admin"
+        ? await sql`SELECT id, form_key, title, display_lang, questions, updated_at, created_by, company_name FROM survey_form WHERE id = ${id}`.catch(() => null)
         : await sql`
-              SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form
+              SELECT id, form_key, title, display_lang, questions, updated_at, created_by, company_name FROM survey_form
               WHERE id = ${id} AND (
                 created_by = ${me.id}
                 OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
               )
-            `;
-      if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
-      const r = rows[0] as { id: number; form_key: string; title: string; questions: unknown; updated_at: string; created_by: number | null; company_name: string | null };
-      let questions = r.questions;
-      if (typeof questions === "string") {
-        try { questions = JSON.parse(questions); } catch { questions = []; }
+            `.catch(() => null);
+      if (!rows) {
+        rows = me.role === "super_admin"
+          ? await sql`SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form WHERE id = ${id}`
+          : await sql`
+                SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form
+                WHERE id = ${id} AND (
+                  created_by = ${me.id}
+                  OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                )
+              `;
       }
+      if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
+      const r = rows[0] as { id: number; form_key: string; title: string; display_lang?: string; questions: unknown; updated_at: string; created_by: number | null; company_name: string | null };
+      const questions = parseQuestionsArray(r.questions);
       const team = me.role === "super_admin"
         ? await sql`
         SELECT u.id, u.username, u.display_name, u.active
@@ -6676,6 +7768,7 @@ Deno.serve(async (req) => {
           id: r.id,
           form_key: r.form_key,
           title: r.title,
+          display_lang: surveyDisplayLang(r.display_lang),
           questions,
           updated_at: r.updated_at,
           surveyors: team,
@@ -6948,7 +8041,7 @@ Deno.serve(async (req) => {
         let qList: unknown[] = [];
         try {
           qList = typeof s.questions === "string" ? JSON.parse(s.questions) : (Array.isArray(s.questions) ? s.questions : []);
-        } catch (_) { qList = []; }
+        } catch { qList = []; }
         totalQuestions += qList.length;
         return {
           id: Number(s.id),
@@ -7080,6 +8173,7 @@ Deno.serve(async (req) => {
         `;
       }
       if (Array.isArray(body.questions)) {
+        body.questions = stripTeluguUnlessAllowed(me, body.questions);
         // Reject malformed question ids before saving — an empty or
         // duplicate id collapses multiple questions onto one key in every
         // downstream per-question map (filters, chart counts), which can
@@ -7098,6 +8192,12 @@ Deno.serve(async (req) => {
         await sql`
           UPDATE survey_form SET questions = ${JSON.stringify(body.questions)}::jsonb, updated_at = NOW()
           WHERE id = ${id}
+        `;
+      }
+      if (body.display_lang !== undefined) {
+        const displayLang = surveyDisplayLang(body.display_lang);
+        await sql`
+          UPDATE survey_form SET display_lang = ${displayLang}, updated_at = NOW() WHERE id = ${id}
         `;
       }
       // The company a project is mapped under is registered by the Super Admin.
@@ -7159,9 +8259,9 @@ Deno.serve(async (req) => {
       }
       const id = Number(path.split("/")[3]);
       const body = await readBody(req);
-      const ids = (Array.isArray(body.user_ids) ? body.user_ids : [])
+      const ids = [...new Set((Array.isArray(body.user_ids) ? body.user_ids : [])
         .map(Number)
-        .filter((v: number) => Number.isFinite(v));
+        .filter((v: number) => Number.isFinite(v)))];
       // A Client Admin maps only their own surveyors to owned or assigned projects.
       const rows = await sql`
         SELECT id FROM survey_form
@@ -7169,30 +8269,69 @@ Deno.serve(async (req) => {
           OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
       `;
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
-      // Only allow mapping surveyors this admin created (or admin/super_admin accounts)
-      let allowed: number[] = ids;
-      if (me.role !== "super_admin" && ids.length) {
-        const ok = await sql`
-          SELECT id FROM app_users
-          WHERE id = ANY(${ids}) AND (created_by = ${me.id} OR role = 'admin' OR role = 'super_admin')
-        `.catch(() => []);
-        const okSet = new Set((ok as { id: number }[]).map((r) => Number(r.id)));
-        allowed = ids.filter((v) => okSet.has(v));
+      // Filter in JS — neon ANY(${ids}) has dropped every id on some deploys,
+      // which then DELETE'd the team and inserted nobody.
+      const mine = await sql`
+        SELECT id FROM app_users
+        WHERE created_by = ${me.id} AND role IN ('surveyor', 'field')
+      `.catch(() => []);
+      const mineSet = new Set((mine as { id: number }[]).map((r) => Number(r.id)));
+      const allowed = ids.filter((v) => mineSet.has(v));
+      if (ids.length > 0 && allowed.length === 0) {
+        return json({
+          error: "Only surveyors you created can be added to this survey",
+        }, 422);
       }
-      await sql`
-        DELETE FROM survey_assignments
+      // Merge — never DELETE the whole team first. A failed insert used to
+      // wipe assignments so the field app could not load this survey.
+      const currentRows = await sql`
+        SELECT user_id FROM survey_assignments
         WHERE survey_id = ${id} AND user_id IN (
-          SELECT id FROM app_users WHERE created_by = ${me.id} AND role = 'surveyor'
+          SELECT id FROM app_users WHERE created_by = ${me.id} AND role IN ('surveyor', 'field')
         )
-      `.catch(() => null);
-      for (const uid of allowed) {
-        await sql`
-          INSERT INTO survey_assignments (survey_id, user_id)
-          VALUES (${id}, ${uid})
-          ON CONFLICT (survey_id, user_id) DO NOTHING
-        `.catch(() => null);
+      `.catch(() => []);
+      const current = new Set((currentRows as { user_id: number }[]).map((r) => Number(r.user_id)));
+      const next = new Set(allowed);
+      for (const uid of current) {
+        if (!next.has(uid)) {
+          await sql`
+            DELETE FROM survey_assignments WHERE survey_id = ${id} AND user_id = ${uid}
+          `.catch(() => null);
+        }
       }
-      return json({ ok: true, assigned: allowed.length });
+      const saved: number[] = [...next].filter((uid) => current.has(uid));
+      for (const uid of next) {
+        if (current.has(uid)) continue;
+        if (await upsertSurveyAssignment(id, uid)) saved.push(uid);
+      }
+      if (next.size > 0 && saved.length === 0) {
+        return json({ error: "Could not save surveyor assignments" }, 500);
+      }
+      return json({ ok: true, assigned: saved.length, user_ids: saved });
+    }
+
+    // Assigned surveys for one surveyor (Client Admin profile / field my-surveys twin).
+    if (path.match(/^\/api\/users\/\d+\/surveys$/) && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const userId = Number(path.split("/")[3]);
+      if (!Number.isFinite(userId)) return json({ error: "Invalid user id" }, 400);
+      if (me.role !== "super_admin") {
+        const owned = await sql`
+          SELECT id FROM app_users WHERE id = ${userId} AND created_by = ${me.id} LIMIT 1
+        `.catch(() => []);
+        if (!owned.length) return json({ error: "You can only view surveyors you created" }, 403);
+      }
+      const items = await listAssignedSurveys(sql, userId);
+      return json({
+        items: items.map((s) => ({
+          id: s.id,
+          form_key: s.form_key,
+          title: s.title,
+          display_lang: s.display_lang,
+        })),
+        count: items.length,
+      });
     }
 
     // Replace which surveys a surveyor is assigned to (user-centric).
@@ -7214,6 +8353,13 @@ Deno.serve(async (req) => {
       const surveyIds = (Array.isArray(body.survey_ids) ? body.survey_ids : [])
         .map(Number)
         .filter((v: number) => Number.isFinite(v));
+      const addIds = [...new Set((Array.isArray(body.add_survey_ids) ? body.add_survey_ids : [])
+        .map(Number)
+        .filter((v: number) => Number.isFinite(v)))];
+      const removeIds = [...new Set((Array.isArray(body.remove_survey_ids) ? body.remove_survey_ids : [])
+        .map(Number)
+        .filter((v: number) => Number.isFinite(v)))];
+      const incremental = addIds.length > 0 || removeIds.length > 0;
 
       // Must be a surveyor this Client Admin created
       const userRows = await sql`
@@ -7228,68 +8374,63 @@ Deno.serve(async (req) => {
         return json({ error: "You can only assign surveys to surveyors you created" }, 403);
       }
 
-      // Only allow surveys this admin owns or is explicitly shared on — no
-      // company predicate (see SCHEMA.md).
-      let allowedSurveyIds: number[] = [];
-      if (surveyIds.length) {
-        const okSurveys = await sql`
-              SELECT id FROM survey_form
-              WHERE id = ANY(${surveyIds})
-                AND (
-                  created_by = ${me.id}
-                  OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
-                )
-            `.catch(() => []);
-        allowedSurveyIds = (okSurveys as { id: number }[]).map((r) => Number(r.id));
+      // Filter in JS — neon ANY(${ids}) has dropped every id on some deploys,
+      // which then DELETE'd this surveyor's surveys and inserted nobody.
+      const okSurveys = await sql`
+        SELECT id FROM survey_form
+        WHERE created_by = ${me.id}
+           OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+      `.catch(() => []);
+      const okSet = new Set((okSurveys as { id: number }[]).map((r) => Number(r.id)));
+      const allowedSurveyIds = [...new Set(surveyIds.filter((v) => okSet.has(v)))];
+      if (!incremental && surveyIds.length > 0 && allowedSurveyIds.length === 0) {
+        return json({
+          error: "None of those surveys belong to your account",
+        }, 422);
       }
 
-      // Drop existing assignments for this surveyor on surveys this admin can manage
-      await sql`
-        DELETE FROM survey_assignments
+      const currentRows = await sql`
+        SELECT survey_id FROM survey_assignments
         WHERE user_id = ${userId}
           AND survey_id IN (
             SELECT id FROM survey_form
             WHERE created_by = ${me.id}
                OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
           )
-      `.catch(() => null);
-
-      for (const sid of allowedSurveyIds) {
-        await sql`
-          INSERT INTO survey_assignments (survey_id, user_id)
-          VALUES (${sid}, ${userId})
-          ON CONFLICT (survey_id, user_id) DO NOTHING
-        `.catch(() => null);
+      `.catch(() => []);
+      const current = new Set((currentRows as { survey_id: number }[]).map((r) => Number(r.survey_id)));
+      // Incremental add/remove keeps already-assigned surveys (tapping survey 2
+      // must not drop survey 1). Full replace still used by Edit / bulk assign.
+      const next = new Set(incremental ? current : allowedSurveyIds);
+      if (incremental) {
+        for (const sid of addIds) if (okSet.has(sid)) next.add(sid);
+        for (const sid of removeIds) next.delete(sid);
       }
-      return json({ ok: true, assigned: allowedSurveyIds.length, survey_ids: allowedSurveyIds });
+      for (const sid of current) {
+        if (!next.has(sid)) {
+          await sql`
+            DELETE FROM survey_assignments WHERE survey_id = ${sid} AND user_id = ${userId}
+          `.catch(() => null);
+        }
+      }
+      const saved: number[] = [...next].filter((sid) => current.has(sid));
+      for (const sid of next) {
+        if (current.has(sid)) continue;
+        if (await upsertSurveyAssignment(sid, userId)) saved.push(sid);
+      }
+      if (next.size > 0 && saved.length === 0) {
+        return json({ error: "Could not save survey assignments" }, 500);
+      }
+      return json({ ok: true, assigned: saved.length, survey_ids: saved });
     }
 
     // Surveyor view: surveys assigned to me (with their questions) — field app
     if (path === "/api/my-surveys" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "surveyor" && me.role !== "admin") {
+      if (me.role !== "surveyor" && me.role !== "field" && me.role !== "admin") {
         return json({ error: "Forbidden" }, 403);
       }
-      const rows = await sql`
-        SELECT f.id, f.form_key, f.title, f.questions, f.updated_at
-        FROM survey_assignments sa
-        JOIN survey_form f ON f.id = sa.survey_id
-        WHERE sa.user_id = ${me.id}
-        ORDER BY f.title
-      `.catch(() => []);
-      const items = (rows as Record<string, unknown>[]).map((r) => {
-        let qs = r.questions;
-        if (typeof qs === "string") {
-          try { qs = JSON.parse(qs); } catch { qs = []; }
-        }
-        return {
-          id: r.id,
-          form_key: r.form_key,
-          title: r.title,
-          questions: Array.isArray(qs) ? qs : [],
-          updated_at: r.updated_at,
-        };
-      });
+      const items = await listAssignedSurveys(sql, Number(me.id));
       return json({ items, count: items.length });
     }
 
@@ -7341,6 +8482,28 @@ Deno.serve(async (req) => {
     // ── Dynamic questions (field app loads automatically) ───
     if (path === "/api/questions" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
+      // Surveyors must get the survey they were assigned (Surveys tab / questions
+      // screen), not the platform Field Survey default.
+      if (me.role === "surveyor" || me.role === "field") {
+        const items = await listAssignedSurveys(sql, Number(me.id));
+        const first = items[0];
+        if (!first) {
+          return json({
+            form_key: "",
+            title: "No survey assigned",
+            questions: [],
+            surveys: [],
+            updated_at: null,
+          });
+        }
+        return json({
+          ...first,
+          surveys: items,
+          require_geo: true,
+          require_photo: true,
+          require_audio: true,
+        });
+      }
       try {
         const rows = await sql`
           SELECT form_key, title, questions, updated_at
@@ -7447,31 +8610,108 @@ Deno.serve(async (req) => {
         arr.push({ url, kind: m.kind });
         mediaMap.set(Number(m.submission_id), arr);
       }
-      const items = (rows as Record<string, unknown>[]).map((r) => {
-        const payload = parsePayload(r.payload);
-        const answers = (payload?.answers || payload) as Record<string, unknown>;
-        const media = mediaMap.get(Number(r.id)) || [];
-        return {
-          id: r.id,
-          created_at: r.created_at,
-          status: payloadStatus(payload),
-          submitted_by: String(
-            payload?.submitted_by || answers?.data_collector || "",
-          ),
-          photo_url: media.find((m) => m.kind === "photo")?.url || null,
-          audio_url: media.find((m) => m.kind === "audio")?.url || null,
-          media,
-        };
-      });
+      const items = (rows as Record<string, unknown>[])
+        .map((r) => {
+          const payload = parsePayload(r.payload);
+          // Phone-only drafts are never inserted. Rows tagged _draft were Sent
+          // from Pending and must still show in My activity.
+          const answers = (payload?.answers || {}) as Record<string, unknown>;
+          const media = mediaMap.get(Number(r.id)) || [];
+          return {
+            id: r.id,
+            created_at: r.created_at,
+            status: payloadStatus(payload),
+            submitted_by: String(
+              payload?.submitted_by || answers?.data_collector || "",
+            ),
+            record_index: recordIndexOf(payload),
+            form_key: String(payload?.form_key || "default"),
+            answers,
+            photo_url: media.find((m) => m.kind === "photo")?.url || null,
+            audio_url: media.find((m) => m.kind === "audio")?.url || null,
+            media,
+          };
+        })
+        .filter(Boolean);
       return json({ items, count: items.length });
+    }
+
+    if (path === "/api/web-survey" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!hasPower(me, "can_web_survey")) {
+        return json({
+          error: "Super Admin has not granted web survey fill",
+        }, 403);
+      }
+      const body = await readBody(req);
+      const answers = (body.answers || {}) as Record<string, unknown>;
+      const agent =
+        String(body.submitted_by || "").trim() || me.name || me.username;
+      const formKey = String(body.form_key || body.form_id || "").trim();
+      if (!formKey || formKey === "default" || formKey === "legacy") {
+        return json({ error: "Pick a real survey" }, 400);
+      }
+      if (me.role === "admin") {
+        const writeScope = await adminFormKeyScope(sql, me);
+        if (writeScope && !writeScope.includes(formKey)) {
+          return json({
+            error: `You can only submit to your own surveys (${writeScope.length ? writeScope.join(", ") : "none"})`,
+          }, 403);
+        }
+      }
+      const payload = {
+        form_key: formKey,
+        form_id: body.form_id || formKey,
+        source: "web-survey",
+        submitted_by: agent,
+        user_id: me.id,
+        user_role: me.role,
+        status: "pending",
+        geo: null,
+        location_details: null,
+        locks: { geo: false, web: true },
+        has_photo: false,
+        has_audio: false,
+        answers: { ...answers, data_collector: agent },
+        content_type: "qa",
+        app_version: body.app_version ? String(body.app_version) : null,
+      };
+      const rows = await sql`
+        INSERT INTO submissions (payload)
+        VALUES (${JSON.stringify(payload)}::jsonb)
+        RETURNING id, payload, created_at
+      `;
+      const row = rows[0] as { id: number; created_at: string };
+      logAudit(me, "submission_create", "submission", row.id, {
+        form_key: formKey,
+        source: "web-survey",
+      });
+      return json({
+        ok: true,
+        id: row.id,
+        form_id: payload.form_id,
+        source: "web-survey",
+        submitted_by: agent,
+        status: "pending",
+        created_at: row.created_at,
+      }, 201);
     }
 
     if (path === "/api/submissions" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (me.role !== "admin" && me.role !== "surveyor") {
-        return json({ error: "Login required as admin or surveyor" }, 403);
+      if (!isPortalAdmin(me.role) && me.role !== "surveyor") {
+        return json({ error: "Login required as admin, super admin, or surveyor" }, 403);
       }
       const body = await readBody(req);
+      const incomingSource = String(body.source || "");
+      if (incomingSource === "web-survey" || incomingSource === "web") {
+        if (!hasPower(me, "can_web_survey")) {
+          return json({
+            error: "Super Admin has not granted web survey fill",
+          }, 403);
+        }
+      }
       // Q/A only — media uploaded separately to /api/submissions/:id/media
       const answers = (body.answers || body) as Record<string, unknown>;
       const geo = body.geo || null;
@@ -7522,23 +8762,33 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Require geo lock on every field submission
-      if (!geo || typeof geo !== "object") {
+      // Require geo lock on every field submission. Web-survey fill (power-gated
+      // above) is desk entry and has no GPS.
+      const isWebFill = incomingSource === "web-survey" || incomingSource === "web";
+      if (!isWebFill && (!geo || typeof geo !== "object")) {
         return json({
           error: "GPS lock required — lat/lng missing",
           code: "geo_lock_required",
         }, 422);
       }
-      const gLat = Number((geo as Record<string, unknown>).lat ?? (geo as Record<string, unknown>).latitude);
-      const gLng = Number((geo as Record<string, unknown>).lng ?? (geo as Record<string, unknown>).longitude);
-      if (!Number.isFinite(gLat) || !Number.isFinite(gLng) || (gLat === 0 && gLng === 0)) {
-        return json({
-          error: "GPS lock invalid",
-          code: "geo_lock_invalid",
-        }, 422);
+      if (!isWebFill) {
+        const gLat = Number((geo as Record<string, unknown>).lat ?? (geo as Record<string, unknown>).latitude);
+        const gLng = Number((geo as Record<string, unknown>).lng ?? (geo as Record<string, unknown>).longitude);
+        if (!Number.isFinite(gLat) || !Number.isFinite(gLng) || (gLat === 0 && gLng === 0)) {
+          return json({
+            error: "GPS lock invalid",
+            code: "geo_lock_invalid",
+          }, 422);
+        }
       }
 
-      const payload = {
+      const recIdxRaw = Number(
+        body.record_index ??
+          (answers as Record<string, unknown>)?._recordIndex ??
+          (answers as Record<string, unknown>)?.recordIndex,
+      );
+      const recIdx = Number.isFinite(recIdxRaw) && recIdxRaw > 0 ? Math.round(recIdxRaw) : null;
+      const payload = stripDraftFlags({
         form_key: body.form_key || "default",
         form_id: body.form_id || `field-${Date.now()}`,
         source: body.source || "mobile-field-survey",
@@ -7546,12 +8796,17 @@ Deno.serve(async (req) => {
         user_id: me.id,
         user_role: me.role,
         status: "pending",
+        record_index: recIdx,
         geo: geo,
         location_details: body.location_details || null,
         locks: body.locks || { geo: true },
         has_photo: false,
         has_audio: false,
-        answers: { ...answers, data_collector: agent },
+        answers: {
+          ...answers,
+          data_collector: agent,
+          ...(recIdx != null ? { _recordIndex: recIdx } : {}),
+        },
         // Q/A separated from media blobs
         content_type: "qa",
         // Client app version (pushed from React build)
@@ -7560,7 +8815,7 @@ Deno.serve(async (req) => {
         app_version_code: body.app_version_code != null
           ? Number(body.app_version_code)
           : null,
-      };
+      });
       // BR-004 write scope: records may only be written into projects the caller
       // belongs to. Client Admins → own/assigned projects (plus the always-visible
       // legacy/default forms); Surveyors → the surveys they are assigned to (or the
@@ -7681,10 +8936,12 @@ Deno.serve(async (req) => {
         mode = "client_url";
       } else {
         let data = String(body.data || "");
-        const mimeMatch = data.match(/^data:([^;]+);base64,/);
-        if (mimeMatch) {
-          mime = String(body.mime || mimeMatch[1] || mime);
-          data = data.slice(mimeMatch[0].length);
+        const parsed = splitDataUrl(data);
+        if (parsed.mime) {
+          mime = String(body.mime || parsed.mime || mime).split(";")[0].trim() || mime;
+          data = parsed.b64;
+        } else if (parsed.b64 !== data) {
+          data = parsed.b64;
         }
         // Incoming cap (~2.1MB base64 for ~1.5MB binary)
         if (data.length > 2_100_000) {
@@ -8162,7 +9419,7 @@ Deno.serve(async (req) => {
         const dayParam = (url.searchParams.get("day") || "").trim();
         const monthParam = (url.searchParams.get("month") || "").trim();
         if (period === "today") {
-          const t = new Date().toISOString().slice(0, 10);
+          const t = istToday();
           dateFrom = t;
           dateTo = t;
         } else if (period === "day" && dayParam) {
@@ -8181,6 +9438,10 @@ Deno.serve(async (req) => {
         const districtQ = (url.searchParams.get("district") || "").trim().toLowerCase();
         const constituencyQ = (url.searchParams.get("constituency") || "").trim().toLowerCase();
         const statusQ = (url.searchParams.get("status") || "confirmed").trim().toLowerCase();
+        const langQ = (url.searchParams.get("lang") || url.searchParams.get("locale") || "en")
+          .trim()
+          .toLowerCase();
+        const asTe = langQ === "te" || langQ === "telugu" || langQ === "te-in";
 
         const allRows = await loadAnalyticsRows(sql, 20000, await adminFormKeyScope(sql, me));
         let rows = allRows;
@@ -8246,6 +9507,7 @@ Deno.serve(async (req) => {
           "photo_url", "audio_url", "photo_file", "audio_file",
         ];
         const idToLabel = new Map<string, string>();
+        const optTeByKey = new Map<string, Map<string, string>>();
         const questionsByForm = new Map<string, { id: string; label: string }[]>();
         {
           const formRows = await sql`SELECT form_key, questions FROM survey_form`.catch(() => []);
@@ -8254,9 +9516,22 @@ Deno.serve(async (req) => {
             for (const raw of parseQuestionsArray(f.questions)) {
               const q = raw as Record<string, unknown>;
               const qid = String(q.id || "").trim();
-              const label = String(q.label || q.speak || qid).trim();
+              const labelEn = String(q.label || q.speak || qid).trim();
+              const labelTe = String(q.label_te || "").trim();
+              const label = asTe ? (labelTe || labelEn) : labelEn;
+              const opts = Array.isArray(q.options) ? q.options.map((x) => String(x ?? "")) : [];
+              const optsTe = Array.isArray(q.options_te) ? q.options_te.map((x) => String(x ?? "")) : [];
+              const optMap = new Map<string, string>();
+              opts.forEach((en, i) => {
+                const te = String(optsTe[i] || "").trim();
+                if (en && te) {
+                  optMap.set(en, te);
+                  optMap.set(en.toLowerCase(), te);
+                }
+              });
               if (qid && label) idToLabel.set(qid, label);
-              if (label) list.push({ id: qid, label });
+              if (qid && optMap.size) optTeByKey.set(qid, optMap);
+              if (labelEn) list.push({ id: qid, label: labelEn });
             }
             questionsByForm.set(String(f.form_key || ""), list);
           }
@@ -8274,9 +9549,13 @@ Deno.serve(async (req) => {
         for (const [fk, bags] of bagsByForm) {
           const qs = questionsByForm.get(fk) || [];
           for (const [qid, als] of aliasesForQuestions(qs, bags)) {
-            const label = qs.find((q) => q.id === qid)?.label;
+            const label = idToLabel.get(qid) || qs.find((q) => q.id === qid)?.label;
+            const optMap = optTeByKey.get(qid);
             if (label) {
               for (const a of als) idToLabel.set(a, label);
+            }
+            if (optMap) {
+              for (const a of als) optTeByKey.set(a, optMap);
             }
           }
         }
@@ -8298,15 +9577,36 @@ Deno.serve(async (req) => {
           usedHeads.add(unique);
           return unique;
         });
+        const orientation = (url.searchParams.get("orientation") || url.searchParams.get("layout") || "vertical").trim().toLowerCase();
+        const isVertical = orientation !== "horizontal";
+
         const esc = (v: unknown) => {
           const s = String(v ?? "");
           return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
         };
         const lines: string[] = [];
-        lines.push([...fixed, ...qHeaders].map(esc).join(","));
-        for (const r of rows) {
+
+        const locVal = (key: string, v: unknown) => {
+          if (!asTe) return Array.isArray(v) ? v.join(" | ") : v;
+          if (
+            key === "id" || key === "date" || key === "latitude" || key === "longitude" ||
+            key === "photo_url" || key === "audio_url" || key === "photo_file" ||
+            key === "audio_file" || key === "age"
+          ) {
+            return v;
+          }
+          if (key === "district" || key === "constituency" || key === "mandal" || key === "survey") {
+            return toTeluguPlace(v);
+          }
+          return toTeluguValue(v);
+        };
+        const locAns = (c: string, v: unknown) =>
+          asTe ? toTeluguValue(v, optTeByKey.get(c)) : (Array.isArray(v) ? v.join(" | ") : v);
+        const fixedHead = (c: string) => (asTe ? EXPORT_FIXED_TE[c] || c : c);
+
+        const getBaseRecord = (r: (typeof rows)[number]) => {
           const rObj = r as unknown as Record<string, unknown>;
-          const base: Record<string, unknown> = {
+          return {
             id: r.id,
             date: dayKey(r.created_at),
             survey: r.formKey,
@@ -8325,26 +9625,67 @@ Deno.serve(async (req) => {
             audio_url: audioUrl.get(Number(r.id)) || "",
             photo_file: photoUrl.has(Number(r.id)) ? photoName(r.id) : "",
             audio_file: audioUrl.has(Number(r.id)) ? audioName(r.id) : "",
-          };
-          const rec: string[] = [];
-          for (const c of fixed) rec.push(esc(base[c]));
-          for (const c of qCols) {
-            const v = (r.answers || {})[c];
-            rec.push(esc(Array.isArray(v) ? v.join(" | ") : v));
+          } as Record<string, unknown>;
+        };
+
+        if (isVertical) {
+          // Vertical Layout: Transposed CSV (Questions / Attributes as Rows, Records as Columns)
+          const recLabel = asTe ? "రికార్డ్" : "Record";
+          const headerRow = [
+            asTe ? "ఫీల్డ్ / ప్రశ్న" : "Field / Question",
+            ...rows.map((r, idx) => `${recLabel} #${r.id || idx + 1}`),
+          ];
+          lines.push(headerRow.map(esc).join(","));
+
+          // Fixed Metadata Fields (Rows)
+          for (const c of fixed) {
+            const rowVals = [fixedHead(c)];
+            for (const r of rows) {
+              const base = getBaseRecord(r);
+              rowVals.push(esc(locVal(c, base[c])));
+            }
+            lines.push(rowVals.join(","));
           }
-          lines.push(rec.join(","));
+
+          // Dynamic Survey Questions (Rows)
+          qCols.forEach((c, idx) => {
+            const qHeader = qHeaders[idx] || c;
+            const rowVals = [esc(qHeader)];
+            for (const r of rows) {
+              const v = (r.answers || {})[c];
+              rowVals.push(esc(locAns(c, v)));
+            }
+            lines.push(rowVals.join(","));
+          });
+        } else {
+          // Horizontal Layout: Standard CSV (One row per record)
+          lines.push([...fixed.map(fixedHead), ...qHeaders].map(esc).join(","));
+          for (const r of rows) {
+            const base = getBaseRecord(r);
+            const rec: string[] = [];
+            for (const c of fixed) rec.push(esc(locVal(c, base[c])));
+            for (const c of qCols) {
+              const v = (r.answers || {})[c];
+              rec.push(esc(locAns(c, v)));
+            }
+            lines.push(rec.join(","));
+          }
         }
         logAudit(me, "data_export", "export", null, {
           rows: rows.length,
           status: statusQ,
           from: dateFrom,
           to: dateTo,
+          lang: asTe ? "te" : "en",
         });
-        return new Response(lines.join("\n"), {
+        const stamp = dayParam || monthParam || "total";
+        const fname = asTe ? `survey-export-te-${stamp}.csv` : `survey-export-${stamp}.csv`;
+        const csvBody = (asTe ? "\uFEFF" : "") + lines.join("\n");
+        return new Response(csvBody, {
           status: 200,
           headers: {
             "Content-Type": "text/csv; charset=utf-8",
-            "Content-Disposition": `attachment; filename="survey-export-${dayParam || monthParam || "total"}.csv"`,
+            "Content-Disposition": `attachment; filename="${fname}"`,
             ...corsHeaders(req),
           },
         });
@@ -8358,4 +9699,6 @@ Deno.serve(async (req) => {
     console.error(err);
     return json({ error: (err as Error).message || "Server error" }, 500);
   }
-});
+}
+
+Deno.serve(async (req) => withCors(req, await rawHandler(req)));

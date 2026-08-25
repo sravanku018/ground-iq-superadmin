@@ -22,8 +22,315 @@
 import { neon } from "npm:@neondatabase/serverless@0.10.4";
 
 // ── Geo aliases (inlined so the Deno Playground deploys a single file) ──
-const GEO_ALIASES = {"telugu":{"ఆదిలాబాద్":"Adilabad","భద్రాద్రి కొత్తగూడెం":"Bhadradri Kothagudem","భద్రాచలం":"Bhadradri Kothagudem","హనుమకొండ":"Hanumakonda","హన్మకొండ":"Hanumakonda","హైదరాబాద్":"Hyderabad","జగిత్యాల":"Jagitial","జోగులాంబ గద్వాల్":"Jogulamba Gadwal","కామారెడ్డి":"Kamareddy","కరీంనగర్":"Karimnagar","ఖమ్మం":"Khammam","కొమరంభీమ్ ఆసిఫాబాద్":"Komarambheem Asifabad","కొమరంభీం":"Komarambheem Asifabad","కొమరంభీం ఆసిఫాబాద్":"Komarambheem Asifabad","జనగామ":"Jangaon","జనగాం":"Jangaon","మహబూబాబాద్":"Mahabubabad","మహబూబాబాదు":"Mahabubabad","మహబూబ్నగర్":"Mahabubnagar","మహబూబ్ నగర్":"Mahabubnagar","మంచిర్యాల":"Mancherial","మెదక్":"Medak","మేడ్చల్ మల్కాజ్గిరి":"Medchal Malkajgiri","మేడ్చెల్ మల్కాజ్గిరి":"Medchal Malkajgiri","మేడ్చల్-మల్కాజ్గిరి":"Medchal Malkajgiri","ములుగు":"Mulugu","నాగర్కర్నూల్":"Nagarkurnool","నాగర్ కర్నూల్":"Nagarkurnool","నల్గొండ":"Nalgonda","నిర్మల్":"Nirmal","నిజామాబాద్":"Nizamabad","పెద్దపల్లి":"Peddapalli","రాజన్న సిరిసిల్ల":"Rajanna Sircilla","రంగారెడ్డి":"Rangareddy","సంగారెడ్డి":"Sangareddy","సిద్ధిపేట్":"Siddipet","సూర్యాపేట":"Suryapet","వికారాబాద్":"Vikarabad","వికారాబాదు":"Vikarabad","వనపర్తి":"Wanaparthy","వరంగల్":"Warangal","వరంగల్ (అర్బన్)":"Hanumakonda","వరంగల్ (రూరల్)":"Warangal","యాదాద్రి భువనగిరి":"Yadadri Bhuvanagiri","యాదాద్రి":"Yadadri Bhuvanagiri","భువనగిరి":"Yadadri Bhuvanagiri","జయశంకర్ భూపాలపల్లి":"Jayashankar Bhupalapally","నారాయణపేట":"Narayanpet","సిరిసిల్ల":"Rajanna Sircilla","అసిఫాబాద్":"Komarambheem Asifabad","ఆసిఫాబాద్":"Komarambheem Asifabad","కొత్తగూడెం":"Bhadradri Kothagudem","మల్కాజ్గిరి":"Medchal Malkajgiri","మల్కాజ్‌గిరి":"Medchal Malkajgiri","మేడ్చల్":"Medchal Malkajgiri","గద్వాల్":"Jogulamba Gadwal","జోగులాంబ గద్వాల":"Jogulamba Gadwal","భూపాలపల్లి":"Jayashankar Bhupalapally","సిద్దిపేట":"Siddipet"},"districts":{"adilabad":"Adilabad","bhadradri kothagudem":"Bhadradri Kothagudem","bhadradri":"Bhadradri Kothagudem","kothagudem":"Bhadradri Kothagudem","bhadradri kothagudam":"Bhadradri Kothagudem","bhadradri kothgudem":"Bhadradri Kothagudem","hyderabad":"Hyderabad","hyd":"Hyderabad","hyderabad district":"Hyderabad","jagitial":"Jagitial","jagtial":"Jagitial","jagityal":"Jagitial","jagtiyal":"Jagitial","jagital":"Jagitial","jagityala":"Jagitial","jangaon":"Jangaon","jangaun":"Jangaon","jayashankar bhupalapally":"Jayashankar Bhupalapally","jayashankar":"Jayashankar Bhupalapally","jayashankar bhupalpally":"Jayashankar Bhupalapally","jayashankar bhoopalpally":"Jayashankar Bhupalapally","jayshankar":"Jayashankar Bhupalapally","bhupalpally":"Jayashankar Bhupalapally","bhupalapally":"Jayashankar Bhupalapally","bhupalpalle":"Jayashankar Bhupalapally","jaya shankar":"Jayashankar Bhupalapally","jogulamba gadwal":"Jogulamba Gadwal","jogulamba":"Jogulamba Gadwal","gadwal":"Jogulamba Gadwal","kamareddy":"Kamareddy","kamareddi":"Kamareddy","kamaredi":"Kamareddy","karimnagar":"Karimnagar","karim nagar":"Karimnagar","khammam":"Khammam","komarambheem asifabad":"Komarambheem Asifabad","komarambheem":"Komarambheem Asifabad","komaram bheem":"Komarambheem Asifabad","komaram bheem asifabad":"Komarambheem Asifabad","kumurambheem":"Komarambheem Asifabad","kumuram bheem":"Komarambheem Asifabad","kumrambheem":"Komarambheem Asifabad","kumurambheem asifabad":"Komarambheem Asifabad","asifabad":"Komarambheem Asifabad","mahabubabad":"Mahabubabad","mahbubabad":"Mahabubabad","mahaboobabad":"Mahabubabad","mahabubnagar":"Mahabubnagar","mahbubnagar":"Mahabubnagar","mahaboobnagar":"Mahabubnagar","mancherial":"Mancherial","manchirial":"Mancherial","manchariyal":"Mancherial","medak":"Medak","medchal malkajgiri":"Medchal Malkajgiri","medchal":"Medchal Malkajgiri","malkajgiri":"Medchal Malkajgiri","medchal malkajgiri district":"Medchal Malkajgiri","mulugu":"Mulugu","mulug":"Mulugu","nagarkurnool":"Nagarkurnool","nagar kurnool":"Nagarkurnool","nagarkurnul":"Nagarkurnool","nalgonda":"Nalgonda","nalgunda":"Nalgonda","narayanpet":"Narayanpet","narayanapet":"Narayanpet","narayampet":"Narayanpet","nirmal":"Nirmal","nizamabad":"Nizamabad","peddapalli":"Peddapalli","peddapalle":"Peddapalli","peddapally":"Peddapalli","rajanna sircilla":"Rajanna Sircilla","sircilla":"Rajanna Sircilla","siricilla":"Rajanna Sircilla","rajanna siricilla":"Rajanna Sircilla","rangareddy":"Rangareddy","ranga reddy":"Rangareddy","rangareddi":"Rangareddy","ranga reddi":"Rangareddy","sangareddy":"Sangareddy","sangareddi":"Sangareddy","sanga reddy":"Sangareddy","siddipet":"Siddipet","siddhipet":"Siddipet","suryapet":"Suryapet","vikarabad":"Vikarabad","vicarabad":"Vikarabad","wanaparthy":"Wanaparthy","wanaparthi":"Wanaparthy","warangal":"Warangal","warangal rural":"Warangal","hanumakonda":"Hanumakonda","hanamkonda":"Hanumakonda","warangal urban":"Hanumakonda","warangal city":"Hanumakonda","hanmakonda":"Hanumakonda","yadadri bhuvanagiri":"Yadadri Bhuvanagiri","yadadri":"Yadadri Bhuvanagiri","yadadri bhongir":"Yadadri Bhuvanagiri","yadadri bhongiri":"Yadadri Bhuvanagiri","bhuvanagiri":"Yadadri Bhuvanagiri"},"districtNames":["Adilabad","Bhadradri Kothagudem","Hanumakonda","Hyderabad","Jagitial","Jangaon","Jayashankar Bhupalapally","Jogulamba Gadwal","Kamareddy","Karimnagar","Khammam","Komarambheem Asifabad","Mahabubabad","Mahabubnagar","Mancherial","Medak","Medchal Malkajgiri","Mulugu","Nagarkurnool","Nalgonda","Narayanpet","Nirmal","Nizamabad","Peddapalli","Rajanna Sircilla","Rangareddy","Sangareddy","Siddipet","Suryapet","Vikarabad","Wanaparthy","Warangal","Yadadri Bhuvanagiri"],"acs":{"sirpur":"Sirpur","siripuram":"Sirpur","chennur":"Chennur","chennuru":"Chennur","chenur":"Chennur","bellampalle":"Bellampalle","bellampalli":"Bellampalle","bellampally":"Bellampalle","bellampalle sc":"Bellampalle","mancherial":"Mancherial","manchirial":"Mancherial","asifabad":"Asifabad","khanapur":"Khanapur","adilabad":"Adilabad","boath":"Boath","both":"Boath","nirmal":"Nirmal","mudhole":"Mudhole","mudhol":"Mudhole","armur":"Armur","armoor":"Armur","bodhan":"Bodhan","jukkal":"Jukkal","banswada":"Banswada","banswara":"Banswada","bansuvada":"Banswada","yellareddy":"Yellareddy","yellareddi":"Yellareddy","kamareddy":"Kamareddy","kamareddi":"Kamareddy","nizamabad urban":"Nizamabad Urban","nizamabad city":"Nizamabad Urban","nizamabad u":"Nizamabad Urban","nizamabad rural":"Nizamabad Rural","nizamabad r":"Nizamabad Rural","balkonda":"Balkonda","korutla":"Korutla","koratla":"Korutla","jagtial":"Jagtial","jagitial":"Jagtial","jagityal":"Jagtial","jagtiyal":"Jagtial","dharmapuri":"Dharmapuri","ramagundam":"Ramagundam","manthani":"Manthani","peddapalli":"Peddapalli","peddapalle":"Peddapalli","peddapally":"Peddapalli","karimnagar":"Karimnagar","karim nagar":"Karimnagar","choppadandi":"Choppadandi","chopardandi":"Choppadandi","choppadandhi":"Choppadandi","vemulawada":"Vemulawada","vemulavada":"Vemulawada","sircilla":"Sircilla","siricilla":"Sircilla","manakondur":"Manakondur","huzurabad":"Huzurabad","husnabad":"Husnabad","siddipet":"Siddipet","siddhipet":"Siddipet","medak":"Medak","narayankhed":"Narayankhed","andole":"Andole","narsapur":"Narsapur","zahirabad":"Zahirabad","zaheerabad":"Zahirabad","zaherabad":"Zahirabad","sangareddy":"Sangareddy","sangareddi":"Sangareddy","patancheru":"Patancheru","dubbak":"Dubbak","dubbaka":"Dubbak","gajwel":"Gajwel","quthbullapur":"Quthbullapur","qutbullapur":"Quthbullapur","kutbullapur":"Quthbullapur","quthbullapally":"Quthbullapur","quathbullapur":"Quthbullapur","kukatpally":"Kukatpally","kukatpalle":"Kukatpally","kukatpalli":"Kukatpally","uppal":"Uppal","malkajgiri":"Malkajgiri","malkajgiri urban":"Malkajgiri","malkajgiri east":"Malkajgiri","malkajgiri west":"Malkajgiri","secunderabad cantonment":"Secunderabad Cantonment","secunderabad cantt":"Secunderabad Cantonment","secunderabad cant":"Secunderabad Cantonment","sc cantonment":"Secunderabad Cantonment","secunderabad cantt sc":"Secunderabad Cantonment","musheerabad":"Musheerabad","musherabad":"Musheerabad","malakpet":"Malakpet","amberpet":"Amberpet","khairatabad":"Khairatabad","khairtabad":"Khairatabad","jubilee hills":"Jubilee Hills","sanathnagar":"Sanathnagar","sanath nagar":"Sanathnagar","nampally":"Nampally","karwan":"Karwan","goshamahal":"Goshamahal","gosha mahal":"Goshamahal","charminar":"Charminar","chandrayangutta":"Chandrayangutta","chandragutta":"Chandrayangutta","yakutpura":"Yakutpura","yaqutpura":"Yakutpura","bahadurpura":"Bahadurpura","maheshwaram":"Maheshwaram","maheswaram":"Maheshwaram","rajendranagar":"Rajendranagar","rajendra nagar":"Rajendranagar","serilingampally":"Serilingampally","serilingampalli":"Serilingampally","seri lingampally":"Serilingampally","chevella":"Chevella","pargi":"Pargi","parigi":"Pargi","vikarabad":"Vikarabad","vicarabad":"Vikarabad","tandur":"Tandur","kodangal":"Kodangal","narayanpet":"Narayanpet","narayanapet":"Narayanpet","mahbubnagar":"Mahbubnagar","mahabubnagar":"Mahbubnagar","mahaboobnagar":"Mahbubnagar","jadcherla":"Jadcherla","devarkadra":"Devarkadra","makthal":"Makthal","wanaparthy":"Wanaparthy","wanaparthi":"Wanaparthy","gadwal":"Gadwal","alampur":"Alampur","nagarkurnool":"Nagarkurnool","nagar kurnool":"Nagarkurnool","achampet":"Achampet","kalwakurthy":"Kalwakurthy","kalwakurthi":"Kalwakurthy","shadnagar":"Shadnagar","shad nagar":"Shadnagar","kollapur":"Kollapur","devarakonda":"Devarakonda","devarkonda":"Devarakonda","nagarjuna sagar":"Nagarjuna Sagar","nagarjunasagar":"Nagarjuna Sagar","miryalaguda":"Miryalaguda","miryala guda":"Miryalaguda","miryalguda":"Miryalaguda","huzurnagar":"Huzurnagar","huzur nagar":"Huzurnagar","kodad":"Kodad","suryapet":"Suryapet","nalgonda":"Nalgonda","munugode":"Munugode","bhongir":"Bhongir","bhongiri":"Bhongir","bhuvanagiri":"Bhongir","nakrekal":"Nakrekal","thungathurthi":"Thungathurthi","thungaturthi":"Thungathurthi","thungaturthy":"Thungathurthi","thungathurthy":"Thungathurthi","alair":"Alair","jangaon":"Jangaon","ghanpur station":"Ghanpur (Station)","ghanpur stn":"Ghanpur (Station)","ghanpur":"Ghanpur (Station)","palakurthi":"Palakurthi","palakurthy":"Palakurthi","dornakal":"Dornakal","mahabubabad":"Mahabubabad","mahbubabad":"Mahabubabad","mahaboobabad":"Mahabubabad","narsampet":"Narsampet","parkal":"Parkal","warangal west":"Warangal West","warangal w":"Warangal West","warangal east":"Warangal East","warangal e":"Warangal East","wardhannapet":"Wardhannapet","waradhanapet":"Wardhannapet","wardannapet":"Wardhannapet","bhupalpalle":"Bhupalpalle","bhupalpally":"Bhupalpalle","bhupalapally":"Bhupalpalle","bhupalpalli":"Bhupalpalle","mulug":"Mulug","mulugu":"Mulug","pinapaka":"Pinapaka","yellandu":"Yellandu","khammam":"Khammam","palair":"Palair","madhira":"Madhira","wyra":"Wyra","sathupalli":"Sathupalli","sathupalle":"Sathupalli","kothagudem":"Kothagudem","aswaraopeta":"Aswaraopeta","aswaraopet":"Aswaraopeta","bhadrachalam":"Bhadrachalam","secunderabad":"Secunderabad","lal bahadur nagar":"Lal Bahadur Nagar","lb nagar":"Lal Bahadur Nagar","lbnagar":"Lal Bahadur Nagar","ibrahimpatnam":"Ibrahimpatnam","brahimpatnam":"Ibrahimpatnam","ibrahimpatan":"Ibrahimpatnam","medchal":"Medchal","sirpur gen":"Sirpur","sirpur sc":"Sirpur","sirpur st":"Sirpur","chennur gen":"Chennur","chennur sc":"Chennur","chennur st":"Chennur","bellampalle gen":"Bellampalle","bellampalle st":"Bellampalle","mancherial gen":"Mancherial","mancherial sc":"Mancherial","mancherial st":"Mancherial","asifabad gen":"Asifabad","asifabad sc":"Asifabad","asifabad st":"Asifabad","khanapur gen":"Khanapur","khanapur sc":"Khanapur","khanapur st":"Khanapur","adilabad gen":"Adilabad","adilabad sc":"Adilabad","adilabad st":"Adilabad","boath gen":"Boath","boath sc":"Boath","boath st":"Boath","nirmal gen":"Nirmal","nirmal sc":"Nirmal","nirmal st":"Nirmal","mudhole gen":"Mudhole","mudhole sc":"Mudhole","mudhole st":"Mudhole","armur gen":"Armur","armur sc":"Armur","armur st":"Armur","bodhan gen":"Bodhan","bodhan sc":"Bodhan","bodhan st":"Bodhan","jukkal gen":"Jukkal","jukkal sc":"Jukkal","jukkal st":"Jukkal","banswada gen":"Banswada","banswada sc":"Banswada","banswada st":"Banswada","yellareddy gen":"Yellareddy","yellareddy sc":"Yellareddy","yellareddy st":"Yellareddy","kamareddy gen":"Kamareddy","kamareddy sc":"Kamareddy","kamareddy st":"Kamareddy","nizamabad urban gen":"Nizamabad Urban","nizamabad urban sc":"Nizamabad Urban","nizamabad urban st":"Nizamabad Urban","nizamabad rural gen":"Nizamabad Rural","nizamabad rural sc":"Nizamabad Rural","nizamabad rural st":"Nizamabad Rural","balkonda gen":"Balkonda","balkonda sc":"Balkonda","balkonda st":"Balkonda","korutla gen":"Korutla","korutla sc":"Korutla","korutla st":"Korutla","jagtial gen":"Jagtial","jagtial sc":"Jagtial","jagtial st":"Jagtial","dharmapuri gen":"Dharmapuri","dharmapuri sc":"Dharmapuri","dharmapuri st":"Dharmapuri","ramagundam gen":"Ramagundam","ramagundam sc":"Ramagundam","ramagundam st":"Ramagundam","manthani gen":"Manthani","manthani sc":"Manthani","manthani st":"Manthani","peddapalli gen":"Peddapalli","peddapalli sc":"Peddapalli","peddapalli st":"Peddapalli","karimnagar gen":"Karimnagar","karimnagar sc":"Karimnagar","karimnagar st":"Karimnagar","choppadandi gen":"Choppadandi","choppadandi sc":"Choppadandi","choppadandi st":"Choppadandi","vemulawada gen":"Vemulawada","vemulawada sc":"Vemulawada","vemulawada st":"Vemulawada","sircilla gen":"Sircilla","sircilla sc":"Sircilla","sircilla st":"Sircilla","manakondur gen":"Manakondur","manakondur sc":"Manakondur","manakondur st":"Manakondur","huzurabad gen":"Huzurabad","huzurabad sc":"Huzurabad","huzurabad st":"Huzurabad","husnabad gen":"Husnabad","husnabad sc":"Husnabad","husnabad st":"Husnabad","siddipet gen":"Siddipet","siddipet sc":"Siddipet","siddipet st":"Siddipet","medak gen":"Medak","medak sc":"Medak","medak st":"Medak","narayankhed gen":"Narayankhed","narayankhed sc":"Narayankhed","narayankhed st":"Narayankhed","andole gen":"Andole","andole sc":"Andole","andole st":"Andole","narsapur gen":"Narsapur","narsapur sc":"Narsapur","narsapur st":"Narsapur","zahirabad gen":"Zahirabad","zahirabad sc":"Zahirabad","zahirabad st":"Zahirabad","sangareddy gen":"Sangareddy","sangareddy sc":"Sangareddy","sangareddy st":"Sangareddy","patancheru gen":"Patancheru","patancheru sc":"Patancheru","patancheru st":"Patancheru","dubbak gen":"Dubbak","dubbak sc":"Dubbak","dubbak st":"Dubbak","gajwel gen":"Gajwel","gajwel sc":"Gajwel","gajwel st":"Gajwel","quthbullapur gen":"Quthbullapur","quthbullapur sc":"Quthbullapur","quthbullapur st":"Quthbullapur","kukatpally gen":"Kukatpally","kukatpally sc":"Kukatpally","kukatpally st":"Kukatpally","uppal gen":"Uppal","uppal sc":"Uppal","uppal st":"Uppal","malkajgiri gen":"Malkajgiri","malkajgiri sc":"Malkajgiri","malkajgiri st":"Malkajgiri","secunderabad cantonment gen":"Secunderabad Cantonment","secunderabad cantonment sc":"Secunderabad Cantonment","secunderabad cantonment st":"Secunderabad Cantonment","musheerabad gen":"Musheerabad","musheerabad sc":"Musheerabad","musheerabad st":"Musheerabad","malakpet gen":"Malakpet","malakpet sc":"Malakpet","malakpet st":"Malakpet","amberpet gen":"Amberpet","amberpet sc":"Amberpet","amberpet st":"Amberpet","khairatabad gen":"Khairatabad","khairatabad sc":"Khairatabad","khairatabad st":"Khairatabad","jubilee hills gen":"Jubilee Hills","jubilee hills sc":"Jubilee Hills","jubilee hills st":"Jubilee Hills","sanathnagar gen":"Sanathnagar","sanathnagar sc":"Sanathnagar","sanathnagar st":"Sanathnagar","nampally gen":"Nampally","nampally sc":"Nampally","nampally st":"Nampally","karwan gen":"Karwan","karwan sc":"Karwan","karwan st":"Karwan","goshamahal gen":"Goshamahal","goshamahal sc":"Goshamahal","goshamahal st":"Goshamahal","charminar gen":"Charminar","charminar sc":"Charminar","charminar st":"Charminar","chandrayangutta gen":"Chandrayangutta","chandrayangutta sc":"Chandrayangutta","chandrayangutta st":"Chandrayangutta","yakutpura gen":"Yakutpura","yakutpura sc":"Yakutpura","yakutpura st":"Yakutpura","bahadurpura gen":"Bahadurpura","bahadurpura sc":"Bahadurpura","bahadurpura st":"Bahadurpura","maheshwaram gen":"Maheshwaram","maheshwaram sc":"Maheshwaram","maheshwaram st":"Maheshwaram","rajendranagar gen":"Rajendranagar","rajendranagar sc":"Rajendranagar","rajendranagar st":"Rajendranagar","serilingampally gen":"Serilingampally","serilingampally sc":"Serilingampally","serilingampally st":"Serilingampally","chevella gen":"Chevella","chevella sc":"Chevella","chevella st":"Chevella","pargi gen":"Pargi","pargi sc":"Pargi","pargi st":"Pargi","vikarabad gen":"Vikarabad","vikarabad sc":"Vikarabad","vikarabad st":"Vikarabad","tandur gen":"Tandur","tandur sc":"Tandur","tandur st":"Tandur","kodangal gen":"Kodangal","kodangal sc":"Kodangal","kodangal st":"Kodangal","narayanpet gen":"Narayanpet","narayanpet sc":"Narayanpet","narayanpet st":"Narayanpet","mahbubnagar gen":"Mahbubnagar","mahbubnagar sc":"Mahbubnagar","mahbubnagar st":"Mahbubnagar","jadcherla gen":"Jadcherla","jadcherla sc":"Jadcherla","jadcherla st":"Jadcherla","devarkadra gen":"Devarkadra","devarkadra sc":"Devarkadra","devarkadra st":"Devarkadra","makthal gen":"Makthal","makthal sc":"Makthal","makthal st":"Makthal","wanaparthy gen":"Wanaparthy","wanaparthy sc":"Wanaparthy","wanaparthy st":"Wanaparthy","gadwal gen":"Gadwal","gadwal sc":"Gadwal","gadwal st":"Gadwal","alampur gen":"Alampur","alampur sc":"Alampur","alampur st":"Alampur","nagarkurnool gen":"Nagarkurnool","nagarkurnool sc":"Nagarkurnool","nagarkurnool st":"Nagarkurnool","achampet gen":"Achampet","achampet sc":"Achampet","achampet st":"Achampet","kalwakurthy gen":"Kalwakurthy","kalwakurthy sc":"Kalwakurthy","kalwakurthy st":"Kalwakurthy","shadnagar gen":"Shadnagar","shadnagar sc":"Shadnagar","shadnagar st":"Shadnagar","kollapur gen":"Kollapur","kollapur sc":"Kollapur","kollapur st":"Kollapur","devarakonda gen":"Devarakonda","devarakonda sc":"Devarakonda","devarakonda st":"Devarakonda","nagarjuna sagar gen":"Nagarjuna Sagar","nagarjuna sagar sc":"Nagarjuna Sagar","nagarjuna sagar st":"Nagarjuna Sagar","miryalaguda gen":"Miryalaguda","miryalaguda sc":"Miryalaguda","miryalaguda st":"Miryalaguda","huzurnagar gen":"Huzurnagar","huzurnagar sc":"Huzurnagar","huzurnagar st":"Huzurnagar","kodad gen":"Kodad","kodad sc":"Kodad","kodad st":"Kodad","suryapet gen":"Suryapet","suryapet sc":"Suryapet","suryapet st":"Suryapet","nalgonda gen":"Nalgonda","nalgonda sc":"Nalgonda","nalgonda st":"Nalgonda","munugode gen":"Munugode","munugode sc":"Munugode","munugode st":"Munugode","bhongir gen":"Bhongir","bhongir sc":"Bhongir","bhongir st":"Bhongir","nakrekal gen":"Nakrekal","nakrekal sc":"Nakrekal","nakrekal st":"Nakrekal","thungathurthi gen":"Thungathurthi","thungathurthi sc":"Thungathurthi","thungathurthi st":"Thungathurthi","alair gen":"Alair","alair sc":"Alair","alair st":"Alair","jangaon gen":"Jangaon","jangaon sc":"Jangaon","jangaon st":"Jangaon","ghanpur station gen":"Ghanpur (Station)","ghanpur station sc":"Ghanpur (Station)","ghanpur station st":"Ghanpur (Station)","palakurthi gen":"Palakurthi","palakurthi sc":"Palakurthi","palakurthi st":"Palakurthi","dornakal gen":"Dornakal","dornakal sc":"Dornakal","dornakal st":"Dornakal","mahabubabad gen":"Mahabubabad","mahabubabad sc":"Mahabubabad","mahabubabad st":"Mahabubabad","narsampet gen":"Narsampet","narsampet sc":"Narsampet","narsampet st":"Narsampet","parkal gen":"Parkal","parkal sc":"Parkal","parkal st":"Parkal","warangal west gen":"Warangal West","warangal west sc":"Warangal West","warangal west st":"Warangal West","warangal east gen":"Warangal East","warangal east sc":"Warangal East","warangal east st":"Warangal East","wardhannapet gen":"Wardhannapet","wardhannapet sc":"Wardhannapet","wardhannapet st":"Wardhannapet","bhupalpalle gen":"Bhupalpalle","bhupalpalle sc":"Bhupalpalle","bhupalpalle st":"Bhupalpalle","mulug gen":"Mulug","mulug sc":"Mulug","mulug st":"Mulug","pinapaka gen":"Pinapaka","pinapaka sc":"Pinapaka","pinapaka st":"Pinapaka","yellandu gen":"Yellandu","yellandu sc":"Yellandu","yellandu st":"Yellandu","khammam gen":"Khammam","khammam sc":"Khammam","khammam st":"Khammam","palair gen":"Palair","palair sc":"Palair","palair st":"Palair","madhira gen":"Madhira","madhira sc":"Madhira","madhira st":"Madhira","wyra gen":"Wyra","wyra sc":"Wyra","wyra st":"Wyra","sathupalli gen":"Sathupalli","sathupalli sc":"Sathupalli","sathupalli st":"Sathupalli","kothagudem gen":"Kothagudem","kothagudem sc":"Kothagudem","kothagudem st":"Kothagudem","aswaraopeta gen":"Aswaraopeta","aswaraopeta sc":"Aswaraopeta","aswaraopeta st":"Aswaraopeta","bhadrachalam gen":"Bhadrachalam","bhadrachalam sc":"Bhadrachalam","bhadrachalam st":"Bhadrachalam","secunderabad gen":"Secunderabad","secunderabad sc":"Secunderabad","secunderabad st":"Secunderabad","lal bahadur nagar gen":"Lal Bahadur Nagar","lal bahadur nagar sc":"Lal Bahadur Nagar","lal bahadur nagar st":"Lal Bahadur Nagar","ibrahimpatnam gen":"Ibrahimpatnam","ibrahimpatnam sc":"Ibrahimpatnam","ibrahimpatnam st":"Ibrahimpatnam","medchal gen":"Medchal","medchal sc":"Medchal","medchal st":"Medchal"}};
 
+/** Telugu-script district spellings → canonical district name. */
+const TELUGU_DISTRICTS: Record<string, string> = {
+  "ఆదిలాబాద్": "Adilabad",
+  "భద్రాద్రి కొత్తగూడెం": "Bhadradri Kothagudem",
+  "భద్రాచలం": "Bhadradri Kothagudem",
+  "కొత్తగూడెం": "Bhadradri Kothagudem",
+  "హనుమకొండ": "Hanumakonda",
+  "హన్మకొండ": "Hanumakonda",
+  "వరంగల్ (అర్బన్)": "Hanumakonda",
+  "హైదరాబాద్": "Hyderabad",
+  "జగిత్యాల": "Jagitial",
+  "జనగామ": "Jangaon",
+  "జనగాం": "Jangaon",
+  "జయశంకర్ భూపాలపల్లి": "Jayashankar Bhupalapally",
+  "భూపాలపల్లి": "Jayashankar Bhupalapally",
+  "జోగులాంబ గద్వాల్": "Jogulamba Gadwal",
+  "గద్వాల్": "Jogulamba Gadwal",
+  "కామారెడ్డి": "Kamareddy",
+  "కరీంనగర్": "Karimnagar",
+  "ఖమ్మం": "Khammam",
+  "కొమరంభీమ్ ఆసిఫాబాద్": "Komarambheem Asifabad",
+  "కొమరంభీం": "Komarambheem Asifabad",
+  "కొమరంభీం ఆసిఫాబాద్": "Komarambheem Asifabad",
+  "అసిఫాబాద్": "Komarambheem Asifabad",
+  "ఆసిఫాబాద్": "Komarambheem Asifabad",
+  "మహబూబాబాద్": "Mahabubabad",
+  "మహబూబాబాదు": "Mahabubabad",
+  "మహబూబ్నగర్": "Mahabubnagar",
+  "మహబూబ్ నగర్": "Mahabubnagar",
+  "మంచిర్యాల": "Mancherial",
+  "మెదక్": "Medak",
+  "మేడ్చల్ మల్కాజ్గిరి": "Medchal Malkajgiri",
+  "మేడ్చెల్ మల్కాజ్గిరి": "Medchal Malkajgiri",
+  "మేడ్చల్-మల్కాజ్గిరి": "Medchal Malkajgiri",
+  "మల్కాజ్గిరి": "Medchal Malkajgiri",
+  "\u0C2E\u0C32\u0C4D\u0C15\u0C3E\u0C1C\u0C4D\u200C\u0C17\u0C3F\u0C30\u0C3F": "Medchal Malkajgiri", // contains invisible ZWNJ — do not "clean up"
+  "మేడ్చల్": "Medchal Malkajgiri",
+  "ములుగు": "Mulugu",
+  "నాగర్కర్నూల్": "Nagarkurnool",
+  "నాగర్ కర్నూల్": "Nagarkurnool",
+  "నల్గొండ": "Nalgonda",
+  "నారాయణపేట": "Narayanpet",
+  "నిర్మల్": "Nirmal",
+  "నిజామాబాద్": "Nizamabad",
+  "పెద్దపల్లి": "Peddapalli",
+  "రాజన్న సిరిసిల్ల": "Rajanna Sircilla",
+  "సిరిసిల్ల": "Rajanna Sircilla",
+  "రంగారెడ్డి": "Rangareddy",
+  "సంగారెడ్డి": "Sangareddy",
+  "సిద్ధిపేట్": "Siddipet",
+  "సిద్దిపేట": "Siddipet",
+  "సూర్యాపేట": "Suryapet",
+  "వికారాబాద్": "Vikarabad",
+  "వికారాబాదు": "Vikarabad",
+  "వనపర్తి": "Wanaparthy",
+  "వరంగల్": "Warangal",
+  "వరంగల్ (రూరల్)": "Warangal",
+  "యాదాద్రి భువనగిరి": "Yadadri Bhuvanagiri",
+  "యాదాద్రి": "Yadadri Bhuvanagiri",
+  "భువనగిరి": "Yadadri Bhuvanagiri",
+};
+
+/** Romanized district spelling variants → canonical district name. */
+const ROMAN_DISTRICTS: Record<string, string> = {
+  adilabad: "Adilabad",
+  "bhadradri kothagudem": "Bhadradri Kothagudem",
+  bhadradri: "Bhadradri Kothagudem",
+  kothagudem: "Bhadradri Kothagudem",
+  "bhadradri kothagudam": "Bhadradri Kothagudem",
+  "bhadradri kothgudem": "Bhadradri Kothagudem",
+  hanumakonda: "Hanumakonda",
+  hanamkonda: "Hanumakonda",
+  hanmakonda: "Hanumakonda",
+  "warangal urban": "Hanumakonda",
+  "warangal city": "Hanumakonda",
+  hyderabad: "Hyderabad",
+  hyd: "Hyderabad",
+  "hyderabad district": "Hyderabad",
+  jagitial: "Jagitial",
+  jagtial: "Jagitial",
+  jagityal: "Jagitial",
+  jagtiyal: "Jagitial",
+  jagital: "Jagitial",
+  jagityala: "Jagitial",
+  jangaon: "Jangaon",
+  jangaun: "Jangaon",
+  "jayashankar bhupalapally": "Jayashankar Bhupalapally",
+  jayashankar: "Jayashankar Bhupalapally",
+  "jayashankar bhupalpally": "Jayashankar Bhupalapally",
+  "jayashankar bhoopalpally": "Jayashankar Bhupalapally",
+  jayshankar: "Jayashankar Bhupalapally",
+  bhupalpally: "Jayashankar Bhupalapally",
+  bhupalapally: "Jayashankar Bhupalapally",
+  bhupalpalle: "Jayashankar Bhupalapally",
+  "jaya shankar": "Jayashankar Bhupalapally",
+  "jogulamba gadwal": "Jogulamba Gadwal",
+  jogulamba: "Jogulamba Gadwal",
+  gadwal: "Jogulamba Gadwal",
+  kamareddy: "Kamareddy",
+  kamareddi: "Kamareddy",
+  kamaredi: "Kamareddy",
+  karimnagar: "Karimnagar",
+  "karim nagar": "Karimnagar",
+  khammam: "Khammam",
+  "komarambheem asifabad": "Komarambheem Asifabad",
+  komarambheem: "Komarambheem Asifabad",
+  "komaram bheem": "Komarambheem Asifabad",
+  "komaram bheem asifabad": "Komarambheem Asifabad",
+  kumurambheem: "Komarambheem Asifabad",
+  "kumuram bheem": "Komarambheem Asifabad",
+  kumrambheem: "Komarambheem Asifabad",
+  "kumurambheem asifabad": "Komarambheem Asifabad",
+  asifabad: "Komarambheem Asifabad",
+  mahabubabad: "Mahabubabad",
+  mahbubabad: "Mahabubabad",
+  mahaboobabad: "Mahabubabad",
+  mahabubnagar: "Mahabubnagar",
+  mahbubnagar: "Mahabubnagar",
+  mahaboobnagar: "Mahabubnagar",
+  mancherial: "Mancherial",
+  manchirial: "Mancherial",
+  manchariyal: "Mancherial",
+  medak: "Medak",
+  "medchal malkajgiri": "Medchal Malkajgiri",
+  medchal: "Medchal Malkajgiri",
+  malkajgiri: "Medchal Malkajgiri",
+  "medchal malkajgiri district": "Medchal Malkajgiri",
+  mulugu: "Mulugu",
+  mulug: "Mulugu",
+  nagarkurnool: "Nagarkurnool",
+  "nagar kurnool": "Nagarkurnool",
+  nagarkurnul: "Nagarkurnool",
+  nalgonda: "Nalgonda",
+  nalgunda: "Nalgonda",
+  narayanpet: "Narayanpet",
+  narayanapet: "Narayanpet",
+  narayampet: "Narayanpet",
+  nirmal: "Nirmal",
+  nizamabad: "Nizamabad",
+  peddapalli: "Peddapalli",
+  peddapalle: "Peddapalli",
+  peddapally: "Peddapalli",
+  "rajanna sircilla": "Rajanna Sircilla",
+  sircilla: "Rajanna Sircilla",
+  siricilla: "Rajanna Sircilla",
+  "rajanna siricilla": "Rajanna Sircilla",
+  rangareddy: "Rangareddy",
+  "ranga reddy": "Rangareddy",
+  rangareddi: "Rangareddy",
+  "ranga reddi": "Rangareddy",
+  sangareddy: "Sangareddy",
+  sangareddi: "Sangareddy",
+  "sanga reddy": "Sangareddy",
+  siddipet: "Siddipet",
+  siddhipet: "Siddipet",
+  suryapet: "Suryapet",
+  vikarabad: "Vikarabad",
+  vicarabad: "Vikarabad",
+  wanaparthy: "Wanaparthy",
+  wanaparthi: "Wanaparthy",
+  warangal: "Warangal",
+  "warangal rural": "Warangal",
+  "yadadri bhuvanagiri": "Yadadri Bhuvanagiri",
+  yadadri: "Yadadri Bhuvanagiri",
+  "yadadri bhongir": "Yadadri Bhuvanagiri",
+  "yadadri bhongiri": "Yadadri Bhuvanagiri",
+  bhuvanagiri: "Yadadri Bhuvanagiri",
+};
+
+/** All 119 Assembly Constituencies (canonical display names). */
+const AC_NAMES = [
+  "Sirpur", "Chennur", "Bellampalle", "Mancherial", "Asifabad", "Khanapur",
+  "Adilabad", "Boath", "Nirmal", "Mudhole", "Armur", "Bodhan",
+  "Jukkal", "Banswada", "Yellareddy", "Kamareddy", "Nizamabad Urban", "Nizamabad Rural",
+  "Balkonda", "Korutla", "Jagtial", "Dharmapuri", "Ramagundam", "Manthani",
+  "Peddapalli", "Karimnagar", "Choppadandi", "Vemulawada", "Sircilla", "Manakondur",
+  "Huzurabad", "Husnabad", "Siddipet", "Medak", "Narayankhed", "Andole",
+  "Narsapur", "Zahirabad", "Sangareddy", "Patancheru", "Dubbak", "Gajwel",
+  "Quthbullapur", "Kukatpally", "Uppal", "Malkajgiri", "Medchal", "Secunderabad Cantonment",
+  "Musheerabad", "Malakpet", "Amberpet", "Khairatabad", "Jubilee Hills", "Sanathnagar",
+  "Nampally", "Karwan", "Goshamahal", "Charminar", "Chandrayangutta", "Yakutpura",
+  "Bahadurpura", "Maheshwaram", "Rajendranagar", "Serilingampally", "Chevella", "Pargi",
+  "Vikarabad", "Tandur", "Kodangal", "Narayanpet", "Mahbubnagar", "Jadcherla",
+  "Devarkadra", "Makthal", "Wanaparthy", "Gadwal", "Alampur", "Nagarkurnool",
+  "Achampet", "Kalwakurthy", "Shadnagar", "Kollapur", "Devarakonda", "Nagarjuna Sagar",
+  "Miryalaguda", "Huzurnagar", "Kodad", "Suryapet", "Nalgonda", "Munugode",
+  "Bhongir", "Nakrekal", "Thungathurthi", "Alair", "Jangaon", "Ghanpur (Station)",
+  "Palakurthi", "Dornakal", "Mahabubabad", "Narsampet", "Parkal", "Warangal West",
+  "Warangal East", "Wardhannapet", "Bhupalpalle", "Mulug", "Pinapaka", "Yellandu",
+  "Khammam", "Palair", "Madhira", "Wyra", "Sathupalli", "Kothagudem",
+  "Aswaraopeta", "Bhadrachalam", "Secunderabad", "Lal Bahadur Nagar", "Ibrahimpatnam",
+];
+
+/** AC spelling variants → canonical AC name. Canonical keys come from AC_NAMES. */
+const AC_VARIANTS: Record<string, string> = {
+  siripuram: "Sirpur",
+  chennuru: "Chennur",
+  chenur: "Chennur",
+  bellampalli: "Bellampalle",
+  bellampally: "Bellampalle",
+  manchirial: "Mancherial",
+  both: "Boath",
+  mudhol: "Mudhole",
+  armoor: "Armur",
+  banswara: "Banswada",
+  bansuvada: "Banswada",
+  yellareddi: "Yellareddy",
+  kamareddi: "Kamareddy",
+  "nizamabad city": "Nizamabad Urban",
+  "nizamabad u": "Nizamabad Urban",
+  "nizamabad r": "Nizamabad Rural",
+  koratla: "Korutla",
+  jagitial: "Jagtial",
+  jagityal: "Jagtial",
+  jagtiyal: "Jagtial",
+  peddapalle: "Peddapalli",
+  peddapally: "Peddapalli",
+  "karim nagar": "Karimnagar",
+  chopardandi: "Choppadandi",
+  choppadandhi: "Choppadandi",
+  vemulavada: "Vemulawada",
+  siricilla: "Sircilla",
+  siddhipet: "Siddipet",
+  sangareddi: "Sangareddy",
+  dubbaka: "Dubbak",
+  qutbullapur: "Quthbullapur",
+  kutbullapur: "Quthbullapur",
+  quthbullapally: "Quthbullapur",
+  quathbullapur: "Quthbullapur",
+  kukatpalle: "Kukatpally",
+  kukatpalli: "Kukatpally",
+  "malkajgiri urban": "Malkajgiri",
+  "malkajgiri east": "Malkajgiri",
+  "malkajgiri west": "Malkajgiri",
+  "secunderabad cantt": "Secunderabad Cantonment",
+  "secunderabad cant": "Secunderabad Cantonment",
+  "sc cantonment": "Secunderabad Cantonment",
+  "secunderabad cantt sc": "Secunderabad Cantonment",
+  musherabad: "Musheerabad",
+  khairtabad: "Khairatabad",
+  "sanath nagar": "Sanathnagar",
+  "gosha mahal": "Goshamahal",
+  chandragutta: "Chandrayangutta",
+  yaqutpura: "Yakutpura",
+  maheswaram: "Maheshwaram",
+  "rajendra nagar": "Rajendranagar",
+  serilingampalli: "Serilingampally",
+  "seri lingampally": "Serilingampally",
+  parigi: "Pargi",
+  vicarabad: "Vikarabad",
+  narayanapet: "Narayanpet",
+  mahabubnagar: "Mahbubnagar",
+  mahaboobnagar: "Mahbubnagar",
+  "nagar kurnool": "Nagarkurnool",
+  kalwakurthi: "Kalwakurthy",
+  "shad nagar": "Shadnagar",
+  devarkonda: "Devarakonda",
+  nagarjunasagar: "Nagarjuna Sagar",
+  "miryala guda": "Miryalaguda",
+  miryalguda: "Miryalaguda",
+  "huzur nagar": "Huzurnagar",
+  bhongiri: "Bhongir",
+  bhuvanagiri: "Bhongir",
+  thungaturthi: "Thungathurthi",
+  thungaturthy: "Thungathurthi",
+  "ghanpur station": "Ghanpur (Station)",
+  "ghanpur stn": "Ghanpur (Station)",
+  ghanpur: "Ghanpur (Station)",
+  palakurthy: "Palakurthi",
+  mahbubabad: "Mahabubabad",
+  mahaboobabad: "Mahabubabad",
+  "warangal w": "Warangal West",
+  "warangal e": "Warangal East",
+  waradhanapet: "Wardhannapet",
+  wardannapet: "Wardhannapet",
+  bhupalpally: "Bhupalpalle",
+  bhupalapally: "Bhupalpalle",
+  bhupalpalli: "Bhupalpalle",
+  mulugu: "Mulug",
+  sathupalle: "Sathupalli",
+  aswaraopet: "Aswaraopeta",
+  "lb nagar": "Lal Bahadur Nagar",
+  lbnagar: "Lal Bahadur Nagar",
+  brahimpatnam: "Ibrahimpatnam",
+  ibrahimpatan: "Ibrahimpatnam",
+};
+
+/** Auto-expand "<alias> gen|sc|st" reservation-suffix variants. */
+function withReservationSuffixes(base: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [alias, name] of Object.entries(base)) {
+    out[alias] = name;
+    out[`${alias} gen`] = name;
+    out[`${alias} sc`] = name;
+    out[`${alias} st`] = name;
+  }
+  return out;
+}
+
+const AC_BASE: Record<string, string> = { ...AC_VARIANTS };
+for (const name of AC_NAMES) AC_BASE[name.toLowerCase()] = name;
+
+const GEO_ALIASES = {
+  telugu: TELUGU_DISTRICTS,
+  districts: ROMAN_DISTRICTS,
+  districtNames: [...new Set(Object.values(ROMAN_DISTRICTS))].sort(),
+  acs: withReservationSuffixes(AC_BASE),
+};
 
 // ── Config ────────────────────────────────────────────────
 const DATABASE_URL = Deno.env.get("DATABASE_URL");
@@ -76,13 +383,6 @@ async function hashPasswordAsync(password: string): Promise<string> {
   return pbkdf2Hash(password, saltHex, 600_000);
 }
 
-/** Strong random password for Super Admin bootstrap (never committed to the repo). */
-function randomPassword(length: number): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
-  const out = new Uint8Array(length);
-  crypto.getRandomValues(out);
-  return [...out].map((b) => chars[b % chars.length]).join("");
-}
 
 async function verifyPassword(
   password: string,
@@ -217,9 +517,6 @@ async function seedMissingSuperAdminSlots(
   let count = sqlCountN(countRows[0]);
   if (count >= SUPER_ADMIN_SLOTS) return { created };
 
-  await sqlFn`ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_role_check`.catch(() => null);
-  await sqlFn`ALTER TABLE app_users ADD CONSTRAINT app_users_role_check CHECK (role IN ('super_admin','admin','field','user','surveyor'))`.catch(() => null);
-
   const starterHash = await hashPasswordAsync(SA_SLOT_STARTER_PASSWORD);
   for (let i = 0; i < SA_SLOT_USERNAMES.length && count < SUPER_ADMIN_SLOTS; i++) {
     const username = SA_SLOT_USERNAMES[i];
@@ -273,31 +570,30 @@ function withCors(req: Request, res: Response): Response {
   return res;
 }
 
-function json(data: unknown, status = 200) {
+const CORS_HEADERS: Record<string, string> = {
+  "access-control-allow-headers":
+    "authorization, content-type, x-auth-token, accept, origin, range, content-disposition",
+  "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
+  "access-control-expose-headers":
+    "content-disposition, content-type, content-length, location",
+};
+
+function corsHeaders(_req?: Request): Record<string, string> {
+  return { ...CORS_HEADERS };
+}
+
+function corsPreflight(): Response {
+  return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+
+function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store, no-cache, must-revalidate",
-      "access-control-allow-headers": "authorization, content-type, x-auth-token",
-      "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
+      ...CORS_HEADERS,
     },
-  });
-}
-
-function corsHeaders(_req?: Request): Record<string, string> {
-  // access-control-allow-origin is applied centrally by withCors().
-  return {
-    "access-control-allow-headers": "authorization, content-type, x-auth-token, accept, origin, range, content-disposition",
-    "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
-    "access-control-expose-headers": "content-disposition, content-type, content-length, location",
-  };
-}
-
-function corsPreflight() {
-  return new Response(null, {
-    status: 204,
-    headers: corsHeaders(),
   });
 }
 
@@ -319,53 +615,64 @@ function bearer(req: Request): string | null {
   return null; // Removed URL query token support for security
 }
 
-async function getUser(token: string | null) {
+const BOOL_FIELDS = [
+  "verified",
+  "can_manage_questions",
+  "can_edit_surveys",
+  "can_review_data",
+  "can_verify_surveyors",
+  "can_assign_surveyors",
+  "can_crud_questionnaire",
+  "can_validate_proof",
+  "can_web_survey",
+] as const;
+
+const NUM_FIELDS = [
+  "max_questions_per_survey",
+  "max_surveys",
+  "max_surveyors",
+  "max_records",
+] as const;
+
+const USER_COLUMNS = [
+  "u.id", "u.username", "u.display_name", "u.role", "u.active", "u.created_at",
+  "u.company_id", "u.company_name", "u.key_id", "u.phone",
+  ...BOOL_FIELDS.map((f) => `u.${f}`),
+  ...NUM_FIELDS.map((f) => `u.${f}`),
+].join(", ");
+
+type PortalUser = {
+  id: unknown;
+  username: string;
+  name: string;
+  role: string;
+  active: unknown;
+  created_at: unknown;
+  company_id: number | null;
+  company_name: string | null;
+  key_id: string | null;
+  phone: string | null;
+} & Record<(typeof BOOL_FIELDS)[number], boolean> &
+  Record<(typeof NUM_FIELDS)[number], number>;
+
+async function getUser(token: string | null): Promise<PortalUser | null> {
   if (!token || !sql) return null;
-  const rows = await sql`
-    SELECT u.id, u.username, u.display_name, u.role, u.active, u.created_at,
-           u.company_id, u.company_name,
-           u.key_id, u.phone,
-           COALESCE(u.verified, FALSE) AS verified,
-           COALESCE(u.can_manage_questions, FALSE) AS can_manage_questions,
-           COALESCE(u.can_edit_surveys, FALSE) AS can_edit_surveys,
-           COALESCE(u.can_review_data, FALSE) AS can_review_data,
-           COALESCE(u.can_verify_surveyors, FALSE) AS can_verify_surveyors,
-           COALESCE(u.can_assign_surveyors, FALSE) AS can_assign_surveyors,
-           COALESCE(u.can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
-           COALESCE(u.can_validate_proof, FALSE) AS can_validate_proof,
-           COALESCE(u.can_web_survey, FALSE) AS can_web_survey,
-           COALESCE(u.max_questions_per_survey, 0) AS max_questions_per_survey,
-           COALESCE(u.max_surveys, 0) AS max_surveys,
-           COALESCE(u.max_surveyors, 0) AS max_surveyors,
-           COALESCE(u.max_records, 0) AS max_records
-    FROM app_sessions s
-    JOIN app_users u ON u.id = s.user_id
-    WHERE s.token = ${token}
-      AND s.expires_at > NOW()
-      AND u.active = TRUE
-      AND u.role IN ('super_admin', 'admin', 'surveyor')
-    LIMIT 1
-  `.catch(async () =>
-    await sql`
-      SELECT u.id, u.username, u.display_name, u.role, u.active, u.created_at,
-             NULL AS company_id, NULL AS company_name,
-             NULL AS key_id, NULL AS phone, NULL AS photo, NULL AS aadhaar_front, NULL AS aadhaar_back,
-             FALSE AS verified, FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
-             FALSE AS can_review_data, FALSE AS can_verify_surveyors, FALSE AS can_assign_surveyors, FALSE AS can_crud_questionnaire,
-             FALSE AS can_validate_proof, FALSE AS can_web_survey, 0 AS max_questions_per_survey, 0 AS max_surveys,
-             0 AS max_surveyors, 0 AS max_records
-      FROM app_sessions s
-      JOIN app_users u ON u.id = s.user_id
-      WHERE s.token = ${token}
-        AND s.expires_at > NOW()
-        AND u.active = TRUE
-        AND u.role IN ('super_admin', 'admin', 'surveyor')
-      LIMIT 1
-    `.catch(() => [])
-  );
-  const u = rows[0] as Record<string, unknown> | undefined;
+  const rows = (await sql(
+    `SELECT ${USER_COLUMNS}
+     FROM app_sessions s
+     JOIN app_users u ON u.id = s.user_id
+     WHERE s.token = $1
+       AND s.expires_at > NOW()
+       AND u.active = TRUE
+       AND u.role IN ('super_admin', 'admin', 'surveyor')
+     LIMIT 1`,
+    [token],
+  ).catch(() => [])) as Record<string, unknown>[];
+
+  const u = rows[0];
   if (!u) return null;
-  return {
+
+  const me: Record<string, unknown> = {
     id: u.id,
     username: u.username,
     name: u.display_name || u.username,
@@ -376,20 +683,10 @@ async function getUser(token: string | null) {
     company_name: u.company_name ? String(u.company_name) : null,
     key_id: u.key_id || null,
     phone: u.phone || null,
-    verified: sqlBool(u.verified),
-    can_manage_questions: sqlBool((u as Record<string, unknown>).can_manage_questions),
-    can_edit_surveys: sqlBool((u as Record<string, unknown>).can_edit_surveys),
-    can_review_data: sqlBool((u as Record<string, unknown>).can_review_data),
-    can_verify_surveyors: sqlBool((u as Record<string, unknown>).can_verify_surveyors),
-    can_assign_surveyors: sqlBool((u as Record<string, unknown>).can_assign_surveyors),
-    can_crud_questionnaire: sqlBool((u as Record<string, unknown>).can_crud_questionnaire),
-    can_validate_proof: sqlBool((u as Record<string, unknown>).can_validate_proof),
-    can_web_survey: sqlBool((u as Record<string, unknown>).can_web_survey),
-    max_questions_per_survey: Number((u as Record<string, unknown>).max_questions_per_survey) || 0,
-    max_surveys: Number((u as Record<string, unknown>).max_surveys) || 0,
-    max_surveyors: Number((u as Record<string, unknown>).max_surveyors) || 0,
-    max_records: Number((u as Record<string, unknown>).max_records) || 0,
   };
+  for (const f of BOOL_FIELDS) me[f] = sqlBool(u[f]);
+  for (const f of NUM_FIELDS) me[f] = Number(u[f]) || 0;
+  return me as PortalUser;
 }
 
 /** Portal roles: Client Admin + platform Super Admin (01-PRD.md §2). Super Admin has all admin powers. */
@@ -441,6 +738,15 @@ function parseQuestionsArray(raw: unknown): unknown[] {
   return Array.isArray(qs) ? qs : [];
 }
 
+/** Retry a query once — transient HTTP failure on the serverless driver. */
+async function retryOnce<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch {
+    return await run();
+  }
+}
+
 /** Surveys assigned to a surveyor, with questions parsed for the field app. */
 async function listAssignedSurveys(
   sqlFn: NonNullable<typeof sql>,
@@ -453,22 +759,15 @@ async function listAssignedSurveys(
   questions: unknown[];
   updated_at: unknown;
 }[]> {
-  let rows = await sqlFn`
-    SELECT f.id, f.form_key, f.title, f.display_lang, f.questions, f.updated_at
-    FROM survey_assignments sa
-    JOIN survey_form f ON f.id = sa.survey_id
-    WHERE sa.user_id = ${userId}
-    ORDER BY f.title
-  `.catch(() => null);
-  if (!rows) {
-    rows = await sqlFn`
-      SELECT f.id, f.form_key, f.title, f.questions, f.updated_at
+  const rows = await retryOnce(() =>
+    sqlFn`
+      SELECT f.id, f.form_key, f.title, f.display_lang, f.questions, f.updated_at
       FROM survey_assignments sa
       JOIN survey_form f ON f.id = sa.survey_id
       WHERE sa.user_id = ${userId}
       ORDER BY f.title
-    `.catch(() => []);
-  }
+    `
+  ).catch(() => []);
   return (rows as Record<string, unknown>[]).map((r) => ({
     id: r.id,
     form_key: r.form_key,
@@ -488,9 +787,6 @@ async function peakQuestionsForAdmin(
   adminId: number,
   companyName?: string | null,
 ): Promise<number> {
-  // No company predicate — owned + explicitly-granted surveys only, same
-  // rule as adminFormKeyScope (see SCHEMA.md). companyName kept as a
-  // param for call-site compatibility but intentionally unused here.
   void companyName;
   const rows = await sqlFn`
       SELECT questions FROM survey_form
@@ -503,17 +799,6 @@ async function peakQuestionsForAdmin(
   let peak = 0;
   for (const r of rows as { questions?: unknown }[]) {
     peak = Math.max(peak, parseQuestionsArray(r.questions).length);
-  }
-  // Fallback: own surveys only if nothing matched (older DBs without access rows)
-  if (peak === 0) {
-    const own = await sqlFn`
-      SELECT questions FROM survey_form
-      WHERE created_by = ${adminId}
-        AND form_key NOT IN ('default', 'legacy')
-    `.catch(() => []);
-    for (const r of own as { questions?: unknown }[]) {
-      peak = Math.max(peak, parseQuestionsArray(r.questions).length);
-    }
   }
   return peak;
 }
@@ -540,15 +825,7 @@ async function upsertSurveyAssignment(surveyId: number, userId: number): Promise
     `;
     return true;
   } catch {
-    try {
-      await sql`
-        INSERT INTO survey_assignments (survey_id, user_id)
-        VALUES (${surveyId}, ${userId})
-      `;
-      return true;
-    } catch {
-      return false;
-    }
+    return false;
   }
 }
 
@@ -735,20 +1012,9 @@ async function listAdminInbox(
   afterId = 0,
 ) {
   const after = Math.max(0, Number(afterId) || 0);
-  if (admin.role === "super_admin") {
-    // Surveyor profile verification notifications (profile_media) belong exclusively to the Client Admin
-    // profile who created/manages those surveyors. Exclude profile_media from Super Admin inbox.
-    return await sqlFn`
-      SELECT a.id, a.actor_id, a.actor_name, a.action, a.entity_type, a.entity_id, a.meta, a.created_at,
-             COALESCE(u.verified, FALSE) AS surveyor_verified
-      FROM audit_log a
-      LEFT JOIN app_users u ON u.id = a.actor_id
-      WHERE a.action = 'submission_create'
-        AND a.id > ${after}
-      ORDER BY a.id DESC
-      LIMIT 50
-    `.catch(() => []);
-  }
+  const isSuper = admin.role === "super_admin";
+  const adminId = Number(admin.id);
+
   return await sqlFn`
     SELECT a.id, a.actor_id, a.actor_name, a.action, a.entity_type, a.entity_id, a.meta, a.created_at,
            COALESCE(u.verified, FALSE) AS surveyor_verified
@@ -757,28 +1023,20 @@ async function listAdminInbox(
       WHEN a.action = 'profile_media' AND a.entity_id ~ '^[0-9]+$' THEN a.entity_id::int
       ELSE a.actor_id
     END
-    WHERE a.action IN ('profile_media', 'submission_create')
+    WHERE (a.action = 'submission_create' OR (${!isSuper} AND a.action = 'profile_media'))
       AND a.id > ${after}
       AND (
-        a.actor_id IN (
+        ${isSuper}
+        OR CASE
+          WHEN a.action = 'profile_media' AND a.entity_id ~ '^[0-9]+$' THEN a.entity_id::int
+          ELSE a.actor_id
+        END IN (
           SELECT id FROM app_users
           WHERE role = 'surveyor'
             AND (
-              created_by = ${admin.id}
-              OR company_id = (SELECT company_id FROM app_users WHERE id = ${admin.id} AND company_id IS NOT NULL)
+              created_by = ${adminId}
+              OR company_id = (SELECT company_id FROM app_users WHERE id = ${adminId} AND company_id IS NOT NULL)
             )
-        )
-        OR (
-          a.action = 'profile_media'
-          AND a.entity_id ~ '^[0-9]+$'
-          AND a.entity_id::int IN (
-            SELECT id FROM app_users
-            WHERE role = 'surveyor'
-              AND (
-                created_by = ${admin.id}
-                OR company_id = (SELECT company_id FROM app_users WHERE id = ${admin.id} AND company_id IS NOT NULL)
-              )
-          )
         )
       )
     ORDER BY a.id DESC
@@ -915,156 +1173,85 @@ const DEFAULT_QUESTIONS = [
   },
 ];
 
-// Legacy rows (excel-upload / old app): no GPS/camera, but answers exist.
-// Question definitions matching the excel columns so the Report/Analyze tabs
-// build question filters + charts for the legacy survey (empty options = the
-// analytics pipeline collects actual submitted values automatically).
-const LEGACY_QUESTIONS = [
-  {
-    id: "gender",
-    label: "Gender",
-    type: "choice",
-    options: ["Male", "Female", "Other"],
-    required: true,
-  },
-  {
-    id: "caste",
-    label: "Caste category",
-    type: "choice",
-    options: ["BC", "SC", "ST", "OC", "Minority", "Other"],
-    required: false,
-  },
-  {
-    id: "age",
-    label: "Age group",
-    type: "age",
-    required: false,
-  },
-  {
-    id: "education",
-    label: "Education",
-    type: "choice",
-    options: [],
-    required: false,
-  },
-  {
-    id: "employment",
-    label: "Employment",
-    type: "choice",
-    options: [],
-    required: false,
-  },
-  {
-    id: "performance",
-    label: "Government performance",
-    type: "choice",
-    options: [],
-    required: false,
-  },
-  {
-    id: "winning_party",
-    label: "Who will win here?",
-    type: "choice",
-    options: ["Congress", "BJP", "BRS", "Others", "Undecided"],
-    required: true,
-  },
-  {
-    id: "pm_preference",
-    label: "Preferred PM",
-    type: "choice",
-    options: ["Narendra Modi", "Rahul Gandhi", "Other", "Undecided"],
-    required: false,
-  },
-  {
-    id: "ward",
-    label: "Ward",
-    type: "text",
-    required: false,
-  },
-  {
-    id: "issues",
-    label: "Top issues (comma separated)",
-    type: "text",
-    required: false,
-  },
-];
 
-async function ensureSchema() {
+
+const PII_KEYS = new Set([
+  "aadhaar", "aadhaarnumber", "aadhaar_no", "aadhaarno",
+  "phone", "phonenumber", "phoneno", "mobile", "mobileno",
+  "respondentphone", "respondentmobile",
+]);
+
+/** Remove Aadhaar / phone answers before persisting a submission. */
+function stripPii(answers: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(answers)) {
+    const key = k.toLowerCase().replace(/[\s_\-().]/g, "");
+    if (PII_KEYS.has(key)) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+async function ensureSchema(): Promise<void> {
   if (!sql) return;
-  await sql`
-    CREATE TABLE IF NOT EXISTS app_users (
-      id SERIAL PRIMARY KEY,
-      username TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
-      display_name TEXT,
-      role TEXT NOT NULL DEFAULT 'admin',
-      active BOOLEAN NOT NULL DEFAULT TRUE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
-  // Admin-assigned target: how many records each surveyor must complete
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS target_quota INTEGER NOT NULL DEFAULT 0`
-    .catch(() => null);
-  // Surveyor profile: unique key ID + contact + photo + Aadhaar card images
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS key_id TEXT`.catch(() => null);
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS phone TEXT`.catch(() => null);
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS photo TEXT`.catch(() => null);
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS aadhaar_front TEXT`.catch(() => null);
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS aadhaar_back TEXT`.catch(() => null);
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS verified BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
-  // Grant-based powers for Client Admins (FR-QB-02 governance, least privilege):
-  // question-bank CRUD, survey-question editing, data review/verification, surveyor verification.
-  // Super Admin always has all powers; each is granted/revoked per account by Super Admin only.
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_manage_questions BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_edit_surveys BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_review_data BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_verify_surveyors BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_assign_surveyors BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_crud_questionnaire BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_validate_proof BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_web_survey BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
-  // Super Admin TOTP (3 seats). Secret never returned after confirm except on reset/setup.
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_secret TEXT`.catch(() => null);
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE`.catch(() => null);
-  // Super-Admin-set cap on how many questions a Client Admin may put into one survey (0 = unlimited)
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_questions_per_survey INT NOT NULL DEFAULT 0`.catch(() => null);
-  // Super-Admin-set cap on how many surveys a Client Admin may create (0 = unlimited)
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveys INT NOT NULL DEFAULT 0`.catch(() => null);
-  await sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS created_by INT`.catch(() => null);
-  await sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS display_lang TEXT NOT NULL DEFAULT 'en'`.catch(() => null);
-  // Company a project is mapped under (registered at creation by the Super Admin).
-  await sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_name TEXT`.catch(() => null);
-  // Companies registry (Super Admin creates them; Client Admins are added to them).
-  // company_name on app_users stays in sync for display/back-compat.
-  await sql`
-    CREATE TABLE IF NOT EXISTS companies (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      created_by INTEGER REFERENCES app_users(id) ON DELETE SET NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `.catch(() => null);
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS company_id INT`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_app_users_company ON app_users(company_id)`.catch(() => null);
-  // survey_form.company_id is the reliable company↔project link. company_name
-  // on survey_form is display/back-compat only — never a live access check.
-  await sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_id INT`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_survey_form_company ON survey_form(company_id)`.catch(() => null);
-  await sql`
-    ALTER TABLE survey_form
-    ADD CONSTRAINT survey_form_company_id_fkey
-    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
-  `.catch(() => null);
-  // Super-Admin-set cap on how many surveyors a Client Admin may create (0 = unlimited)
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveyors INT NOT NULL DEFAULT 0`.catch(() => null);
-  // Super-Admin-set cap on total field records under this Client Admin (0 = unlimited)
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_records INT NOT NULL DEFAULT 0`.catch(() => null);
-  // Ownership: who created each account — surveyor caps count accounts created by that admin
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS created_by INT`.catch(() => null);
-  // Client Admin organisation.  Super Admin uses this to identify the company
-  // receiving access to a project; it is deliberately not a surveyor field.
-  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS company_name TEXT`.catch(() => null);
-  // Unique key ID backfill for existing users (idempotent — different key per row)
+
+  const steps: Array<() => Promise<unknown>> = [
+    // app_users — columns getUser() reads
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS company_id INTEGER`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS company_name TEXT`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS key_id TEXT`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS phone TEXT`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS verified BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_manage_questions BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_edit_surveys BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_review_data BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_verify_surveyors BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_assign_surveyors BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_crud_questionnaire BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_validate_proof BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_web_survey BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_questions_per_survey INTEGER NOT NULL DEFAULT 0`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveys INTEGER NOT NULL DEFAULT 0`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveyors INTEGER NOT NULL DEFAULT 0`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_records INTEGER NOT NULL DEFAULT 0`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_secret TEXT`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS target_quota INTEGER NOT NULL DEFAULT 0`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS created_by INT`,
+    // Role check (moved out of seedMissingSuperAdminSlots)
+    () => sql`ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_role_check`,
+    () => sql`ALTER TABLE app_users ADD CONSTRAINT app_users_role_check CHECK (role IN ('super_admin','admin','field','user','surveyor'))`,
+    // Enables ON CONFLICT (survey_id, user_id) in upsertSurveyAssignment
+    () => sql`CREATE UNIQUE INDEX IF NOT EXISTS survey_assignments_survey_user_uidx ON survey_assignments (survey_id, user_id)`,
+    // Companies table
+    () => sql`
+      CREATE TABLE IF NOT EXISTS companies (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        created_by INTEGER REFERENCES app_users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `,
+    () => sql`CREATE INDEX IF NOT EXISTS idx_app_users_company ON app_users(company_id)`,
+    () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS created_by INT`,
+    () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS display_lang TEXT NOT NULL DEFAULT 'en'`,
+    () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_name TEXT`,
+    () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_id INT`,
+    () => sql`CREATE INDEX IF NOT EXISTS idx_survey_form_company ON survey_form(company_id)`,
+    () => sql`
+      ALTER TABLE survey_form
+      ADD CONSTRAINT survey_form_company_id_fkey
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
+    `,
+    // Optional self-healing respondent phone drop
+    () => sql`ALTER TABLE survey_respondents DROP COLUMN IF EXISTS phone`,
+  ];
+
+  for (const step of steps) {
+    await step().catch(() => null);
+  }
+
+  // Backfill key_id for existing users
   const noKey = await sql`
     SELECT id FROM app_users WHERE key_id IS NULL OR key_id = ''
   `.catch(() => []);
@@ -1072,392 +1259,11 @@ async function ensureSchema() {
     await sql`UPDATE app_users SET key_id = ${await uniqueUserKeyId()} WHERE id = ${r.id}`
       .catch(() => null);
   }
-  // Super Admin bootstrap (12-DEPLOYMENT.md §4): OPT-IN via SUPER_ADMIN_AUTO_BOOTSTRAP=1.
-  // Default is the UI path — the first portal admin creates the first Super Admin from the
-  // Surveyors page (no secrets printed, no logs to fish through).
-  if ((Deno.env.get("SUPER_ADMIN_AUTO_BOOTSTRAP") || "0") === "1") {
-  try {
-    const saRows = await sql`SELECT COUNT(*) AS n FROM app_users WHERE role = 'super_admin'`;
-    const saCount = Number((saRows[0] as { n?: unknown } | undefined)?.n ?? 0);
-    if (saCount === 0) {
-      await sql`ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_role_check`.catch(() => null);
-      await sql`ALTER TABLE app_users ADD CONSTRAINT app_users_role_check CHECK (role IN ('super_admin','admin','field','user','surveyor'))`.catch(() => null);
-      const saPass = randomPassword(18);
-      const saHash = await hashPasswordAsync(saPass);
-      const saInserted = await sql`
-        INSERT INTO app_users (username, password_hash, display_name, role, active, key_id)
-        VALUES ('superadmin', ${saHash}, 'Super Admin', 'super_admin', TRUE, ${await uniqueUserKeyId()})
-        ON CONFLICT (username) DO NOTHING
-        RETURNING id, role
-      `.catch(() => []);
-      const saCreated = (saInserted as { id?: unknown; role?: unknown }[])[0];
-      if (saCreated && saCreated.role === "super_admin") {
-        console.log("=== SUPER ADMIN BOOTSTRAP (printed once — keep private) ===");
-        console.log("username: superadmin");
-        console.log(`password: ${saPass}`);
-        console.log("Change it after first login.");
-      } else {
-        console.log(
-          "super admin bootstrap: 'superadmin' username already in use — no account created. Use /api/super-admin.",
-        );
-      }
-    }
-  } catch (e) {
-    console.log("super admin bootstrap skipped:", (e as Error).message);
-  }
-  }
 
-  // Fill empty Super Admin seats as superadmin2 / superadmin3 with starter
-  // password admin123. Never overwrites an existing account (so a changed
-  // superadmin password stays). Each new slot must enroll TOTP on first login.
+  // Fill empty Super Admin seats as superadmin2 / superadmin3
   await seedMissingSuperAdminSlots(sql).catch((e) => {
     console.log("super admin slot seed skipped:", (e as Error).message);
   });
-
-  await sql`
-    CREATE TABLE IF NOT EXISTS app_sessions (
-      token TEXT PRIMARY KEY,
-      user_id INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
-      expires_at TIMESTAMPTZ NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
-  await sql`
-    CREATE TABLE IF NOT EXISTS submissions (
-      id BIGSERIAL PRIMARY KEY,
-      payload JSONB NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
-
-  // Dynamic questions form (admin dashboard → field app)
-  await sql`
-    CREATE TABLE IF NOT EXISTS survey_form (
-      id SERIAL PRIMARY KEY,
-      form_key TEXT NOT NULL UNIQUE DEFAULT 'default',
-      title TEXT NOT NULL DEFAULT 'Field Survey',
-      questions JSONB NOT NULL DEFAULT '[]'::jsonb,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `.catch(() => null);
-
-  // Media separate from Q/A JSON — prefer free external URL links (not Neon base64)
-  await sql`
-    CREATE TABLE IF NOT EXISTS survey_media (
-      id BIGSERIAL PRIMARY KEY,
-      submission_id BIGINT REFERENCES submissions(id) ON DELETE CASCADE,
-      kind TEXT NOT NULL,
-      mime TEXT,
-      data TEXT,
-      url TEXT,
-      storage TEXT,
-      meta JSONB DEFAULT '{}'::jsonb,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `.catch(() => null);
-
-  await sql`ALTER TABLE survey_media ADD COLUMN IF NOT EXISTS url TEXT`.catch(() => null);
-  await sql`ALTER TABLE survey_media ADD COLUMN IF NOT EXISTS storage TEXT`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_survey_media_sub ON survey_media(submission_id)`.catch(() => null);
-
-  // Multi-survey: surveyors assigned to a survey (field team per survey)
-  await sql`
-    CREATE TABLE IF NOT EXISTS survey_assignments (
-      id SERIAL PRIMARY KEY,
-      survey_id INTEGER NOT NULL REFERENCES survey_form(id) ON DELETE CASCADE,
-      user_id INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (survey_id, user_id)
-    )
-  `.catch(() => null);
-
-  // Multi-survey: respondent list per survey (name/phone, mark done)
-  await sql`
-    CREATE TABLE IF NOT EXISTS survey_respondents (
-      id SERIAL PRIMARY KEY,
-      survey_id INTEGER NOT NULL REFERENCES survey_form(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      phone TEXT,
-      status TEXT NOT NULL DEFAULT 'pending',
-      done_at TIMESTAMPTZ,
-      submission_id BIGINT REFERENCES submissions(id) ON DELETE SET NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_survey_respondents_survey ON survey_respondents(survey_id)`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_survey_assignments_survey ON survey_assignments(survey_id)`.catch(() => null);
-
-  // Shared surveys: Super Admin maps which Client Admins get access to a survey.
-  // The owner is survey_form.created_by; these rows grant additional admins access.
-  await sql`
-    CREATE TABLE IF NOT EXISTS survey_admin_access (
-      id SERIAL PRIMARY KEY,
-      survey_id INTEGER NOT NULL REFERENCES survey_form(id) ON DELETE CASCADE,
-      admin_id INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (survey_id, admin_id)
-    )
-  `.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_survey_admin_access_survey ON survey_admin_access(survey_id)`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_survey_admin_access_admin ON survey_admin_access(admin_id)`.catch(() => null);
-
-  // ── Platform governance (01-PRD.md Super Admin): audit log, global question bank, seat limits ──
-  // FR-AUD-01/02: append-only platform audit trail, per actor account.
-  await sql`
-    CREATE TABLE IF NOT EXISTS audit_log (
-      id BIGSERIAL PRIMARY KEY,
-      actor_id INTEGER,
-      actor_name TEXT,
-      actor_role TEXT,
-      action TEXT NOT NULL,
-      entity_type TEXT,
-      entity_id TEXT,
-      meta JSONB DEFAULT '{}'::jsonb,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log (created_at DESC)`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log (actor_id)`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log (action)`.catch(() => null);
-
-  // FR-QB-02: question bank templates — is_global (Super Admin authored, all tenants)
-  // vs private (Client Admin authored).
-  await sql`
-    CREATE TABLE IF NOT EXISTS question_bank (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL,
-      questions JSONB NOT NULL DEFAULT '[]'::jsonb,
-      is_global BOOLEAN NOT NULL DEFAULT FALSE,
-      created_by INTEGER REFERENCES app_users(id) ON DELETE SET NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_question_bank_global ON question_bank (is_global)`.catch(() => null);
-
-  // BR-006 / FR-USR-10: seat-limit upgrade requests (Client Admin submits, Super Admin decides)
-  await sql`
-    CREATE TABLE IF NOT EXISTS seat_limit_requests (
-      id SERIAL PRIMARY KEY,
-      requested_by INTEGER REFERENCES app_users(id) ON DELETE SET NULL,
-      requested_by_name TEXT,
-      seat_role TEXT NOT NULL DEFAULT 'admin',
-      requested_limit INTEGER NOT NULL,
-      reason TEXT,
-      status TEXT NOT NULL DEFAULT 'pending',
-      decided_by INTEGER,
-      decided_by_name TEXT,
-      decided_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `.catch(() => null);
-  await sql`
-    CREATE TABLE IF NOT EXISTS seat_limits (
-      seat_role TEXT PRIMARY KEY,
-      approved_limit INTEGER NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_by TEXT
-    )
-  `.catch(() => null);
-  // Default admin seats; approval of an upgrade request raises the limit (BR-006)
-  await sql`
-    INSERT INTO seat_limits (seat_role, approved_limit, updated_by)
-    VALUES ('admin', 5, 'system default')
-    ON CONFLICT (seat_role) DO NOTHING
-  `.catch(() => null);
-
-  // Seed default questions if empty
-  try {
-    const forms = await sql`SELECT id FROM survey_form WHERE form_key = 'default' LIMIT 1`;
-    if (!forms.length) {
-      await sql`
-        INSERT INTO survey_form (form_key, title, questions)
-        VALUES (
-          'default',
-          'Field Survey',
-          ${JSON.stringify(DEFAULT_QUESTIONS)}::jsonb
-        )
-      `;
-    }
-  } catch (e) {
-    console.warn("survey_form seed", e);
-  }
-
-  // Legacy rows (pre GPS/camera: excel-upload + old app, no geo, no media)
-  // become their own survey so old data never mixes with current surveys,
-  // and they are auto-confirmed so they appear in the report immediately.
-  try {
-    await sql`
-      INSERT INTO survey_form (form_key, title, questions, updated_at)
-      VALUES ('legacy', 'Legacy Data (no GPS/Camera)', ${JSON.stringify(LEGACY_QUESTIONS)}::jsonb, NOW())
-      ON CONFLICT (form_key) DO NOTHING
-    `;
-    // Backfill: earlier deploys seeded the legacy survey with empty questions,
-    // so the report had no filters/charts for it. Idempotent — only fills when empty.
-    await sql`
-      UPDATE survey_form
-      SET questions = ${JSON.stringify(LEGACY_QUESTIONS)}::jsonb, updated_at = NOW()
-      WHERE form_key = 'legacy'
-        AND (questions IS NULL OR jsonb_array_length(questions) = 0)
-    `;
-  } catch (e) {
-    console.warn("legacy survey seed", e);
-  }
-  try {
-    await sql`
-      UPDATE submissions
-      SET payload = jsonb_set(
-        jsonb_set(
-          jsonb_set(
-            jsonb_set(payload, '{form_key}', '"legacy"'::jsonb, true),
-            '{status}', '"confirmed"'::jsonb, true
-          ),
-          '{confirmed_by}', '"system (legacy migration)"'::jsonb, true
-        ),
-        '{confirmed_at}', to_jsonb(NOW()), true
-      )
-      WHERE payload->'geo' IS NULL
-        AND (payload->>'form_key' IS NULL OR payload->>'status' IS NULL)
-    `;
-  } catch (e) {
-    console.warn("legacy migration", e);
-  }
-
-  // ── Fact layer (analytics read path — 09-ANALYTICS-SPEC / 17-PROCESSING-SEQUENCE) ──
-  // One narrow row per confirmed record; dashboards read facts, never raw records.
-  await sql`
-    CREATE TABLE IF NOT EXISTS record_facts (
-      submission_id BIGINT PRIMARY KEY REFERENCES submissions(id) ON DELETE CASCADE,
-      survey_key TEXT NOT NULL DEFAULT 'default',
-      submitted_by TEXT,
-      district TEXT,
-      constituency TEXT,
-      filterable_answers JSONB NOT NULL DEFAULT '{}'::jsonb,
-      geo JSONB,
-      confirmed_at TIMESTAMPTZ NOT NULL,
-      fact_status TEXT NOT NULL DEFAULT 'materialized',
-      fact_error TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_record_facts_confirmed_at ON record_facts (confirmed_at DESC)`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_record_facts_district ON record_facts (district)`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_record_facts_status ON record_facts (fact_status)`.catch(() => null);
-  // fact pipeline status on the record itself (surfaces in Review queue)
-  await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS fact_status TEXT`.catch(() => null);
-  await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS fact_error TEXT`.catch(() => null);
-  // Allow surveyor role (Client Admin creates field collectors)
-  await sql`ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_role_check`.catch(() => null);
-  await sql`
-    ALTER TABLE app_users
-    ADD CONSTRAINT app_users_role_check
-    CHECK (role IN ('admin', 'field', 'user', 'surveyor'))
-  `.catch(() => null);
-
-  // Indexes for concurrent reads / filters at scale (safe IF NOT EXISTS)
-  // Removed: idx_submissions_answers_district/_party/_gender/_caste/_ac —
-  // no query filters these columns in SQL, filtering happens in JS after
-  // loadAnalyticsRows(). Removed: idx_submissions_payload_gin (jsonb_path_ops
-  // only accelerates @>/?/?|/?& operators; every query does ->>'x' = value,
-  // which this index type can't serve — write cost with zero read benefit).
-  // Removed: idx_submissions_survey_id — submissions has no survey_id column,
-  // this statement failed on every boot (silently, via .catch).
-  await sql`CREATE INDEX IF NOT EXISTS idx_submissions_created_at ON submissions (created_at DESC)`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_submissions_submitted_by ON submissions ((payload->>'submitted_by'))`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_app_users_role_active ON app_users (role, active)`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_assembly_name ON assembly_constituencies (name)`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_districts_name ON districts (name)`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_mandals_district ON mandals (district)`.catch(() => null);
-
-  await sql`CREATE INDEX IF NOT EXISTS idx_survey_admin_access_admin ON survey_admin_access(admin_id)`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_survey_admin_access_survey ON survey_admin_access(survey_id)`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_survey_assignments_survey ON survey_assignments(survey_id)`.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_survey_assignments_user ON survey_assignments(user_id)`.catch(() => null);
-  // Dedupe then enforce UNIQUE so ON CONFLICT (survey_id, user_id) works on
-  // databases whose original table was created without the constraint.
-  await sql`
-    DELETE FROM survey_assignments a
-    USING survey_assignments b
-    WHERE a.ctid < b.ctid AND a.survey_id = b.survey_id AND a.user_id = b.user_id
-  `.catch(() => null);
-  await sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_survey_assignments_pair
-    ON survey_assignments(survey_id, user_id)
-  `.catch(() => null);
-  await sql`CREATE INDEX IF NOT EXISTS idx_survey_form_created_by ON survey_form(created_by)`.catch(() => null);
-
-  // Keep legacy field/user inactive; surveyors are created from admin dashboard
-  await sql`
-    UPDATE app_users SET active = FALSE WHERE role IN ('field', 'user')
-  `.catch(() => null);
-
-  // Seed admin only (PBKDF2 for Deno verify)
-  const seeds: [string, string, string, string][] = [
-    ["admin", "admin123", "System Admin", "admin"],
-  ];
-  for (const [username, password, display_name, role] of seeds) {
-    const found = await sql`SELECT id, password_hash FROM app_users WHERE username = ${username} LIMIT 1`;
-    if (!found.length) {
-      const password_hash = await hashPasswordAsync(password);
-      await sql`
-        INSERT INTO app_users (username, password_hash, display_name, role)
-        VALUES (${username}, ${password_hash}, ${display_name}, ${role})
-      `;
-    } else {
-      if (!String((found[0] as { password_hash: string }).password_hash).startsWith("pbkdf2:")) {
-        const password_hash = await hashPasswordAsync(password);
-        await sql`
-          UPDATE app_users
-          SET password_hash = ${password_hash}, role = 'admin', active = TRUE, display_name = ${display_name}
-          WHERE username = ${username}
-        `;
-      } else {
-        await sql`
-          UPDATE app_users SET role = 'admin', active = TRUE WHERE username = ${username}
-        `;
-      }
-    }
-  }
-
-  // Auto-assign company to any Client Admin who has no company_name
-  await sql`
-    UPDATE app_users
-    SET company_name = COALESCE(NULLIF(TRIM(display_name), ''), username) || ' Organisation'
-    WHERE role = 'admin' AND (company_name IS NULL OR TRIM(company_name) = '')
-  `.catch(() => null);
-
-  // Idempotent companies backfill: register any distinct company_names from app_users or survey_form into companies
-  await sql`
-    INSERT INTO companies (name, created_by)
-    SELECT DISTINCT TRIM(company_name) AS name, NULL AS created_by
-    FROM app_users
-    WHERE company_name IS NOT NULL AND TRIM(company_name) <> ''
-    ON CONFLICT (name) DO NOTHING
-  `.catch(() => null);
-
-  await sql`
-    INSERT INTO companies (name, created_by)
-    SELECT DISTINCT TRIM(company_name) AS name, NULL AS created_by
-    FROM survey_form
-    WHERE company_name IS NOT NULL AND TRIM(company_name) <> ''
-    ON CONFLICT (name) DO NOTHING
-  `.catch(() => null);
-
-  await sql`
-    UPDATE app_users u
-    SET company_id = c.id, company_name = c.name
-    FROM companies c
-    WHERE LOWER(u.company_name) = LOWER(c.name) AND (u.company_id IS NULL OR u.company_id <> c.id)
-  `.catch(() => null);
-
-  await sql`
-    UPDATE survey_form s
-    SET company_id = c.id
-    FROM companies c
-    WHERE s.company_name IS NOT NULL AND TRIM(s.company_name) <> ''
-      AND LOWER(TRIM(s.company_name)) = LOWER(c.name)
-      AND (s.company_id IS NULL OR s.company_id <> c.id)
-  `.catch(() => null);
 }
 
 async function ensureCompanyExists(
@@ -8673,7 +8479,7 @@ async function rawHandler(req: Request): Promise<Response> {
         locks: { geo: false, web: true },
         has_photo: false,
         has_audio: false,
-        answers: { ...answers, data_collector: agent },
+        answers: stripPii({ ...answers, data_collector: agent }),
         content_type: "qa",
         app_version: body.app_version ? String(body.app_version) : null,
       };
@@ -8802,11 +8608,11 @@ async function rawHandler(req: Request): Promise<Response> {
         locks: body.locks || { geo: true },
         has_photo: false,
         has_audio: false,
-        answers: {
+        answers: stripPii({
           ...answers,
           data_collector: agent,
           ...(recIdx != null ? { _recordIndex: recIdx } : {}),
-        },
+        }),
         // Q/A separated from media blobs
         content_type: "qa",
         // Client app version (pushed from React build)

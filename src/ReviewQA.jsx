@@ -454,7 +454,9 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
             const signals = [
               { label: 'GPS', status: item.has_geo || a.latitude ? 'ok' : 'warn' },
               { label: 'Photo', status: item.has_photo || photoSrc ? 'ok' : 'bad' },
-              { label: 'Voice', status: item.has_voice || audioSrc ? 'ok' : 'bad' },
+              ...(a._voice_required === true
+                ? [{ label: 'Voice', status: item.has_voice || audioSrc ? 'ok' : 'bad' }]
+                : []),
               { label: 'Q/A', status: qa.length > 0 ? 'ok' : 'warn' },
             ]
 
@@ -697,7 +699,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                   name={item.submitted_by ? `${item.submitted_by} (#${item.id})` : `Survey #${item.id}`}
                   verified={Boolean(item.proof_validated?.ok)}
                   location={[a.district, a.constituency || a.assembly, a.mandal].filter(Boolean).join(' · ') || 'Telangana'}
-                  time={item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                  time={item.created_at ? new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(item.created_at)) : ''}
                   status={item.status || 'pending'}
                   pills={pills}
                   signals={signals}

@@ -772,7 +772,7 @@ export default function DashboardScreen({ onToast }) {
       <div className="card" style={{ marginBottom: 12 }}>
         <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
           <strong>Dashboard does not form</strong> until Client Admin confirms records
-          (strict complete: geo + voice + photo + Q/A). Pending data stays out of charts.
+          (GPS + photo + Q/A; voice only if required). Pending data stays out of charts.
         </p>
         {data?.statusCounts && (
           <p style={{ margin: '0 0 8px', fontSize: 13 }}>
@@ -824,8 +824,7 @@ export default function DashboardScreen({ onToast }) {
           <h3 style={{ margin: '0 0 8px' }}>No confirmed data yet</h3>
           <p className="muted" style={{ fontSize: 13, margin: '0 0 12px' }}>
             Charts, maps and KPIs stay empty until Client Admin opens{' '}
-            <strong>Analyze / Review</strong>, verifies geo + voice, and taps{' '}
-            <strong>Confirm complete</strong>.
+            <strong>Review QA</strong> and taps <strong>Confirm</strong>.
           </p>
           <p style={{ fontSize: 13, margin: 0 }}>
             Pending in queue / review:{' '}
@@ -1240,6 +1239,62 @@ export default function DashboardScreen({ onToast }) {
             )}
             <span>Top issue</span>
           </div>
+          <div className="kpi">
+            <strong>{data.collectTime?.avg_label || '—'}</strong>
+            <span>Avg time GPS → finish</span>
+          </div>
+          <div className="kpi">
+            <strong>{data.collectTime?.median_label || '—'}</strong>
+            <span>Median collect time</span>
+          </div>
+        </div>
+      )}
+
+      {reportReady && data?.collectTime?.count > 0 && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <h3 style={{ marginTop: 0 }}>Collect time (Enable GPS → Finish)</h3>
+          <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+            Calculated here on confirmed records. Voice on or off does not change this clock.
+            {data.collectTime.count} record{data.collectTime.count === 1 ? '' : 's'} with timing.
+          </p>
+          <div className="stat-row" style={{ marginBottom: 10 }}>
+            <div className="stat">
+              <strong>{data.collectTime.avg_label}</strong>
+              <span>Average</span>
+            </div>
+            <div className="stat">
+              <strong>{data.collectTime.median_label}</strong>
+              <span>Median</span>
+            </div>
+            <div className="stat">
+              <strong>{data.collectTime.min_sec != null ? `${Math.round(data.collectTime.min_sec)}s` : '—'}</strong>
+              <span>Fastest</span>
+            </div>
+            <div className="stat">
+              <strong>{data.collectTime.max_sec != null ? `${Math.round(data.collectTime.max_sec)}s` : '—'}</strong>
+              <span>Slowest</span>
+            </div>
+          </div>
+          {(data.collectTime.by_surveyor || []).length > 0 && (
+            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>
+                  <th style={{ padding: '6px 8px' }}>Surveyor</th>
+                  <th style={{ padding: '6px 8px' }}>Records</th>
+                  <th style={{ padding: '6px 8px' }}>Avg time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.collectTime.by_surveyor.map((u) => (
+                  <tr key={u.name} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '6px 8px' }}>{u.name}</td>
+                    <td style={{ padding: '6px 8px' }}>{u.n}</td>
+                    <td style={{ padding: '6px 8px', fontWeight: 600 }}>{u.avg_label}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 

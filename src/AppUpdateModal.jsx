@@ -25,10 +25,15 @@ export default function AppUpdateModal() {
 
   const { latest, currentVersion } = updateInfo;
 
-  const handleUpdate = () => {
+  const handleUpdate = async () => {
     setLoading(true);
-    launchApkUpdate(latest.apkUrl);
-    setTimeout(() => setLoading(false), 2000);
+    try {
+      await launchApkUpdate(latest.apkUrl);
+    } catch {
+      /* toast from Profile path; here just stop spinner */
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDismiss = () => {
@@ -112,7 +117,7 @@ export default function AppUpdateModal() {
                 gap: 6,
               }}
             >
-              {loading ? "Opening Installer…" : "Download & Update"}
+              {loading ? "Downloading inside app…" : "Install in app"}
             </button>
             {!latest.mandatory && (
               <button

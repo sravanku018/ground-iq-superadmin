@@ -103,7 +103,7 @@ export async function savePackageLocal({
   if (!draft && (!photoDataUrl || String(photoDataUrl).length < 100)) {
     throw new Error('Package rejected: photo lock missing')
   }
-  if (!draft && (!audioDataUrl || String(audioDataUrl).length < 100)) {
+  if (!draft && locks?.voice !== false && (!audioDataUrl || String(audioDataUrl).length < 100)) {
     throw new Error('Package rejected: voice lock missing')
   }
 

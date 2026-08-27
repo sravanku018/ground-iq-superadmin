@@ -614,10 +614,12 @@ export function listSurveys(q = '') {
  * Super Admin may also register the company this project is mapped under and the
  * Client Admins who are part of it (company_name, admin_ids).
  */
-export function createSurvey({ title, questions, company_name, admin_ids }) {
+export function createSurvey({ title, questions, company_name, admin_ids, voice_required, voice_time_limit }) {
   const body = { title, questions }
   if (company_name != null && company_name !== '') body.company_name = company_name
   if (Array.isArray(admin_ids) && admin_ids.length > 0) body.admin_ids = admin_ids
+  if (voice_required !== undefined) body.voice_required = !!voice_required
+  if (voice_time_limit !== undefined) body.voice_time_limit = Number(voice_time_limit) || 0
   return request('/api/surveys', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -634,10 +636,12 @@ export function getSurvey(id) {
 }
 
 /** Admin: update title/questions; Super Admin may also update company_name */
-export function updateSurvey(id, { title, questions, company_name, display_lang }) {
+export function updateSurvey(id, { title, questions, company_name, display_lang, voice_required, voice_time_limit }) {
   const body = { title, questions }
   if (company_name !== undefined) body.company_name = company_name
   if (display_lang !== undefined) body.display_lang = display_lang
+  if (voice_required !== undefined) body.voice_required = !!voice_required
+  if (voice_time_limit !== undefined) body.voice_time_limit = Number(voice_time_limit) || 0
   return request(`/api/surveys/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

@@ -352,6 +352,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
   const canCreate = isSuper || !!user?.can_crud_questionnaire
   const canEditQs = isSuper || !!user?.can_edit_surveys || !!user?.can_crud_questionnaire
   const canEdit = canCreate || canEditQs
+  const canVoice = isSuper || !!user?.can_record_voice
   // UI noun by role
   const unit = isSuper ? 'project' : 'survey'
   const Unit = isSuper ? 'Project' : 'Survey'
@@ -490,8 +491,12 @@ export default function AdminSurveysScreen({ onToast, user }) {
       const d = await createSurvey({
         title,
         questions: [],
-        voice_required: Boolean(newVoiceRequired),
-        voice_time_limit: Number(newVoiceLimit) || 0,
+        ...(canVoice
+          ? {
+              voice_required: Boolean(newVoiceRequired),
+              voice_time_limit: Number(newVoiceLimit) || 0,
+            }
+          : {}),
         ...(isSuper
           ? {
               company_name: newCompany.trim(),
@@ -538,8 +543,12 @@ export default function AdminSurveysScreen({ onToast, user }) {
         title: detail.title,
         questions: cleanQuestions(detail.questions),
         display_lang: detail.display_lang === 'te' ? 'te' : 'en',
-        voice_required: Boolean(detail.voice_required),
-        voice_time_limit: Number(detail.voice_time_limit) || 0,
+        ...(canVoice
+          ? {
+              voice_required: Boolean(detail.voice_required),
+              voice_time_limit: Number(detail.voice_time_limit) || 0,
+            }
+          : {}),
         ...(user?.role === 'super_admin' ? { company_name: detail.company_name || '' } : {}),
       })
 
@@ -748,10 +757,13 @@ export default function AdminSurveysScreen({ onToast, user }) {
           </div>
         )}
 
+        {canVoice && (
         <div className="card" style={{ marginBottom: 12, padding: 14 }}>
           <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>🎙 Voice recording</p>
           <p className="muted" style={{ margin: '0 0 10px', fontSize: 12 }}>
-            Set voice as optional or mandatory, with an optional 2, 5, 10, or 15 min limit.
+            {isSuper
+              ? 'Super Admin sets this on the project. Optional = surveyor can skip the mic; Required = field lock.'
+              : 'Set voice as optional or mandatory. Surveyors cannot change this.'}
           </p>
 
           <div style={{ marginBottom: 10 }}>
@@ -760,8 +772,8 @@ export default function AdminSurveysScreen({ onToast, user }) {
             </span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {[
-                { id: false, label: 'Optional (Recommended)' },
-                { id: true, label: 'Required (Mandatory)' },
+                { id: false, label: 'Off (not in field app)' },
+                { id: true, label: 'Required (in field app)' },
               ].map((m) => (
                 <button
                   key={String(m.id)}
@@ -799,6 +811,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
             </div>
           </div>
         </div>
+        )}
 
 
         <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
@@ -1015,7 +1028,11 @@ export default function AdminSurveysScreen({ onToast, user }) {
         <div className="card" style={{ marginBottom: 12, padding: 14 }}>
           <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>🎙 Voice recording configuration</p>
           <p className="muted" style={{ margin: '0 0 10px', fontSize: 12 }}>
-            Set voice recording as optional or mandatory, with an optional 2, 5, 10, or 15 min limit.
+            {isSuper
+              ? 'Project setting for field surveyors. Optional (default) = they can skip the mic. Required = GPS → photo → voice → questions.'
+              : canVoice
+                ? 'Set voice as optional or mandatory. Surveyors cannot change this.'
+                : 'Voice is set by Super Admin. Ask Super Admin to grant Voice recording if you need to change it.'}
           </p>
 
           <div style={{ marginBottom: 12 }}>
@@ -1024,14 +1041,15 @@ export default function AdminSurveysScreen({ onToast, user }) {
             </span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {[
-                { id: false, label: 'Optional (Recommended)' },
-                { id: true, label: 'Required (Mandatory)' },
+                { id: false, label: 'Off (not in field app)' },
+                { id: true, label: 'Required (in field app)' },
               ].map((m) => (
                 <button
                   key={String(m.id)}
                   type="button"
                   className={`chip ${Boolean(detail.voice_required) === m.id ? 'selected' : ''}`}
-                  onClick={() => setDetail({ ...detail, voice_required: m.id })}
+                  disabled={!canVoice}
+                  onClick={() => canVoice && setDetail({ ...detail, voice_required: m.id })}
                 >
                   {m.label}
                 </button>
@@ -1055,7 +1073,8 @@ export default function AdminSurveysScreen({ onToast, user }) {
                   key={t.id}
                   type="button"
                   className={`chip ${Number(detail.voice_time_limit || 0) === t.id ? 'selected' : ''}`}
-                  onClick={() => setDetail({ ...detail, voice_time_limit: t.id })}
+                  disabled={!canVoice}
+                  onClick={() => canVoice && setDetail({ ...detail, voice_time_limit: t.id })}
                 >
                   {t.label}
                 </button>
@@ -1078,7 +1097,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           onClick={saveDetailChanges}
           disabled={saving || busy}
         >
-          {saving ? 'Saving…' : 'Save project (name + questions)'}
+          {saving ? 'Saving…' : isSuper ? 'Save project (name + questions + voice)' : 'Save survey'}
         </button>
         <button
           type="button"
@@ -1164,7 +1183,9 @@ export default function AdminSurveysScreen({ onToast, user }) {
                 <Icon name="chart" size={12} /> {s.submissions} Submissions ·{' '}
               </>
             ) : null}
-            <Icon name="clipboard" size={12} /> {s.question_count || 0} Questions · Updated{' '}
+            <Icon name="clipboard" size={12} /> {s.question_count || 0} Questions
+            {s.voice_required ? ' · Voice required' : ' · Voice off'}
+            {' · Updated '}
             {String(s.updated_at || '').slice(0, 16).replace('T', ' ')}
           </div>
           {isSuper && s.admin_count > 0 && (

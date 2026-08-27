@@ -155,6 +155,21 @@ function ymdInTz(value, tz = FIELD_TZ) {
   }).format(d)
 }
 
+function formatIstDateTime(value) {
+  const d = value instanceof Date ? value : new Date(value || Date.now())
+  if (Number.isNaN(d.getTime())) return String(value || '')
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: FIELD_TZ,
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).format(d)
+}
+
 function formatDayLabel(ymd) {
   const [y, m, d] = String(ymd).split('-').map(Number)
   if (!y || !m || !d) return ymd || 'Unknown date'
@@ -183,6 +198,7 @@ function queueAnswerText(v) {
 function isAnswerMetaKey(k) {
   const s = String(k || '')
   if (!s || s.startsWith('_') || s.startsWith('geo_') || s.startsWith('location_')) return true
+  if (s.startsWith('ts_') || s.startsWith('sec_')) return true
   return [
     'draft',
     'data_collector',
@@ -194,6 +210,19 @@ function isAnswerMetaKey(k) {
     'audio',
     'photo_url',
     'audio_url',
+    'answer_pattern',
+    'ts_gps_start',
+    'ts_gps_lock',
+    'ts_photo',
+    'ts_voice_start',
+    'ts_voice_end',
+    'ts_qa_start',
+    'ts_finish',
+    'sec_gps',
+    'sec_photo',
+    'sec_voice',
+    'sec_qa',
+    'sec_total',
   ].includes(s)
 }
 
@@ -244,8 +273,9 @@ function packageFailedRequirements(d) {
   const qa = d.qa || {}
   const hasGeo = qa.geo?.lat != null || qa.answers?.geo_lat != null
   const hasPhoto = !!(d.hasPhoto || d.flags?.photo)
-  const hasVoice = !!(d.hasAudio || d.flags?.audio)
-  if (d.kind !== 'draft' && (!hasGeo || !hasPhoto || !hasVoice)) return true
+  const hasVoice = !!(d.hasAudio || d.flags?.audio || d.audioDataUrl)
+  const voiceNeeded = qa.answers?._voice_required === true || d.locks?.voice === true
+  if (d.kind !== 'draft' && (!hasGeo || !hasPhoto || (voiceNeeded && !hasVoice))) return true
   return /GPS|voice|lock|incomplete|required|too large|compress|geo_lock/i.test(
     String(d.lastError || ''),
   )
@@ -301,6 +331,17 @@ function HomeScreen({
               Target complete
             </div>
           )}
+          {(questionsMeta?.surveys || []).some((s) => s.voice_required) ? (
+            <div className="pill warn">
+              <span className="dot" />
+              Voice required on collect
+            </div>
+          ) : (questionsMeta?.surveys || []).length > 0 ? (
+            <div className="pill ok">
+              <span className="dot" />
+              Voice off
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -447,7 +488,7 @@ function MyRecordsScreen({ user, onToast, questions }) {
                       </span>
                     </span>
                     <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
-                      {String(r.created_at || '').slice(0, 16).replace('T', ' ')}
+                      {formatIstDateTime(r.created_at)}
                       {r.submitted_by || r.payload?.submitted_by ? ` · ${r.submitted_by || r.payload?.submitted_by}` : ''}
                     </span>
                     <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
@@ -479,7 +520,7 @@ function MyRecordsScreen({ user, onToast, questions }) {
                             {r.created_at && (
                               <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
                                 <td className="muted" style={{ padding: '6px 8px' }}>Submitted At:</td>
-                                <td style={{ textAlign: 'right', padding: '6px 8px' }}>{String(r.created_at).slice(0, 16).replace('T', ' ')}</td>
+                                <td style={{ textAlign: 'right', padding: '6px 8px' }}>{formatIstDateTime(r.created_at)}</td>
                               </tr>
                             )}
                             {Object.entries(ans).map(([k, v]) => {
@@ -522,6 +563,7 @@ function SurveyorProfileScreen({
   fontScale,
   onFontScaleChange,
   onLogout,
+  questionsMeta,
 }) {
   const [phone, setPhone] = useState(user?.phone || '')
   const [savingPhone, setSavingPhone] = useState(false)
@@ -648,6 +690,20 @@ function SurveyorProfileScreen({
         <div className="keychip">
           Key ID: {user?.key_id || `GROUND-KEY-${String(user?.id || '0000').padStart(4, '0')}`}
         </div>
+        {(questionsMeta?.surveys || []).length > 0 && (
+          <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+            {(questionsMeta.surveys || []).map((s) => (
+              <span
+                key={s.form_key || s.id || s.title}
+                className={`pill ${s.voice_required ? 'warn' : 'ok'}`}
+                style={{ fontSize: 11 }}
+              >
+                {s.title || s.form_key}
+                {s.voice_required ? ' · Voice on' : ' · Voice off'}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Phone Card */}
@@ -857,16 +913,22 @@ function SurveyorProfileScreen({
             try {
               const res = await checkForAppUpdate({ ignoreDismissed: true })
               if (res.hasUpdate) {
-                launchApkUpdate(res.latest.apkUrl)
+                onToast?.(`Downloading v${res.latest.version} inside the app…`, 'ok')
+                await launchApkUpdate(res.latest.apkUrl)
+                onToast?.('Installer opened — tap Install', 'ok')
               } else {
-                onToast?.('App is up to date ✓', 'ok')
+                onToast?.(
+                  `App is up to date · v${res.currentVersion || APP_VERSION}` +
+                    (res.latest?.version ? ` (server v${res.latest.version})` : ''),
+                  'ok',
+                )
               }
-            } catch {
-              onToast?.('Could not check updates', 'error')
+            } catch (e) {
+              onToast?.(e.message || 'Could not check updates', 'error')
             }
           }}
         >
-          ⚡ Check for Updates
+          Check for updates
         </button>
 
         <button
@@ -1002,7 +1064,7 @@ function DraftsScreen({ user, onToast, onEdit, questions }) {
               </span>
             </div>
             <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
-              {String(d.createdAt || '').slice(0, 16).replace('T', ' ')}
+              {formatIstDateTime(d.createdAt)}
               {qa.form_key ? ` · ${qa.form_key}` : ''}
             </span>
 
@@ -1748,6 +1810,7 @@ export default function SurveyorApp() {
               onFontScaleChange={changeFontScale}
               displayLang={displayLang}
               onDisplayLangChange={changeDisplayLang}
+              questionsMeta={questionsMeta}
               onLogout={handleLogout}
             />
             </ScreenErrorBoundary>

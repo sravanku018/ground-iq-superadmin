@@ -102,11 +102,18 @@ export async function syncOnePackage(id) {
   emit({ type: 'package-start', id })
 
   try {
+    const answers = pkg.qa?.answers || {}
+    const voiceNeeded = answers._voice_required === true ||
+      (answers._voice_required !== false && pkg.locks?.voice !== false)
     // 1) Q/A
     if (!pkg.flags?.qa || !pkg.serverSubmissionId) {
-      // Client hard-lock: never sync package missing geo/photo/audio
-      if (!pkg.qa?.geo?.lat || !pkg.photoDataUrl || !pkg.audioDataUrl) {
-        throw new Error('Package incomplete — GPS, photo and voice are locked requirements')
+      // Client hard-lock: GPS + photo always; voice only when Client Admin required it
+      if (!pkg.qa?.geo?.lat || !pkg.photoDataUrl || (voiceNeeded && !pkg.audioDataUrl)) {
+        throw new Error(
+          voiceNeeded
+            ? 'Package incomplete — GPS, photo and voice are locked requirements'
+            : 'Package incomplete — GPS and photo are required',
+        )
       }
       const recIdx = Number(pkg.recordIndex)
       const answers = stripDraftAnswers({
@@ -121,7 +128,8 @@ export async function syncOnePackage(id) {
         submitted_by: pkg.qa.submitted_by,
         geo: pkg.qa.geo,
         location_details: pkg.qa.location_details || null,
-        locks: pkg.locks || pkg.qa.locks || { geo: true, photo: true, voice: true },
+        locks: pkg.locks || pkg.qa.locks || { geo: true, photo: true, voice: voiceNeeded },
+        voice_required: voiceNeeded,
         record_index: Number.isFinite(recIdx) && recIdx > 0 ? recIdx : null,
         answers,
         // Push app version with every sync so admin knows which build collected data
@@ -174,11 +182,17 @@ export async function syncOnePackage(id) {
       emit({ type: 'phase', id, phase: 'photo_done' })
     }
 
-    // 3) Audio
+    // 3) Audio — skip when Client Admin set voice optional and none was recorded
     if (!pkg.flags?.audio) {
       if (!pkg.audioDataUrl) {
-        throw new Error('Voice missing from device — recapture this record')
-      }
+        if (voiceNeeded) {
+          throw new Error('Voice missing from device — recapture this record')
+        }
+        pkg = await updatePackage(id, {
+          flags: { ...pkg.flags, audio: true },
+        })
+        emit({ type: 'phase', id, phase: 'audio_skipped' })
+      } else {
       const audioData = normalizeMediaDataUrl(pkg.audioDataUrl, pkg.audioMime || 'audio/webm')
       await fetchJson(`${base}/api/submissions/${serverId}/media`, {
         method: 'POST',
@@ -194,6 +208,7 @@ export async function syncOnePackage(id) {
         flags: { ...pkg.flags, audio: true },
       })
       emit({ type: 'phase', id, phase: 'audio_done' })
+      }
     }
 
     // 4) Complete — remove heavy package or mark done

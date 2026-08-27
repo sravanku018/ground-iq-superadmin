@@ -29,6 +29,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
   /** Project title draft while creating under the open company */
   const [projectTitle, setProjectTitle] = useState('')
   const [projectVoiceLimit, setProjectVoiceLimit] = useState(0)
+  const [projectVoiceRequired, setProjectVoiceRequired] = useState(false)
   const [createdProject, setCreatedProject] = useState(null)
 
 
@@ -119,6 +120,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
       const d = await createSurvey({
         title,
         questions: [],
+        voice_required: Boolean(projectVoiceRequired),
         voice_time_limit: Number(projectVoiceLimit) || 0,
         company_name: c.name,
         admin_ids: adminIds,
@@ -131,6 +133,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
       })
       setProjectTitle('')
       setProjectVoiceLimit(0)
+      setProjectVoiceRequired(false)
 
       onToast?.(`Project "${title}" created under ${c.name}`, 'ok')
       await load()
@@ -431,7 +434,26 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
                       </label>
                       <div style={{ flex: '1 1 100%', marginTop: 6, marginBottom: 6 }}>
                         <span style={{ fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 4, color: '#475569' }}>
-                          🎙 Voice Limit:
+                          🎙 Voice (field app):
+                        </span>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                          {[
+                            { id: false, label: 'Off (not in field app)' },
+                            { id: true, label: 'Required (in field app)' },
+                          ].map((m) => (
+                            <button
+                              key={String(m.id)}
+                              type="button"
+                              className={`chip ${Boolean(projectVoiceRequired) === m.id ? 'selected' : ''}`}
+                              onClick={() => setProjectVoiceRequired(m.id)}
+                              style={{ fontSize: 11, padding: '3px 10px' }}
+                            >
+                              {m.label}
+                            </button>
+                          ))}
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 4, color: '#475569' }}>
+                          Duration limit (if recorded):
                         </span>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                           {[

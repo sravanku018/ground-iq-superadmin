@@ -1,8 +1,8 @@
 {
   "name": "neondbapp",
   "private": true,
-  "version": "2.0.5",
-  "versionCode": 20005,
+  "version": "2.0.9",
+  "versionCode": 20009,
   "type": "module",
   "scripts": {
     "dev": "concurrently -n api,web -c green,cyan \"npm run server\" \"npm run client\"",
@@ -12,6 +12,7 @@
     "version:bump": "node scripts/sync-version.mjs --bump",
     "version:minor": "node scripts/sync-version.mjs --minor",
     "version:ui": "python3 bump_version.py",
+    "version:web": "python3 bump_version.py --web",
     "prebuild": "node scripts/sync-version.mjs",
     "build": "vite build",
     "build:apk": "npm run version:sync && vite build && npx cap sync android && cd android && ./gradlew assembleDebug && cp app/build/outputs/apk/debug/app-debug.apk ../ElectionSurvey-debug.apk && cp app/build/outputs/apk/debug/app-debug.apk ~/Downloads/ElectionSurvey-debug.apk",

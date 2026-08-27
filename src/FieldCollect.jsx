@@ -79,6 +79,7 @@ function writeStoredOpenDraft(user, data) {
 }
 import { forceSyncNow, getQueueSnapshot } from './syncEngine'
 import { displayOption, displayQuestion, getDisplayLang, getNavMode } from './prefs'
+import { startSurveyNotify, stopSurveyNotify } from './surveyNotify'
 /**
  * LOCKED collect flow — surveyor cannot skip:
  * (Pull-to-refresh is provided by SurveyorApp shell.)
@@ -95,6 +96,9 @@ const MIN_PHOTO_CHARS = 800 // base64 length floor
 // Auto-lock/meta keys written into answers — excluded from answered-question count
 const META_ANSWER_KEYS = [
   '_draft',
+  '_timing',
+  '_duration_sec',
+  '_voice_required',
   'geo_lat',
   'geo_lng',
   'geo_accuracy',
@@ -104,6 +108,21 @@ const META_ANSWER_KEYS = [
   'location_mandal',
   'location_state',
 ]
+
+function emptyTiming() {
+  return { gps_start: null, finish: null }
+}
+
+function nowIso() {
+  return new Date().toISOString()
+}
+
+function secBetweenClient(a, b) {
+  const t1 = new Date(a || '').getTime()
+  const t2 = new Date(b || '').getTime()
+  if (!Number.isFinite(t1) || !Number.isFinite(t2) || t2 < t1) return ''
+  return String(Math.round((t2 - t1) / 1000))
+}
 
 // Sentiment type: Positive / Neutral / Negative
 const SENTIMENT_COLORS = {
@@ -246,6 +265,27 @@ export default function FieldCollectScreen({
   const audioCtxRef = useRef(null)
   const audioStartedAt = useRef(null)
   const audioTimerRef = useRef(null)
+  const timingRef = useRef(emptyTiming())
+
+  function markTiming(key) {
+    const t = timingRef.current
+    if (!t[key]) t[key] = nowIso()
+  }
+
+  function chooseAnswer(qid, value) {
+    setAnswers((a) => ({ ...a, [qid]: value }))
+  }
+
+  function buildTimingPayload() {
+    const t = timingRef.current
+    if (!t.finish) t.finish = nowIso()
+    const sec = secBetweenClient(t.gps_start, t.finish)
+    return {
+      _timing: { gps_start: t.gps_start || null, finish: t.finish },
+      _duration_sec: sec === '' ? null : Number(sec),
+    }
+  }
+
   // Swipe-navigation gesture tracking (only used when navMode === 'swipe')
   const touchStartX = useRef(null)
   const touchStartY = useRef(null)
@@ -265,6 +305,12 @@ export default function FieldCollectScreen({
       if (id) init[id] = ''
     }
     setAnswers(mapAnswersToQuestions({ ...init, ...d.answers }, questions || []))
+    if (d.answers?._timing && typeof d.answers._timing === 'object') {
+      timingRef.current = {
+        gps_start: d.answers._timing.gps_start || null,
+        finish: d.answers._timing.finish || null,
+      }
+    }
     const g = d.geo
     if (g && Number.isFinite(Number(g.lat))) {
       setGeo({ lat: Number(g.lat), lng: Number(g.lng), accuracy: g.accuracy ?? 0, at: g.at ?? '', locked: true })
@@ -330,6 +376,7 @@ export default function FieldCollectScreen({
   const voiceRequired = formMeta?.voice_required === true
   const voiceTimeLimit = Number(formMeta?.voice_time_limit || 0) // minutes, 0 = no limit
   const voiceLocked = voiceRequired ? (voiceActivated && (!!audioBlob || recording)) : true
+  const questionsOpen = geoLocked && photoLocked && (!voiceRequired || voiceActivated)
   const editingDraft = !!draft?.id
   const locks = {
     geo: geoLocked,
@@ -339,6 +386,32 @@ export default function FieldCollectScreen({
   }
   const allHardLocks = geoLocked && photoLocked && voiceLocked && locationLocked
   const surveyUnlocked = geoLocked && photoLocked && (!voiceRequired || voiceLocked)
+  const surveyRunning =
+    step < 3 &&
+    (geoLoading || geoLocked || photoLocked || recording || step >= 1 || !!workingDraftIdRef.current)
+
+  useEffect(() => {
+    if (!surveyRunning) {
+      void stopSurveyNotify()
+      return undefined
+    }
+    const phase = geoLoading
+      ? 'Locking GPS…'
+      : step === 0
+        ? 'GPS'
+        : step === 1
+          ? 'Photo'
+          : recording
+            ? 'Recording'
+            : 'Questions'
+    const title = formMeta?.title ? String(formMeta.title) : 'Survey running'
+    void startSurveyNotify(`${phase} · tap to return`, title)
+    return undefined
+  }, [surveyRunning, geoLoading, step, recording, formMeta?.title])
+
+  useEffect(() => () => {
+    void stopSurveyNotify()
+  }, [])
 
 
   useEffect(() => {
@@ -500,12 +573,15 @@ export default function FieldCollectScreen({
 
   useEffect(() => {
     if (active) return undefined
+    const started =
+      geoLoading || !!geo || !!photoDataUrl || recording || step >= 1
+    // In-progress survey keeps GPS / mic while the app is backgrounded or
+    // the user is on another tab — notification stays until finish.
+    if (started) return undefined
     if (watchId.current != null && navigator.geolocation) {
       navigator.geolocation.clearWatch(watchId.current)
       watchId.current = null
     }
-    // Hidden via display:none — still mounted. Stop mic + speech so leaving
-    // Collect does not leave the recorder / recognition running.
     try {
       mediaRec.current?.stop()
     } catch {
@@ -525,14 +601,16 @@ export default function FieldCollectScreen({
     setRecording(false)
     setListening(false)
     return undefined
-  }, [active])
+  }, [active, geoLoading, geo, photoDataUrl, recording, step])
 
   useEffect(() => {
     if (!active || !onIdleHome) return undefined
     let timer = 0
     const arm = () => {
       window.clearTimeout(timer)
+      if (typeof document !== 'undefined' && document.hidden) return
       timer = window.setTimeout(() => {
+        if (typeof document !== 'undefined' && document.hidden) return
         const go = () => {
           onToast?.('Idle 3 minutes — back to Home', 'ok')
           onIdleHome()
@@ -548,9 +626,15 @@ export default function FieldCollectScreen({
     arm()
     const evs = ['pointerdown', 'touchstart', 'keydown']
     evs.forEach((e) => window.addEventListener(e, arm, { passive: true }))
+    const onVis = () => {
+      if (document.hidden) window.clearTimeout(timer)
+      else arm()
+    }
+    document.addEventListener('visibilitychange', onVis)
     return () => {
       window.clearTimeout(timer)
       evs.forEach((e) => window.removeEventListener(e, arm))
+      document.removeEventListener('visibilitychange', onVis)
     }
   }, [active, onIdleHome, onToast])
 
@@ -567,6 +651,7 @@ export default function FieldCollectScreen({
   }
 
   function resetForNextRecord() {
+    void stopSurveyNotify()
     setStep(0)
     setGeo(null)
     setLocationDetails(null)
@@ -578,6 +663,7 @@ export default function FieldCollectScreen({
     setListening(false)
     setActiveQ(0)
     audioStartedAt.current = null
+    timingRef.current = emptyTiming()
     try {
       streamRef.current?.getTracks?.().forEach((t) => t.stop())
     } catch {
@@ -648,6 +734,7 @@ export default function FieldCollectScreen({
       onToast?.('Geolocation not supported — use a phone with GPS', 'error')
       return
     }
+    markTiming('gps_start')
     setGeoLoading(true)
     onToast?.('Locking GPS… keep outdoors, wait for accuracy', 'ok')
 
@@ -822,7 +909,7 @@ export default function FieldCollectScreen({
       }
     } catch (e) {
       setVoiceActivated(false)
-      onToast?.(e.message || 'Microphone permission required — voice is locked mandatory', 'error')
+      onToast?.(e.message || (voiceRequired ? 'Microphone permission required' : 'Microphone permission denied'), 'error')
     }
   }
 
@@ -910,8 +997,8 @@ export default function FieldCollectScreen({
       setStep(1)
       return false
     }
-    if (!voiceActivated) {
-      onToast?.('Voice activation required', 'error')
+    if (voiceRequired && !voiceActivated) {
+      onToast?.('Voice activation required for this survey', 'error')
       setStep(2)
       return false
     }
@@ -979,7 +1066,7 @@ export default function FieldCollectScreen({
       setAudioBlob(blob)
     }
 
-    if (!blob || blob.size < MIN_AUDIO_BYTES) {
+    if (voiceRequired && (!blob || blob.size < MIN_AUDIO_BYTES)) {
       onToast?.(
         'Voice recording too short or missing — re-activate voice and record interview',
         'error',
@@ -988,18 +1075,24 @@ export default function FieldCollectScreen({
       return
     }
 
-    const durationMs = audioStartedAt.current
-      ? Date.now() - audioStartedAt.current
-      : 0
-    if (durationMs > 0 && durationMs < 2500) {
-      onToast?.('Record at least a few seconds of voice before save', 'error')
-      return
+    if (voiceRequired) {
+      const durationMs = audioStartedAt.current
+        ? Date.now() - audioStartedAt.current
+        : 0
+      if (durationMs > 0 && durationMs < 2500) {
+        onToast?.('Record at least a few seconds of voice before save', 'error')
+        return
+      }
     }
 
     setSaving(true)
     try {
-      const audioDataUrl = await blobToBase64(blob)
-      const audioMime = blob.type || 'audio/webm'
+      let audioDataUrl = null
+      let audioMime = 'audio/webm'
+      if (blob && blob.size >= MIN_AUDIO_BYTES) {
+        audioDataUrl = await blobToBase64(blob)
+        audioMime = blob.type || 'audio/webm'
+      }
 
       // Locked location + geo stamped into answers (immutable client fields).
       // Draft markers are stripped — a confirmed record is finished work.
@@ -1013,11 +1106,14 @@ export default function FieldCollectScreen({
         workingRecordIndexRef.current ??
         draft?.recordIndex ??
         Math.max(progress?.next_record || 0, currentDone + 1)
+      markTiming('finish')
       const lockedAnswers = {
         ...remapped,
+        ...buildTimingPayload(),
         _geo_locked: true,
         _photo_locked: true,
-        _voice_locked: true,
+        _voice_locked: voiceRequired ? true : !!audioDataUrl,
+        _voice_required: voiceRequired,
         _location_locked: true,
         _recordIndex: localSeq,
         geo_lat: geo.lat,
@@ -1044,10 +1140,11 @@ export default function FieldCollectScreen({
         audioDataUrl,
         audioMime,
         recordIndex: localSeq,
+        voice_required: voiceRequired,
         locks: {
           geo: true,
           photo: true,
-          voice: true,
+          voice: voiceRequired ? true : !!audioDataUrl,
           location: true,
         },
       })
@@ -1166,7 +1263,7 @@ export default function FieldCollectScreen({
         blob = await toSpeechWav16k(blob)
         audioDataUrl = await blobToBase64(blob)
         audioMime = blob.type || 'audio/webm'
-      } else if (!checkpoint) {
+      } else if (!checkpoint && voiceRequired) {
         onToast?.('Voice recording required to save a draft — activate voice and record', 'error')
         setStep(2)
         return false
@@ -1192,7 +1289,9 @@ export default function FieldCollectScreen({
       // Keep meta keys in sync with META_ANSWER_KEYS (excluded from the answered count)
       const lockedAnswers = {
         ...answers,
+        ...buildTimingPayload(),
         _draft: true,
+        _voice_required: voiceRequired,
         _recordIndex: workingRecordIndexRef.current,
         geo_lat: geo?.lat,
         geo_lng: geo?.lng,
@@ -1359,14 +1458,14 @@ export default function FieldCollectScreen({
         <button
           type="button"
           className={`qa-opt yes${answers[qq.id] === 'Yes' ? ' selected' : ''}`}
-          onClick={() => setAnswers((a) => ({ ...a, [qq.id]: 'Yes' }))}
+          onClick={() => chooseAnswer(qq.id, 'Yes')}
         >
           {displayOption('Yes', qq, 0, displayLang)}
         </button>
         <button
           type="button"
           className={`qa-opt no${answers[qq.id] === 'No' ? ' selected' : ''}`}
-          onClick={() => setAnswers((a) => ({ ...a, [qq.id]: 'No' }))}
+          onClick={() => chooseAnswer(qq.id, 'No')}
         >
           {displayOption('No', qq, 1, displayLang)}
         </button>
@@ -1378,7 +1477,7 @@ export default function FieldCollectScreen({
           <textarea
             rows={3}
             value={answers[qq.id] || ''}
-            onChange={(e) => setAnswers((a) => ({ ...a, [qq.id]: e.target.value }))}
+            onChange={(e) => chooseAnswer(qq.id, e.target.value)}
             placeholder="Type respondent feedback or opinion…"
             style={{ width: '100%', resize: 'vertical' }}
           />
@@ -1411,11 +1510,9 @@ export default function FieldCollectScreen({
                   opacity: answers[qq.id] && !active ? 0.7 : 1,
                 }}
                 onClick={() => {
-                  setAnswers((a) => {
-                    const prev = a[qq.id] || ''
-                    const cleaned = prev.replace(/\s*\[(Positive|Neutral|Negative)\]/g, '').trim()
-                    return { ...a, [qq.id]: `${cleaned} [${item.val}]`.trim() }
-                  })
+                  const prev = answers[qq.id] || ''
+                  const cleaned = prev.replace(/\s*\[(Positive|Neutral|Negative)\]/g, '').trim()
+                  chooseAnswer(qq.id, `${cleaned} [${item.val}]`.trim())
                 }}
               >
                 {item.label}
@@ -1441,12 +1538,7 @@ export default function FieldCollectScreen({
                   max="100"
                   step="1"
                   value={val}
-                  onChange={(e) =>
-                    setAnswers((a) => ({
-                      ...a,
-                      [qq.id]: `${Number(e.target.value)}%`,
-                    }))
-                  }
+                  onChange={(e) => chooseAnswer(qq.id, `${Number(e.target.value)}%`)}
                   aria-label="Sentiment 1 to 100"
                 />
               </div>
@@ -1507,7 +1599,7 @@ export default function FieldCollectScreen({
                 key={opt}
                 type="button"
                 className={`qa-opt opt-btn${sel ? ' selected' : ''}${sent ? ` ${sent}` : ''}${partyClass ? ` ${partyClass}` : ''}`}
-                onClick={() => setAnswers((a) => ({ ...a, [qq.id]: opt }))}
+                onClick={() => chooseAnswer(qq.id, opt)}
               >
                 {partyClass ? (
                   <span
@@ -1534,7 +1626,7 @@ export default function FieldCollectScreen({
               type="text"
               inputMode="numeric"
               value={answers[qq.id] || ''}
-              onChange={(e) => setAnswers((a) => ({ ...a, [qq.id]: e.target.value }))}
+              onChange={(e) => chooseAnswer(qq.id, e.target.value)}
               placeholder="e.g. 25"
             />
           </label>
@@ -1551,12 +1643,7 @@ export default function FieldCollectScreen({
                   ? String(v)
                   : ''
               })()}
-              onChange={(e) =>
-                setAnswers((a) => ({
-                  ...a,
-                  [qq.id]: e.target.value.trim() || '',
-                }))
-              }
+              onChange={(e) => chooseAnswer(qq.id, e.target.value.trim() || '')}
               placeholder="Type a custom answer…"
             />
           </label>
@@ -1568,7 +1655,7 @@ export default function FieldCollectScreen({
         <input
           value={answers[qq.id] || ''}
           inputMode={qq.type === 'age' ? 'numeric' : undefined}
-          onChange={(e) => setAnswers((a) => ({ ...a, [qq.id]: e.target.value }))}
+          onChange={(e) => chooseAnswer(qq.id, e.target.value)}
         />
       </label>
     )
@@ -2196,12 +2283,12 @@ export default function FieldCollectScreen({
                     return
                   }
                   setStep(2)
-                  if (!recording && !voiceActivated) {
+                  if (voiceRequired && !recording && !voiceActivated) {
                     await startAudio()
                   }
                 }}
               >
-                Continue · activate voice →
+                {voiceRequired ? 'Continue to voice' : 'Continue to questions'}
               </button>
             </div>
           </div>
@@ -2210,7 +2297,7 @@ export default function FieldCollectScreen({
         {/* STEP 2 — VOICE LOCK + Q/A */}
         {step === 2 && (
           <div>
-            {voiceActivated ? (
+            {voiceRequired && voiceActivated ? (
               <div className="voice-strip">
                 {recording ? <span className="live-dot" aria-hidden /> : <span className="pill ok" style={{ margin: 0 }}>Voice on</span>}
                 <strong>{recording ? 'Recording interview' : 'Voice locked'}</strong>
@@ -2224,11 +2311,11 @@ export default function FieldCollectScreen({
                   </button>
                 )}
               </div>
-            ) : (
+            ) : voiceRequired ? (
               <div className="card" style={{ marginBottom: 10 }}>
-                <h3>3 · Voice activation (mandatory)</h3>
+                <h3>3 · Voice activation (required)</h3>
                 <p className="muted" style={{ fontSize: 12 }}>
-                  Microphone must be on. Interview audio is locked before answers can be saved.
+                  Super Admin / Client Admin required interview audio on this survey.
                 </p>
                 {!locks.geo || !locks.photo ? (
                   <p className="pill bad">
@@ -2246,13 +2333,14 @@ export default function FieldCollectScreen({
                   {audioBlob ? 'Re-activate voice' : 'Activate voice · start recording'}
                 </button>
               </div>
-            )}
+            ) : null}
 
-            {!voiceActivated ? (
+            {!questionsOpen ? (
               <div className="card">
                 <p className="muted">
-                  Questions stay locked until voice is activated. Tap{' '}
-                  <strong>Activate voice</strong> above.
+                  {voiceRequired
+                    ? 'Questions stay locked until voice is activated.'
+                    : 'Lock GPS and photo first.'}
                 </p>
                 {!editingDraft && (
                   <button type="button" className="btn secondary" onClick={() => setStep(1)}>
@@ -2311,7 +2399,7 @@ export default function FieldCollectScreen({
                 : `Saved ${progress?.done ?? '—'} activities.`}
             </p>
             <p className="muted" style={{ fontSize: 13 }}>
-              Each activity was saved with GPS + location + photo + voice locks.
+              Each activity was saved with GPS + photo{voiceRequired ? ' + voice' : ''} locks.
             </p>
             {!progress?.complete && (
               <button type="button" className="btn primary" onClick={resetForNextRecord}>

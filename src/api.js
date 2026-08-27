@@ -570,6 +570,16 @@ function asQuestionList(raw) {
   return []
 }
 
+/** Field app: surveys assigned to this surveyor. */
+export function getMySurveys() {
+  return request('/api/my-surveys')
+}
+
+/** Alias used by some field screens. */
+export function getSurveys() {
+  return getMySurveys()
+}
+
 export async function getSurveyForm() {
   const mine = await getMySurveys()
   const items = Array.isArray(mine?.items) ? mine.items : []

@@ -1,44 +1,10 @@
 import { Component, useCallback, useEffect, useRef, useState } from 'react'
 import Icon from './Icons'
-
-class CollectErrorBoundary extends Component {
-  constructor(props) {
-    super(props)
-    this.state = { hasError: false, error: null }
-  }
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error }
-  }
-  componentDidCatch(error, info) {
-    console.error('Collect Screen Error:', error, info)
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="card" style={{ padding: 24, textAlign: 'center', margin: 16 }}>
-          <h3 style={{ marginTop: 0, color: '#ef4444' }}>⚠️ Collect Screen Error</h3>
-          <p className="muted" style={{ fontSize: 13 }}>
-            {this.state.error?.message || 'An unexpected error occurred while loading the survey collector.'}
-          </p>
-          <button
-            type="button"
-            className="btn primary"
-            onClick={() => {
-              this.setState({ hasError: false, error: null })
-              this.props.onReset?.()
-            }}
-          >
-            🔄 Reload Collect Screen
-          </button>
-        </div>
-      )
-    }
-    return this.props.children
-  }
-}
 import {
+  clearSession,
   getMyProgress,
   getMySubmissions,
+  getSurveyForm,
   getToken,
   logout,
   me,
@@ -67,7 +33,7 @@ import {
   pushDraft,
   updatePackage,
 } from './localStore'
-import { clearSession, getSurveyForm } from './api'
+import { checkForAppUpdate, launchApkUpdate } from './appUpdate'
 import { APP_BUILD, APP_VERSION, APP_VERSION_CODE, versionLabel } from './version'
 import { slugQuestionKey } from './questionKey'
 import { compressImageFile } from './mediaOptimize'
@@ -83,8 +49,48 @@ import {
   getDisplayLang,
   setDisplayLang as persistDisplayLang,
   NAV_MODES,
+  FONT_SCALES,
 } from './prefs'
 import './App.css'
+
+/** Catch ReferenceError / render crashes so a tab does not go fully blank. */
+class ScreenErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error, info) {
+    console.error(`${this.props.title || 'Screen'} error:`, error, info)
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="card" style={{ padding: 24, textAlign: 'center', margin: 16 }}>
+          <h3 style={{ marginTop: 0, color: '#ef4444' }}>
+            {this.props.title || 'Screen'} error
+          </h3>
+          <p className="muted" style={{ fontSize: 13 }}>
+            {this.state.error?.message || 'An unexpected error occurred.'}
+          </p>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() => {
+              this.setState({ hasError: false, error: null })
+              this.props.onReset?.()
+            }}
+          >
+            Reload this screen
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 function mergeUserKeepMedia(prev, next) {
   if (!next) return prev || null
@@ -95,6 +101,12 @@ function mergeUserKeepMedia(prev, next) {
     aadhaar_front: next.aadhaar_front || prev?.aadhaar_front || null,
     aadhaar_back: next.aadhaar_back || prev?.aadhaar_back || null,
   }
+}
+
+const NAV_MODE_INFO = {
+  next: { title: 'Next button', desc: 'One question at a time, with Prev / Next buttons.' },
+  swipe: { title: 'Swipe', desc: 'One question at a time — swipe left or right to move.' },
+  scroll: { title: 'Vertical scroll', desc: 'All questions in one scrollable page.' },
 }
 
 /** Surveyor-only field app (mobile / APK) — 4 focused tabs */
@@ -247,9 +259,8 @@ function HomeScreen({
   myProgress,
   questionsMeta,
   onNewSurvey,
-  _onViewRecords,
+  onViewRecords,
   onSync,
-
   onLogout,
 }) {
   const quality = network?.quality || QUALITY.OFFLINE
@@ -336,6 +347,12 @@ function HomeScreen({
       {pendingSync > 0 && (
         <button type="button" className="cta secondary" onClick={onSync}>
           Sync {pendingSync} package(s) now
+        </button>
+      )}
+
+      {typeof onViewRecords === 'function' && (
+        <button type="button" className="cta secondary" onClick={onViewRecords}>
+          {localPending > 0 ? `View submissions · ${localPending} pending` : 'View submissions'}
         </button>
       )}
 
@@ -494,7 +511,18 @@ function MyRecordsScreen({ user, onToast, questions }) {
 /** Surveyor Profile Screen: Name, Photo, Phone, Aadhaar Front & Back, Key ID */
 
 
-function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
+function SurveyorProfileScreen({
+  user,
+  onToast,
+  onUserUpdated,
+  navMode,
+  onNavModeChange,
+  displayLang,
+  onDisplayLangChange,
+  fontScale,
+  onFontScaleChange,
+  onLogout,
+}) {
   const [phone, setPhone] = useState(user?.phone || '')
   const [savingPhone, setSavingPhone] = useState(false)
   const [editingPhone, setEditingPhone] = useState(false)
@@ -757,10 +785,29 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
           ))}
         </div>
 
+        <h4 style={{ marginTop: 0, marginBottom: 8, fontSize: 15 }}>🔤 Display size</h4>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+          {FONT_SCALES.map((scale) => {
+            const label =
+              scale === 1 ? 'Normal' : scale === 1.15 ? 'Large' : scale === 1.3 ? 'Larger' : 'Largest'
+            const selected = Number(fontScale) === scale
+            return (
+              <button
+                key={scale}
+                type="button"
+                className={`chip ${selected ? 'selected' : ''}`}
+                onClick={() => onFontScaleChange?.(scale)}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+
         <h4 style={{ marginTop: 0, marginBottom: 8, fontSize: 15 }}>📝 Question Layout</h4>
         <div style={{ display: 'grid', gap: 8 }}>
           {NAV_MODES.map((mode) => {
-            const info = NAV_MODE_INFO[mode]
+            const info = NAV_MODE_INFO[mode] || { title: mode, desc: '' }
             const selected = navMode === mode
             return (
               <button
@@ -1056,12 +1103,6 @@ function DraftsScreen({ user, onToast, onEdit, questions }) {
   )
 }
 
-const NAV_MODE_INFO = {
-  next: { title: 'Next button', desc: 'One question at a time, with Prev / Next buttons.' },
-  swipe: { title: 'Swipe', desc: 'One question at a time — swipe left or right to move.' },
-  scroll: { title: 'Vertical scroll', desc: 'All questions in one scrollable page.' },
-}
-
 /**
  * Combined Submissions tab: switch between Pending Drafts and Sent Activity.
  */
@@ -1286,7 +1327,7 @@ export default function SurveyorApp() {
 
   const onCollectSavedDraft = useCallback(() => {
     setEditDraft(null)
-    setTab('drafts')
+    setTab('submissions')
     refreshDraftCount()
   }, [refreshDraftCount])
 
@@ -1622,6 +1663,7 @@ export default function SurveyorApp() {
           refreshingLabel={tab === 'profile' ? 'Refreshing profile…' : tab === 'submissions' ? 'Refreshing submissions…' : 'Refreshing…'}
         >
           {tab === 'home' && (
+            <ScreenErrorBoundary title="Home">
             <HomeScreen
               user={user}
               network={network}
@@ -1645,9 +1687,10 @@ export default function SurveyorApp() {
               }}
               onLogout={handleLogout}
             />
+            </ScreenErrorBoundary>
           )}
           <div style={{ display: tab === 'collect' ? 'block' : 'none' }}>
-            <CollectErrorBoundary onReset={() => setCollectKey((k) => k + 1)}>
+            <ScreenErrorBoundary title="Collect" onReset={() => setCollectKey((k) => k + 1)}>
               <FieldCollectScreen
                 key={collectKey}
                 active={tab === 'collect'}
@@ -1659,10 +1702,11 @@ export default function SurveyorApp() {
                 onSavedDraft={onCollectSavedDraft}
                 onIdleHome={onCollectIdleHome}
               />
-            </CollectErrorBoundary>
+            </ScreenErrorBoundary>
           </div>
 
           {tab === 'submissions' && (
+            <ScreenErrorBoundary title="Submissions">
             <SubmissionsScreen
               user={user}
               questions={questionsMeta?.questions}
@@ -1688,8 +1732,10 @@ export default function SurveyorApp() {
                 }
               }}
             />
+            </ScreenErrorBoundary>
           )}
           {tab === 'profile' && (
+            <ScreenErrorBoundary title="Profile">
             <SurveyorProfileScreen
               user={user}
               onToast={notify}
@@ -1704,6 +1750,7 @@ export default function SurveyorApp() {
               onDisplayLangChange={changeDisplayLang}
               onLogout={handleLogout}
             />
+            </ScreenErrorBoundary>
           )}
         </PullToRefresh>
       </main>

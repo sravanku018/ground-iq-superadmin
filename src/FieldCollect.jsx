@@ -176,8 +176,8 @@ export default function FieldCollectScreen({
   active = true,
   navMode: navModeProp,
 }) {
-  // Device-local question-navigation preference (Settings tab). The prop is the
-  // live source; fall back to localStorage if this screen is rendered without it.
+  // Device-local question-navigation preference (Profile → Question layout).
+  // The prop is the live source; fall back to localStorage if omitted.
   const navMode = navModeProp || getNavMode()
   const [deviceLang, setDeviceLang] = useState(getDisplayLang)
   useEffect(() => {
@@ -1291,7 +1291,7 @@ export default function FieldCollectScreen({
 
   const q = questions[activeQ]
 
-  // ── Survey question navigation (Settings → "survey loading" mode) ────────
+  // ── Survey question navigation (Profile → Question layout) ────────
   function scrollToQuestionCenter() {
     requestAnimationFrame(() => {
       try {

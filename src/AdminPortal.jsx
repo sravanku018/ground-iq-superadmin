@@ -36,32 +36,23 @@ const AdminCompaniesScreen = lazy(() => import('./AdminCompanies'))
 const AdminWebSurveyScreen = lazy(() => import('./AdminWebSurvey'))
 const AdminProfileScreen = lazy(() => import('./AdminProfile'))
 
-// Client Admin nav — Mock 3 Google + Twitter doctrine
+// Matches the sidebar: each group’s `pages` become the subtabs on that screen.
 const NAV = [
-  { id: 'overview',   label: 'Overview',   icon: 'grid',      pages: ['overview'] },
-  { id: 'analyze',    label: 'Analyze',    icon: 'chart',     pages: ['analyze'] },
-  { id: 'report',     label: 'Live Feed',  icon: 'menu',      pages: ['report'] },
-  { id: 'surveyors',  label: 'Surveyors',  icon: 'user',      pages: ['users'] },
-  { id: 'surveys',    label: 'Surveys',    icon: 'clipboard', pages: ['surveys'] },
-  { id: 'data',       label: 'Review & Data', icon: 'check',  pages: ['review', 'upload', 'data', 'questions', 'bank', 'web'] },
+  { id: 'overview', label: 'Dashboard', icon: 'grid', pages: ['overview'] },
+  { id: 'analyze', label: 'Analyze & Export', icon: 'chart', pages: ['analyze', 'report', 'upload', 'data'] },
+  { id: 'review', label: 'Review QA', icon: 'check', pages: ['review'] },
+  { id: 'surveyors', label: 'Surveyors', icon: 'user', pages: ['users'] },
+  { id: 'surveys', label: 'Surveys & Forms', icon: 'clipboard', pages: ['surveys', 'questions', 'bank', 'web'] },
+  { id: 'profile', label: 'Organization', icon: 'building', pages: ['profile'] },
 ]
 
-// Super Admin console only (01-PRD.md): platform governance group
 const PLATFORM_NAV = {
   id: 'platform',
-  label: 'Platform',
+  label: 'Seats & Audit',
   icon: 'star',
-  pages: ['audit', 'bank', 'seats'],
+  pages: ['audit', 'seats'],
 }
 
-const PROFILE_NAV = {
-  id: 'sa-profile',
-  label: 'Profile',
-  icon: 'user',
-  pages: ['profile'],
-}
-
-// Super Admin console only: dedicated Client Admin account management
 const CLIENT_ADMINS_NAV = {
   id: 'admins',
   label: 'Client Admins',
@@ -69,7 +60,6 @@ const CLIENT_ADMINS_NAV = {
   pages: ['admins'],
 }
 
-// Super Admin console only: companies registry (create companies, add Client Admins)
 const COMPANIES_NAV = {
   id: 'companies',
   label: 'Companies',
@@ -77,30 +67,22 @@ const COMPANIES_NAV = {
   pages: ['companies'],
 }
 
-// Super Admin creates Projects (shared with Client Admins by company).
-const PROJECTS_NAV = {
-  id: 'projects',
-  label: 'Projects',
-  icon: 'clipboard',
-  pages: ['surveys'],
-}
-
 const PAGE_LABELS = {
   overview: 'Overview',
-  analyze:  'Analyze · charts',
-  report:   'Live Feed',
-  users:    'Surveyors',
-  surveys:  'Surveys',
+  analyze: 'Charts',
+  report: 'Live Feed',
+  users: 'Surveyors',
+  surveys: 'Surveys',
   questions: 'Questions',
-  review:   'Review',
-  upload:   'Upload',
-  data:     'Data',
-  audit:    'Audit Log',
-  bank:     'Question Bank',
-  web:      'Web survey',
-  seats:    'Seat Requests',
-  profile:  'Profile',
-  admins:   'Client Admins',
+  review: 'Review',
+  upload: 'Export',
+  data: 'Raw data',
+  audit: 'Audit Log',
+  bank: 'Question Bank',
+  web: 'Web survey',
+  seats: 'Seat Requests',
+  profile: 'Organization',
+  admins: 'Client Admins',
   companies: 'Companies',
 }
 
@@ -650,20 +632,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
 
   const isSuper = superAdminOnly || user?.role === 'super_admin'
   const baseNav = isSuper
-    ? [
-        NAV.find((n) => n.id === 'overview'),
-        NAV.find((n) => n.id === 'analyze'),
-        NAV.find((n) => n.id === 'report'),
-        COMPANIES_NAV,
-        CLIENT_ADMINS_NAV,
-        PROJECTS_NAV,
-        PLATFORM_NAV,
-        PROFILE_NAV,
-        // console keeps Question Bank under Platform only — avoid duplicate subtabs
-        ...NAV
-          .filter((n) => !['overview', 'analyze', 'report', 'surveys'].includes(n.id))
-          .map((n) => (n.id === 'data' ? { ...n, pages: n.pages.filter((p) => p !== 'bank') } : n)),
-      ].filter(Boolean)
+    ? [...NAV, COMPANIES_NAV, CLIENT_ADMINS_NAV, PLATFORM_NAV]
     : NAV
   const nav = baseNav
     .map((n) => ({ ...n, pages: n.pages.filter(canPage) }))
@@ -968,8 +937,8 @@ export default function AdminPortal({ superAdminOnly = false }) {
         <nav className="portal-nav">
           <div className="side-section-label">MONITORING</div>
           <button className={`side-sub ${page === 'overview' ? 'active' : ''}`} onClick={() => goPage('overview')}>📊 Dashboard</button>
-          <button className={`side-sub ${page === 'analyze' || page === 'data' ? 'active' : ''}`} onClick={() => goPage('analyze')}>📈 Analyze &amp; Export</button>
-          <button className={`side-sub ${page === 'review' || page === 'report' ? 'active' : ''}`} onClick={() => goPage('review')}>✅ Review QA</button>
+          <button className={`side-sub ${['analyze', 'report', 'upload', 'data'].includes(page) ? 'active' : ''}`} onClick={() => goPage('analyze')}>📈 Analyze &amp; Export</button>
+          <button className={`side-sub ${page === 'review' ? 'active' : ''}`} onClick={() => goPage('review')}>✅ Review QA</button>
 
           <div className="side-section-label" style={{ marginTop: 14 }}>SETUP &amp; TEAM</div>
           <button className={`side-sub ${page === 'users' ? 'active' : ''}`} onClick={() => goPage('users')}>👥 Surveyors &amp; Quotas</button>
@@ -981,7 +950,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
               <div className="side-section-label" style={{ marginTop: 14 }}>GOVERNANCE</div>
               <button className={`side-sub ${page === 'companies' ? 'active' : ''}`} onClick={() => goPage('companies')}>🏢 Companies</button>
               <button className={`side-sub ${page === 'admins' ? 'active' : ''}`} onClick={() => goPage('admins')}>🛡️ Client Admins</button>
-              <button className={`side-sub ${['audit', 'platform', 'seats'].includes(page) ? 'active' : ''}`} onClick={() => goPage('audit')}>💺 Seats &amp; Audit</button>
+              <button className={`side-sub ${page === 'audit' || page === 'seats' ? 'active' : ''}`} onClick={() => goPage('audit')}>💺 Seats &amp; Audit</button>
             </>
           )}
         </nav>

@@ -27,7 +27,7 @@ const POWER_DEFS = [
   { key: 'can_assign_surveyors', label: 'Assign surveyors', icon: '👥', hint: 'Map surveyors onto surveys' },
   { key: 'can_validate_proof', label: 'Proof validation', icon: '📞', hint: 'Phone + Aadhaar format checks' },
   { key: 'can_web_survey', label: 'Web survey', icon: '✎', hint: 'Fill surveys in the portal (desk / web)' },
-  { key: 'can_record_voice', label: 'Voice recording', icon: '🎙', hint: 'Set field-app voice optional vs required on surveys' },
+  { key: 'can_record_voice', label: 'Voice recording', icon: '🎙', hint: 'Turn field-app voice Off vs Required. Minute limits stay Super Admin only.' },
 ]
 
 function powersFromUser(u) {

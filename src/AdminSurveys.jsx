@@ -491,12 +491,8 @@ export default function AdminSurveysScreen({ onToast, user }) {
       const d = await createSurvey({
         title,
         questions: [],
-        ...(canVoice
-          ? {
-              voice_required: Boolean(newVoiceRequired),
-              voice_time_limit: Number(newVoiceLimit) || 0,
-            }
-          : {}),
+        ...(canVoice ? { voice_required: Boolean(newVoiceRequired) } : {}),
+        ...(isSuper ? { voice_time_limit: Number(newVoiceLimit) || 0 } : {}),
         ...(isSuper
           ? {
               company_name: newCompany.trim(),
@@ -543,12 +539,8 @@ export default function AdminSurveysScreen({ onToast, user }) {
         title: detail.title,
         questions: cleanQuestions(detail.questions),
         display_lang: detail.display_lang === 'te' ? 'te' : 'en',
-        ...(canVoice
-          ? {
-              voice_required: Boolean(detail.voice_required),
-              voice_time_limit: Number(detail.voice_time_limit) || 0,
-            }
-          : {}),
+        ...(canVoice ? { voice_required: Boolean(detail.voice_required) } : {}),
+        ...(isSuper ? { voice_time_limit: Number(detail.voice_time_limit) || 0 } : {}),
         ...(user?.role === 'super_admin' ? { company_name: detail.company_name || '' } : {}),
       })
 
@@ -762,8 +754,8 @@ export default function AdminSurveysScreen({ onToast, user }) {
           <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>🎙 Voice recording</p>
           <p className="muted" style={{ margin: '0 0 10px', fontSize: 12 }}>
             {isSuper
-              ? 'Super Admin sets this on the project. Optional = surveyor can skip the mic; Required = field lock.'
-              : 'Set voice as optional or mandatory. Surveyors cannot change this.'}
+              ? 'Off = no voice step on the phone. Required = GPS → photo → voice → questions.'
+              : 'Required = mic lock in the field app. Off = surveyors never see voice.'}
           </p>
 
           <div style={{ marginBottom: 10 }}>
@@ -787,9 +779,10 @@ export default function AdminSurveysScreen({ onToast, user }) {
             </div>
           </div>
 
+          {isSuper && (
           <div>
             <span style={{ fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 4, color: '#475569' }}>
-              Duration Limit:
+              Minute limit (auto-stop):
             </span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {[
@@ -810,6 +803,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
               ))}
             </div>
           </div>
+          )}
         </div>
         )}
 
@@ -1029,10 +1023,10 @@ export default function AdminSurveysScreen({ onToast, user }) {
           <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>🎙 Voice recording configuration</p>
           <p className="muted" style={{ margin: '0 0 10px', fontSize: 12 }}>
             {isSuper
-              ? 'Project setting for field surveyors. Optional (default) = they can skip the mic. Required = GPS → photo → voice → questions.'
+              ? 'Off = no voice step on the phone. Required = GPS → photo → voice → questions. Minute limit is Super Admin only.'
               : canVoice
-                ? 'Set voice as optional or mandatory. Surveyors cannot change this.'
-                : 'Voice is set by Super Admin. Ask Super Admin to grant Voice recording if you need to change it.'}
+                ? 'Required = mic lock in the field app. Off = surveyors never see voice. Minute limits are set by Super Admin.'
+                : 'Voice is set by Super Admin. Off means the field app has no voice step.'}
           </p>
 
           <div style={{ marginBottom: 12 }}>
@@ -1057,9 +1051,10 @@ export default function AdminSurveysScreen({ onToast, user }) {
             </div>
           </div>
 
+          {isSuper && (
           <div>
             <span style={{ fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 6, color: '#475569' }}>
-              Duration Limit:
+              Minute limit (auto-stop):
             </span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {[
@@ -1073,14 +1068,14 @@ export default function AdminSurveysScreen({ onToast, user }) {
                   key={t.id}
                   type="button"
                   className={`chip ${Number(detail.voice_time_limit || 0) === t.id ? 'selected' : ''}`}
-                  disabled={!canVoice}
-                  onClick={() => canVoice && setDetail({ ...detail, voice_time_limit: t.id })}
+                  onClick={() => setDetail({ ...detail, voice_time_limit: t.id })}
                 >
                   {t.label}
                 </button>
               ))}
             </div>
           </div>
+          )}
         </div>
 
         <QuestionEditor

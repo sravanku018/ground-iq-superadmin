@@ -1,0 +1,34 @@
+# Push to GitHub → Deno Deploy. No more pasting main.ts.
+# Only runs from ground-iq-web (not the Super Admin Pages repo).
+#
+# One-time: GitHub repo Settings → Secrets → Actions →
+#   DENO_DEPLOY_TOKEN = token from https://dash.deno.com/account#access-tokens
+
+name: Deploy API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hono-api/**"
+      - ".github/workflows/deploy-api.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: github.repository == 'sravanku018/ground-iq-web'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy hono-api to Deno
+        uses: denoland/deployctl@v1
+        with:
+          project: jazzy-crocodile-7790
+          entrypoint: main.ts
+          root: hono-api
+          import-map: deno.json
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}

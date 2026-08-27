@@ -552,25 +552,52 @@ async function seedMissingSuperAdminSlots(
 }
 
 // ── CORS allowlist ────────────────────────────────────────────────────────
-// The API (Deno) is called cross-origin by the Vercel-hosted portals and by the
-// Capacitor Android app (origin https://localhost, from androidScheme: "https").
-// Override the list at runtime with an ALLOWED_ORIGINS env var (comma-separated).
-const ALLOWED_ORIGINS = new Set(
-  Deno.env.get("ALLOWED_ORIGINS")
-    ?.split(",").map((s) => s.trim()).filter(Boolean) ?? [
-      "https://ground-iq-web-lake.vercel.app",   // Client Admin portal
-      "https://ground-iq-superadmin.vercel.app", // Super Admin console
-      "https://localhost",                       // Android APK
-      "http://localhost",                        // Android cleartext fallback
-      "http://localhost:5173",                   // vite dev
-      "http://localhost:4173",                   // vite preview
-    ],
-);
+// Portals run on GitHub Pages (origin https://sravanku018.github.io) and Vercel.
+// The Android WebView origin is https://localhost (androidScheme: "https").
+// ALLOWED_ORIGINS env (comma-separated) is merged with the defaults, not a replace.
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://ground-iq-web-lake.vercel.app",
+  "https://ground-iq-superadmin.vercel.app",
+  "https://sravanku018.github.io",
+  "https://localhost",
+  "http://localhost",
+  "http://localhost:5173",
+  "http://localhost:4173",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:4173",
+  "capacitor://localhost",
+  "ionic://localhost",
+];
+const ALLOWED_ORIGINS = new Set([
+  ...DEFAULT_ALLOWED_ORIGINS,
+  ...(Deno.env.get("ALLOWED_ORIGINS")?.split(",").map((s) => s.trim()).filter(Boolean) ?? []),
+]);
+
+function originIsAllowed(origin: string): boolean {
+  if (ALLOWED_ORIGINS.has(origin)) return true;
+  let u: URL;
+  try {
+    u = new URL(origin);
+  } catch {
+    return false;
+  }
+  const host = u.hostname;
+  if (host === "localhost" || host === "127.0.0.1") return true;
+  if (host === "sravanku018.github.io") return true;
+  if (
+    host.endsWith(".vercel.app") &&
+    (host.startsWith("ground-iq-web") || host.startsWith("ground-iq-superadmin"))
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /** The request's Origin iff it is allow-listed, else null. */
 function resolveAllowedOrigin(req?: Request): string | null {
   const origin = req?.headers.get("origin");
   if (!origin) return null; // non-browser client (curl / server-to-server): CORS N/A
-  return ALLOWED_ORIGINS.has(origin) ? origin : null;
+  return originIsAllowed(origin) ? origin : null;
 }
 /** Single choke point: stamp the correct CORS origin on every outgoing response. */
 function withCors(req: Request, res: Response): Response {
@@ -585,18 +612,22 @@ function withCors(req: Request, res: Response): Response {
 
 const CORS_HEADERS: Record<string, string> = {
   "access-control-allow-headers":
-    "authorization, content-type, x-auth-token, accept, origin, range, content-disposition",
+    "authorization, content-type, x-auth-token, accept, origin, range, content-disposition, cache-control, pragma, x-requested-with",
   "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
   "access-control-expose-headers":
     "content-disposition, content-type, content-length, location",
+  "access-control-max-age": "86400",
 };
 
 function corsHeaders(_req?: Request): Record<string, string> {
   return { ...CORS_HEADERS };
 }
 
-function corsPreflight(): Response {
-  return new Response(null, { status: 204, headers: CORS_HEADERS });
+function corsPreflight(req: Request): Response {
+  const headers: Record<string, string> = { ...CORS_HEADERS, vary: "Origin" };
+  const allowed = resolveAllowedOrigin(req);
+  if (allowed) headers["access-control-allow-origin"] = allowed;
+  return new Response(null, { status: 204, headers });
 }
 
 function json(
@@ -2721,18 +2752,6 @@ function collectTimeStats(
     by_surveyor,
   };
 }
-    ts_voice_start: voiceStart,
-    ts_voice_end: voiceEnd,
-    ts_qa_start: qaStart,
-    ts_finish: finish,
-    sec_gps: a.sec_gps || secBetween(gpsStart, gpsLock),
-    sec_photo: a.sec_photo || secBetween(gpsLock, photo),
-    sec_voice: a.sec_voice || secBetween(voiceStart, voiceEnd),
-    sec_qa: a.sec_qa || secBetween(qaStart, finish),
-    sec_total: a.sec_total || secBetween(gpsStart || gpsLock, finish),
-    answer_pattern: pattern,
-  };
-}
 
 function qaFromAnswers(a: Record<string, unknown>) {
   const keys = [
@@ -4136,7 +4155,7 @@ function redispatch(req: Request, pathAndQuery: string, method?: string, body?: 
 
 // ── Router ────────────────────────────────────────────────
 async function rawHandler(req: Request): Promise<Response> {
-  if (req.method === "OPTIONS") return corsPreflight();
+  if (req.method === "OPTIONS") return corsPreflight(req);
 
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/$/, "") || "/";
@@ -4182,8 +4201,8 @@ async function rawHandler(req: Request): Promise<Response> {
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.9",
-          versionCode: 20009,
+          version: "2.0.10",
+          versionCode: 20010,
           minSupportedVersionCode: 20000,
           apkUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-release.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
@@ -7538,7 +7557,7 @@ async function rawHandler(req: Request): Promise<Response> {
         VALUES (
           ${formKey}, ${title}, ${JSON.stringify(questions)}::jsonb, NOW(), ${me.id}, ${companyName}, ${companyId},
           ${hasPower(me, "can_record_voice") && body.voice_required === true},
-          ${hasPower(me, "can_record_voice") ? Number(body.voice_time_limit) || 0 : 0}
+          ${me.role === "super_admin" ? Math.max(0, Math.min(60, Number(body.voice_time_limit) || 0)) : 0}
         )
         RETURNING id, form_key, title, updated_at
       `;
@@ -8124,18 +8143,26 @@ async function rawHandler(req: Request): Promise<Response> {
           UPDATE survey_form SET display_lang = ${displayLang}, updated_at = NOW() WHERE id = ${id}
         `;
       }
-      if (body.voice_required !== undefined || body.voice_time_limit !== undefined) {
+      if (body.voice_required !== undefined) {
         if (!hasPower(me, "can_record_voice")) {
           return json({
             error: "Super Admin has not granted Voice recording on your profile",
           }, 403);
         }
-        const voiceRequired = body.voice_required === true;
-        const voiceLimit = Number(body.voice_time_limit) || 0;
         await sql`
           UPDATE survey_form
-          SET voice_required = ${voiceRequired},
-              voice_time_limit = ${voiceLimit},
+          SET voice_required = ${body.voice_required === true},
+              updated_at = NOW()
+          WHERE id = ${id}
+        `;
+      }
+      // Minute auto-stop is Super Admin only. Client Admin may send the field
+      // from an older UI — ignore it so survey saves still succeed.
+      if (body.voice_time_limit !== undefined && me.role === "super_admin") {
+        const voiceLimit = Math.max(0, Math.min(60, Number(body.voice_time_limit) || 0));
+        await sql`
+          UPDATE survey_form
+          SET voice_time_limit = ${voiceLimit},
               updated_at = NOW()
           WHERE id = ${id}
         `;

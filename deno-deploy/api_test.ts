@@ -158,6 +158,26 @@ Deno.test("allow-listed Origin is accepted", async () => {
   assertEquals(r.headers.get("access-control-allow-origin"), "https://ground-iq-web-lake.vercel.app");
 });
 
+Deno.test("GitHub Pages Origin is accepted", async () => {
+  const r = await call("GET", "/api/health", {
+    headers: { Origin: "https://sravanku018.github.io" },
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.headers.get("access-control-allow-origin"), "https://sravanku018.github.io");
+});
+
+Deno.test("OPTIONS preflight echoes GitHub Pages Origin", async () => {
+  const r = await call("OPTIONS", "/api/auth/login", {
+    headers: {
+      Origin: "https://sravanku018.github.io",
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type",
+    },
+  });
+  assertEquals(r.status, 204);
+  assertEquals(r.headers.get("access-control-allow-origin"), "https://sravanku018.github.io");
+});
+
 Deno.test("forged Bearer token does not unlock admin", async () => {
   const r = await call("GET", "/api/stats", { token: "not-a-real-session" });
   assert(

@@ -453,7 +453,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
                           ))}
                         </div>
                         <span style={{ fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 4, color: '#475569' }}>
-                          Duration limit (if recorded):
+                          Minute limit (Super Admin · auto-stop):
                         </span>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                           {[

@@ -5,7 +5,7 @@ const USER_KEY = 'esurvey_user'
 const LEGACY_API_KEY = 'esurvey_api_base'
 
 /** Fixed production API — Deno Deploy → Neon */
-export const DENO_API_URL = 'https://jazzy-crocodile-7790.sravanku018.deno.net'
+export const DENO_API_URL = 'https://ground-iq-api.sravanku018.deno.net'
 
 export function getApiBase() {
   // Clear any old local/PC URL the user may have saved earlier

@@ -2,7 +2,7 @@
 
 GitHub push deploys this folder to the same URL:
 
-`https://jazzy-crocodile-7790.sravanku018.deno.net`
+`https://ground-iq-api.sravanku018.deno.net`
 
 ## After the one-time token (see below)
 

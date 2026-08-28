@@ -2000,28 +2000,88 @@ h1, h2, h3, h4, .topbar-title, .hero-name, .mission-title, .fl-title, .qa-title,
   color: var(--info);
 }
 
-/* Stepper */
-.stepper {
+/* ── Unified Verification Stepper & Audit Bar ── */
+.collect-audit-bar {
+  background: #ffffff;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  box-sizing: border-box;
+}
+
+.audit-step-track {
   display: flex;
-  gap: 8px;
-  margin-bottom: 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
 }
 
-.step {
+.audit-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.audit-step-badge {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1.5px solid #cbd5e1;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.audit-step-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.audit-step.active .audit-step-badge {
+  background: var(--accent, #059669);
+  border-color: var(--accent, #059669);
+  color: #ffffff;
+}
+
+.audit-step.active .audit-step-label {
+  color: var(--ink, #0f172a);
+  font-weight: 700;
+}
+
+.audit-step.locked .audit-step-badge {
+  background: #059669;
+  border-color: #059669;
+  color: #ffffff;
+}
+
+.audit-step.locked .audit-step-label {
+  color: #059669;
+  font-weight: 700;
+}
+
+.audit-step-line {
   flex: 1;
-  height: 6px;
-  border: none;
-  border-radius: var(--radius-pill, 999px);
-  background: var(--border);
-  color: transparent;
-  font-size: 0;
-  cursor: pointer;
-  padding: 0;
+  height: 2px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  min-width: 12px;
+  transition: background 0.2s ease;
 }
 
-.step.active,
-.step.done {
-  background: var(--accent);
+.audit-step-line.filled {
+  background: #059669;
 }
 
 /* Form & General Card */

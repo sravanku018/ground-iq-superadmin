@@ -2106,41 +2106,32 @@ export default function FieldCollectScreen({
 
         {surveyChosen || (formMeta?.surveys || []).length === 1 ? (
         <>
-        <div className="stepper">
-          <div className={`step ${locks.geo ? 'done' : 'active'}`}>
-            <div className="dot">{locks.geo ? '✓' : '1'}</div>
-            <div className="lbl">GPS</div>
-          </div>
-          <div className={`step ${locks.photo ? 'done' : locks.geo ? 'active' : ''}`}>
-            <div className="dot">{locks.photo ? '✓' : '2'}</div>
-            <div className="lbl">Photo</div>
-          </div>
-          {voiceRequired && (
-            <div className={`step ${voiceActivated ? 'done' : locks.geo && locks.photo ? 'active' : ''}`}>
-              <div className="dot">{voiceActivated ? '✓' : '3'}</div>
-              <div className="lbl">Voice</div>
+        {/* Unified Verification Stepper & Audit Lock Bar */}
+        <div className="collect-audit-bar">
+          <div className="audit-step-track">
+            <div className={`audit-step ${locks.geo ? 'locked' : step === 0 ? 'active' : ''}`}>
+              <span className="audit-step-badge">{locks.geo ? '✓' : '1'}</span>
+              <span className="audit-step-label">GPS {locks.geo ? 'Locked' : ''}</span>
             </div>
-          )}
-          <div className={`step ${step === 2 && (!voiceRequired || voiceActivated) ? 'active' : ''}`}>
-            <div className="dot">{voiceRequired ? '4' : '3'}</div>
-            <div className="lbl">Q/A</div>
-          </div>
-        </div>
-
-        <div className="lockbar">
-          <div className="hd">Required locks</div>
-          <div className="lock-pills">
-            <div className={`lock-pill ${locks.geo ? 'ok' : 'bad'}`}>
-              <span>{locks.geo ? '✓' : '✗'}</span> GPS {locks.geo ? 'LOCKED' : 'OPEN'}
-            </div>
-            <div className={`lock-pill ${locks.photo ? 'ok' : 'bad'}`}>
-              <span>{locks.photo ? '✓' : '✗'}</span> Photo {locks.photo ? 'LOCKED' : 'OPEN'}
+            <div className={`audit-step-line ${locks.geo ? 'filled' : ''}`} />
+            <div className={`audit-step ${locks.photo ? 'locked' : step === 1 ? 'active' : ''}`}>
+              <span className="audit-step-badge">{locks.photo ? '✓' : '2'}</span>
+              <span className="audit-step-label">Photo {locks.photo ? 'Locked' : ''}</span>
             </div>
             {voiceRequired && (
-              <div className={`lock-pill ${voiceActivated ? 'ok' : 'bad'}`}>
-                <span>{voiceActivated ? '✓' : '✗'}</span> Voice {voiceActivated ? 'ON' : 'OFF'}
-              </div>
+              <>
+                <div className={`audit-step-line ${locks.photo && voiceActivated ? 'filled' : ''}`} />
+                <div className={`audit-step ${voiceActivated ? 'locked' : ''}`}>
+                  <span className="audit-step-badge">{voiceActivated ? '✓' : '3'}</span>
+                  <span className="audit-step-label">Voice {voiceActivated ? 'ON' : ''}</span>
+                </div>
+              </>
             )}
+            <div className={`audit-step-line ${locks.geo && locks.photo ? 'filled' : ''}`} />
+            <div className={`audit-step ${step === 2 ? 'active' : ''}`}>
+              <span className="audit-step-badge">{voiceRequired ? '4' : '3'}</span>
+              <span className="audit-step-label">Q/A</span>
+            </div>
           </div>
         </div>
 

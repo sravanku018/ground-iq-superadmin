@@ -31,8 +31,19 @@ function defaultApkUrl() {
 /**
  * Check if a newer version of the APK is available.
  */
+function pickNewer(a, b) {
+  if (a && !b) return a
+  if (b && !a) return b
+  if (!a && !b) return null
+  const codeA = Number(a.versionCode) || 0
+  const codeB = Number(b.versionCode) || 0
+  if (codeA && codeB) return codeA >= codeB ? a : b
+  return semverCompare(a.version, b.version) >= 0 ? a : b
+}
+
 export async function checkForAppUpdate(options = { ignoreDismissed: false }) {
-  let updateData = null
+  let apiData = null
+  let ghData = null
 
   try {
     const base = getApiBase()
@@ -41,33 +52,40 @@ export async function checkForAppUpdate(options = { ignoreDismissed: false }) {
       headers: { Accept: "application/json", "Cache-Control": "no-cache" },
     })
     if (res.ok) {
-      updateData = await res.json()
+      const json = await res.json()
+      if (json?.version) apiData = json
     }
   } catch {
-    /* fall through to GitHub */
+    /* GitHub still tried below */
   }
 
-  if (!updateData || !updateData.version) {
-    try {
-      const ghRes = await fetch(
-        `https://api.github.com/repos/${GITHUB_REPO}/releases/latest?t=${Date.now()}`,
-        { cache: "no-store", headers: { Accept: "application/vnd.github+json" } },
-      )
-      if (ghRes.ok) {
-        const ghData = await ghRes.json()
-        const tag = (ghData.tag_name || "").replace(/^v/, "")
-        const apkAsset = (ghData.assets || []).find((a) => /\.apk$/i.test(a.name || ""))
-        updateData = {
+  try {
+    const ghRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/releases/latest?t=${Date.now()}`,
+      { cache: "no-store", headers: { Accept: "application/vnd.github+json" } },
+    )
+    if (ghRes.ok) {
+      const latest = await ghRes.json()
+      const tag = (latest.tag_name || "").replace(/^v/, "")
+      const apkAsset = (latest.assets || []).find((a) => /\.apk$/i.test(a.name || ""))
+      if (tag) {
+        ghData = {
           version: tag,
+          versionCode: (() => {
+            const p = tag.split(".").map((n) => Number(n) || 0)
+            return (p[0] || 0) * 10000 + (p[1] || 0) * 100 + Math.min(p[2] || 0, 99)
+          })(),
           apkUrl: apkAsset ? apkAsset.browser_download_url : defaultApkUrl(),
-          releaseUrl: ghData.html_url || `https://github.com/${GITHUB_REPO}/releases/latest`,
-          changelog: ghData.body || "New performance & security updates available.",
+          releaseUrl: latest.html_url || `https://github.com/${GITHUB_REPO}/releases/latest`,
+          changelog: latest.body || "New performance & security updates available.",
         }
       }
-    } catch {
-      /* offline */
     }
+  } catch {
+    /* offline */
   }
+
+  const updateData = pickNewer(apiData, ghData)
 
   if (!updateData || !updateData.version) {
     return { hasUpdate: false, currentVersion: APP_VERSION, currentVersionCode: APP_VERSION_CODE }

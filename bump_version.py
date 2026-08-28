@@ -36,6 +36,7 @@ DENO_MAIN = ROOT_DIR / "deno-deploy" / "main.ts"
 HONO_HANDLER = ROOT_DIR / "hono-api" / "legacy" / "handler.ts"
 HONO_DIR = ROOT_DIR / "hono-api"
 API_REPO = "https://github.com/sravanku018/ground-iq-api.git"
+GITHUB_WEB_REPO = "sravanku018/ground-iq-web"
 DOWNLOADS = Path.home() / "Downloads"
 
 
@@ -180,6 +181,43 @@ def copy_apk(kind="release"):
     except Exception as e:
         logs.append(f"Could not copy to Downloads: {e}")
     return logs, dest_root
+
+
+def publish_github_apk(new_v, apk_path, on_line):
+    """Upload the APK to GitHub Releases so phones can in-app update."""
+    if not apk_path or not Path(apk_path).exists():
+        on_line("No APK to publish on GitHub")
+        return
+    tag = str(new_v).lstrip("v")
+    on_line(f"GitHub Release {tag} ← {apk_path}")
+    view = subprocess.run(
+        ["gh", "release", "view", tag, "-R", GITHUB_WEB_REPO],
+        cwd=str(ROOT_DIR),
+        capture_output=True,
+        text=True,
+    )
+    if view.returncode == 0:
+        stream_cmd(
+            ["gh", "release", "upload", tag, str(apk_path), "-R", GITHUB_WEB_REPO, "--clobber"],
+            on_line,
+        )
+    else:
+        stream_cmd(
+            [
+                "gh",
+                "release",
+                "create",
+                tag,
+                str(apk_path),
+                "-R",
+                GITHUB_WEB_REPO,
+                "--title",
+                f"Smart Survey X v{tag}",
+                "--notes",
+                f"Field APK v{tag}. Install in-app or from this release.",
+            ],
+            on_line,
+        )
 
 
 def git_push_websites(message, on_line):
@@ -330,6 +368,9 @@ def launch_tk():
                     log(line)
                 if ok:
                     log("APK build finished.")
+                    if dest:
+                        log("==> Upload APK to GitHub Releases (phones update from here)…")
+                        publish_github_apk(new_v, dest, log)
                 else:
                     log("APK build failed — see log above.")
 
@@ -616,9 +657,11 @@ class VersionHandler(BaseHTTPRequestHandler):
             collected = []
             ok = stream_cmd(["npm", "run", script], collected.append)
             logs.extend(collected[-80:])
-            extra, _ = copy_apk("debug" if data.get("debug") else "release")
+            extra, dest = copy_apk("debug" if data.get("debug") else "release")
             logs.extend(extra)
             logs.append("APK ok" if ok else "APK failed")
+            if ok and dest:
+                publish_github_apk(new_v, dest, logs.append)
         if data.get("push"):
             logs.append("==> git push")
             git_push(new_v, new_c, logs.append)
@@ -692,9 +735,11 @@ def main():
             script = "build:apk:release" if release else "build:apk"
             print(f"Building {script}…")
             stream_cmd(["npm", "run", script], print)
-            extra, _ = copy_apk("release" if release else "debug")
+            extra, dest = copy_apk("release" if release else "debug")
             for line in extra:
                 print(line)
+            if dest:
+                publish_github_apk(target, dest, print)
         if "--push" in args or "-p" in args:
             git_push(target, code, print)
         return

@@ -8651,6 +8651,20 @@ async function rawHandler(req: Request): Promise<Response> {
         }
       }
 
+      // Reject submission if no actual survey questions were answered
+      const answeredKeys = Object.entries(answers || {}).filter(([k, v]) => {
+        if (!k || k.startsWith("_") || k.startsWith("geo_") || k.startsWith("location_") || k.startsWith("ts_") || k.startsWith("sec_")) return false;
+        if (["draft", "data_collector", "client_package_id", "submitted_by", "has_photo", "has_audio", "photo", "audio", "photo_url", "audio_url", "answer_pattern", "survey_id", "form_id", "form_key"].includes(k)) return false;
+        const val = String(v ?? "").trim();
+        return val !== "";
+      });
+      if (answeredKeys.length === 0) {
+        return json({
+          error: "No questions answered — cannot submit an empty survey record.",
+          code: "empty_answers",
+        }, 422);
+      }
+
       const recIdxRaw = Number(
         body.record_index ??
           (answers as Record<string, unknown>)?._recordIndex ??

@@ -121,6 +121,15 @@ export async function syncOnePackage(id) {
         client_package_id: pkg.id,
         ...(Number.isFinite(recIdx) && recIdx > 0 ? { _recordIndex: recIdx } : {}),
       })
+      const answeredKeys = Object.entries(answers || {}).filter(([k, v]) => {
+        if (!k || k.startsWith('_') || k.startsWith('geo_') || k.startsWith('location_') || k.startsWith('ts_') || k.startsWith('sec_')) return false
+        if (['draft', 'data_collector', 'client_package_id', 'submitted_by', 'has_photo', 'has_audio', 'photo', 'audio', 'photo_url', 'audio_url', 'answer_pattern', 'survey_id', 'form_id', 'form_key'].includes(k)) return false
+        const val = String(v ?? '').trim()
+        return val !== ''
+      })
+      if (answeredKeys.length === 0) {
+        throw new Error('Package has no answered questions — cannot push empty survey')
+      }
       const qaBody = {
         form_key: pkg.qa.form_key,
         form_id: pkg.qa.form_id,

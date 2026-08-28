@@ -1129,7 +1129,22 @@ export default function FieldCollectScreen({
     return true
   }
 
+  function countAnsweredQuestions(ans = answers) {
+    if (!ans || typeof ans !== 'object') return 0
+    return Object.entries(ans).filter(([k, v]) => {
+      if (!k || k.startsWith('_') || k.startsWith('geo_') || k.startsWith('location_') || k.startsWith('ts_') || k.startsWith('sec_')) return false
+      if (['draft', 'data_collector', 'client_package_id', 'submitted_by', 'has_photo', 'has_audio', 'photo', 'audio', 'photo_url', 'audio_url', 'answer_pattern', 'survey_id', 'form_id', 'form_key'].includes(k)) return false
+      const val = String(v ?? '').trim()
+      return val !== ''
+    }).length
+  }
+
   async function finishUpload() {
+    if (questions.length > 0 && countAnsweredQuestions(answers) === 0) {
+      onToast?.('No questions answered — please answer the questions before submitting.', 'error')
+      setStep(2)
+      return
+    }
     for (const q of questions) {
       if (q.required && !String(answers[q.id] || '').trim()) {
         onToast?.(`Required: ${q.label}`, 'error')
@@ -1331,6 +1346,11 @@ export default function FieldCollectScreen({
   async function saveDraft({ autoNext = false, mode = 'finish', questionIndex, silent = false } = {}) {
     const checkpoint = mode === 'checkpoint'
     if (!checkpoint) {
+      if (questions.length > 0 && countAnsweredQuestions(answers) === 0) {
+        onToast?.('No questions answered — please answer the questions before finishing.', 'error')
+        setStep(2)
+        return false
+      }
       if (!geoLocked) {
         onToast?.('Lock GPS first (step 1)', 'error')
         setStep(0)

@@ -1,65 +1,53 @@
-/* Field app: button size follows the label, not a fixed bar */
-.mobile-shell .btn,
+/* Base button and CTA styling for mobile shell */
+.mobile-shell .cta {
+  width: 100%;
+  min-height: 46px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
 .mobile-shell .cta.secondary {
-  width: max-content;
-  max-width: 100%;
-  min-height: 0;
-  height: auto;
+  width: 100%;
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border, #e2e8f0);
+  color: var(--ink, #1e293b);
+}
+
+.mobile-shell .btn {
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 10px 16px;
-  line-height: 1.25;
-  white-space: normal;
   text-align: center;
   box-sizing: border-box;
 }
 
-.mobile-shell .btn.primary {
-  width: max-content;
-  max-width: 100%;
-}
-
 .mobile-shell .btn.small {
-  min-height: 0;
-  padding: 6px 12px;
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 8px;
 }
 
-.mobile-shell .cta {
-  width: 100%;
-  min-height: 0;
-  height: auto;
-  padding: 12px 16px;
-  white-space: normal;
-  line-height: 1.25;
-}
-
-.mobile-shell .login-card .btn,
-.mobile-shell .login-screen .btn.primary,
-.mobile-shell .profile-screen .btn.primary,
 .mobile-shell .qa-nav .btn,
-.mobile-shell .qa-back {
+.mobile-shell .qa-back,
+.mobile-shell .login-card .btn,
+.mobile-shell .login-screen .btn.primary {
   width: 100%;
-}
-
-.mobile-shell .qa-opt {
-  min-height: 0;
-  height: auto;
-  padding: 10px 12px;
-  white-space: normal;
-}
-
-.mobile-shell .act-actions {
-  grid-template-columns: repeat(3, max-content);
-  justify-content: start;
-}
-
-.mobile-shell .act-actions .btn {
-  width: max-content;
-  max-width: 100%;
-  min-height: 0;
-  padding: 8px 12px;
 }
 
 .mobile-shell {
@@ -202,7 +190,7 @@
   color: #fca5a5;
 }
 
-/* Bottom nav — phone app style */
+/* Bottom nav — phone app style (4 tabs) */
 .bottom-nav {
   position: fixed;
   left: 50%;
@@ -211,14 +199,16 @@
   width: 100%;
   max-width: 480px;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 4px;
-  padding: 8px 12px calc(10px + env(safe-area-inset-bottom, 0px));
-  background: color-mix(in srgb, var(--card) 92%, transparent);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid var(--border);
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border, #e2e8f0);
   z-index: 40;
-  overflow: visible;
+  height: calc(56px + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
 }
 
 /* Login */
@@ -1836,42 +1826,40 @@ textarea:focus,
   font-size: var(--fs-sm);
 }
 
-/* ── Middle-aligned Stage for Question & Answer (Swipe and Next Button modes) ── */
+/* ── Clean Responsive Stage for Question & Answer (Swipe and Next Button modes) ── */
 .qa-stage {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  min-height: calc(100svh - 170px);
   width: 100%;
-  margin: 0 auto;
+  margin: 0;
   box-sizing: border-box;
-  padding: 4px 0;
+  padding: 0;
 }
 
 .qa-card {
-  margin: 8px auto;
+  width: 100%;
+  margin: 0;
+  box-sizing: border-box;
   scroll-margin: 15vh;
 }
 
 .qa-card.qa-single-mode {
   width: 100%;
-  margin: auto 0;
+  margin: 4px 0 8px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   border-radius: 16px;
-  padding: 18px 16px;
+  padding: 16px 14px;
   background: #ffffff;
-  border: 1px solid var(--border);
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.07), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--border, #e2e8f0);
+  box-shadow: 0 2px 10px -2px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.03);
 }
 
 .qa-progress {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .qa-progress-bar {

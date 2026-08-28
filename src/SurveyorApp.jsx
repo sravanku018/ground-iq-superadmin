@@ -289,9 +289,7 @@ function HomeScreen({
   myProgress,
   questionsMeta,
   onNewSurvey,
-  onViewRecords,
   onSync,
-  onLogout,
 }) {
   const quality = network?.quality || QUALITY.OFFLINE
   const label = network?.label || 'Offline'
@@ -382,23 +380,9 @@ function HomeScreen({
 
       {pendingSync > 0 && (
         <button type="button" className="cta secondary" onClick={onSync}>
-          Sync {pendingSync} package(s) now
+          ⚡ Sync {pendingSync} package(s) now
         </button>
       )}
-
-      {typeof onViewRecords === 'function' && (
-        <button type="button" className="cta secondary" onClick={onViewRecords}>
-          {localPending > 0 ? `View submissions · ${localPending} pending` : 'View submissions'}
-        </button>
-      )}
-
-      <p className="app-version-foot" aria-label="App version">
-        {versionLabel()}
-      </p>
-
-      <button type="button" className="cta secondary danger-cta" onClick={onLogout}>
-        Log out
-      </button>
     </div>
   )
 }

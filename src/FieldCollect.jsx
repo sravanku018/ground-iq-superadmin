@@ -2527,28 +2527,28 @@ export default function FieldCollectScreen({
         {step === 3 && (
           <div className="card success-card">
             <div className="success-icon-wrap">
-              <span className="success-emoji">✅</span>
+              <Icon name="check" size={24} />
             </div>
             <h3 className="success-title">
-              {progress?.complete ? 'Survey Target Complete!' : `Record #${localDoneCount || 1} Saved!`}
+              {progress?.complete ? 'Survey Target Complete' : `Record #${localDoneCount || 1} Saved`}
             </h3>
             <p className="success-sub">
               {progress?.complete
-                ? `Congratulations! You finished all ${progress.done} / ${progress.target} assigned records.`
-                : 'Data locked safely on phone and ready to sync to admin.'}
+                ? `You have completed all ${progress.done} / ${progress.target} assigned records.`
+                : 'Record saved securely to local queue. Ready to sync.'}
             </p>
 
             <div className="success-checklist">
               <div className="success-item">
-                <span className="success-chk">✓</span>
+                <span className="success-chk"><Icon name="check" size={10} /></span>
                 <span>GPS Location Locked</span>
               </div>
               <div className="success-item">
-                <span className="success-chk">✓</span>
-                <span>Photo Verification Captured</span>
+                <span className="success-chk"><Icon name="check" size={10} /></span>
+                <span>Photo Stamped</span>
               </div>
               <div className="success-item">
-                <span className="success-chk">✓</span>
+                <span className="success-chk"><Icon name="check" size={10} /></span>
                 <span>Survey Questions Completed</span>
               </div>
             </div>
@@ -2559,7 +2559,7 @@ export default function FieldCollectScreen({
                 className="cta success-cta"
                 onClick={resetForNextRecord}
               >
-                ▶  Start Next Record (#{Number(localDoneCount || 0) + 1})
+                Start Next Record (#{Number(localDoneCount || 0) + 1})
               </button>
             )}
 

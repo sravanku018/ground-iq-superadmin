@@ -350,11 +350,11 @@ function HomeScreen({
           disabled={complete}
         >
           {complete ? (
-            <><Icon name="check" size={16} /> Target Reached</>
+            <><Icon name="check" size={16} /> Quota Reached</>
           ) : done > 0 ? (
-            `▶  Start Record #${myProgress?.next_record || done + 1}`
+            `Start Record #${myProgress?.next_record || done + 1}`
           ) : (
-            '▶  Start Collect · GPS → Photo → Q/A'
+            'Start Survey (GPS → Photo → Q/A)'
           )}
         </button>
       </div>
@@ -383,8 +383,8 @@ function HomeScreen({
       {pendingSync > 0 && (
         <div className="sync-banner">
           <div className="sync-banner-text">
-            <strong>⚡ {pendingSync} record{pendingSync > 1 ? 's' : ''} ready to sync</strong>
-            <span>Saved safely on this device</span>
+            <strong>{pendingSync} record{pendingSync > 1 ? 's' : ''} pending sync</strong>
+            <span>Saved securely on local storage</span>
           </div>
           <button type="button" className="btn small primary sync-banner-btn" onClick={onSync}>
             Sync now
@@ -400,7 +400,7 @@ function HomeScreen({
           onClick={onViewRecords}
         >
           <Icon name="box" size={15} />
-          View Submissions Activity ({done + localPending} total)
+          View Submissions ({done + localPending})
         </button>
       )}
     </div>

@@ -535,7 +535,6 @@
   background: transparent;
   color: var(--accent);
   border: 1px solid var(--accent-border);
-  margin-top: -6px;
 }
 
 /* ── Dashboard ─────────────────────────────────────────── */
@@ -1192,36 +1191,36 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 /* ── Home Screen ─────────────────────────────────────────── */
 .home-screen {
-  gap: 12px;
-  padding-bottom: 80px;
+  gap: 8px;
+  padding-bottom: 74px;
 }
 
 .home-hero {
   background: linear-gradient(135deg, #d1fae5 0%, #ecfdf5 60%, #dbeafe 100%);
   border: 1px solid #c7f0db;
-  border-radius: 18px;
-  padding: 16px 16px 14px;
+  border-radius: 16px;
+  padding: 14px 14px 12px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
 }
 
 .home-hero-top {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 
 .home-avatar {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--accent, #4ade80);
   color: #fff;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -1237,14 +1236,14 @@
 
 .home-greeting {
   margin: 0;
-  font-size: 12px;
+  font-size: 11px;
   color: #64748b;
   font-weight: 500;
 }
 
 .home-name {
-  margin: 2px 0 0;
-  font-size: 20px;
+  margin: 1px 0 0;
+  font-size: 18px;
   font-weight: 700;
   color: #0f172a;
   display: flex;
@@ -1255,11 +1254,11 @@
 }
 
 .home-mission {
-  margin: 10px 0 0;
-  font-size: 13px;
+  margin: 8px 0 0;
+  font-size: 12px;
   color: #475569;
-  line-height: 1.45;
-  padding-top: 10px;
+  line-height: 1.4;
+  padding-top: 8px;
   border-top: 1px solid rgba(0,0,0,0.06);
 }
 
@@ -1267,24 +1266,24 @@
 .home-stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  gap: 6px;
 }
 
 .hstat {
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  padding: 10px 8px 8px;
+  border-radius: 12px;
+  padding: 8px 4px 7px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
   min-width: 0;
 }
 
 .hstat-val {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
   color: #0f172a;
   letter-spacing: -0.5px;
@@ -1296,7 +1295,7 @@
 }
 
 .hstat-lbl {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
   color: #94a3b8;
   text-transform: uppercase;
@@ -1312,7 +1311,7 @@
 
 .home-progress-bar {
   flex: 1;
-  height: 7px;
+  height: 6px;
   background: #e2e8f0;
   border-radius: 99px;
   overflow: hidden;
@@ -1333,22 +1332,32 @@
   flex-shrink: 0;
 }
 
-/* Primary CTA */
+/* Home CTAs — always full width */
 .home-cta {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 14px;
   font-size: 15px;
-  min-height: 50px;
+  min-height: 48px;
   font-weight: 700;
   margin-bottom: 0;
   letter-spacing: -0.2px;
-  box-shadow: 0 4px 12px rgba(34,197,94,0.25);
+  box-shadow: 0 3px 10px rgba(34,197,94,0.2);
+  box-sizing: border-box;
 }
 
 .home-cta-sync {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 12px;
   font-size: 14px;
-  min-height: 44px;
+  min-height: 42px;
   margin-bottom: 0;
+  box-sizing: border-box;
 }
 
 .eyebrow {
@@ -1484,16 +1493,20 @@
 .cta {
   width: 100%;
   border: none;
-  border-radius: var(--radius-btn, 22px);
-  padding: 16px;
+  border-radius: var(--radius-btn, 14px);
+  padding: 13px 16px;
   font: inherit;
   font-size: var(--fs-lg);
   font-weight: var(--fw-semibold);
   background: var(--accent);
   color: #000000;
   cursor: pointer;
-  margin-bottom: 14px;
-  min-height: 52px;
+  margin-bottom: 0;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast), filter var(--transition-fast);
 }
 

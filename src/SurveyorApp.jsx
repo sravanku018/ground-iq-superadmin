@@ -283,16 +283,14 @@ function packageFailedRequirements(d) {
 
 function HomeScreen({
   user,
-  network,
   pendingSync,
   pendingLocal,
   myProgress,
   questionsMeta,
   onNewSurvey,
+  onViewRecords,
   onSync,
 }) {
-  const quality = network?.quality || QUALITY.OFFLINE
-  const label = network?.label || 'Offline'
   const done = myProgress?.done ?? 0
   const target = myProgress?.target ?? 0
   const complete = myProgress?.complete || (target > 0 && done >= target)
@@ -300,46 +298,79 @@ function HomeScreen({
   const surveysCount = (questionsMeta?.surveys || []).length || (questionsMeta?.title ? 1 : 0)
   const localPending = pendingLocal ?? pendingSync ?? 0
   const percent = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0
+  const surveyTitle = questionsMeta?.title || (questionsMeta?.surveys?.[0]?.title) || 'Field Survey Campaign'
 
   return (
     <div className="screen home-screen">
-      <p className="ptr-hint">↓ Pull down to refresh</p>
-
-      {/* Hero greeting card */}
+      {/* 1. Hero Greeting Banner */}
       <div className="home-hero">
         <div className="home-hero-top">
           <div className="home-avatar">
             {(user?.name || user?.username || 'S').charAt(0).toUpperCase()}
           </div>
           <div className="home-hero-text">
-            <p className="home-greeting">Hello,</p>
+            <p className="home-greeting">Field Surveyor</p>
             <h2 className="home-name">
               {user?.name || user?.username}
               {user?.verified ? <VerifiedBadge size={16} /> : null}
             </h2>
-            <div className={`pill ${networkPillClass(quality)}`} style={{ marginTop: 4, width: 'fit-content' }} title={network?.error || ''}>
-              <span className="dot" />
-              {label}
-            </div>
           </div>
         </div>
-        {myProgress?.label && (
-          <p className="home-mission">{myProgress.label}</p>
-        )}
       </div>
 
-      {/* Stats grid — 4 cells */}
+      {/* 2. Active Mission Card */}
+      <div className="mission-card">
+        <div className="mission-head">
+          <span className="mission-badge">
+            <Icon name="pencil" size={12} /> Active Survey
+          </span>
+          {target > 0 && (
+            <span className="mission-percent">{percent}% Goal</span>
+          )}
+        </div>
+        <h3 className="mission-title">{surveyTitle}</h3>
+        {target > 0 ? (
+          <div className="mission-progress-box">
+            <div className="mission-progress-bar">
+              <div className="mission-progress-fill" style={{ width: `${percent}%` }} />
+            </div>
+            <div className="mission-progress-labels">
+              <span>{done} records submitted</span>
+              <span>Target: {target}</span>
+            </div>
+          </div>
+        ) : (
+          <p className="mission-sub">Continuous field data collection</p>
+        )}
+
+        <button
+          type="button"
+          className="cta mission-cta"
+          onClick={onNewSurvey}
+          disabled={complete}
+        >
+          {complete ? (
+            <><Icon name="check" size={16} /> Target Reached</>
+          ) : done > 0 ? (
+            `▶  Start Record #${myProgress?.next_record || done + 1}`
+          ) : (
+            '▶  Start Collect · GPS → Photo → Q/A'
+          )}
+        </button>
+      </div>
+
+      {/* 3. Stats Grid — 4 clean cells */}
       <div className="home-stats">
         <div className="hstat">
-          <span className="hstat-val">{done}{target ? `/${target}` : ''}</span>
+          <span className="hstat-val">{done}</span>
           <span className="hstat-lbl">Submitted</span>
         </div>
         <div className="hstat">
           <span className="hstat-val">{localPending}</span>
-          <span className="hstat-lbl">Pending</span>
+          <span className="hstat-lbl">Queued</span>
         </div>
         <div className="hstat">
-          <span className="hstat-val">{surveysCount || '—'}</span>
+          <span className="hstat-val">{surveysCount || 1}</span>
           <span className="hstat-lbl">Surveys</span>
         </div>
         <div className="hstat">
@@ -348,39 +379,28 @@ function HomeScreen({
         </div>
       </div>
 
-      {/* Progress bar (only when target is set) */}
-      {target > 0 && (
-        <div className="home-progress-wrap">
-          <div className="home-progress-bar">
-            <div className="home-progress-fill" style={{ width: `${percent}%` }} />
-          </div>
-          <span className="home-progress-label">{percent}% of target</span>
-        </div>
-      )}
-
-      {/* Flags */}
-      {((questionsMeta?.surveys || []).some((s) => s.voice_required) || complete || localPending > 0) && (
-        <div className="pill-row" style={{ marginTop: 0 }}>
-          {complete && <span className="pill ok"><span className="dot" />Target complete</span>}
-          {localPending > 0 && <span className="pill warn"><span className="dot" />{localPending} pending on phone</span>}
-          {(questionsMeta?.surveys || []).some((s) => s.voice_required) && (
-            <span className="pill warn"><span className="dot" />Voice required</span>
-          )}
-        </div>
-      )}
-
-      {/* Primary action */}
-      <button type="button" className="cta home-cta" onClick={onNewSurvey} disabled={complete}>
-        {complete
-          ? <><Icon name="check" size={14} /> Target Reached</>
-          : done > 0
-            ? `▶  Continue record #${myProgress?.next_record || done + 1}`
-            : '▶  Start · GPS → Photo → Q/A'}
-      </button>
-
+      {/* 4. Sync Alert Banner (when items are waiting) */}
       {pendingSync > 0 && (
-        <button type="button" className="cta secondary home-cta-sync" onClick={onSync}>
-          ⚡ Sync {pendingSync} record{pendingSync > 1 ? 's' : ''} now
+        <div className="sync-banner">
+          <div className="sync-banner-text">
+            <strong>⚡ {pendingSync} record{pendingSync > 1 ? 's' : ''} ready to sync</strong>
+            <span>Saved safely on this device</span>
+          </div>
+          <button type="button" className="btn small primary sync-banner-btn" onClick={onSync}>
+            Sync now
+          </button>
+        </div>
+      )}
+
+      {/* 5. Quick Nav to Submissions */}
+      {typeof onViewRecords === 'function' && (
+        <button
+          type="button"
+          className="cta secondary home-view-btn"
+          onClick={onViewRecords}
+        >
+          <Icon name="box" size={15} />
+          View Submissions Activity ({done + localPending} total)
         </button>
       )}
     </div>
@@ -1695,6 +1715,33 @@ export default function SurveyorApp() {
           {toast.message}
         </div>
       )}
+
+      {/* Sleek Fixed Native App Bar */}
+      <header className="app-topbar">
+        <div className="topbar-brand">
+          <div className="topbar-logo">
+            <Icon name="check" size={14} />
+          </div>
+          <div className="topbar-title-group">
+            <span className="topbar-title">Ground IQ</span>
+            <span className="topbar-badge">{tab.toUpperCase()}</span>
+          </div>
+        </div>
+        <div className="topbar-actions">
+          <div className={`pill ${networkPillClass(network?.quality || QUALITY.OFFLINE)} topbar-net-pill`} title={network?.error || ''}>
+            <span className="dot" />
+            {network?.label || 'Offline'}
+          </div>
+          <button
+            type="button"
+            className="topbar-avatar"
+            onClick={() => setTab('profile')}
+            aria-label="Profile"
+          >
+            {(user?.name || user?.username || 'S').charAt(0).toUpperCase()}
+          </button>
+        </div>
+      </header>
 
       <main className="main">
         <PullToRefresh

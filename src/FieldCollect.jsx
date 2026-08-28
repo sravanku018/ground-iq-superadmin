@@ -2525,28 +2525,50 @@ export default function FieldCollectScreen({
         )}
 
         {step === 3 && (
-          <div className="card">
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{progress?.complete ? <><Icon name="check" size={15} /> Target complete</> : 'Batch paused'}</h3>
-            <p>
+          <div className="card success-card">
+            <div className="success-icon-wrap">
+              <span className="success-emoji">✅</span>
+            </div>
+            <h3 className="success-title">
+              {progress?.complete ? 'Survey Target Complete!' : `Record #${localDoneCount || 1} Saved!`}
+            </h3>
+            <p className="success-sub">
               {progress?.complete
-                ? `You finished ${progress.done} / ${progress.target} activities assigned by admin.`
-                : `Saved ${progress?.done ?? '—'} activities.`}
+                ? `Congratulations! You finished all ${progress.done} / ${progress.target} assigned records.`
+                : 'Data locked safely on phone and ready to sync to admin.'}
             </p>
-            <p className="muted" style={{ fontSize: 13 }}>
-              Each activity was saved with GPS + photo{voiceRequired ? ' + voice' : ''} locks.
-            </p>
+
+            <div className="success-checklist">
+              <div className="success-item">
+                <span className="success-chk">✓</span>
+                <span>GPS Location Locked</span>
+              </div>
+              <div className="success-item">
+                <span className="success-chk">✓</span>
+                <span>Photo Verification Captured</span>
+              </div>
+              <div className="success-item">
+                <span className="success-chk">✓</span>
+                <span>Survey Questions Completed</span>
+              </div>
+            </div>
+
             {!progress?.complete && (
-              <button type="button" className="btn primary" onClick={resetForNextRecord}>
-                Continue next activity
+              <button
+                type="button"
+                className="cta success-cta"
+                onClick={resetForNextRecord}
+              >
+                ▶  Start Next Record (#{Number(localDoneCount || 0) + 1})
               </button>
             )}
+
             <button
               type="button"
-              className="btn secondary"
-              style={{ marginTop: 8 }}
-              onClick={() => refreshProgress()}
+              className="cta secondary"
+              onClick={() => onSavedDraft?.()}
             >
-              Refresh status
+              <Icon name="box" size={15} /> View in Submissions
             </button>
           </div>
         )}

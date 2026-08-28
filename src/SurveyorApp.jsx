@@ -302,19 +302,14 @@ function HomeScreen({
 
   return (
     <div className="screen home-screen">
-      {/* 1. Hero Greeting Banner */}
-      <div className="home-hero">
-        <div className="home-hero-top">
-          <div className="home-avatar">
-            {(user?.name || user?.username || 'S').charAt(0).toUpperCase()}
-          </div>
-          <div className="home-hero-text">
-            <p className="home-greeting">Field Surveyor</p>
-            <h2 className="home-name">
-              {user?.name || user?.username}
-              {user?.verified ? <VerifiedBadge size={16} /> : null}
-            </h2>
-          </div>
+      {/* 1. Clean Compact Welcome Header */}
+      <div className="home-welcome">
+        <div className="home-welcome-text">
+          <span className="home-greeting">Field Surveyor</span>
+          <h2 className="home-name">
+            {user?.name || user?.username}
+            {user?.verified ? <VerifiedBadge size={16} /> : null}
+          </h2>
         </div>
       </div>
 
@@ -1732,14 +1727,6 @@ export default function SurveyorApp() {
             <span className="dot" />
             {network?.label || 'Offline'}
           </div>
-          <button
-            type="button"
-            className="topbar-avatar"
-            onClick={() => setTab('profile')}
-            aria-label="Profile"
-          >
-            {(user?.name || user?.username || 'S').charAt(0).toUpperCase()}
-          </button>
         </div>
       </header>
 

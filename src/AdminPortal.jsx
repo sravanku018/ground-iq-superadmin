@@ -16,7 +16,6 @@ import AdminLogin from './AdminLogin'
 import VerifiedBadge from './VerifiedBadge'
 import { PortalEmpty, PortalSkeleton } from './PortalUI'
 import AdminBell from './AdminBell'
-import { versionLabel } from './version'
 import './App.css'
 import './portal.css'
 
@@ -1007,9 +1006,6 @@ export default function AdminPortal({ superAdminOnly = false }) {
               {user.role === 'super_admin' ? ' · Profile' : ''}
             </span>
           </button>
-          <p className="app-version-foot portal-version" aria-label="App version">
-            {versionLabel()}
-          </p>
           <a className="portal-link" href="/" target="_blank" rel="noreferrer">
             Field app ↗
           </a>

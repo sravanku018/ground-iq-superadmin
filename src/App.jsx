@@ -9,7 +9,7 @@
  */
 import { lazy, Suspense, useEffect } from 'react'
 import AdminPortal from './AdminPortal'
-import { reloadOnceIfUpgraded, versionLabel } from './version'
+import { reloadOnceIfUpgraded } from './version'
 
 const SurveyorApp = lazy(() => import('./SurveyorApp'))
 
@@ -44,15 +44,21 @@ import AppUpdateModal from './AppUpdateModal'
 
 export default function App() {
   // Store running build version; self-heal stale cached bundles; set document title
+  const portalOnly = SUPER_ADMIN_CONSOLE || !FIELD_APP_ENABLED || isAdminPath()
+
   useEffect(() => {
     const info = reloadOnceIfUpgraded()
     if (typeof document !== 'undefined') {
-      document.title = `Smart Survey X ${versionLabel()}`
+      document.title = SUPER_ADMIN_CONSOLE
+        ? 'Smart Survey X — Super Admin'
+        : portalOnly
+          ? 'Smart Survey X — Client Admin'
+          : 'Smart Survey X'
     }
     if (info.upgraded) {
       console.info(`[Smart Survey X] upgraded ${info.prev} → ${info.current}`)
     }
-  }, [])
+  }, [portalOnly])
 
   return (
     <>
@@ -65,7 +71,7 @@ export default function App() {
           <SurveyorApp />
         </Suspense>
       )}
-      <AppUpdateModal />
+      {portalOnly ? null : <AppUpdateModal />}
     </>
   )
 }

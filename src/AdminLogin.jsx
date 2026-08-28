@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { clearSession, login } from './api'
-import { versionLabel } from './version'
 
 /** Client Admin web portal login — clean form, no demo credentials.
  * superAdminOnly → separate Super Admin console (server-enforced expected_role=super_admin). */
@@ -148,9 +147,6 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
             {loading ? 'Signing in…' : totpStep ? 'Verify & sign in' : 'Sign in'}
           </button>
         </form>
-        <p className="app-version-foot" aria-label="App version">
-          {versionLabel()}
-        </p>
       </div>
     </div>
   )

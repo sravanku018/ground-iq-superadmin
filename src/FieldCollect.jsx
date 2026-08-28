@@ -1875,47 +1875,48 @@ export default function FieldCollectScreen({
     )
   }
 
-  // 'next' (default) + 'swipe': one question at a time. Swipe adds gesture
-  // handlers + a hint and position dots, but keeps the Prev/Next buttons.
+  // 'next' (default) + 'swipe': one question at a time, centered in the viewport.
   function renderSingleCard({ swipe = false } = {}) {
     return (
-      <div
-        className={`card qa-card${swipe ? ' qa-swipe' : ''}`}
-        onTouchStart={onSwipeStart}
-        onTouchEnd={onSwipeEnd}
-      >
-        <div className="qa-progress">
-          <div className="qa-progress-bar" aria-hidden>
-            <i style={{ width: `${Math.round(((activeQ + 1) / Math.max(1, questions.length)) * 100)}%` }} />
-          </div>
-          <span className="qa-progress-n">
-            {activeQ + 1} / {questions.length}
-          </span>
-        </div>
-        {renderQuestionCard(q)}
-        <div className="qa-tools">
-          {!listening ? (
-            <button type="button" className="btn secondary" onClick={() => startSpeechFill()}>
-              Speak fill
-            </button>
-          ) : (
-            <button type="button" className="btn danger" onClick={stopSpeechFill}>
-              Stop speech
-            </button>
-          )}
-        </div>
-        {swipe && (
-          <div className="qa-swipe-hint" aria-hidden>
-            <span className="muted" style={{ fontSize: 11 }}>← swipe →</span>
-            <div className="qa-dots">
-              {questions.map((_, i) => (
-                <span key={i} className={`qa-dot${i === activeQ ? ' on' : ''}`} />
-              ))}
+      <div className="qa-stage">
+        <div
+          className={`card qa-card qa-single-mode${swipe ? ' qa-swipe' : ''}`}
+          onTouchStart={onSwipeStart}
+          onTouchEnd={onSwipeEnd}
+        >
+          <div className="qa-progress">
+            <div className="qa-progress-bar" aria-hidden>
+              <i style={{ width: `${Math.round(((activeQ + 1) / Math.max(1, questions.length)) * 100)}%` }} />
             </div>
+            <span className="qa-progress-n">
+              {activeQ + 1} / {questions.length}
+            </span>
           </div>
-        )}
-        {renderNavButtons()}
-        {renderDraftTools()}
+          {renderQuestionCard(q)}
+          <div className="qa-tools">
+            {!listening ? (
+              <button type="button" className="btn secondary" onClick={() => startSpeechFill()}>
+                Speak fill
+              </button>
+            ) : (
+              <button type="button" className="btn danger" onClick={stopSpeechFill}>
+                Stop speech
+              </button>
+            )}
+          </div>
+          {swipe && (
+            <div className="qa-swipe-hint" aria-hidden>
+              <span className="muted" style={{ fontSize: 11 }}>← swipe left / right →</span>
+              <div className="qa-dots">
+                {questions.map((_, i) => (
+                  <span key={i} className={`qa-dot${i === activeQ ? ' on' : ''}`} />
+                ))}
+              </div>
+            </div>
+          )}
+          {renderNavButtons()}
+          {renderDraftTools()}
+        </div>
       </div>
     )
   }

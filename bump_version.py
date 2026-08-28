@@ -8,12 +8,15 @@ Desktop GUI (default):
 Browser UI:
   python3 bump_version.py --web
 
+One-click release (version + APK + Client Admin + Super Admin + API + git tag + GitHub APK):
+  python3 bump_version.py
+  then click  RELEASE
+
 CLI:
-  python3 bump_version.py patch
-  python3 bump_version.py minor
-  python3 bump_version.py 2.1.0 --apk
-  python3 bump_version.py patch --apk --push
+  python3 bump_version.py patch --apk
   python3 bump_version.py --push-only
+
+Portals do not show a version. Version lives only in this script.
 """
 
 import json
@@ -183,13 +186,38 @@ def copy_apk(kind="release"):
     return logs, dest_root
 
 
-def publish_github_apk(new_v, apk_path, on_line):
-    """Upload the APK to GitHub Releases so phones can in-app update."""
+def version_tag(new_v):
+    return str(new_v).lstrip("v")
+
+
+def git_tag_push(tag, on_line):
+    """Point git tag at current HEAD and push it to ground-iq-web."""
+    subprocess.run(
+        ["git", "tag", "-d", tag],
+        cwd=str(ROOT_DIR),
+        capture_output=True,
+        text=True,
+    )
+    if not stream_cmd(["git", "tag", tag], on_line):
+        on_line(f"Could not create git tag {tag}")
+        return False
+    on_line(f"git push ground-iq tag {tag}")
+    ref = f"refs/tags/{tag}"
+    if stream_cmd(["git", "push", "ground-iq", ref], on_line):
+        return True
+    on_line(f"tag {tag} already on GitHub — updating")
+    return stream_cmd(["git", "push", "ground-iq", ref, "--force"], on_line)
+
+
+def publish_github_apk(new_v, apk_path, on_line, *, as_latest=True):
+    """Upload ElectionSurvey-release.apk onto GitHub Release for this tag."""
     if not apk_path or not Path(apk_path).exists():
         on_line("No APK to publish on GitHub")
-        return
-    tag = str(new_v).lstrip("v")
-    on_line(f"GitHub Release {tag} ← {apk_path}")
+        return False
+    tag = version_tag(new_v)
+    staged = Path(tempfile.gettempdir()) / "ElectionSurvey-release.apk"
+    shutil.copy2(apk_path, staged)
+    on_line(f"GitHub Release {tag} ← {staged.name}")
     view = subprocess.run(
         ["gh", "release", "view", tag, "-R", GITHUB_WEB_REPO],
         cwd=str(ROOT_DIR),
@@ -197,27 +225,43 @@ def publish_github_apk(new_v, apk_path, on_line):
         text=True,
     )
     if view.returncode == 0:
-        stream_cmd(
-            ["gh", "release", "upload", tag, str(apk_path), "-R", GITHUB_WEB_REPO, "--clobber"],
+        ok = stream_cmd(
+            ["gh", "release", "upload", tag, str(staged), "-R", GITHUB_WEB_REPO, "--clobber"],
             on_line,
         )
+        if as_latest:
+            stream_cmd(
+                ["gh", "release", "edit", tag, "-R", GITHUB_WEB_REPO, "--latest"],
+                on_line,
+            )
     else:
-        stream_cmd(
-            [
-                "gh",
-                "release",
-                "create",
-                tag,
-                str(apk_path),
-                "-R",
-                GITHUB_WEB_REPO,
-                "--title",
-                f"Smart Survey X v{tag}",
-                "--notes",
-                f"Field APK v{tag}. Install in-app or from this release.",
-            ],
-            on_line,
-        )
+        cmd = [
+            "gh",
+            "release",
+            "create",
+            tag,
+            str(staged),
+            "-R",
+            GITHUB_WEB_REPO,
+            "--title",
+            f"Smart Survey X v{tag}",
+            "--notes",
+            f"Field APK v{tag}. Check for updates in the app, or install this file.",
+        ]
+        if as_latest:
+            cmd.append("--latest")
+        ok = stream_cmd(cmd, on_line)
+    on_line(f"https://github.com/{GITHUB_WEB_REPO}/releases/tag/{tag}")
+    on_line(f"https://github.com/{GITHUB_WEB_REPO}/releases/download/{tag}/ElectionSurvey-release.apk")
+    return ok
+
+
+def auto_tag_and_upload(new_v, apk_path, on_line, *, as_latest=True):
+    """Git tag + GitHub Release APK (what Check for updates downloads)."""
+    tag = version_tag(new_v)
+    on_line(f"==> auto tag {tag} + upload APK")
+    git_tag_push(tag, on_line)
+    return publish_github_apk(new_v, apk_path, on_line, as_latest=as_latest)
 
 
 def git_push_websites(message, on_line):
@@ -306,7 +350,6 @@ def launch_tk():
     style.configure("TCheckbutton", background=panel, foreground=text, font=("Segoe UI", 11))
 
     bump_kind = tk.StringVar(value="patch")
-    do_push = tk.BooleanVar(value=True)
     busy = {"on": False}
 
     def refresh_banner():
@@ -345,9 +388,16 @@ def launch_tk():
             return curr
         return bump_patch(curr)
 
-    def worker(build_apk, release):
+    def worker(mode):
+        # mode: full | debug | apk-keep-release | apk-keep-debug | push
         try:
-            kind = bump_kind.get()
+            keep = mode.startswith("apk-keep")
+            build_apk = mode != "push"
+            release = mode in ("full", "apk-keep-release")
+            do_push = mode in ("full", "push")
+            do_tag = mode == "full"
+
+            kind = "none" if (keep or mode in ("push", "debug")) else bump_kind.get()
             curr_v, curr_c = get_current_version()
             if kind == "none":
                 new_v, new_c = curr_v, curr_c
@@ -355,63 +405,76 @@ def launch_tk():
             else:
                 new_v = resolve_version()
                 new_c = semver_to_code(new_v)
-                auto_patch = bump_patch(curr_v)
-                if new_v != auto_patch:
-                    log(f"NOTE: {curr_v} → {new_v} is not a patch. Patch would be {auto_patch}.")
-                    log("Old phones (2.0.10) do not read git tags. They only update if they install the GitHub APK once.")
                 log(f"==> {curr_v} → {new_v}  (versionCode {new_c})")
                 for line in update_files(new_v, new_c):
                     log(line)
                 root.after(0, refresh_banner)
 
+            dest = None
+            apk_ok = False
             if build_apk:
                 script = "build:apk:release" if release else "build:apk"
-                log(f"==> Building {'release' if release else 'debug'} APK (this takes several minutes)…")
-                ok = stream_cmd(["npm", "run", script], log)
+                log(f"==> Building {'release' if release else 'debug'} APK…")
+                apk_ok = stream_cmd(["npm", "run", script], log)
                 extra, dest = copy_apk("release" if release else "debug")
                 for line in extra:
                     log(line)
-                if ok:
-                    log("APK build finished.")
-                    if dest:
-                        log("==> Upload APK to GitHub Releases (phones update from here)…")
-                        publish_github_apk(new_v, dest, log)
-                else:
-                    log("APK build failed — see log above.")
+                log("APK build finished." if apk_ok else "APK build failed — see log above.")
+                if not apk_ok and mode == "full":
+                    log("STOP — release APK failed. Websites/API not pushed.")
+                    root.after(0, lambda: messagebox.showerror("Smart Survey X", "APK build failed — nothing was published."))
+                    return
 
-            if do_push.get():
-                log("==> Git commit & push websites + API…")
+            if do_push:
+                log("==> Git: Client Admin + Super Admin + API…")
                 git_push(new_v, new_c, log)
 
+            if do_tag and apk_ok and dest:
+                log("==> Git tag + GitHub Release APK (Latest)…")
+                auto_tag_and_upload(new_v, dest, log, as_latest=True)
+
             log("Done.")
-            root.after(0, lambda: messagebox.showinfo("Smart Survey X", f"Version is v{new_v}"))
+            extra = f" · GitHub v{new_v}" if do_tag and apk_ok else ""
+            root.after(0, lambda: messagebox.showinfo("Smart Survey X", f"Version is v{new_v}{extra}"))
         except Exception as e:
             log(f"Error: {e}")
             root.after(0, lambda: messagebox.showerror("Smart Survey X", str(e)))
         finally:
             root.after(0, lambda: set_busy(False))
 
-    def run(build_apk=False, release=True, keep=False):
+    def run(mode="full"):
         if busy["on"]:
             return
-        if keep:
-            bump_kind.set("none")
         try:
-            resolve_version()
+            if mode != "push" and not str(mode).startswith("apk-keep"):
+                resolve_version()
         except ValueError as e:
             messagebox.showerror("Version", str(e))
             return
-        set_busy(True, "Building…" if build_apk else "Updating version…")
+        labels = {
+            "full": "Releasing everything…",
+            "debug": "Building debug APK…",
+            "apk-keep-release": "Building APK…",
+            "apk-keep-debug": "Building APK…",
+            "push": "Pushing…",
+        }
+        set_busy(True, labels.get(mode, "Working…"))
         log_box.configure(state="normal")
         log_box.delete("1.0", "end")
         log_box.configure(state="disabled")
-        threading.Thread(target=worker, args=(build_apk, release), daemon=True).start()
+        threading.Thread(target=worker, args=(mode,), daemon=True).start()
 
     # Header
     head = tk.Frame(root, bg=bg, padx=22, pady=16)
     head.pack(fill="x")
     tk.Label(head, text="Smart Survey X", fg=accent, bg=bg, font=("Segoe UI", 18, "bold")).pack(anchor="w")
-    tk.Label(head, text="Python control — version, APK, push websites + API. No Deno paste.", fg=muted, bg=bg, font=("Segoe UI", 11)).pack(anchor="w")
+    tk.Label(
+        head,
+        text="One click: version + APK + Client Admin + Super Admin + API + GitHub tag/upload",
+        fg=muted,
+        bg=bg,
+        font=("Segoe UI", 11),
+    ).pack(anchor="w")
 
     card = tk.Frame(root, bg=panel, padx=18, pady=16)
     card.pack(fill="x", padx=22)
@@ -433,8 +496,6 @@ def launch_tk():
     tk.Label(card, text="Or type a version (leave empty to use Patch / Minor / Major above)", fg=muted, bg=panel, font=("Segoe UI", 10)).pack(anchor="w")
     custom_ent = tk.Entry(card, font=("Segoe UI", 13), bg="#0f172a", fg=text, insertbackground=text, relief="flat")
     custom_ent.pack(fill="x", ipady=8, pady=(4, 10))
-
-    ttk.Checkbutton(card, text="Also git commit & push websites + API", variable=do_push).pack(anchor="w")
 
     btns = tk.Frame(root, bg=bg, padx=22, pady=14)
     btns.pack(fill="x")
@@ -459,41 +520,16 @@ def launch_tk():
         action_btns.append(b)
         return b
 
-    mkbtn(btns, "Increase version", lambda: run(False), accent)
-    mkbtn(btns, "Increase + debug APK", lambda: run(True, False), "#0f766e")
-    mkbtn(btns, "Increase + release APK", lambda: run(True, True), "#059669")
+    mkbtn(btns, "RELEASE  (all in one click)", lambda: run("full"), "#059669")
 
     btns2 = tk.Frame(root, bg=bg, padx=22)
     btns2.pack(fill="x")
-    mkbtn(btns2, "Build debug APK (no bump)", lambda: run(True, False, keep=True), "#334155")
-    mkbtn(btns2, "Build release APK (no bump)", lambda: run(True, True, keep=True), "#334155")
-
-    def push_only():
-        if busy["on"]:
-            return
-        set_busy(True, "Pushing…")
-        log_box.configure(state="normal")
-        log_box.delete("1.0", "end")
-        log_box.configure(state="disabled")
-
-        def work():
-            try:
-                v, c = get_current_version()
-                log("==> Push websites + API (no version bump)…")
-                git_push(v, c, log)
-                log("Done.")
-                root.after(0, lambda: messagebox.showinfo("Smart Survey X", "Pushed websites + API"))
-            except Exception as e:
-                log(f"Error: {e}")
-                root.after(0, lambda: messagebox.showerror("Smart Survey X", str(e)))
-            finally:
-                root.after(0, lambda: set_busy(False))
-
-        threading.Thread(target=work, daemon=True).start()
+    mkbtn(btns2, "Debug APK only", lambda: run("debug"), "#0f766e")
+    mkbtn(btns2, "Build APK (no bump)", lambda: run("apk-keep-release"), "#334155")
 
     btns3 = tk.Frame(root, bg=bg, padx=22, pady=(10, 0))
     btns3.pack(fill="x")
-    mkbtn(btns3, "Push websites + API", push_only, "#7c3aed")
+    mkbtn(btns3, "Push websites + API only", lambda: run("push"), "#7c3aed")
 
     status_var = tk.StringVar(value="Ready")
     tk.Label(root, textvariable=status_var, fg=muted, bg=bg, font=("Segoe UI", 10), padx=26).pack(anchor="w", pady=(8, 0))
@@ -545,7 +581,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <body>
 <div class="card">
   <h1>Smart Survey X — Version & APK</h1>
-  <p class="sub">Bump version everywhere, then build the Android installer.</p>
+  <p class="sub">One click: version + APK + Client Admin + Super Admin + API + GitHub tag.</p>
   <div class="current-box">
     <div>
       <div style="font-size:12px; color:#94a3b8;">CURRENT VERSION</div>
@@ -559,13 +595,9 @@ HTML_PAGE = """<!DOCTYPE html>
   </div>
   <input type="text" id="customVer" placeholder="e.g. 2.0.8">
   <div class="options">
-    <label><input type="checkbox" id="optApk" checked> Build release APK after bump</label>
-    <label><input type="checkbox" id="optDebug"> Build debug APK instead</label>
-    <label><input type="checkbox" id="optPush" checked> Git commit &amp; push websites + API</label>
   </div>
   <div class="btn-row">
-    <button class="btn-primary" id="btnVer" onclick="go(false)">Increase version</button>
-    <button class="btn-green" id="btnApk" onclick="go(true)">Increase + build APK</button>
+    <button class="btn-green" id="btnApk" onclick="go(true)">RELEASE (all in one click)</button>
   </div>
   <div class="log-box" id="logs">Waiting…</div>
 </div>
@@ -584,7 +616,7 @@ function bump(type) {
 async function go(apk) {
   const ver = document.getElementById('customVer').value.trim();
   const logs = document.getElementById('logs');
-  const btns = [document.getElementById('btnVer'), document.getElementById('btnApk')];
+  const btns = [document.getElementById('btnApk')];
   btns.forEach(b => b.disabled = true);
   logs.textContent = 'Starting…\\n';
   try {
@@ -593,9 +625,9 @@ async function go(apk) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         version: ver,
-        apk: apk || document.getElementById('optApk').checked,
-        debug: document.getElementById('optDebug').checked,
-        push: document.getElementById('optPush').checked,
+        apk: true,
+        debug: false,
+        push: true,
       }),
     });
     const d = await res.json();
@@ -663,11 +695,14 @@ class VersionHandler(BaseHTTPRequestHandler):
             extra, dest = copy_apk("debug" if data.get("debug") else "release")
             logs.extend(extra)
             logs.append("APK ok" if ok else "APK failed")
-            if ok and dest:
-                publish_github_apk(new_v, dest, logs.append)
+        else:
+            dest = None
+            ok = False
         if data.get("push"):
             logs.append("==> git push")
             git_push(new_v, new_c, logs.append)
+        if data.get("apk") and ok and dest and not data.get("debug"):
+            auto_tag_and_upload(new_v, dest, logs.append, as_latest=True)
         logs.append(f"Done. Version is v{new_v}")
         self._json({"logs": logs, "version": new_v, "versionCode": new_c})
 
@@ -733,18 +768,25 @@ def main():
         print(f"{curr_v} → {target} ({code})")
         for line in update_files(target, code):
             print(line)
-        if "--apk" in args:
-            release = "--debug" not in args
+        dest = None
+        release = "--debug" not in args
+        want_apk = "--apk" in args
+        # --apk means full release unless --no-push
+        want_push = "--push" in args or "-p" in args or (want_apk and release and "--no-push" not in args)
+        if want_apk:
             script = "build:apk:release" if release else "build:apk"
             print(f"Building {script}…")
-            stream_cmd(["npm", "run", script], print)
+            ok = stream_cmd(["npm", "run", script], print)
             extra, dest = copy_apk("release" if release else "debug")
             for line in extra:
                 print(line)
-            if dest:
-                publish_github_apk(target, dest, print)
-        if "--push" in args or "-p" in args:
+            if not ok:
+                print("APK failed — not pushing or tagging")
+                return
+        if want_push:
             git_push(target, code, print)
+        if dest and release and want_push:
+            auto_tag_and_upload(target, dest, print, as_latest=True)
         return
 
     if "--push-only" in args or "--push" in args:

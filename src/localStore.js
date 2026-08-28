@@ -427,6 +427,23 @@ export async function pushDraft(id) {
   if (!pkg) return null
   const qa = { ...pkg.qa }
   qa.answers = stripDraftAnswers(qa.answers)
+
+  // Guard: refuse to send a draft that has no real question answers
+  const META_PREFIXES = ['_', 'geo_', 'location_', 'ts_', 'sec_']
+  const META_KEYS = new Set([
+    'draft', 'data_collector', 'client_package_id', 'submitted_by',
+    'has_photo', 'has_audio', 'photo', 'audio', 'photo_url', 'audio_url',
+    'answer_pattern', 'survey_id', 'form_id', 'form_key',
+  ])
+  const answeredCount = Object.entries(qa.answers || {}).filter(([k, v]) => {
+    if (!k || META_PREFIXES.some((p) => k.startsWith(p))) return false
+    if (META_KEYS.has(k)) return false
+    return String(v ?? '').trim() !== ''
+  }).length
+  if (answeredCount === 0) {
+    throw new Error('No questions answered — fill in the survey before sending.')
+  }
+
   await updatePackage(id, {
     phase: 'queued',
     attempts: 0,

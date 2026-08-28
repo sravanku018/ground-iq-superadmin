@@ -1353,12 +1353,18 @@ export default function FieldCollectScreen({
    */
   async function saveDraft({ autoNext = false, mode = 'finish', questionIndex, silent = false } = {}) {
     const checkpoint = mode === 'checkpoint'
-    if (!checkpoint) {
-      if (questions.length > 0 && countAnsweredQuestions(answers) === 0) {
-        onToast?.('No questions answered — please answer the questions before finishing.', 'error')
+    const realAnswersCount = countAnsweredQuestions(answers)
+
+    // NEVER save or queue a draft if 0 questions are answered!
+    if (questions.length > 0 && realAnswersCount === 0) {
+      if (!checkpoint && !silent) {
+        onToast?.('No questions answered — please answer questions before submitting.', 'error')
         setStep(2)
-        return false
       }
+      return false
+    }
+
+    if (!checkpoint) {
       if (!geoLocked) {
         onToast?.('Lock GPS first (step 1)', 'error')
         setStep(0)
@@ -1544,16 +1550,19 @@ export default function FieldCollectScreen({
 
   // ── Survey question navigation (Profile → Question layout) ────────
   function scrollToQuestionCenter() {
-    requestAnimationFrame(() => {
-      try {
-        const card = document.querySelector('.qa-card')
-        if (card) {
-          card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
+    // In single-card mode (next / swipe), card renders in-place — no extra scroll needed
+    if (navMode === 'scroll') {
+      requestAnimationFrame(() => {
+        try {
+          const card = document.querySelector('.qa-card')
+          if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+          }
+        } catch {
+          /* ignore */
         }
-      } catch {
-        /* ignore */
-      }
-    })
+      })
+    }
   }
 
   // Shared advance/retreat used by the Prev/Next buttons and swipe gestures.
@@ -1848,8 +1857,12 @@ export default function FieldCollectScreen({
   function renderNavButtons() {
     return (
       <div className="qa-nav">
-        <button type="button" className="btn secondary" disabled={activeQ === 0} onClick={goPrev}>
-          Prev
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={activeQ === 0 ? () => setStep(1) : goPrev}
+        >
+          {activeQ === 0 ? 'Back' : 'Prev'}
         </button>
         {activeQ < questions.length - 1 ? (
           <button type="button" className="btn primary" disabled={saving} onClick={goNext}>
@@ -2505,16 +2518,6 @@ export default function FieldCollectScreen({
                       No questions loaded. Assign this surveyor on the survey (Surveys → field team), save questions, then pull to refresh.
                     </p>
                   </div>
-                )}
-
-                {!editingDraft && (
-                  <button
-                    type="button"
-                    className="btn secondary qa-back"
-                    onClick={() => setStep(1)}
-                  >
-                    Back to photo
-                  </button>
                 )}
               </>
             )}

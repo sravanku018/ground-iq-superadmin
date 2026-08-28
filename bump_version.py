@@ -332,6 +332,7 @@ def launch_tk():
         curr, _ = get_current_version()
         kind = bump_kind.get()
         custom = custom_ent.get().strip()
+        # Only use the box if the user typed something. Otherwise Patch/Minor/Major.
         if custom:
             if not re.match(r"^\d+\.\d+\.\d+$", custom):
                 raise ValueError("Custom version must look like 2.0.8")
@@ -354,6 +355,10 @@ def launch_tk():
             else:
                 new_v = resolve_version()
                 new_c = semver_to_code(new_v)
+                auto_patch = bump_patch(curr_v)
+                if new_v != auto_patch:
+                    log(f"NOTE: {curr_v} → {new_v} is not a patch. Patch would be {auto_patch}.")
+                    log("Old phones (2.0.10) do not read git tags. They only update if they install the GitHub APK once.")
                 log(f"==> {curr_v} → {new_v}  (versionCode {new_c})")
                 for line in update_files(new_v, new_c):
                     log(line)
@@ -425,10 +430,9 @@ def launch_tk():
     for val, lab in (("patch", "Patch  (+0.0.1)"), ("minor", "Minor  (x.1.0)"), ("major", "Major  (1.0.0)")):
         ttk.Radiobutton(kinds, text=lab, value=val, variable=bump_kind).pack(side="left", padx=(0, 14))
 
-    tk.Label(card, text="Or type a version", fg=muted, bg=panel, font=("Segoe UI", 10)).pack(anchor="w")
+    tk.Label(card, text="Or type a version (leave empty to use Patch / Minor / Major above)", fg=muted, bg=panel, font=("Segoe UI", 10)).pack(anchor="w")
     custom_ent = tk.Entry(card, font=("Segoe UI", 13), bg="#0f172a", fg=text, insertbackground=text, relief="flat")
     custom_ent.pack(fill="x", ipady=8, pady=(4, 10))
-    custom_ent.insert(0, "")
 
     ttk.Checkbutton(card, text="Also git commit & push websites + API", variable=do_push).pack(anchor="w")
 
@@ -507,7 +511,6 @@ def launch_tk():
     log_box.pack(fill="both", expand=True, padx=22, pady=(6, 18))
 
     refresh_banner()
-    custom_ent.insert(0, bump_patch(get_current_version()[0]))
     root.mainloop()
 
 

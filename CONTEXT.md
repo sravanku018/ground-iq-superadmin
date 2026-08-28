@@ -1,5 +1,7 @@
 # CONTEXT
 
+**Next CLI: read `HANDOFF.md` first** (live API URL, no paste, Python push, voice limits, CORS).
+
 ## Current Task
 Dashboard/export/UI overhaul committed (c16c0c3) but NOT deployed: Report "By survey" board (records, surveyors, locations per survey); Data tab "Export" (CSV text file with photo+audio links, filters: day/month/today/total/surveyor/survey/district/assembly/status) via new /api/admin/export; field app auto-colored option buttons + new 'sentiment' question type (green/amber/red, also in report); Surveys tab edits name+questions+team in one detail screen; q_ filter TDZ crash fixed in /api/analytics; ageBucket handles "26-35 years" ranges; legacy survey seeded with 10 questions (Gender/Caste/Age/Education/Employment/Performance/Party/PM/Ward/Issues) so Report shows filters+charts for legacy. Verified locally (by_survey rows, export 2214 legacy rows).
 

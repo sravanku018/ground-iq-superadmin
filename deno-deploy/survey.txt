@@ -643,6 +643,7 @@ const BOOL_FIELDS = [
   "can_crud_questionnaire",
   "can_validate_proof",
   "can_web_survey",
+  "can_record_voice",
 ] as const;
 
 const NUM_FIELDS = [
@@ -776,10 +777,14 @@ async function listAssignedSurveys(
   display_lang: "en" | "te";
   questions: unknown[];
   updated_at: unknown;
+  voice_required: boolean;
+  voice_time_limit: number;
 }[]> {
   const rows = await retryOnce(() =>
     sqlFn`
-      SELECT f.id, f.form_key, f.title, f.display_lang, f.questions, f.updated_at
+      SELECT f.id, f.form_key, f.title, f.display_lang, f.questions, f.updated_at,
+             COALESCE(f.voice_required, FALSE) AS voice_required,
+             COALESCE(f.voice_time_limit, 0) AS voice_time_limit
       FROM survey_assignments sa
       JOIN survey_form f ON f.id = sa.survey_id
       WHERE sa.user_id = ${userId}
@@ -793,6 +798,8 @@ async function listAssignedSurveys(
     display_lang: surveyDisplayLang(r.display_lang),
     questions: parseQuestionsArray(r.questions),
     updated_at: r.updated_at,
+    voice_required: r.voice_required === true,
+    voice_time_limit: Number(r.voice_time_limit) || 0,
   }));
 }
 
@@ -1228,6 +1235,7 @@ async function ensureSchema(): Promise<void> {
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_crud_questionnaire BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_validate_proof BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_web_survey BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_record_voice BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_questions_per_survey INTEGER NOT NULL DEFAULT 0`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveys INTEGER NOT NULL DEFAULT 0`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveyors INTEGER NOT NULL DEFAULT 0`,
@@ -1253,6 +1261,8 @@ async function ensureSchema(): Promise<void> {
     () => sql`CREATE INDEX IF NOT EXISTS idx_app_users_company ON app_users(company_id)`,
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS created_by INT`,
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS display_lang TEXT NOT NULL DEFAULT 'en'`,
+    () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS voice_required BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS voice_time_limit INT NOT NULL DEFAULT 0`,
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_name TEXT`,
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_id INT`,
     () => sql`CREATE INDEX IF NOT EXISTS idx_survey_form_company ON survey_form(company_id)`,
@@ -1375,12 +1385,14 @@ function slugQuestionKeyServer(label: string) {
 function skipAnswerKey(k: string) {
   const s = String(k || "").toLowerCase();
   if (!s || s.startsWith("_") || s.startsWith("geo_") || s.startsWith("location_")) return true;
+  if (s.startsWith("ts_") || s.startsWith("sec_")) return true;
   return [
     "draft", "has_photo", "has_audio", "photo_url", "audio_url",
     "latitude", "longitude", "lat", "lng", "form_key", "user_id",
     "submitted_by", "status", "content_type", "mandal", "district",
     "constituency", "state", "respondent_name", "respondent",
     "client_package_id", "data_collector", "surveyor", "package_id",
+    "answer_pattern",
   ].includes(s);
 }
 
@@ -1719,6 +1731,8 @@ function isMetaAnswerKey(k: string): boolean {
   const s = String(k || "").toLowerCase();
   if (!s || s.startsWith("_")) return true;
   if (s.startsWith("geo_") || s.startsWith("location_")) return true;
+  if (s.startsWith("ts_") || s.startsWith("sec_")) return true;
+  if (s === "answer_pattern") return true;
   return (
     s === "lat" ||
     s === "lng" ||
@@ -1803,7 +1817,8 @@ function workStatusOf(
 }
 
 /**
- * Strict verification: geo tagging + voice (audio) required for COMPLETE.
+ * Strict verification: geo + photo + Q/A. Voice is required only when the
+ * Client Admin marked the survey voice_required — optional by default.
  * Incomplete cannot enter confirmed analytics without override.
  *
  * LEGACY rows (collected before GPS/camera existed — no geo and never any
@@ -1814,6 +1829,7 @@ function workStatusOf(
 function verifySubmission(
   payload: Record<string, unknown>,
   mediaKinds: string[] = [],
+  voiceRequired = false,
 ) {
   const answers = (payload?.answers || {}) as Record<string, unknown>;
   const geoPayload = (payload?.geo || null) as Record<string, unknown> | null;
@@ -1873,10 +1889,11 @@ function verifySubmission(
     !hasPhotoUrl &&
     !hasAudioUrl;
 
-  // Voice: session audio stored separately or flagged on payload
+  // Voice: required only when Client Admin set the survey to mandatory.
   const hasAudioFlag = payload?.has_audio === true;
   const hasAudioMedia = kinds.includes("audio");
-  const voice_ok = legacy || hasAudioFlag || hasAudioMedia || hasAudioUrl;
+  const hasVoice = hasAudioFlag || hasAudioMedia || hasAudioUrl;
+  const voice_ok = legacy || !voiceRequired || hasVoice;
 
   const hasPhotoFlag = payload?.has_photo === true;
   const hasPhotoMedia = kinds.includes("photo");
@@ -1895,18 +1912,17 @@ function verifySubmission(
   const failures: string[] = [];
   if (!legacy) {
     if (!geo_ok) failures.push("geo_missing_or_invalid");
-    if (!voice_ok) failures.push("voice_missing");
+    if (voiceRequired && !voice_ok) failures.push("voice_missing");
     if (!photo_ok) failures.push("photo_missing");
   }
   if (!qa_ok) failures.push("qa_empty");
 
-  // Strict complete = geo + voice + photo + at least one real answer.
-  // Legacy rows only need answers (no GPS/camera available back then).
+  // Strict complete = geo + photo + Q/A (+ voice only if Client Admin required it).
   const completeness: "complete" | "incomplete" = legacy
     ? qa_ok
       ? "complete"
       : "incomplete"
-    : geo_ok && voice_ok && photo_ok && qa_ok
+    : geo_ok && photo_ok && qa_ok && (!voiceRequired || voice_ok)
     ? "complete"
     : "incomplete";
 
@@ -1965,6 +1981,13 @@ async function loadMediaKindsMap(
 }
 
 /** Apply media kinds onto payload flags then verify (single source of truth). */
+function voiceRequiredOf(payload: Record<string, unknown> | null | undefined): boolean {
+  if (!payload || typeof payload !== "object") return false;
+  if (payload.voice_required === true) return true;
+  const a = payload.answers as Record<string, unknown> | undefined;
+  return a?._voice_required === true;
+}
+
 function verifyWithMedia(
   payload: Record<string, unknown> | null | undefined,
   mediaMap: Map<number, string[]>,
@@ -1975,7 +1998,7 @@ function verifyWithMedia(
   const kinds = mediaMap.get(Number(id)) || [];
   if (kinds.includes("audio")) p.has_audio = true;
   if (kinds.includes("photo")) p.has_photo = true;
-  return verifySubmission(p, kinds);
+  return verifySubmission(p, kinds, voiceRequiredOf(p));
 }
 
 /** Telugu place names → English (district etc.), applied when confirming */
@@ -2015,6 +2038,20 @@ const EXPORT_FIXED_TE: Record<string, string> = {
   audio_url: "ఆడియో లింక్",
   photo_file: "ఫోటో ఫైల్",
   audio_file: "ఆడియో ఫైల్",
+  created_at_ist: "సమర్పణ సమయం",
+  ts_gps_start: "GPS ప్రారంభం",
+  ts_gps_lock: "GPS లాక్",
+  ts_photo: "ఫోటో సమయం",
+  ts_voice_start: "వాయిస్ ప్రారంభం",
+  ts_voice_end: "వాయిస్ ముగింపు",
+  ts_qa_start: "ప్రశ్నల ప్రారంభం",
+  ts_finish: "ముగింపు సమయం",
+  sec_gps: "GPS సెకన్లు",
+  sec_photo: "ఫోటో సెకన్లు",
+  sec_voice: "వాయిస్ సెకన్లు",
+  sec_qa: "ప్రశ్నల సెకన్లు",
+  sec_total: "మొత్తం సెకన్లు",
+  answer_pattern: "సమాధాన వరుస",
 };
 
 const EXPORT_VALUE_TE: Record<string, string> = {
@@ -2610,6 +2647,64 @@ function isoStamp(v: unknown): string {
   return String(v || "");
 }
 
+/** Admin/export display — always Asia/Kolkata, never the server's UTC clock. */
+function formatIstStamp(v: unknown): string {
+  const s = isoStamp(v);
+  if (!s) return "";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return String(v || "");
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(d);
+}
+
+function secBetween(a: unknown, b: unknown): string {
+  const t1 = new Date(isoStamp(a)).getTime();
+  const t2 = new Date(isoStamp(b)).getTime();
+  if (!Number.isFinite(t1) || !Number.isFinite(t2) || t2 < t1) return "";
+  return String(Math.round((t2 - t1) / 1000));
+}
+
+function timingOf(answers: Record<string, unknown> | undefined | null): Record<string, unknown> {
+  const a = answers && typeof answers === "object" ? answers : {};
+  const t = (a._timing && typeof a._timing === "object" ? a._timing : {}) as Record<string, unknown>;
+  const gpsStart = t.gps_start || a.ts_gps_start || "";
+  const gpsLock = t.gps_lock || a.ts_gps_lock || a.geo_at || "";
+  const photo = t.photo || a.ts_photo || "";
+  const voiceStart = t.voice_start || a.ts_voice_start || "";
+  const voiceEnd = t.voice_end || a.ts_voice_end || "";
+  const qaStart = t.qa_start || a.ts_qa_start || "";
+  const finish = t.finish || a.ts_finish || "";
+  const pattern = String(a.answer_pattern || "").trim() ||
+    (Array.isArray(t.answers)
+      ? (t.answers as { id?: unknown; value?: unknown; ms_from_prev?: unknown }[])
+        .map((x) => `${x.id}=${x.value}@${((Number(x.ms_from_prev) || 0) / 1000).toFixed(1)}s`)
+        .join(" | ")
+      : "");
+  return {
+    ts_gps_start: gpsStart,
+    ts_gps_lock: gpsLock,
+    ts_photo: photo,
+    ts_voice_start: voiceStart,
+    ts_voice_end: voiceEnd,
+    ts_qa_start: qaStart,
+    ts_finish: finish,
+    sec_gps: a.sec_gps || secBetween(gpsStart, gpsLock),
+    sec_photo: a.sec_photo || secBetween(gpsLock, photo),
+    sec_voice: a.sec_voice || secBetween(voiceStart, voiceEnd),
+    sec_qa: a.sec_qa || secBetween(qaStart, finish),
+    sec_total: a.sec_total || secBetween(gpsStart || gpsLock, finish),
+    answer_pattern: pattern,
+  };
+}
+
 function qaFromAnswers(a: Record<string, unknown>) {
   const keys = [
     ["respondent_name", "Respondent"],
@@ -2729,9 +2824,8 @@ async function markFactFailed(sqlFn: NonNullable<typeof sql>, id: number, err: u
 }
 
 /**
- * When a field package is fully complete (geo + photo + voice + Q/A, not a draft),
- * auto-confirm + materialize facts so Client Admin Report / progress / overview
- * update without a manual Review → Confirm step.
+ * Completeness bookkeeping only. Client Admin confirms in Review QA —
+ * field sync must not auto-confirm (wrong clock + skips review).
  */
 async function autoConfirmIfComplete(
   sqlFn: NonNullable<typeof sql>,
@@ -2761,47 +2855,31 @@ async function autoConfirmIfComplete(
   if (mediaKinds.includes("audio")) payload.has_audio = true;
   if (mediaKinds.includes("photo")) payload.has_photo = true;
 
-  const verify = verifySubmission(payload, mediaKinds);
-  if (verify.completeness !== "complete") {
-    payload = {
-      ...payload,
-      completeness: verify.completeness,
-      verification: verify,
-      has_audio: verify.voice_ok ? true : payload.has_audio,
-      has_photo: verify.photo_ok ? true : payload.has_photo,
-    };
-    await sqlFn`
-      UPDATE submissions SET payload = ${JSON.stringify(payload)}::jsonb WHERE id = ${submissionId}
-    `.catch(() => null);
-    return { auto_confirmed: false, completeness: verify.completeness };
+  const formKey = String(payload.form_key || "").trim();
+  let voiceReq = voiceRequiredOf(payload);
+  if (formKey) {
+    const vr = await sqlFn`
+      SELECT voice_required FROM survey_form WHERE form_key = ${formKey} LIMIT 1
+    `.catch(() => []);
+    if (vr.length) {
+      voiceReq = (vr[0] as { voice_required?: boolean }).voice_required === true;
+      payload.voice_required = voiceReq;
+    }
   }
 
-  payload = translateGeoEnglish(payload);
-  payload.draft = false;
-  const ans = { ...((payload.answers || {}) as Record<string, unknown>) };
-  delete ans._draft;
-  delete ans.draft;
-  payload.answers = ans;
+  const verify = verifySubmission(payload, mediaKinds, voiceReq);
   payload = {
     ...payload,
-    status: "confirmed",
-    completeness: "complete",
+    completeness: verify.completeness,
     verification: verify,
-    has_audio: true,
-    has_photo: true,
-    confirmed_at: new Date().toISOString(),
-    confirmed_by: "system (auto-complete)",
-    confirm_note: "Auto-confirmed: geo + photo + voice + Q/A complete",
+    has_audio: mediaKinds.includes("audio") || payload.has_audio === true,
+    has_photo: verify.photo_ok ? true : payload.has_photo,
+    status: cur === "pending" ? "pending" : cur,
   };
   await sqlFn`
     UPDATE submissions SET payload = ${JSON.stringify(payload)}::jsonb WHERE id = ${submissionId}
-  `;
-  try {
-    await materializeFact(sqlFn, submissionId);
-  } catch (e) {
-    await markFactFailed(sqlFn, submissionId, e);
-  }
-  return { auto_confirmed: true, completeness: "complete" };
+  `.catch(() => null);
+  return { auto_confirmed: false, completeness: verify.completeness };
 }
 
 /**
@@ -4073,13 +4151,13 @@ async function rawHandler(req: Request): Promise<Response> {
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.1",
-          versionCode: 20001,
+          version: "2.0.6",
+          versionCode: 20006,
           minSupportedVersionCode: 20000,
           apkUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-release.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
           releaseUrl: `https://github.com/${repo}/releases/latest`,
-          changelog: "Instant offline geo caching, optimized 1-roundtrip API calls, and privacy updates.",
+          changelog: "Voice optional/required from Client Admin or Super Admin, no auto-confirm, IST timestamps, GPS-to-finish timing and answer pattern columns.",
           publishedAt: new Date().toISOString(),
         },
         200,
@@ -4112,6 +4190,7 @@ async function rawHandler(req: Request): Promise<Response> {
                COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
                COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
                COALESCE(can_web_survey, FALSE) AS can_web_survey,
+               COALESCE(can_record_voice, FALSE) AS can_record_voice,
                COALESCE(totp_enabled, FALSE) AS totp_enabled,
                totp_secret,
                COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
@@ -4244,6 +4323,7 @@ async function rawHandler(req: Request): Promise<Response> {
           can_crud_questionnaire: sqlBool(uu.can_crud_questionnaire),
           can_validate_proof: sqlBool(uu.can_validate_proof),
           can_web_survey: sqlBool(uu.can_web_survey),
+          can_record_voice: sqlBool(uu.can_record_voice),
           totp_enabled: uu.role === "super_admin" ? sqlBool(uu.totp_enabled) : undefined,
           max_questions_per_survey: Number(uu.max_questions_per_survey) || 0,
           max_surveys: Number(uu.max_surveys) || 0,
@@ -4705,6 +4785,7 @@ async function rawHandler(req: Request): Promise<Response> {
                    COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
                    COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
                COALESCE(can_web_survey, FALSE) AS can_web_survey,
+               COALESCE(can_record_voice, FALSE) AS can_record_voice,
                    COALESCE(totp_enabled, FALSE) AS totp_enabled,
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                    COALESCE(max_surveys, 0) AS max_surveys,
@@ -4718,7 +4799,7 @@ async function rawHandler(req: Request): Promise<Response> {
                      FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
                      FALSE AS can_assign_surveyors,
-                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey,
+                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey, FALSE AS can_record_voice,
                      0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records
               FROM app_users ORDER BY id
             `
@@ -4736,6 +4817,7 @@ async function rawHandler(req: Request): Promise<Response> {
                    COALESCE(can_crud_questionnaire, FALSE) AS can_crud_questionnaire,
                    COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
                COALESCE(can_web_survey, FALSE) AS can_web_survey,
+               COALESCE(can_record_voice, FALSE) AS can_record_voice,
                    COALESCE(totp_enabled, FALSE) AS totp_enabled,
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                    COALESCE(max_surveys, 0) AS max_surveys,
@@ -4750,7 +4832,7 @@ async function rawHandler(req: Request): Promise<Response> {
                      FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
                      FALSE AS can_assign_surveyors,
-                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey,
+                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey, FALSE AS can_record_voice,
                      0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records
               FROM app_users
               WHERE (id = ${me.id} OR created_by = ${me.id})
@@ -4853,6 +4935,7 @@ async function rawHandler(req: Request): Promise<Response> {
           can_crud_questionnaire: sqlBool(r.can_crud_questionnaire),
           can_validate_proof: sqlBool(r.can_validate_proof),
           can_web_survey: sqlBool(r.can_web_survey),
+          can_record_voice: sqlBool(r.can_record_voice),
           totp_enabled: r.role === "super_admin" ? sqlBool(r.totp_enabled) : undefined,
           max_questions_per_survey: Number(r.max_questions_per_survey) || 0,
           max_surveys: Number(r.max_surveys) || 0,
@@ -4928,6 +5011,7 @@ async function rawHandler(req: Request): Promise<Response> {
         const canCrudQuestionnaire = canSuper && body.can_crud_questionnaire === true;
         const canValidateProof = canSuper && body.can_validate_proof === true;
         const canWebSurvey = canSuper && body.can_web_survey === true;
+        const canRecordVoice = canSuper && body.can_record_voice === true;
         const maxQuestionsPerSurvey = canSuper
           ? Math.max(0, Math.min(Number(body.max_questions_per_survey) || 0, 100000))
           : 0;      const maxSurveysCreate = canSuper
@@ -4963,9 +5047,9 @@ async function rawHandler(req: Request): Promise<Response> {
           }
         }
         const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, company_name, company_id, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, max_questions_per_survey, max_surveys, max_surveyors, max_records, created_by)
-          VALUES (${username}, ${password_hash}, ${name}, ${finalCompanyName}, ${companyId}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canAssignSurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${canWebSurvey}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${maxRecordsCreate}, ${me.id})
-          RETURNING id, username, display_name, company_name, company_id, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, max_questions_per_survey, max_surveys, max_surveyors, max_records
+          INSERT INTO app_users (username, password_hash, display_name, company_name, company_id, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, max_questions_per_survey, max_surveys, max_surveyors, max_records, created_by)
+          VALUES (${username}, ${password_hash}, ${name}, ${finalCompanyName}, ${companyId}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canAssignSurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${canWebSurvey}, ${canRecordVoice}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${maxRecordsCreate}, ${me.id})
+          RETURNING id, username, display_name, company_name, company_id, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, max_questions_per_survey, max_surveys, max_surveyors, max_records
         `;
         const u = inserted[0] as Record<string, unknown>;
 
@@ -5022,6 +5106,7 @@ async function rawHandler(req: Request): Promise<Response> {
           can_crud_questionnaire: canCrudQuestionnaire,
           can_validate_proof: canValidateProof,
           can_web_survey: canWebSurvey,
+          can_record_voice: canRecordVoice,
           max_questions_per_survey: maxQuestionsPerSurvey,
           max_surveys: maxSurveysCreate,
           max_surveyors: maxSurveyorsCreate,
@@ -5048,6 +5133,7 @@ async function rawHandler(req: Request): Promise<Response> {
             can_crud_questionnaire: u.can_crud_questionnaire === true,
             can_validate_proof: u.can_validate_proof === true,
             can_web_survey: u.can_web_survey === true,
+            can_record_voice: u.can_record_voice === true,
             starter_form_key: starterFormKey,
           },
           field_app_access: role === "surveyor",
@@ -5547,6 +5633,7 @@ async function rawHandler(req: Request): Promise<Response> {
         "can_crud_questionnaire",
         "can_validate_proof",
         "can_web_survey",
+        "can_record_voice",
       ] as const;
       const nextPowers: Record<string, boolean> = {};
       for (const k of POWER_KEYS) {
@@ -5599,12 +5686,13 @@ async function rawHandler(req: Request): Promise<Response> {
               can_crud_questionnaire = ${nextPowers.can_crud_questionnaire},
               can_validate_proof = ${nextPowers.can_validate_proof},
               can_web_survey = ${nextPowers.can_web_survey},
+              can_record_voice = ${nextPowers.can_record_voice},
               max_questions_per_survey = ${nextMaxQuestionsPerSurvey},
               max_surveys = ${nextMaxSurveys},
               max_surveyors = ${nextMaxSurveyors},
               max_records = ${nextMaxRecords}
           WHERE id = ${id}
-          RETURNING id, username, display_name, company_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, max_questions_per_survey, max_surveys, max_surveyors, max_records
+          RETURNING id, username, display_name, company_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, max_questions_per_survey, max_surveys, max_surveyors, max_records
         `;
       } catch (e) {
         const msg = (e as Error).message || "";
@@ -5686,6 +5774,7 @@ async function rawHandler(req: Request): Promise<Response> {
           can_crud_questionnaire: sqlBool(u.can_crud_questionnaire),
           can_validate_proof: sqlBool(u.can_validate_proof),
           can_web_survey: sqlBool(u.can_web_survey),
+          can_record_voice: sqlBool(u.can_record_voice),
           max_questions_per_survey: Number(u.max_questions_per_survey) || 0,
           max_surveys: Number(u.max_surveys) || 0,
           max_surveyors: Number(u.max_surveyors) || 0,
@@ -6752,7 +6841,7 @@ async function rawHandler(req: Request): Promise<Response> {
       ).map((m) => String((m as { kind?: string }).kind || "").toLowerCase());
       if (mediaKinds.includes("audio")) payload.has_audio = true;
       if (mediaKinds.includes("photo")) payload.has_photo = true;
-      const verify = verifySubmission(payload, mediaKinds);
+      const verify = verifySubmission(payload, mediaKinds, voiceRequiredOf(payload));
       const surveyor = surveyorNameOf(payload);
       return json({
         id: r.id,
@@ -6872,7 +6961,7 @@ async function rawHandler(req: Request): Promise<Response> {
       if (mediaKinds.includes("audio")) payload.has_audio = true;
       if (mediaKinds.includes("photo")) payload.has_photo = true;
 
-      const verify = verifySubmission(payload, mediaKinds);
+      const verify = verifySubmission(payload, mediaKinds, voiceRequiredOf(payload));
       payload.completeness = verify.completeness;
       payload.verification = verify;
 
@@ -7012,7 +7101,7 @@ async function rawHandler(req: Request): Promise<Response> {
       ).map((m) => String((m as { kind?: string }).kind || "").toLowerCase());
       if (mediaKinds.includes("audio")) payload.has_audio = true;
       if (mediaKinds.includes("photo")) payload.has_photo = true;
-      const verify = verifySubmission(payload, mediaKinds);
+      const verify = verifySubmission(payload, mediaKinds, voiceRequiredOf(payload));
 
       if (next === "confirmed" && verify.completeness !== "complete" && !force) {
         return json({
@@ -7177,17 +7266,17 @@ async function rawHandler(req: Request): Promise<Response> {
       try {
         rows = (me.role === "super_admin"
           ? (q
-              ? await sql`SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name FROM survey_form WHERE LOWER(title) LIKE ${'%' + q + '%'} ORDER BY title`
-              : await sql`SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name FROM survey_form ORDER BY title`)
+              ? await sql`SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form WHERE LOWER(title) LIKE ${'%' + q + '%'} ORDER BY title`
+              : await sql`SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form ORDER BY title`)
           : (q
                 ? await sql`
-                    SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name FROM survey_form
+                    SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form
                     WHERE (created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
                       AND LOWER(title) LIKE ${'%' + q + '%'}
                     ORDER BY title
                   `
                 : await sql`
-                    SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name FROM survey_form
+                    SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form
                     WHERE created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
                     ORDER BY title
                   `)) as Record<string, unknown>[];
@@ -7280,6 +7369,8 @@ async function rawHandler(req: Request): Promise<Response> {
           form_key: r.form_key,
           title: r.title,
           display_lang: surveyDisplayLang((r as { display_lang?: unknown }).display_lang),
+          voice_required: r.voice_required === true,
+          voice_time_limit: Number(r.voice_time_limit) || 0,
           company_name: r.company_name || null,
           owner_company: owner?.company_name ?? null,
           owner_name: owner?.name ?? null,
@@ -7412,8 +7503,12 @@ async function rawHandler(req: Request): Promise<Response> {
         formKey = `${base}-${n}`;
       }
       const rows = await sql`
-        INSERT INTO survey_form (form_key, title, questions, updated_at, created_by, company_name, company_id)
-        VALUES (${formKey}, ${title}, ${JSON.stringify(questions)}::jsonb, NOW(), ${me.id}, ${companyName}, ${companyId})
+        INSERT INTO survey_form (form_key, title, questions, updated_at, created_by, company_name, company_id, voice_required, voice_time_limit)
+        VALUES (
+          ${formKey}, ${title}, ${JSON.stringify(questions)}::jsonb, NOW(), ${me.id}, ${companyName}, ${companyId},
+          ${hasPower(me, "can_record_voice") && body.voice_required === true},
+          ${hasPower(me, "can_record_voice") ? Number(body.voice_time_limit) || 0 : 0}
+        )
         RETURNING id, form_key, title, updated_at
       `;
       const surveyId = (rows[0] as { id?: unknown }).id;
@@ -7480,9 +7575,9 @@ async function rawHandler(req: Request): Promise<Response> {
       // Client Admin: own survey or explicit share only — no company
       // predicate (see SCHEMA.md).
       let rows = me.role === "super_admin"
-        ? await sql`SELECT id, form_key, title, display_lang, questions, updated_at, created_by, company_name FROM survey_form WHERE id = ${id}`.catch(() => null)
+        ? await sql`SELECT id, form_key, title, display_lang, questions, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form WHERE id = ${id}`.catch(() => null)
         : await sql`
-              SELECT id, form_key, title, display_lang, questions, updated_at, created_by, company_name FROM survey_form
+              SELECT id, form_key, title, display_lang, questions, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form
               WHERE id = ${id} AND (
                 created_by = ${me.id}
                 OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
@@ -7500,7 +7595,7 @@ async function rawHandler(req: Request): Promise<Response> {
               `;
       }
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
-      const r = rows[0] as { id: number; form_key: string; title: string; display_lang?: string; questions: unknown; updated_at: string; created_by: number | null; company_name: string | null };
+      const r = rows[0] as { id: number; form_key: string; title: string; display_lang?: string; questions: unknown; updated_at: string; created_by: number | null; company_name: string | null; voice_required?: boolean; voice_time_limit?: number };
       const questions = parseQuestionsArray(r.questions);
       const team = me.role === "super_admin"
         ? await sql`
@@ -7538,6 +7633,8 @@ async function rawHandler(req: Request): Promise<Response> {
           form_key: r.form_key,
           title: r.title,
           display_lang: surveyDisplayLang(r.display_lang),
+          voice_required: r.voice_required === true,
+          voice_time_limit: Number(r.voice_time_limit) || 0,
           questions,
           updated_at: r.updated_at,
           surveyors: team,
@@ -7996,6 +8093,22 @@ async function rawHandler(req: Request): Promise<Response> {
           UPDATE survey_form SET display_lang = ${displayLang}, updated_at = NOW() WHERE id = ${id}
         `;
       }
+      if (body.voice_required !== undefined || body.voice_time_limit !== undefined) {
+        if (!hasPower(me, "can_record_voice")) {
+          return json({
+            error: "Super Admin has not granted Voice recording on your profile",
+          }, 403);
+        }
+        const voiceRequired = body.voice_required === true;
+        const voiceLimit = Number(body.voice_time_limit) || 0;
+        await sql`
+          UPDATE survey_form
+          SET voice_required = ${voiceRequired},
+              voice_time_limit = ${voiceLimit},
+              updated_at = NOW()
+          WHERE id = ${id}
+        `;
+      }
       // The company a project is mapped under is registered by the Super Admin.
       let nextCompanyName: string | null | undefined;
       if (me.role === "super_admin" && body.company_name !== undefined) {
@@ -8253,7 +8366,7 @@ async function rawHandler(req: Request): Promise<Response> {
           surveys: items,
           require_geo: true,
           require_photo: true,
-          require_audio: true,
+          require_audio: first.voice_required === true,
         });
       }
       try {
@@ -8293,7 +8406,8 @@ async function rawHandler(req: Request): Promise<Response> {
           updated_at: f.updated_at,
           require_geo: true,
           require_photo: true,
-          require_audio: true,
+          require_audio: false,
+          voice_required: false,
         });
       } catch (e) {
         return json({
@@ -8302,7 +8416,8 @@ async function rawHandler(req: Request): Promise<Response> {
           questions: DEFAULT_QUESTIONS,
           require_geo: true,
           require_photo: true,
-          require_audio: true,
+          require_audio: false,
+          voice_required: false,
           warning: (e as Error).message,
         });
       }
@@ -8496,6 +8611,7 @@ async function rawHandler(req: Request): Promise<Response> {
         geo: geo,
         location_details: body.location_details || null,
         locks: body.locks || { geo: true },
+        voice_required: body.voice_required === true || answers._voice_required === true,
         has_photo: false,
         has_audio: false,
         answers: stripPii({
@@ -8594,8 +8710,8 @@ async function rawHandler(req: Request): Promise<Response> {
           ? "Record complete — visible in Client Admin Report automatically"
           : "POST /api/submissions/:id/media with kind=photo|audio",
         note: auto.auto_confirmed
-          ? "Q/A + media complete — auto-confirmed for Client Admin."
-          : "Q/A saved. Upload photo and audio separately; auto-confirms when complete.",
+          ? "Q/A + media complete — pending Client Admin review."
+          : "Q/A saved. Upload photo and audio separately; stays pending until Client Admin confirms.",
       }, 201);
     }
 
@@ -8761,7 +8877,7 @@ async function rawHandler(req: Request): Promise<Response> {
         completeness: auto.completeness,
         auto_confirmed: auto.auto_confirmed,
         note: auto.auto_confirmed
-          ? `${kind} linked — record auto-confirmed for Client Admin Report.`
+          ? `${kind} linked — pending Client Admin review.`
           : mode === "neon"
             ? `${kind} linked free in Neon (no credit card). Admin opens via API.`
             : `${kind} linked on ${provider}.`,
@@ -9387,9 +9503,13 @@ async function rawHandler(req: Request): Promise<Response> {
         }
 
         const fixed = [
-          "id", "date", "survey", "surveyor", "district", "constituency", "mandal",
+          "id", "date", "created_at_ist", "survey", "surveyor", "district", "constituency", "mandal",
           "latitude", "longitude", "party", "gender", "caste", "age", "respondent",
           "photo_url", "audio_url", "photo_file", "audio_file",
+          "ts_gps_start", "ts_gps_lock", "ts_photo", "ts_voice_start", "ts_voice_end",
+          "ts_qa_start", "ts_finish",
+          "sec_gps", "sec_photo", "sec_voice", "sec_qa", "sec_total",
+          "answer_pattern",
         ];
         const idToLabel = new Map<string, string>();
         const optTeByKey = new Map<string, Map<string, string>>();
@@ -9476,7 +9596,9 @@ async function rawHandler(req: Request): Promise<Response> {
           if (
             key === "id" || key === "date" || key === "latitude" || key === "longitude" ||
             key === "photo_url" || key === "audio_url" || key === "photo_file" ||
-            key === "audio_file" || key === "age"
+            key === "audio_file" || key === "age" ||
+            key.startsWith("ts_") || key.startsWith("sec_") ||
+            key === "created_at_ist" || key === "answer_pattern"
           ) {
             return v;
           }
@@ -9491,9 +9613,12 @@ async function rawHandler(req: Request): Promise<Response> {
 
         const getBaseRecord = (r: (typeof rows)[number]) => {
           const rObj = r as unknown as Record<string, unknown>;
+          const timing = timingOf((r.answers || {}) as Record<string, unknown>);
+          const ist = (v: unknown) => (v ? formatIstStamp(v) : "");
           return {
             id: r.id,
             date: dayKey(r.created_at),
+            created_at_ist: formatIstStamp(r.created_at),
             survey: r.formKey,
             surveyor: r.submitted_by,
             district: r.district,
@@ -9510,6 +9635,19 @@ async function rawHandler(req: Request): Promise<Response> {
             audio_url: audioUrl.get(Number(r.id)) || "",
             photo_file: photoUrl.has(Number(r.id)) ? photoName(r.id) : "",
             audio_file: audioUrl.has(Number(r.id)) ? audioName(r.id) : "",
+            ts_gps_start: ist(timing.ts_gps_start),
+            ts_gps_lock: ist(timing.ts_gps_lock),
+            ts_photo: ist(timing.ts_photo),
+            ts_voice_start: ist(timing.ts_voice_start),
+            ts_voice_end: ist(timing.ts_voice_end),
+            ts_qa_start: ist(timing.ts_qa_start),
+            ts_finish: ist(timing.ts_finish),
+            sec_gps: timing.sec_gps,
+            sec_photo: timing.sec_photo,
+            sec_voice: timing.sec_voice,
+            sec_qa: timing.sec_qa,
+            sec_total: timing.sec_total,
+            answer_pattern: timing.answer_pattern,
           } as Record<string, unknown>;
         };
 

@@ -1,0 +1,35 @@
+ # 1. Bump the version (e.g. from 2.0.1 to 2.0.2)
+npm run version:bump
+
+# 2. Build the new release APK
+npm run build:apk:release
+
+# 3. Push code changes to Git
+git add -A && git commit -m "Release v2.0.2"
+git push ground-iq ground-sync:main && git push ground-iq-superadmin ground-sync:main
+
+
+npm run dev
+# or
+npm run build
+# or
+npm run build:apk:release
+
+
+package.json: "version": "2.0.3", "versionCode": 20003
+package-lock.json: "version": "2.0.3"
+android/app/build.gradle: versionName "2.0.3", versionCode 20003
+deno-deploy/main.ts: GET /api/app-version returning v2.0.3 (20003)
+Vite Client Build: Built cleanly with __APP_VERSION__ = "2.0.3"
+Git: Committed (3a447bb) and pushed to main on both GitHub repositories.
+
+# Bump to next patch version (+1) and push to Git:
+python3 bump_version.py patch --push
+
+# Or set a specific version:
+python3 bump_version.py 2.0.4 --push
+npm run version:ui
+# or
+python3 bump_version.py
+
+python3 bump_version.py patch --push

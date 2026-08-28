@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
+import { Capacitor } from '@capacitor/core'
 import Icon from './Icons'
 import { getMyProgress, getSurveyForm } from './api'
 import {
@@ -216,6 +218,8 @@ export default function FieldCollectScreen({
   const [locationDetails, setLocationDetails] = useState(null)
   const [geoLoading, setGeoLoading] = useState(false)
   const [photoDataUrl, setPhotoDataUrl] = useState('')
+  const [cameraLive, setCameraLive] = useState(false)
+  const [cameraBusy, setCameraBusy] = useState(false)
   const [audioBlob, setAudioBlob] = useState(null)
   const [, setAudioUrl] = useState('')
   const [recording, setRecording] = useState(false)
@@ -262,6 +266,9 @@ export default function FieldCollectScreen({
   const saveDraftRef = useRef(null)
   const watchId = useRef(null)
   const streamRef = useRef(null)
+  const photoStreamRef = useRef(null)
+  const videoRef = useRef(null)
+  const galleryInputRef = useRef(null)
   const audioCtxRef = useRef(null)
   const audioStartedAt = useRef(null)
   const audioTimerRef = useRef(null)
@@ -372,7 +379,7 @@ export default function FieldCollectScreen({
   const geoLocked = isGeoValid(geo)
   const locationLocked = geoLocked && !!locationDetails
   const photoLocked = !!(photoDataUrl && photoDataUrl.length >= MIN_PHOTO_CHARS)
-  // Voice recording: optional by default, or mandatory if project sets voice_required: true
+  // Voice is a Client Admin / Super Admin lock. If off, the field app has no voice step.
   const voiceRequired = formMeta?.voice_required === true
   const voiceTimeLimit = Number(formMeta?.voice_time_limit || 0) // minutes, 0 = no limit
   const voiceLocked = voiceRequired ? (voiceActivated && (!!audioBlob || recording)) : true
@@ -656,6 +663,7 @@ export default function FieldCollectScreen({
     setGeo(null)
     setLocationDetails(null)
     setPhotoDataUrl('')
+    stopLiveCamera()
     setAudioBlob(null)
     clearAudioUrl()
     setRecording(false)
@@ -816,24 +824,140 @@ export default function FieldCollectScreen({
     }
     const reader = new FileReader()
     reader.onload = () => {
-      const img = new Image()
-      img.onload = () => {
-        const dataUrl = compressPhotoFromImage(img)
-        if (dataUrl.length < MIN_PHOTO_CHARS) {
-          onToast?.('Photo invalid — retake', 'error')
-          return
-        }
-        setPhotoDataUrl(dataUrl)
-        onToast?.('Photo locked', 'ok')
-        void saveDraftRef.current?.({ mode: 'checkpoint', silent: true }).catch(() => {})
-      }
-      img.onerror = () => onToast?.('Could not read photo', 'error')
-      img.src = reader.result
+      lockPhotoFromDataUrl(String(reader.result || ''))
     }
     reader.readAsDataURL(file)
-    // allow re-pick same file later
     e.target.value = ''
   }
+
+  function lockPhotoFromDataUrl(dataUrl) {
+    if (!dataUrl || !String(dataUrl).startsWith('data:image')) {
+      onToast?.('Could not read photo', 'error')
+      return
+    }
+    const img = new Image()
+    img.onload = () => {
+      const out = compressPhotoFromImage(img)
+      if (out.length < MIN_PHOTO_CHARS) {
+        onToast?.('Photo invalid — retake', 'error')
+        return
+      }
+      setPhotoDataUrl(out)
+      onToast?.('Photo locked', 'ok')
+      void saveDraftRef.current?.({ mode: 'checkpoint', silent: true }).catch(() => {})
+    }
+    img.onerror = () => onToast?.('Could not read photo', 'error')
+    img.src = dataUrl
+  }
+
+  function stopLiveCamera() {
+    try {
+      photoStreamRef.current?.getTracks?.().forEach((t) => t.stop())
+    } catch {
+      /* ignore */
+    }
+    photoStreamRef.current = null
+    setCameraLive(false)
+  }
+
+  function snapLivePhoto() {
+    const video = videoRef.current
+    if (!video || !video.videoWidth) {
+      onToast?.('Camera not ready — wait a moment', 'error')
+      return
+    }
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(video, 0, 0)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+    stopLiveCamera()
+    lockPhotoFromDataUrl(dataUrl)
+  }
+
+  async function startLiveCamera() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    })
+    photoStreamRef.current = stream
+    setCameraLive(true)
+  }
+
+  async function takePhotoCamera() {
+    if (!locks.geo) {
+      onToast?.('Lock GPS first', 'error')
+      setStep(0)
+      return
+    }
+    setCameraBusy(true)
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const shot = await Camera.getPhoto({
+          quality: 85,
+          resultType: CameraResultType.DataUrl,
+          source: CameraSource.Camera,
+          saveToGallery: false,
+          correctOrientation: true,
+        })
+        if (shot?.dataUrl) lockPhotoFromDataUrl(shot.dataUrl)
+        return
+      }
+      await startLiveCamera()
+    } catch (err) {
+      const msg = String(err?.message || err || '')
+      if (/cancel/i.test(msg)) return
+      try {
+        await startLiveCamera()
+      } catch {
+        onToast?.('Allow camera permission, then tap Take photo', 'error')
+      }
+    } finally {
+      setCameraBusy(false)
+    }
+  }
+
+  async function pickFromGallery() {
+    if (!locks.geo) {
+      onToast?.('Lock GPS first', 'error')
+      setStep(0)
+      return
+    }
+    setCameraBusy(true)
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const shot = await Camera.getPhoto({
+          quality: 85,
+          resultType: CameraResultType.DataUrl,
+          source: CameraSource.Photos,
+          correctOrientation: true,
+        })
+        if (shot?.dataUrl) lockPhotoFromDataUrl(shot.dataUrl)
+        return
+      }
+      galleryInputRef.current?.click()
+    } catch (err) {
+      const msg = String(err?.message || err || '')
+      if (/cancel/i.test(msg)) return
+      galleryInputRef.current?.click()
+    } finally {
+      setCameraBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!cameraLive || !videoRef.current || !photoStreamRef.current) return
+    videoRef.current.srcObject = photoStreamRef.current
+    const p = videoRef.current.play?.()
+    if (p && typeof p.catch === 'function') p.catch(() => {})
+  }, [cameraLive])
+
+  useEffect(() => {
+    if (step !== 1) stopLiveCamera()
+  }, [step])
+
+  useEffect(() => () => stopLiveCamera(), [])
 
   async function startAudio() {
     if (!geoLocked || !photoLocked) {
@@ -1880,7 +2004,7 @@ export default function FieldCollectScreen({
           <p>
             {user?.name || user?.username}
             {surveyChosen || (formMeta?.surveys || []).length <= 1
-              ? ` · step ${step + 1}/4 · ${questions.length} Qs`
+              ? ` · ${questions.length} Qs`
               : ' · pick a survey first'}
           </p>
         </header>
@@ -1940,7 +2064,6 @@ export default function FieldCollectScreen({
 
         {surveyChosen || (formMeta?.surveys || []).length === 1 ? (
         <>
-        {/* Mock 3 Stepper Flow */}
         <div className="stepper">
           <div className={`step ${locks.geo ? 'done' : 'active'}`}>
             <div className="dot">{locks.geo ? '✓' : '1'}</div>
@@ -1950,19 +2073,20 @@ export default function FieldCollectScreen({
             <div className="dot">{locks.photo ? '✓' : '2'}</div>
             <div className="lbl">Photo</div>
           </div>
-          <div className={`step ${voiceActivated ? 'done' : (locks.geo && locks.photo) ? 'active' : ''}`}>
-            <div className="dot">{voiceActivated ? '✓' : '3'}</div>
-            <div className="lbl">{voiceRequired ? 'Voice' : 'Voice (Opt)'}</div>
-          </div>
-          <div className={`step ${(locks.geo && locks.photo && (!voiceRequired || voiceActivated)) ? 'active' : ''}`}>
-            <div className="dot">4</div>
+          {voiceRequired && (
+            <div className={`step ${voiceActivated ? 'done' : locks.geo && locks.photo ? 'active' : ''}`}>
+              <div className="dot">{voiceActivated ? '✓' : '3'}</div>
+              <div className="lbl">Voice</div>
+            </div>
+          )}
+          <div className={`step ${step === 2 && (!voiceRequired || voiceActivated) ? 'active' : ''}`}>
+            <div className="dot">{voiceRequired ? '4' : '3'}</div>
             <div className="lbl">Q/A</div>
           </div>
         </div>
 
-        {/* Mock 3 Lockbar */}
         <div className="lockbar">
-          <div className="hd">Locked Requirements (Cannot Skip)</div>
+          <div className="hd">Required locks</div>
           <div className="lock-pills">
             <div className={`lock-pill ${locks.geo ? 'ok' : 'bad'}`}>
               <span>{locks.geo ? '✓' : '✗'}</span> GPS {locks.geo ? 'LOCKED' : 'OPEN'}
@@ -1970,9 +2094,11 @@ export default function FieldCollectScreen({
             <div className={`lock-pill ${locks.photo ? 'ok' : 'bad'}`}>
               <span>{locks.photo ? '✓' : '✗'}</span> Photo {locks.photo ? 'LOCKED' : 'OPEN'}
             </div>
-            <div className={`lock-pill ${voiceActivated ? 'ok' : voiceRequired ? 'bad' : 'ok'}`}>
-              <span>{voiceActivated ? '✓' : voiceRequired ? '✗' : '🎙'}</span> Voice {voiceActivated ? 'ON' : voiceRequired ? 'OFF' : 'OPTIONAL'}
-            </div>
+            {voiceRequired && (
+              <div className={`lock-pill ${voiceActivated ? 'ok' : 'bad'}`}>
+                <span>{voiceActivated ? '✓' : '✗'}</span> Voice {voiceActivated ? 'ON' : 'OFF'}
+              </div>
+            )}
           </div>
         </div>
 
@@ -2048,15 +2174,22 @@ export default function FieldCollectScreen({
         </div>
 
         <div className="stepper">
-          {['GPS', 'Photo', 'Voice+Q/A', 'Done'].map((label, i) => (
+          {(voiceRequired ? ['GPS', 'Photo', 'Voice', 'Q/A'] : ['GPS', 'Photo', 'Q/A']).map((label, i) => {
+            const visual = voiceRequired
+              ? step
+              : step >= 2
+                ? 2
+                : step
+            return (
             <div
               key={label}
-              className={`step ${i === step ? 'active' : ''} ${i < step ? 'done' : ''}`}
+              className={`step ${i === visual ? 'active' : ''} ${i < visual ? 'done' : ''}`}
               title={label}
             >
               {i + 1}
             </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* STEP 0 — GPS + location details LOCK */}
@@ -2146,93 +2279,62 @@ export default function FieldCollectScreen({
               </p>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-              <label
-                className={`btn primary ${!locks.geo ? 'disabled' : ''}`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  cursor: locks.geo ? 'pointer' : 'not-allowed',
-                  opacity: !locks.geo ? 0.6 : 1,
-                  textAlign: 'center',
-                  position: 'relative',
-                  overflow: 'hidden',
-                  margin: 0,
-                  padding: '12px 16px',
-                }}
-                onClick={(e) => {
-                  if (!locks.geo) {
-                    e.preventDefault()
-                    onToast?.('Lock GPS first', 'error')
-                    setStep(0)
-                  }
-                }}
-              >
-                <Icon name="camera" size={18} />
-                <span>{locks.photo ? 'Retake photo (Camera)' : 'Take photo (Camera)'}</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  disabled={!locks.geo}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    opacity: 0,
-                    cursor: locks.geo ? 'pointer' : 'not-allowed',
-                    zIndex: 2,
-                  }}
-                  onChange={onPickPhoto}
-                />
-              </label>
-
-              <label
-                className="btn secondary"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  cursor: locks.geo ? 'pointer' : 'not-allowed',
-                  opacity: !locks.geo ? 0.6 : 1,
-                  textAlign: 'center',
-                  position: 'relative',
-                  overflow: 'hidden',
-                  margin: 0,
-                  padding: '10px 16px',
-                  fontSize: 13,
-                }}
-                onClick={(e) => {
-                  if (!locks.geo) {
-                    e.preventDefault()
-                    onToast?.('Lock GPS first', 'error')
-                    setStep(0)
-                  }
-                }}
-              >
-                <Icon name="image" size={16} />
-                <span>Choose from Gallery / Camera</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  disabled={!locks.geo}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    opacity: 0,
-                    cursor: locks.geo ? 'pointer' : 'not-allowed',
-                    zIndex: 2,
-                  }}
-                  onChange={onPickPhoto}
-                />
-              </label>
+              {cameraLive ? (
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    style={{
+                      width: '100%',
+                      borderRadius: 12,
+                      background: '#0b0f14',
+                      maxHeight: 360,
+                      objectFit: 'cover',
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" className="btn primary" onClick={snapLivePhoto} style={{ flex: 1 }}>
+                      Snap photo
+                    </button>
+                    <button type="button" className="btn secondary" onClick={stopLiveCamera}>
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    disabled={!locks.geo || cameraBusy}
+                    onClick={() => void takePhotoCamera()}
+                  >
+                    <Icon name="camera" size={18} />
+                    {' '}
+                    {cameraBusy ? 'Opening camera…' : locks.photo ? 'Retake photo (Camera)' : 'Take photo (Camera)'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    disabled={!locks.geo || cameraBusy}
+                    onClick={() => void pickFromGallery()}
+                    style={{ fontSize: 13 }}
+                  >
+                    <Icon name="image" size={16} />
+                    {' '}
+                    Gallery only
+                  </button>
+                  <input
+                    ref={galleryInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={onPickPhoto}
+                  />
+                </>
+              )}
             </div>
             {photoDataUrl && !editingDraft && (
               <img

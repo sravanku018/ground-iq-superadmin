@@ -334,12 +334,7 @@ function HomeScreen({
           {(questionsMeta?.surveys || []).some((s) => s.voice_required) ? (
             <div className="pill warn">
               <span className="dot" />
-              Voice required on collect
-            </div>
-          ) : (questionsMeta?.surveys || []).length > 0 ? (
-            <div className="pill ok">
-              <span className="dot" />
-              Voice off
+              Voice required
             </div>
           ) : null}
         </div>
@@ -699,7 +694,7 @@ function SurveyorProfileScreen({
                 style={{ fontSize: 11 }}
               >
                 {s.title || s.form_key}
-                {s.voice_required ? ' · Voice on' : ' · Voice off'}
+                {s.voice_required ? ' · Voice' : ''}
               </span>
             ))}
           </div>

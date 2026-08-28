@@ -1723,7 +1723,7 @@ export default function SurveyorApp() {
             <Icon name="check" size={14} />
           </div>
           <div className="topbar-title-group">
-            <span className="topbar-title">Ground IQ</span>
+            <span className="topbar-title">Smart Survey X</span>
             <span className="topbar-badge">{tab.toUpperCase()}</span>
           </div>
         </div>

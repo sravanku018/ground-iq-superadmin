@@ -1,10 +1,97 @@
+:root {
+  /* ── Typography Pairing (Plus Jakarta Sans Display + Inter Body) ── */
+  --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: var(--font-body);
+
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-base: 14px;
+  --fs-md: 15px;
+  --fs-lg: 17px;
+  --fs-xl: 20px;
+  --fs-2xl: 24px;
+
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-extrabold: 800;
+
+  /* ── Distinctive Brand Accent (Precision Emerald / Dark Jade) ── */
+  --accent: #059669;
+  --accent-hover: #047857;
+  --accent-active: #065f46;
+  --accent-bg: rgba(5, 150, 105, 0.08);
+  --accent-border: rgba(5, 150, 105, 0.25);
+  --accent-light: #ecfdf5;
+
+  /* ── Telangana Election Political Triad (Signature Visual Weights) ── */
+  --party-congress: #16a34a;
+  --party-congress-bg: #f0fdf4;
+  --party-bjp: #ea580c;
+  --party-bjp-bg: #fff7ed;
+  --party-brs: #db2777;
+  --party-brs-bg: #fdf2f8;
+  --party-others: #6366f1;
+  --party-others-bg: #eef2ff;
+  --party-undecided: #64748b;
+  --party-undecided-bg: #f8fafc;
+
+  /* ── Surfaces, Borders & Inks ── */
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-alt: #f1f5f9;
+  --surface-hover: #e2e8f0;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --border-subtle: #f1f5f9;
+
+  --ink: #0f172a;
+  --ink-secondary: #475569;
+  --ink-muted: #64748b;
+  --ink-faint: #94a3b8;
+  --text: #334155;
+  --text-h: #0f172a;
+
+  --ok: #059669;
+  --ok-bg: #ecfdf5;
+  --warn: #f59e0b;
+  --warn-bg: #fffbeb;
+  --danger: #ef4444;
+  --danger-bg: #fef2f2;
+
+  /* ── Standardized Radii Hierarchy ── */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-box: 16px;
+  --radius-btn: 12px;
+  --radius-pill: 999px;
+
+  /* ── Elevation Shadows ── */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 6px 16px rgba(0, 0, 0, 0.08);
+
+  --transition-base: 0.15s ease;
+}
+
+body, button, input, select, textarea {
+  font-family: var(--font-body);
+}
+
+h1, h2, h3, h4, .topbar-title, .hero-name, .mission-title, .fl-title, .qa-title, .screen-title {
+  font-family: var(--font-display);
+}
+
 /* Base button and CTA styling for mobile shell */
 .mobile-shell .cta {
   width: 100% !important;
   max-width: 100% !important;
   min-height: 48px;
   padding: 13px 16px;
-  border-radius: 14px;
+  border-radius: var(--radius-btn, 12px);
   font-size: 15px;
   font-weight: 700;
   display: flex !important;
@@ -1398,14 +1485,14 @@
   width: 100%;
   height: 6px;
   background: #f1f5f9;
-  border-radius: 99px;
+  border-radius: var(--radius-pill, 999px);
   overflow: hidden;
 }
 
 .mission-progress-fill {
   height: 100%;
   background: #059669;
-  border-radius: 99px;
+  border-radius: var(--radius-pill, 999px);
   transition: width 0.4s ease;
 }
 
@@ -1677,7 +1764,7 @@
 .stat {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-box, 14px);
+  border-radius: var(--radius-box, 16px);
   padding: 10px 12px;
   min-width: 0;
   box-shadow: var(--shadow-sm);
@@ -1735,7 +1822,7 @@
 .cta {
   width: 100%;
   border: none;
-  border-radius: var(--radius-btn, 14px);
+  border-radius: var(--radius-btn, 12px);
   padding: 13px 16px;
   font: inherit;
   font-size: var(--fs-lg);
@@ -1924,7 +2011,7 @@
   flex: 1;
   height: 6px;
   border: none;
-  border-radius: 99px;
+  border-radius: var(--radius-pill, 999px);
   background: var(--border);
   color: transparent;
   font-size: 0;
@@ -2201,7 +2288,7 @@ textarea:focus,
 .voice-strip .live-dot {
   width: 8px;
   height: 8px;
-  border-radius: 99px;
+  border-radius: var(--radius-pill, 999px);
   background: var(--danger);
   box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18);
   flex-shrink: 0;
@@ -2259,7 +2346,7 @@ textarea:focus,
   flex: 1;
   height: 5px;
   background: var(--border);
-  border-radius: 99px;
+  border-radius: var(--radius-pill, 999px);
   overflow: hidden;
 }
 
@@ -2267,7 +2354,7 @@ textarea:focus,
   display: block;
   height: 100%;
   background: var(--accent);
-  border-radius: 99px;
+  border-radius: var(--radius-pill, 999px);
   transition: width 0.2s ease;
 }
 
@@ -2366,6 +2453,91 @@ textarea:focus,
   background: var(--danger);
   border-color: var(--danger);
   color: #fff;
+}
+
+/* ── Telangana Election Political Visual Identity System ── */
+.qa-opt.party-congress,
+.opt-btn.party-congress {
+  border-left: 5px solid var(--party-congress, #16a34a) !important;
+  background: var(--party-congress-bg, #f0fdf4);
+  color: #14532d;
+}
+.qa-opt.party-congress:hover,
+.opt-btn.party-congress:hover {
+  border-color: var(--party-congress, #16a34a);
+  background: #dcfce7;
+}
+.qa-opt.party-congress.selected,
+.opt-btn.party-congress.selected {
+  background: var(--party-congress, #16a34a) !important;
+  border-color: var(--party-congress, #16a34a) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(22, 163, 74, 0.35) !important;
+}
+
+.qa-opt.party-bjp,
+.opt-btn.party-bjp {
+  border-left: 5px solid var(--party-bjp, #ea580c) !important;
+  background: var(--party-bjp-bg, #fff7ed);
+  color: #7c2d12;
+}
+.qa-opt.party-bjp:hover,
+.opt-btn.party-bjp:hover {
+  border-color: var(--party-bjp, #ea580c);
+  background: #ffedd5;
+}
+.qa-opt.party-bjp.selected,
+.opt-btn.party-bjp.selected {
+  background: var(--party-bjp, #ea580c) !important;
+  border-color: var(--party-bjp, #ea580c) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(234, 88, 12, 0.35) !important;
+}
+
+.qa-opt.party-brs,
+.opt-btn.party-brs {
+  border-left: 5px solid var(--party-brs, #db2777) !important;
+  background: var(--party-brs-bg, #fdf2f8);
+  color: #831843;
+}
+.qa-opt.party-brs:hover,
+.opt-btn.party-brs:hover {
+  border-color: var(--party-brs, #db2777);
+  background: #fce7f3;
+}
+.qa-opt.party-brs.selected,
+.opt-btn.party-brs.selected {
+  background: var(--party-brs, #db2777) !important;
+  border-color: var(--party-brs, #db2777) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(219, 39, 119, 0.35) !important;
+}
+
+.qa-opt.party-others,
+.opt-btn.party-others {
+  border-left: 5px solid var(--party-others, #6366f1) !important;
+  background: var(--party-others-bg, #eef2ff);
+  color: #312e81;
+}
+.qa-opt.party-others.selected,
+.opt-btn.party-others.selected {
+  background: var(--party-others, #6366f1) !important;
+  border-color: var(--party-others, #6366f1) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35) !important;
+}
+
+.qa-opt.party-undecided,
+.opt-btn.party-undecided {
+  border-left: 5px solid var(--party-undecided, #64748b) !important;
+  background: var(--party-undecided-bg, #f8fafc);
+  color: #1e293b;
+}
+.qa-opt.party-undecided.selected,
+.opt-btn.party-undecided.selected {
+  background: var(--party-undecided, #64748b) !important;
+  border-color: var(--party-undecided, #64748b) !important;
+  color: #ffffff !important;
 }
 
 .qa-meter {
@@ -2482,7 +2654,7 @@ textarea:focus,
 
 .qa-dot.on {
   width: 18px;
-  border-radius: 99px;
+  border-radius: var(--radius-pill, 999px);
   background: var(--accent);
 }
 
@@ -2792,20 +2964,20 @@ textarea:focus,
   width: 72px;
   height: 72px;
   border-radius: 50%;
-  background: var(--accent-bg, #eff6ff);
-  border: 2px solid var(--accent-border, #bfdbfe);
+  background: var(--accent-bg, rgba(5, 150, 105, 0.08));
+  border: 2px solid var(--accent-border, rgba(5, 150, 105, 0.25));
   margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 24px;
   font-weight: 700;
-  color: var(--accent, #1d6fe0);
+  color: var(--accent, #059669);
 }
 .prof .pname {
   font-size: 18px;
   font-weight: 700;
-  color: var(--ink, #1e293b);
+  color: var(--ink, #0f172a);
   margin-top: 4px;
 }
 .prof .puser {
@@ -2819,7 +2991,7 @@ textarea:focus,
   font-size: 11px;
   font-weight: 700;
   background: var(--surface-alt, #f1f5f9);
-  border-radius: 999px;
+  border-radius: var(--radius-pill, 999px);
   padding: 5px 14px;
   color: var(--ink-secondary, #475569);
   border: 1px solid var(--surface-hover, #e2e8f0);
@@ -2828,7 +3000,7 @@ textarea:focus,
   margin: 10px 16px;
   padding: 16px;
   border: 1px solid var(--surface-hover, #e2e8f0);
-  border-radius: 14px;
+  border-radius: var(--radius-lg, 14px);
   background: var(--surface, #ffffff);
   box-shadow: 0 1px 3px rgba(0,0,0,0.03);
 }
@@ -2839,7 +3011,7 @@ textarea:focus,
   align-items: center;
   gap: 6px;
   margin: 0 0 4px;
-  color: var(--ink, #1e293b);
+  color: var(--ink, #0f172a);
 }
 .idcard p {
   font-size: 12px;
@@ -2855,7 +3027,7 @@ textarea:focus,
 .id-tile {
   aspect-ratio: 8/5;
   background: var(--surface-alt, #f1f5f9);
-  border-radius: 10px;
+  border-radius: var(--radius-md, 10px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2868,12 +3040,12 @@ textarea:focus,
   user-select: none;
 }
 .id-tile:hover {
-  border-color: var(--accent-border, #bfdbfe);
-  background: var(--accent-bg, #eff6ff);
+  border-color: var(--accent-border, rgba(5, 150, 105, 0.25));
+  background: var(--accent-bg, rgba(5, 150, 105, 0.08));
 }
 .id-tile.ok {
-  background: var(--ok-bg, #f0fdf4);
-  color: var(--ok, #16a34a);
-  border-color: rgba(22,163,74,0.3);
+  background: var(--ok-bg, #ecfdf5);
+  color: var(--ok, #059669);
+  border-color: rgba(5, 150, 105, 0.3);
 }
 

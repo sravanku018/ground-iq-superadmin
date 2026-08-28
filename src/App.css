@@ -15,6 +15,7 @@
   box-sizing: border-box !important;
   cursor: pointer;
   align-self: stretch !important;
+  margin: 0 !important;
 }
 
 .mobile-shell .cta.secondary {
@@ -22,6 +23,7 @@
   background: var(--bg, #f8fafc);
   border: 1.5px solid var(--border, #e2e8f0);
   color: var(--ink, #1e293b);
+  margin: 0 !important;
 }
 
 /* Full-width primary buttons inside collect step cards */
@@ -1280,16 +1282,22 @@
 .screen {
   padding: 10px 14px 74px;
   width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow-x: hidden;
 }
 
 /* ── Home Screen ─────────────────────────────────────────── */
 .home-screen {
   gap: 10px;
   padding-bottom: 74px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .home-hero {

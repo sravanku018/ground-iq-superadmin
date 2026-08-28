@@ -1131,6 +1131,14 @@ export default function FieldCollectScreen({
 
   function countAnsweredQuestions(ans = answers) {
     if (!ans || typeof ans !== 'object') return 0
+    // Count only keys that correspond to actual questions in the survey
+    if (questions && questions.length > 0) {
+      return questions.filter((q) => {
+        const val = String(ans[q.id] ?? '').trim()
+        return val !== ''
+      }).length
+    }
+    // Fallback: exclude known meta keys
     return Object.entries(ans).filter(([k, v]) => {
       if (!k || k.startsWith('_') || k.startsWith('geo_') || k.startsWith('location_') || k.startsWith('ts_') || k.startsWith('sec_')) return false
       if (['draft', 'data_collector', 'client_package_id', 'submitted_by', 'has_photo', 'has_audio', 'photo', 'audio', 'photo_url', 'audio_url', 'answer_pattern', 'survey_id', 'form_id', 'form_key'].includes(k)) return false

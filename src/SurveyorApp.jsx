@@ -297,90 +297,90 @@ function HomeScreen({
   const target = myProgress?.target ?? 0
   const complete = myProgress?.complete || (target > 0 && done >= target)
   const qCount = questionsMeta?.count ?? questionsMeta?.questions?.length ?? 0
+  const surveysCount = (questionsMeta?.surveys || []).length || (questionsMeta?.title ? 1 : 0)
   const localPending = pendingLocal ?? pendingSync ?? 0
+  const percent = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0
 
   return (
     <div className="screen home-screen">
-      <p className="ptr-hint">↓ Pull down to refresh questions · progress · queue</p>
-      <div className="hero-card">
-        <p className="eyebrow">Field survey · Surveyor</p>
-        <h1 style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-          Hi, {user?.name || user?.username}
-          {user?.verified ? <VerifiedBadge size={22} /> : null}
-        </h1>
-        <p className="hero-sub">
-          {myProgress?.label ||
-            'GPS → Photo → Q/A + audio · saved on device · auto next'}
-        </p>
-        <div className="pill-row">
-          <div className={`pill ${networkPillClass(quality)}`} title={network?.error || ''}>
-            <span className="dot" />
-            {label}
+      <p className="ptr-hint">↓ Pull down to refresh</p>
+
+      {/* Hero greeting card */}
+      <div className="home-hero">
+        <div className="home-hero-top">
+          <div className="home-avatar">
+            {(user?.name || user?.username || 'S').charAt(0).toUpperCase()}
           </div>
-          {localPending > 0 && (
-            <div className="pill warn">
+          <div className="home-hero-text">
+            <p className="home-greeting">Hello,</p>
+            <h2 className="home-name">
+              {user?.name || user?.username}
+              {user?.verified ? <VerifiedBadge size={16} /> : null}
+            </h2>
+            <div className={`pill ${networkPillClass(quality)}`} style={{ marginTop: 4, width: 'fit-content' }} title={network?.error || ''}>
               <span className="dot" />
-              {localPending} pending on phone
+              {label}
             </div>
-          )}
-          {complete && (
-            <div className="pill ok">
-              <span className="dot" />
-              Target complete
-            </div>
-          )}
-          {(questionsMeta?.surveys || []).some((s) => s.voice_required) ? (
-            <div className="pill warn">
-              <span className="dot" />
-              Voice required
-            </div>
-          ) : null}
+          </div>
+        </div>
+        {myProgress?.label && (
+          <p className="home-mission">{myProgress.label}</p>
+        )}
+      </div>
+
+      {/* Stats grid — 4 cells */}
+      <div className="home-stats">
+        <div className="hstat">
+          <span className="hstat-val">{done}{target ? `/${target}` : ''}</span>
+          <span className="hstat-lbl">Submitted</span>
+        </div>
+        <div className="hstat">
+          <span className="hstat-val">{localPending}</span>
+          <span className="hstat-lbl">Pending</span>
+        </div>
+        <div className="hstat">
+          <span className="hstat-val">{surveysCount || '—'}</span>
+          <span className="hstat-lbl">Surveys</span>
+        </div>
+        <div className="hstat">
+          <span className="hstat-val">{qCount || '—'}</span>
+          <span className="hstat-lbl">Questions</span>
         </div>
       </div>
 
-      <div className="stat-row">
-        <div className="stat">
-          <strong>
-            {done}
-            {target ? `/${target}` : ''}
-          </strong>
-          <span>On server</span>
-        </div>
-        <div className="stat">
-          <strong>{localPending}</strong>
-          <span>Pending</span>
-        </div>
-        <div className="stat">
-          <strong>{qCount || '—'}</strong>
-          <span>Questions</span>
-        </div>
-        <div className="stat">
-          <strong>{myProgress?.status || '—'}</strong>
-          <span>Status</span>
-        </div>
-      </div>
-
-      {(questionsMeta?.title || (questionsMeta?.surveys || []).length > 0) && (
-        <div className="pill-row" style={{ paddingTop: 0 }}>
-          <span className="pill ok" style={{ fontSize: 11 }}>
-            {(questionsMeta.surveys || []).length > 1
-              ? `${questionsMeta.surveys.length} surveys assigned`
-              : questionsMeta.title}
-          </span>
+      {/* Progress bar (only when target is set) */}
+      {target > 0 && (
+        <div className="home-progress-wrap">
+          <div className="home-progress-bar">
+            <div className="home-progress-fill" style={{ width: `${percent}%` }} />
+          </div>
+          <span className="home-progress-label">{percent}% of target</span>
         </div>
       )}
 
-      <button type="button" className="cta" onClick={onNewSurvey} disabled={complete}>
+      {/* Flags */}
+      {((questionsMeta?.surveys || []).some((s) => s.voice_required) || complete || localPending > 0) && (
+        <div className="pill-row" style={{ marginTop: 0 }}>
+          {complete && <span className="pill ok"><span className="dot" />Target complete</span>}
+          {localPending > 0 && <span className="pill warn"><span className="dot" />{localPending} pending on phone</span>}
+          {(questionsMeta?.surveys || []).some((s) => s.voice_required) && (
+            <span className="pill warn"><span className="dot" />Voice required</span>
+          )}
+        </div>
+      )}
+
+      {/* Primary action */}
+      <button type="button" className="cta home-cta" onClick={onNewSurvey} disabled={complete}>
         {complete
-          ? <><Icon name="check" size={13} /> Target complete</>
+          ? <><Icon name="check" size={14} /> Target Reached</>
           : done > 0
-            ? `Continue activity #${myProgress?.next_record || done + 1}`
-            : 'Start collect · GPS → Photo → Q/A'}
+            ? `▶  Continue record #${myProgress?.next_record || done + 1}`
+            : '▶  Start · GPS → Photo → Q/A'}
       </button>
 
       {pendingSync > 0 && (
-        <button type="button" className="cta secondary" onClick={onSync}>
-          ⚡ Sync {pendingSync} package(s) now
+        <button type="button" className="cta secondary home-cta-sync" onClick={onSync}>
+          ⚡ Sync {pendingSync} record{pendingSync > 1 ? 's' : ''} now
         </button>
       )}
     </div>

@@ -2083,26 +2083,26 @@ export default function FieldCollectScreen({
           <div className="audit-step-track">
             <div className={`audit-step ${locks.geo ? 'locked' : step === 0 ? 'active' : ''}`}>
               <span className="audit-step-badge">{locks.geo ? '✓' : '1'}</span>
-              <span className="audit-step-label">GPS {locks.geo ? 'Locked' : ''}</span>
+              <span className="audit-step-label">GPS</span>
             </div>
             <div className={`audit-step-line ${locks.geo ? 'filled' : ''}`} />
             <div className={`audit-step ${locks.photo ? 'locked' : step === 1 ? 'active' : ''}`}>
               <span className="audit-step-badge">{locks.photo ? '✓' : '2'}</span>
-              <span className="audit-step-label">Photo {locks.photo ? 'Locked' : ''}</span>
+              <span className="audit-step-label">Photo</span>
             </div>
             {voiceRequired && (
               <>
                 <div className={`audit-step-line ${locks.photo && voiceActivated ? 'filled' : ''}`} />
                 <div className={`audit-step ${voiceActivated ? 'locked' : ''}`}>
                   <span className="audit-step-badge">{voiceActivated ? '✓' : '3'}</span>
-                  <span className="audit-step-label">Voice {voiceActivated ? 'ON' : ''}</span>
+                  <span className="audit-step-label">Voice</span>
                 </div>
               </>
             )}
             <div className={`audit-step-line ${locks.geo && locks.photo ? 'filled' : ''}`} />
             <div className={`audit-step ${step === 2 ? 'active' : ''}`}>
               <span className="audit-step-badge">{voiceRequired ? '4' : '3'}</span>
-              <span className="audit-step-label">Q/A</span>
+              <span className="audit-step-label">Questions</span>
             </div>
           </div>
         </div>
@@ -2179,7 +2179,7 @@ export default function FieldCollectScreen({
         </div>
 
         <div className="stepper">
-          {(voiceRequired ? ['GPS', 'Photo', 'Voice', 'Q/A'] : ['GPS', 'Photo', 'Q/A']).map((label, i) => {
+          {(voiceRequired ? ['GPS', 'Photo', 'Voice', 'Questions'] : ['GPS', 'Photo', 'Questions']).map((label, i) => {
             const visual = voiceRequired
               ? step
               : step >= 2
@@ -2191,7 +2191,8 @@ export default function FieldCollectScreen({
               className={`step ${i === visual ? 'active' : ''} ${i < visual ? 'done' : ''}`}
               title={label}
             >
-              {i + 1}
+              <span className="dot">{i + 1}</span>
+              <span className="lbl">{label}</span>
             </div>
             )
           })}

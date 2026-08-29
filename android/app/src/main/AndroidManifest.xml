@@ -41,16 +41,10 @@
             android:foregroundServiceType="location" />
     </application>
 
-    <!-- Package visibility queries for camera and media intents (Android 11+) -->
+    <!-- Package visibility queries for camera (Android 11+) -->
     <queries>
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.GET_CONTENT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.PICK" />
         </intent>
     </queries>
 
@@ -65,7 +59,6 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />

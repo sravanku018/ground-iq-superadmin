@@ -268,7 +268,7 @@ export default function FieldCollectScreen({
   const streamRef = useRef(null)
   const photoStreamRef = useRef(null)
   const videoRef = useRef(null)
-  const galleryInputRef = useRef(null)
+  const cameraInputRef = useRef(null)
   const audioCtxRef = useRef(null)
   const audioStartedAt = useRef(null)
   const audioTimerRef = useRef(null)
@@ -911,36 +911,8 @@ export default function FieldCollectScreen({
       try {
         await startLiveCamera()
       } catch {
-        onToast?.('Allow camera permission, then tap Take photo', 'error')
+        cameraInputRef.current?.click()
       }
-    } finally {
-      setCameraBusy(false)
-    }
-  }
-
-  async function pickFromGallery() {
-    if (!locks.geo) {
-      onToast?.('Lock GPS first', 'error')
-      setStep(0)
-      return
-    }
-    setCameraBusy(true)
-    try {
-      if (Capacitor.isNativePlatform()) {
-        const shot = await Camera.getPhoto({
-          quality: 85,
-          resultType: CameraResultType.DataUrl,
-          source: CameraSource.Photos,
-          correctOrientation: true,
-        })
-        if (shot?.dataUrl) lockPhotoFromDataUrl(shot.dataUrl)
-        return
-      }
-      galleryInputRef.current?.click()
-    } catch (err) {
-      const msg = String(err?.message || err || '')
-      if (/cancel/i.test(msg)) return
-      galleryInputRef.current?.click()
     } finally {
       setCameraBusy(false)
     }
@@ -2346,23 +2318,13 @@ export default function FieldCollectScreen({
                   >
                     <Icon name="camera" size={18} />
                     {' '}
-                    {cameraBusy ? 'Opening camera…' : locks.photo ? 'Retake photo (Camera)' : 'Take photo (Camera)'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn secondary"
-                    disabled={!locks.geo || cameraBusy}
-                    onClick={() => void pickFromGallery()}
-                    style={{ fontSize: 13 }}
-                  >
-                    <Icon name="image" size={16} />
-                    {' '}
-                    Gallery only
+                    {cameraBusy ? 'Opening camera…' : locks.photo ? 'Retake live photo' : 'Take live photo'}
                   </button>
                   <input
-                    ref={galleryInputRef}
+                    ref={cameraInputRef}
                     type="file"
                     accept="image/*"
+                    capture="environment"
                     style={{ display: 'none' }}
                     onChange={onPickPhoto}
                   />

@@ -2178,26 +2178,6 @@ export default function FieldCollectScreen({
           </button>
         </div>
 
-        <div className="stepper">
-          {(voiceRequired ? ['GPS', 'Photo', 'Voice', 'Questions'] : ['GPS', 'Photo', 'Questions']).map((label, i) => {
-            const visual = voiceRequired
-              ? step
-              : step >= 2
-                ? 2
-                : step
-            return (
-            <div
-              key={label}
-              className={`step ${i === visual ? 'active' : ''} ${i < visual ? 'done' : ''}`}
-              title={label}
-            >
-              <span className="dot">{i + 1}</span>
-              <span className="lbl">{label}</span>
-            </div>
-            )
-          })}
-        </div>
-
         {/* STEP 0 — GPS + location details LOCK */}
         {step === 0 && (
           <div className="card">

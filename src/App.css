@@ -1367,7 +1367,7 @@ h1, h2, h3, h4, .topbar-title, .hero-name, .mission-title, .fl-title, .qa-title,
 }
 
 .screen {
-  padding: 10px 14px 74px;
+  padding: 0 0 10px;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -1380,7 +1380,7 @@ h1, h2, h3, h4, .topbar-title, .hero-name, .mission-title, .fl-title, .qa-title,
 /* ── Home Screen ─────────────────────────────────────────── */
 .home-screen {
   gap: 10px;
-  padding-bottom: 74px;
+  padding-bottom: 0;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;

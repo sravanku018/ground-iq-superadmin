@@ -429,7 +429,7 @@ function MyRecordsScreen({ user, onToast, questions }) {
   }, [load])
 
   return (
-    <div className="screen records-screen">
+    <div className="records-screen">
       <div className="screen-toolbar">
         <h2>My activity</h2>
         <button
@@ -624,7 +624,7 @@ function SurveyorProfileScreen({
     .toUpperCase()
 
   return (
-    <div className="screen profile-screen" style={{ padding: '8px 0 100px' }}>
+    <div className="profile-screen" style={{ padding: '4px 0 0' }}>
       {/* Centered Profile Hero */}
       <div className="prof">
         <div style={{ position: 'relative', display: 'inline-block', marginBottom: 8 }}>
@@ -1002,7 +1002,7 @@ function DraftsScreen({ user, onToast, onEdit, questions }) {
   const pendingNums = recordNumberMap(items || [], 'id', 'createdAt', null)
 
   return (
-    <div className="screen home-screen">
+    <div className="drafts-screen">
       <p className="ptr-hint">Items stay on this phone until you send them</p>
       <div className="hero-card">
         <p className="eyebrow">Pending</p>
@@ -1181,7 +1181,7 @@ function SubmissionsScreen({ user, onToast, onEdit, questions, initialSubTab = '
   }, [])
 
   return (
-    <div className="screen submissions-shell" style={{ paddingBottom: 90 }}>
+    <div className="submissions-shell">
       <div
         style={{
           display: 'flex',

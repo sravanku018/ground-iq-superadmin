@@ -20,6 +20,7 @@
  */
 
 import { neon } from "npm:@neondatabase/serverless@0.10.4";
+import postgres from "npm:postgres@3.4.5";
 import { scryptSync, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
 
@@ -340,7 +341,24 @@ if (!DATABASE_URL) {
   console.error("Missing DATABASE_URL env var");
 }
 
-const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
+/** Neon HTTP on Deploy; standard Postgres on the VPS (Smart Survey X). R2 stays Cloudflare. */
+function createSql(url: string | undefined) {
+  if (!url) return null;
+  if (url.includes("neon.tech") || url.includes("neon.cloud")) {
+    return neon(url);
+  }
+  const client = postgres(url, { max: 10, idle_timeout: 20, connect_timeout: 20 });
+  const run = (first: TemplateStringsArray | string, ...rest: unknown[]) => {
+    if (typeof first === "string") {
+      const params = (Array.isArray(rest[0]) ? rest[0] : []) as never[];
+      return Promise.resolve(client.unsafe(first, params));
+    }
+    return client(first as TemplateStringsArray, ...rest);
+  };
+  return run as ReturnType<typeof neon>;
+}
+
+const sql = createSql(DATABASE_URL);
 
 // ── Rate Limiting (In-Memory) ────────────────────────────
 const loginAttempts = new Map<string, { count: number; reset: number }>();
@@ -4201,8 +4219,8 @@ async function rawHandler(req: Request): Promise<Response> {
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.26",
-          versionCode: 20026,
+          version: "2.0.27",
+          versionCode: 20027,
           minSupportedVersionCode: 20000,
           apkUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-release.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,

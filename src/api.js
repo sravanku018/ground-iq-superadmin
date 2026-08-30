@@ -4,8 +4,8 @@ const TOKEN_KEY = 'esurvey_token'
 const USER_KEY = 'esurvey_user'
 const LEGACY_API_KEY = 'esurvey_api_base'
 
-/** Fixed production API — Deno Deploy → Neon */
-export const DENO_API_URL = 'https://ground-iq-api.sravanku018.deno.net'
+/** Fixed production API — Oracle Cloud VPS */
+export const DENO_API_URL = 'https://162.35.96.65.sslip.io'
 
 export function getApiBase() {
   // Clear any old local/PC URL the user may have saved earlier

@@ -2264,7 +2264,7 @@ function translateGeoEnglish(
 
 function parsePayload(raw: unknown): Record<string, unknown> {
   let v: unknown = raw;
-  if (typeof v === "string") {
+  while (typeof v === "string") {
     try {
       v = JSON.parse(v);
     } catch {
@@ -8551,9 +8551,16 @@ async function rawHandler(req: Request): Promise<Response> {
         content_type: "qa",
         app_version: body.app_version ? String(body.app_version) : null,
       };
+      const payloadJson = JSON.stringify(payload);
       const rows = await sql`
         INSERT INTO submissions (payload)
-        VALUES (${JSON.stringify(payload)}::jsonb)
+        VALUES (
+          CASE
+            WHEN jsonb_typeof(${payloadJson}::jsonb) = 'string'
+              THEN (${payloadJson}::jsonb #>> '{}')::jsonb
+            ELSE ${payloadJson}::jsonb
+          END
+        )
         RETURNING id, payload, created_at
       `;
       const row = rows[0] as { id: number; created_at: string };
@@ -8755,9 +8762,16 @@ async function rawHandler(req: Request): Promise<Response> {
           });
         }
       }
+      const payloadJson = JSON.stringify(payload);
       const rows = await sql`
         INSERT INTO submissions (payload)
-        VALUES (${JSON.stringify(payload)}::jsonb)
+        VALUES (
+          CASE
+            WHEN jsonb_typeof(${payloadJson}::jsonb) = 'string'
+              THEN (${payloadJson}::jsonb #>> '{}')::jsonb
+            ELSE ${payloadJson}::jsonb
+          END
+        )
         RETURNING id, payload, created_at
       `;
       const row = rows[0] as { id: number; payload: unknown; created_at: string };

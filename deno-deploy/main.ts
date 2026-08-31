@@ -342,6 +342,13 @@ if (!DATABASE_URL) {
 
 const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
 
+function sqlJson(data: unknown) {
+  if (sql && typeof (sql as unknown as { json?: (v: unknown) => unknown }).json === "function") {
+    return (sql as unknown as { json: (v: unknown) => unknown }).json(data);
+  }
+  return JSON.stringify(data);
+}
+
 // ── Rate Limiting (In-Memory) ────────────────────────────
 const loginAttempts = new Map<string, { count: number; reset: number }>();
 function checkRateLimit(ip: string): boolean {
@@ -2850,7 +2857,7 @@ async function materializeFact(
     ) VALUES (
       ${submissionId}, ${surveyKey}, ${surveyorNameOf(payload)},
       ${String(answers.district || "").trim()}, ${String(answers.constituency || "").trim()},
-      ${JSON.stringify(filterable)}::jsonb, ${geo ? JSON.stringify(geo) : null}::jsonb,
+      ${sqlJson(filterable)}, ${geo ? sqlJson(geo) : null},
       ${confirmedAt}::timestamptz, 'materialized'
     )
     ON CONFLICT (submission_id) DO NOTHING
@@ -2890,7 +2897,7 @@ async function autoConfirmIfComplete(
 
   if (isDraftSubmission(rawPayload)) {
     await sqlFn`
-      UPDATE submissions SET payload = ${JSON.stringify(payload)}::jsonb WHERE id = ${submissionId}
+      UPDATE submissions SET payload = ${sqlJson(payload)} WHERE id = ${submissionId}
     `.catch(() => null);
   }
 
@@ -2925,7 +2932,7 @@ async function autoConfirmIfComplete(
     status: cur === "pending" ? "pending" : cur,
   };
   await sqlFn`
-    UPDATE submissions SET payload = ${JSON.stringify(payload)}::jsonb WHERE id = ${submissionId}
+    UPDATE submissions SET payload = ${sqlJson(payload)} WHERE id = ${submissionId}
   `.catch(() => null);
   return { auto_confirmed: false, completeness: verify.completeness };
 }
@@ -7273,7 +7280,7 @@ async function rawHandler(req: Request): Promise<Response> {
           confirm_note: body.note || "bulk confirm",
         };
         await sql`
-          UPDATE submissions SET payload = ${JSON.stringify(payload)}::jsonb WHERE id = ${r.id}
+          UPDATE submissions SET payload = ${sqlJson(payload)} WHERE id = ${r.id}
         `;
         try {
           await materializeFact(sql, r.id);
@@ -8939,7 +8946,7 @@ async function rawHandler(req: Request): Promise<Response> {
       payload.media_storage = provider;
       payload.media_updated_at = new Date().toISOString();
       await sql`
-        UPDATE submissions SET payload = ${JSON.stringify(payload)}::jsonb WHERE id = ${id}
+        UPDATE submissions SET payload = ${sqlJson(payload)} WHERE id = ${id}
       `;
 
       // After each media piece: if geo+photo+voice+QA all present, auto-confirm for Client Admin

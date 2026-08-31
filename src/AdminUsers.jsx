@@ -216,7 +216,14 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
   const [profileData, setProfileData] = useState(null)
   const [profileLoading, setProfileLoading] = useState(false)
   const [profileSurveys, setProfileSurveys] = useState([])
-  const [profileSurveyBusy, setProfileSurveyBusy] = useState(false)
+  const [profileForm, setProfileForm] = useState({
+    name: '',
+    username: '',
+    phone: '',
+    password: '',
+    target_quota: 20,
+  })
+  const [profileSaving, setProfileSaving] = useState(false)
   const drawerRef = useRef(null)
   const drawerPrevFocus = useRef(null)
   const [profileFilters, setProfileFilters] = useState({
@@ -383,7 +390,15 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
   function openProfile(u) {
     if (!u) return
     setProfileUser(u)
-    setProfileSurveys(surveyIdsOf(u))
+    const surs = surveyIdsOf(u)
+    setProfileSurveys(surs)
+    setProfileForm({
+      name: u.display_name || u.name || '',
+      username: u.username || '',
+      phone: u.phone ? digits10(u.phone) : '',
+      password: '',
+      target_quota: Number(u.target_quota ?? u.target ?? 20) || 0,
+    })
     setProfileData(null)
     const initialFilters = { period: 'total', district: '', survey: 'active', day: '', month: '' }
     setProfileFilters(initialFilters)
@@ -395,6 +410,64 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
         if (ids.length) setProfileSurveys(ids)
       })
       .catch(() => {})
+  }
+
+  async function handleSaveProfile(e) {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault()
+    if (!profileUser) return
+    setProfileSaving(true)
+    try {
+      const displayName = profileForm.name.trim() || profileForm.username.trim()
+      const uname = profileForm.username.trim().toLowerCase()
+      if (!uname) {
+        onToast?.('Username is required', 'error')
+        setProfileSaving(false)
+        return
+      }
+
+      const patch = {
+        name: displayName,
+        display_name: displayName,
+        username: uname,
+        target_quota: Number(profileForm.target_quota) || 0,
+      }
+
+      const rawPhone = (profileForm.phone || '').trim()
+      if (rawPhone) {
+        if (!isValidInMobile(rawPhone)) {
+          onToast?.('Phone must be a valid 10-digit Indian mobile number', 'error')
+          setProfileSaving(false)
+          return
+        }
+        patch.phone = toE164In(rawPhone)
+      } else {
+        patch.phone = null
+      }
+
+      if (profileForm.password && profileForm.password.trim()) {
+        if (profileForm.password.trim().length < 4) {
+          onToast?.('Password must be at least 4 characters', 'error')
+          setProfileSaving(false)
+          return
+        }
+        patch.password = profileForm.password.trim()
+      }
+
+      await updateUser(profileUser.id, patch)
+
+      if (canAssignSurveys && profileSurveys) {
+        await setUserSurveys(profileUser.id, profileSurveys.map(Number))
+      }
+
+      onToast?.(`Profile for @${uname} saved successfully! ✓`, 'ok')
+      setProfileUser((prev) => (prev ? { ...prev, ...patch, phone: patch.phone, target_quota: patch.target_quota } : null))
+      setProfileForm((prev) => ({ ...prev, password: '' }))
+      await load({ silent: true })
+    } catch (err) {
+      onToast?.(err.message || 'Failed to save profile', 'error')
+    } finally {
+      setProfileSaving(false)
+    }
   }
 
   const openedFocusId = useRef(null)
@@ -972,40 +1045,6 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
       onToast?.(e.message, 'error')
     } finally {
       setSaving(false)
-    }
-  }
-
-  async function saveProfileSurveys(ids) {
-    if (!profileUser) return
-    const next = [...new Set((Array.isArray(ids) ? ids : []).map(String))]
-    const prev = profileSurveys
-    const prevSet = new Set(prev)
-    const nextSet = new Set(next)
-    const add = next.filter((id) => !prevSet.has(id))
-    const remove = prev.filter((id) => !nextSet.has(id))
-    if (!add.length && !remove.length) return
-    setProfileSurveys(next)
-    setProfileSurveyBusy(true)
-    try {
-      const res = await setUserSurveys(profileUser.id, next.map(Number), { add, remove })
-      const saved = Array.isArray(res?.survey_ids)
-        ? res.survey_ids.map(String)
-        : next
-      setProfileSurveys(saved)
-      const mapped = surveyChoices.filter((s) => saved.includes(String(s.id)))
-      setProfileUser((p) => (p ? { ...p, surveys: mapped } : null))
-      onToast?.(
-        saved.length
-          ? `${saved.length} survey(s) on @${profileUser.username}`
-          : `No surveys on @${profileUser.username}`,
-        'ok',
-      )
-      await load({ silent: true })
-    } catch (e) {
-      setProfileSurveys(prev)
-      onToast?.(e.message || 'Could not assign surveys', 'error')
-    } finally {
-      setProfileSurveyBusy(false)
     }
   }
 
@@ -2011,78 +2050,49 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h3 id="surveyor-profile-title" style={{ margin: 0, fontSize: 18, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="user" size={18} /> Surveyor Profile & Identity</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h3 id="surveyor-profile-title" style={{ margin: 0, fontSize: 16, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icon name="user" size={16} /> Surveyor Profile & Identity
+                  </h3>
                   <button
                     type="button"
-                    className="btn small danger"
+                    className="btn small"
                     onClick={closeProfile}
-                    style={{ fontSize: 14, padding: '4px 14px', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                    style={{ fontSize: 13, padding: '3px 10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                   >
-                    Close <Icon name="cross" size={12} />
+                    ✕ Close
                   </button>
                 </div>
 
-                {/* Profile Avatar, Key ID, Verified Badge & Action Button */}
-                <div style={{ display: 'flex', gap: 14, alignItems: 'center', background: '#f1f5f9', padding: 14, borderRadius: 12, border: '1px solid #e2e8f0', marginBottom: 14 }}>
+                {/* Profile Identity Bar */}
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', background: '#f8fafc', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 12 }}>
                   {profileUser.photo ? (
                     <img
                       src={profileUser.photo}
-                      alt="Profile Photo"
-                      style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: '3px solid #00e599' }}
+                      alt="Profile"
+                      style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', border: '2px solid #00e599' }}
                     />
                   ) : (
-                    <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Icon name="user" size={28} />
+                    <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name="user" size={22} />
                     </div>
                   )}
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <h4 style={{ margin: 0, fontSize: 18, color: '#0f172a' }}>
+                      <h4 style={{ margin: 0, fontSize: 16, color: '#0f172a', fontWeight: 800 }}>
                         {profileUser.display_name || profileUser.name || profileUser.username}
                       </h4>
                       {profileUser.verified ? (
-                        <VerifiedBadge size={20} />
+                        <VerifiedBadge size={16} />
                       ) : (
-                        <span style={{ background: '#d97706', color: '#fff', fontSize: 11, fontWeight: 'bold', padding: '2px 8px', borderRadius: 12 }}>
-                          Pending
+                        <span style={{ background: '#d97706', color: '#fff', fontSize: 10, fontWeight: 'bold', padding: '1px 6px', borderRadius: 8 }}>
+                          Unverified
                         </span>
                       )}
                     </div>
-                    <p style={{ margin: '4px 0 0', fontSize: 13, color: '#94a3b8' }}>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b' }}>
                       @{profileUser.username} · Key ID: <strong style={{ color: '#059669' }}>{profileUser.key_id || '—'}</strong>
                     </p>
-                    <div style={{ margin: '5px 0 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 13, fontWeight: 'bold' }}>
-                        📞 {profileUser.phone ? formatInMobile(profileUser.phone) : 'Not provided'}
-                      </span>
-                      <button
-                        type="button"
-                        className="btn small"
-                        style={{ fontSize: 11, padding: '2px 8px' }}
-                        onClick={() => {
-                          const next = prompt(
-                            '10-digit mobile for @' + profileUser.username + ' (+91):',
-                            digits10(profileUser.phone || ''),
-                          )
-                          if (next === null) return
-                          if (next.trim() && !isValidInMobile(next)) {
-                            onToast?.('Phone must be +91 and 10 digits', 'error')
-                            return
-                          }
-                          const saved = next.trim() ? toE164In(next) : null
-                          updateUser(profileUser.id, { phone: saved })
-                            .then(() => {
-                              setProfileUser((prev) => (prev ? { ...prev, phone: saved } : null))
-                              onToast?.(`Updated phone for @${profileUser.username} ✓`, 'ok')
-                              load()
-                            })
-                            .catch((err) => onToast?.(err.message || 'Failed to update phone', 'error'))
-                        }}
-                      >
-                        Edit phone
-                      </button>
-                    </div>
                   </div>
                   {canVerify && (
                     <button
@@ -2092,86 +2102,155 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                         background: profileUser.verified ? '#dc2626' : '#059669',
                         color: '#ffffff',
                         fontWeight: 'bold',
-                        padding: '8px 16px',
-                        fontSize: 12,
+                        padding: '6px 12px',
+                        fontSize: 11,
                         border: 0,
                       }}
                       onClick={() => handleToggleVerify(profileUser)}
                     >
-                      {profileUser.verified ? 'Unverify' : 'Verify Identity ✓'}
+                      {profileUser.verified ? 'Unverify' : 'Verify ✓'}
                     </button>
                   )}
                 </div>
 
-                {(profileUser.role === 'surveyor' || profileUser.role === 'field') && (
-                  <div
-                    style={{
-                      background: '#f1f5f9',
-                      padding: 14,
-                      borderRadius: 10,
-                      border: '1px solid #e2e8f0',
-                      marginBottom: 16,
-                      overflow: 'visible',
-                    }}
-                  >
-                    <h5 style={{ margin: '0 0 8px', fontSize: 14, color: '#0f172a' }}>
-                      Assign surveys
-                    </h5>
-                    {canAssignSurveys ? (
-                      <>
-                        <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
-                          Open the list and tick every survey this person should load on the phone.
-                          A second survey is added — it does not replace the first.
-                        </p>
+                {/* Profile Edit Form Card with Save Button */}
+                <form
+                  onSubmit={handleSaveProfile}
+                  style={{
+                    background: '#ffffff',
+                    padding: 14,
+                    borderRadius: 10,
+                    border: '1px solid #cbd5e1',
+                    marginBottom: 12,
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <strong style={{ fontSize: 13, color: '#0f172a' }}>✏️ Edit Profile & App Login</strong>
+                    <span style={{ fontSize: 11, color: '#64748b' }}>Role: Surveyor</span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                    <label className="field compact" style={{ margin: 0 }}>
+                      <span style={{ fontSize: 11 }}>Display Name</span>
+                      <input
+                        value={profileForm.name}
+                        onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                        placeholder="e.g. Allu Arjun"
+                      />
+                    </label>
+                    <label className="field compact" style={{ margin: 0 }}>
+                      <span style={{ fontSize: 11 }}>Username (App Login)</span>
+                      <input
+                        value={profileForm.username}
+                        onChange={(e) => setProfileForm({ ...profileForm, username: e.target.value })}
+                        placeholder="e.g. allu"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                      />
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                    <label className="field compact" style={{ margin: 0 }}>
+                      <span style={{ fontSize: 11 }}>Mobile Number (+91)</span>
+                      <PhoneIndiaField
+                        value={profileForm.phone}
+                        onChange={(phone) => setProfileForm({ ...profileForm, phone })}
+                      />
+                    </label>
+                    <label className="field compact" style={{ margin: 0 }}>
+                      <span style={{ fontSize: 11 }}>Target Records Quota</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={profileForm.target_quota}
+                        onChange={(e) =>
+                          setProfileForm({
+                            ...profileForm,
+                            target_quota: Number(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+
+                  <div style={{ marginBottom: 10 }}>
+                    <label className="field compact" style={{ margin: 0 }}>
+                      <span style={{ fontSize: 11 }}>New Password (leave blank to keep current)</span>
+                      <input
+                        type="text"
+                        value={profileForm.password}
+                        onChange={(e) => setProfileForm({ ...profileForm, password: e.target.value })}
+                        placeholder="•••• or type new password"
+                        autoComplete="new-password"
+                      />
+                    </label>
+                  </div>
+
+                  {(profileUser.role === 'surveyor' || profileUser.role === 'field') && (
+                    <div style={{ marginBottom: 12 }}>
+                      <span style={{ display: 'block', fontSize: 11, fontWeight: 600, marginBottom: 4, color: '#334155' }}>
+                        Assigned Surveys
+                      </span>
+                      {canAssignSurveys ? (
                         <SurveySelect
                           value={profileSurveys}
-                          onChange={(ids) => {
-                            void saveProfileSurveys(ids)
-                          }}
+                          onChange={(ids) => setProfileSurveys(ids)}
                           all={surveysForAssign(profileSurveys)}
                         />
-                        {profileSurveyBusy ? (
-                          <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>Saving…</p>
-                        ) : null}
-                      </>
-                    ) : me?.role === 'super_admin' ? (
-                      <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-                        Client Admin assigns surveys here. Super Admin does not map surveyors.
-                      </p>
-                    ) : (
-                      <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-                        Super Admin has not granted <strong>Assign surveys</strong> on your profile.
-                        {(profileUser.surveys || []).length > 0
-                          ? ` Currently: ${(profileUser.surveys || []).map((s) => (s && s.title) || s).filter(Boolean).join(' · ')}`
-                          : ''}
-                      </p>
-                    )}
-                  </div>
-                )}
+                      ) : (
+                        <p className="muted" style={{ fontSize: 11, margin: 0 }}>
+                          {(profileUser.surveys || []).length > 0
+                            ? (profileUser.surveys || []).map((s) => (s && s.title) || s).filter(Boolean).join(' · ')
+                            : 'Default survey assigned'}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="btn primary"
+                    disabled={profileSaving}
+                    style={{
+                      width: '100%',
+                      minHeight: 38,
+                      fontWeight: 700,
+                      fontSize: 13,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    {profileSaving ? 'Saving Changes…' : '💾 Save Profile Changes'}
+                  </button>
+                </form>
 
                 {/* Metrics: Surveys Done / Approved / Pending */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
-                  <div style={{ background: '#f1f5f9', padding: '12px 10px', borderRadius: 10, textAlign: 'center', border: '1px solid #e2e8f0' }}>
-                    <span style={{ display: 'block', fontSize: 22, fontWeight: '800', color: '#059669' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+                  <div style={{ background: '#f8fafc', padding: '8px 6px', borderRadius: 8, textAlign: 'center', border: '1px solid #e2e8f0' }}>
+                    <span style={{ display: 'block', fontSize: 18, fontWeight: '800', color: '#059669' }}>
                       {profileData?.geoSummary?.records ?? (profileUser.done_count || 0)}
                     </span>
-                    <span style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>
-                      Surveys Done
+                    <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', fontWeight: '700' }}>
+                      Done
                     </span>
                   </div>
-                  <div style={{ background: '#f1f5f9', padding: '12px 10px', borderRadius: 10, textAlign: 'center', border: '1px solid #059669' }}>
-                    <span style={{ display: 'block', fontSize: 22, fontWeight: '800', color: '#10b981' }}>
+                  <div style={{ background: '#f8fafc', padding: '8px 6px', borderRadius: 8, textAlign: 'center', border: '1px solid #059669' }}>
+                    <span style={{ display: 'block', fontSize: 18, fontWeight: '800', color: '#10b981' }}>
                       {profileData?.geoSummary?.confirmed ?? (profileUser.confirmed_count || 0)}
                     </span>
-                    <span style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>
+                    <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', fontWeight: '700' }}>
                       Approved ✓
                     </span>
                   </div>
-                  <div style={{ background: '#f1f5f9', padding: '12px 10px', borderRadius: 10, textAlign: 'center', border: '1px solid #d97706' }}>
-                    <span style={{ display: 'block', fontSize: 22, fontWeight: '800', color: '#f59e0b' }}>
+                  <div style={{ background: '#f8fafc', padding: '8px 6px', borderRadius: 8, textAlign: 'center', border: '1px solid #d97706' }}>
+                    <span style={{ display: 'block', fontSize: 18, fontWeight: '800', color: '#f59e0b' }}>
                       {profileData?.items ? profileData.items.filter((it) => it.status === 'pending').length : (profileUser.pending_count || 0)}
                     </span>
-                    <span style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>
+                    <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', fontWeight: '700' }}>
                       Pending ⏳
                     </span>
                   </div>
@@ -2179,42 +2258,28 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
 
                 {/* Aadhaar — only when Super Admin granted verify / proof */}
                 {canSeeIdDocs && (
-                <div style={{ background: '#f1f5f9', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 16 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                    <h5 style={{ margin: 0, fontSize: 14, color: '#38bdf8', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="idCard" size={14} /> Aadhaar Identity Verification</h5>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: profileUser.verified ? '#1D9BF0' : '#f59e0b',
-                        fontWeight: 'bold',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                      }}
-                    >
-                      {profileUser.verified ? (
-                        <>
-                          <VerifiedBadge size={14} /> Verified
-                        </>
-                      ) : (
-                        'Pending'
-                      )}
+                <div style={{ background: '#f8fafc', padding: 10, borderRadius: 8, border: '1px solid #e2e8f0', marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <strong style={{ fontSize: 12, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Icon name="idCard" size={13} /> Aadhaar Identity
+                    </strong>
+                    <span style={{ fontSize: 11, fontWeight: 'bold', color: profileUser.verified ? '#059669' : '#f59e0b' }}>
+                      {profileUser.verified ? 'Verified ✓' : 'Pending'}
                     </span>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <div>
-                      <span style={{ display: 'block', fontSize: 11, color: '#aaa', marginBottom: 6, fontWeight: 'bold' }}>Front Side</span>
+                      <span style={{ display: 'block', fontSize: 10, color: '#64748b', marginBottom: 4, fontWeight: 'bold' }}>Front Side</span>
                       {profileUser.aadhaar_front ? (
                         <a href={profileUser.aadhaar_front} target="_blank" rel="noreferrer">
-                          <img src={profileUser.aadhaar_front} alt="Aadhaar Front" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, border: '2px solid #00e599', marginBottom: 6 }} />
+                          <img src={profileUser.aadhaar_front} alt="Aadhaar Front" style={{ width: '100%', height: 75, objectFit: 'cover', borderRadius: 6, border: '1px solid #00e599', marginBottom: 4 }} />
                         </a>
                       ) : (
-                        <div style={{ height: 100, background: 'rgba(15,23,42,0.04)', borderRadius: 8, border: '1px dashed #cbd5e1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12, marginBottom: 6 }}>
-                          <span style={{ marginBottom: 2 }}><Icon name="idCard" size={22} /></span>
-                          <span>No Front Card Uploaded</span>
+                        <div style={{ height: 60, background: '#f1f5f9', borderRadius: 6, border: '1px dashed #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 11, marginBottom: 4 }}>
+                          No Front
                         </div>
                       )}
-                      <label className="btn small primary" style={{ display: 'block', width: '100%', boxSizing: 'border-box', cursor: 'pointer', textAlign: 'center', fontSize: 11, padding: '4px 8px' }}>
+                      <label className="btn small primary" style={{ display: 'block', width: '100%', boxSizing: 'border-box', cursor: 'pointer', textAlign: 'center', fontSize: 10, padding: '3px 6px' }}>
                         {profileUser.aadhaar_front ? 'Change Front' : 'Upload Front'}
                         <input
                           type="file"
@@ -2225,18 +2290,17 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       </label>
                     </div>
                     <div>
-                      <span style={{ display: 'block', fontSize: 11, color: '#aaa', marginBottom: 6, fontWeight: 'bold' }}>Back Side</span>
+                      <span style={{ display: 'block', fontSize: 10, color: '#64748b', marginBottom: 4, fontWeight: 'bold' }}>Back Side</span>
                       {profileUser.aadhaar_back ? (
                         <a href={profileUser.aadhaar_back} target="_blank" rel="noreferrer">
-                          <img src={profileUser.aadhaar_back} alt="Aadhaar Back" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, border: '2px solid #00e599', marginBottom: 6 }} />
+                          <img src={profileUser.aadhaar_back} alt="Aadhaar Back" style={{ width: '100%', height: 75, objectFit: 'cover', borderRadius: 6, border: '1px solid #00e599', marginBottom: 4 }} />
                         </a>
                       ) : (
-                        <div style={{ height: 100, background: 'rgba(15,23,42,0.04)', borderRadius: 8, border: '1px dashed #cbd5e1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 12, marginBottom: 6 }}>
-                          <span style={{ marginBottom: 2 }}><Icon name="idCard" size={22} /></span>
-                          <span>No Back Card Uploaded</span>
+                        <div style={{ height: 60, background: '#f1f5f9', borderRadius: 6, border: '1px dashed #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 11, marginBottom: 4 }}>
+                          No Back
                         </div>
                       )}
-                      <label className="btn small primary" style={{ display: 'block', width: '100%', boxSizing: 'border-box', cursor: 'pointer', textAlign: 'center', fontSize: 11, padding: '4px 8px' }}>
+                      <label className="btn small primary" style={{ display: 'block', width: '100%', boxSizing: 'border-box', cursor: 'pointer', textAlign: 'center', fontSize: 10, padding: '3px 6px' }}>
                         {profileUser.aadhaar_back ? 'Change Back' : 'Upload Back'}
                         <input
                           type="file"

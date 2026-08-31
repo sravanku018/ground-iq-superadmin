@@ -943,7 +943,7 @@ function SurveyorProfileScreen({
  * queued packages (collected "done" but not yet synced to the server).
  * Surveyors see every done record here BEFORE it reaches the admin.
  */
-function DraftsScreen({ user, onToast, onEdit, questions }) {
+function DraftsScreen({ user, onToast, onEdit, questions, onPushed, onStartNew }) {
   const [items, setItems] = useState(null)
   const [pushing, setPushing] = useState(null)
   const [openId, setOpenId] = useState(null)
@@ -976,9 +976,11 @@ function DraftsScreen({ user, onToast, onEdit, questions }) {
     setPushing(id)
     try {
       await pushDraft(id)
-      onToast?.('Sent — pending review', 'ok')
+      onToast?.('✓ Record sent successfully to server!', 'ok')
       void forceSyncNow()
       await load()
+      window.dispatchEvent(new CustomEvent('esurvey-activity-refresh'))
+      onPushed?.()
     } catch (e) {
       onToast?.(e.message || 'Send failed', 'error')
     } finally {
@@ -1025,11 +1027,22 @@ function DraftsScreen({ user, onToast, onEdit, questions }) {
       </div>
 
       {items && items.length === 0 && (
-        <div className="card" style={{ marginTop: 12, padding: '14px' }}>
-          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-            Nothing pending — collected activity stays on this phone as drafts. Review them here
-            and tap Send.
+        <div className="card" style={{ marginTop: 12, padding: '20px 14px', textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+          <strong style={{ display: 'block', fontSize: 16, marginBottom: 4, color: '#0f172a' }}>All Records Synced!</strong>
+          <p className="muted" style={{ margin: '0 0 16px', fontSize: 13 }}>
+            All collected records are safely stored on the server. Tap <strong>Sent Activity</strong> above to view them.
           </p>
+          {typeof onStartNew === 'function' && (
+            <button
+              type="button"
+              className="cta"
+              style={{ width: '100%', minHeight: 46 }}
+              onClick={onStartNew}
+            >
+              + Start Next Record
+            </button>
+          )}
         </div>
       )}
 
@@ -1162,7 +1175,7 @@ function DraftsScreen({ user, onToast, onEdit, questions }) {
 /**
  * Combined Submissions tab: switch between Pending Drafts and Sent Activity.
  */
-function SubmissionsScreen({ user, onToast, onEdit, questions, initialSubTab = 'drafts' }) {
+function SubmissionsScreen({ user, onToast, onEdit, questions, onStartNew, initialSubTab = 'drafts' }) {
   const [subTab, setSubTab] = useState(initialSubTab)
   const [draftsN, setDraftsN] = useState(0)
 
@@ -1250,7 +1263,14 @@ function SubmissionsScreen({ user, onToast, onEdit, questions, initialSubTab = '
       </div>
 
       {subTab === 'drafts' ? (
-        <DraftsScreen user={user} questions={questions} onToast={onToast} onEdit={onEdit} />
+        <DraftsScreen
+          user={user}
+          questions={questions}
+          onToast={onToast}
+          onEdit={onEdit}
+          onPushed={() => setSubTab('records')}
+          onStartNew={onStartNew}
+        />
       ) : (
         <MyRecordsScreen user={user} onToast={onToast} questions={questions} />
       )}
@@ -1786,6 +1806,14 @@ export default function SurveyorApp() {
               user={user}
               questions={questionsMeta?.questions}
               onToast={notify}
+              onStartNew={() => {
+                if (lockForVerify) {
+                  alertVerifyPending()
+                  setTab('profile')
+                  return
+                }
+                setTab('collect')
+              }}
               onEdit={async (d) => {
                 if (lockForVerify) {
                   alertVerifyPending()

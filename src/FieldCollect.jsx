@@ -1475,14 +1475,14 @@ export default function FieldCollectScreen({
         }
         return true
       }
-      if (autoNext) {
+      if (autoNext || !editingDraft) {
         workingDraftIdRef.current = null
         draftCreatedAtRef.current = null
         workingRecordIndexRef.current = null
         writeStoredOpenDraft(user, null)
-        resetForNextRecord()
-        onToast?.(`Saved as draft #${localSeq} — review & send from Pending`, 'ok')
-        onDone?.(null, null)
+        void forceSyncNow()
+        setStep(3)
+        onToast?.(`Record #${localSeq} saved & queued for sync`, 'ok')
       } else {
         workingDraftIdRef.current = null
         draftCreatedAtRef.current = null

@@ -2178,6 +2178,26 @@ export default function FieldCollectScreen({
           </button>
         </div>
 
+        {targetCount > 0 && doneCount >= targetCount ? (
+          <div className="card" style={{ textAlign: 'center', padding: '28px 16px', marginTop: 12 }}>
+            <div style={{ fontSize: 42, marginBottom: 10 }}>🎯</div>
+            <h3 style={{ margin: '0 0 6px', fontSize: 18, color: '#059669', fontWeight: 800 }}>
+              Target Cap Reached!
+            </h3>
+            <p className="muted" style={{ margin: '0 0 18px', fontSize: 14, lineHeight: 1.5 }}>
+              You have completed all <strong>{doneCount} / {targetCount}</strong> assigned records for this campaign. Further collection and uploads are locked.
+            </p>
+            <button
+              type="button"
+              className="cta secondary"
+              style={{ width: '100%', minHeight: 46 }}
+              onClick={() => onSavedDraft?.()}
+            >
+              <Icon name="box" size={15} /> View Completed Submissions ({doneCount})
+            </button>
+          </div>
+        ) : (
+        <>
         {/* STEP 0 — GPS + location details LOCK */}
         {step === 0 && (
           <div className="card">
@@ -2505,6 +2525,8 @@ export default function FieldCollectScreen({
               <Icon name="box" size={15} /> View in Submissions
             </button>
           </div>
+        )}
+        </>
         )}
         </>
         ) : null}

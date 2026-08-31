@@ -8650,6 +8650,37 @@ async function rawHandler(req: Request): Promise<Response> {
         }
       }
 
+      // Individual surveyor target_quota cap enforcement (stops uploads from any device once reached)
+      if (me.role === "surveyor") {
+        const uRows = await sql`
+          SELECT COALESCE(target_quota, 0) AS target_quota FROM app_users WHERE id = ${me.id} LIMIT 1
+        `.catch(() => []);
+        const surveyorCap = Number((uRows[0] as { target_quota?: number })?.target_quota) || 0;
+        if (surveyorCap > 0) {
+          const sUid = String(me.id);
+          const sName1 = String(me.name || "");
+          const sName2 = String(me.username || "");
+          const [sCountRow] = await sql`
+            SELECT COUNT(*)::int AS n
+            FROM submissions
+            WHERE (payload->>'user_id' = ${sUid}
+               OR (length(${sName1}) > 0 AND payload->>'submitted_by' = ${sName1})
+               OR (length(${sName2}) > 0 AND payload->>'submitted_by' = ${sName2}))
+              AND COALESCE(payload->>'status', 'pending') <> 'rejected'
+              AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+          `.catch(() => [{ n: 0 }]);
+          const sUsed = sqlCountN(sCountRow);
+          if (sUsed >= surveyorCap) {
+            return json({
+              error: `Target cap reached (${sUsed}/${surveyorCap} records). Uploads stopped for this surveyor.`,
+              code: "target_quota_reached",
+              used: sUsed,
+              target_quota: surveyorCap,
+            }, 422);
+          }
+        }
+      }
+
       // Require geo lock on every field submission. Web-survey fill (power-gated
       // above) is desk entry and has no GPS.
       const isWebFill = incomingSource === "web-survey" || incomingSource === "web";

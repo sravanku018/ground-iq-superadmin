@@ -1569,7 +1569,6 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                   ? 'disabled'
                   : u.status || 'not_started'
               const pct = u.pct ?? (target > 0 ? Math.round((done / target) * 100) : 0)
-              const isEditing = editingId === u.id
               const loginUser = u.username || '—'
               const justCreated = lastGenerated.some(
                 (g) => String(g.username).toLowerCase() === String(loginUser).toLowerCase(),
@@ -1581,248 +1580,178 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                   style={{
                     flexDirection: 'column',
                     alignItems: 'stretch',
-                    borderColor: justCreated ? 'rgba(0, 229, 153, 0.5)' : undefined,
+                    padding: '12px 14px',
+                    borderRadius: 10,
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    marginBottom: 10,
+                    borderColor: justCreated ? '#00e599' : '#e2e8f0',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <div>
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          marginBottom: 2,
-                          flexWrap: 'wrap',
-                        }}
-                      >
-                        <strong style={{ fontSize: 16, color: 'var(--text-h)' }}>
-                          {u.name || loginUser}
-                        </strong>
-                        {u.verified ? <VerifiedBadge size={18} /> : null}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text)', marginBottom: 2 }}>
-                        Username (app login)
-                      </div>
-                      <strong
-                        style={{
-                          fontSize: 15,
-                          fontFamily: 'ui-monospace, monospace',
-                          letterSpacing: '0.02em',
-                        }}
-                      >
-                        {loginUser}
-                      </strong>
-                      <span className="meta">
-                        {u.role || 'surveyor'} ·{' '}
-                        {u.progress_label || `${done}/${target || '—'}`}
-                        {u.active === false ? ' · DISABLED' : ' · app login OK'}
-                        {justCreated ? ' · NEW' : ''}
-                      </span>
-                      {(u.surveys || []).length > 0 && (
-                        <span className="meta" style={{ display: 'block', marginTop: 2 }}>
-                          Surveys: {(u.surveys || []).map((s) => s.title).join(' · ')}
-                        </span>
-                      )}
-                      {u.phone && (
-                        <span className="meta" style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, fontSize: 13, fontWeight: 'bold' }}>
-                          <Icon name="phone" size={12} /> {formatInMobile(u.phone)}
-                        </span>
-                      )}
-                      {canSeeIdDocs && (
-                        <div className="id-doc-cols">
-                          <div className="id-doc-col">
-                            <span>Photo</span>
-                            {u.photo ? (
-                              <img src={u.photo} alt="" />
-                            ) : (
-                              <em>None</em>
-                            )}
-                          </div>
-                          <div className="id-doc-col">
-                            <span>Aadhaar front</span>
-                            {u.aadhaar_front ? (
-                              <img src={u.aadhaar_front} alt="" />
-                            ) : (
-                              <em>None</em>
-                            )}
-                          </div>
-                          <div className="id-doc-col">
-                            <span>Aadhaar back</span>
-                            {u.aadhaar_back ? (
-                              <img src={u.aadhaar_back} alt="" />
-                            ) : (
-                              <em>None</em>
-                            )}
-                          </div>
+                  {/* Top Bar: Avatar, Identity, Badges & Status */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                      {u.photo ? (
+                        <img
+                          src={u.photo}
+                          alt=""
+                          style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', border: '2px solid #00e599', flexShrink: 0 }}
+                        />
+                      ) : (
+                        <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#f1f5f9', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Icon name="user" size={18} />
                         </div>
                       )}
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <strong style={{ fontSize: 15, color: '#0f172a' }}>
+                            {u.name || loginUser}
+                          </strong>
+                          {u.verified ? <VerifiedBadge size={16} /> : null}
+                          <span style={{ fontSize: 11, fontFamily: 'ui-monospace, monospace', color: '#64748b', background: '#f1f5f9', padding: '1px 6px', borderRadius: 4 }}>
+                            @{loginUser}
+                          </span>
+                          {u.key_id && (
+                            <span style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>
+                              [{u.key_id}]
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, fontSize: 12, color: '#64748b', flexWrap: 'wrap' }}>
+                          {u.phone ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                              <Icon name="phone" size={11} /> {formatInMobile(u.phone)}
+                            </span>
+                          ) : (
+                            <span className="muted">No phone</span>
+                          )}
+                          <span>·</span>
+                          <span>
+                            {(u.surveys || []).length > 0
+                              ? `Surveys: ${(u.surveys || []).map((s) => s.title).join(', ')}`
+                              : 'Default Survey'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
+
                     <span className={`pill ${statusColor(status)}`}>
                       <span className="dot" />
                       {justCreated ? 'new' : status}
                     </span>
                   </div>
-                  <div
-                    style={{
-                      height: 8,
-                      background: 'rgba(15,23,42,0.08)',
-                      borderRadius: 99,
-                      marginTop: 8,
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: `${Math.min(100, pct || 0)}%`,
-                        height: '100%',
-                        background: status === 'completed' ? '#22c55e' : '#38bdf8',
-                      }}
-                    />
-                  </div>
 
-                  {isEditing ? (
-                    <div className="user-edit-panel" style={{ marginTop: 12 }}>
-                      <h4 style={{ margin: '0 0 8px', fontSize: 13 }}>Edit login</h4>
-                      <label className="field compact">
-                        <span>Username</span>
-                        <input
-                          value={edit.username}
-                          onChange={(e) => setEdit({ ...edit, username: e.target.value })}
-                          autoCapitalize="none"
-                          autoCorrect="off"
+                  {/* Progress & Target Quota with Inline Save */}
+                  <div style={{ marginTop: 10, padding: '8px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 160 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600, color: '#334155' }}>
+                          Collected: <strong>{done}</strong> / {target || '—'} records
+                        </span>
+                        <span style={{ fontWeight: 700, color: pct >= 100 ? '#16a34a' : '#0284c7' }}>
+                          {pct}%
+                        </span>
+                      </div>
+                      <div style={{ height: 6, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            width: `${Math.min(100, pct || 0)}%`,
+                            height: '100%',
+                            background: pct >= 100 ? '#22c55e' : '#38bdf8',
+                          }}
                         />
-                      </label>
-                      <label className="field compact">
-                        <span>Display name</span>
-                        <input
-                          value={edit.name}
-                          onChange={(e) => setEdit({ ...edit, name: e.target.value })}
-                        />
-                      </label>
-                      <label className="field compact">
-                        <span>Mobile (+91, 10 digits)</span>
-                        <PhoneIndiaField
-                          value={edit.phone || ''}
-                          onChange={(phone) => setEdit({ ...edit, phone })}
-                        />
-                      </label>
-                      <label className="field compact">
-                        <span>New password (leave blank to keep)</span>
-                        <input
-                          type="text"
-                          value={edit.password}
-                          onChange={(e) => setEdit({ ...edit, password: e.target.value })}
-                          placeholder="•••• or type new password"
-                          autoComplete="new-password"
-                        />
-                      </label>
-                      <label className="field compact">
-                        <span>Target records</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <label style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        Target:
                         <input
                           type="number"
                           min={0}
-                          value={edit.target_quota}
-                          onChange={(e) =>
-                            setEdit({
-                              ...edit,
-                              target_quota: Number(e.target.value) || 0,
-                            })
-                          }
+                          defaultValue={target}
+                          style={{ width: 62, padding: '3px 6px', fontSize: 12, fontWeight: 700, borderRadius: 6, border: '1px solid #cbd5e1' }}
+                          id={`q-${u.id}`}
+                          aria-label="Target"
                         />
                       </label>
-                      <div className="user-actions" style={{ marginTop: 8 }}>
-                        <button
-                          type="button"
-                          className="btn small primary"
-                          disabled={saving}
-                          onClick={() => saveEdit(u)}
-                        >
-                          {saving ? 'Saving…' : 'Save username / password'}
-                        </button>
-                        <button type="button" className="btn small" onClick={closeEdit}>
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="user-actions" style={{ marginTop: 8, flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      className="btn small primary"
-                      onClick={() => (isEditing ? closeEdit() : openEdit(u))}
-                    >
-                      {isEditing ? 'Close edit' : 'Edit login'}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn small primary"
-                      onClick={() => openProfile(u)}
-                    >
-                      Profile
-                    </button>
-                    {canVerify ? (
-                      <button
-                        type="button"
-                        className={`btn small ${u.verified ? 'ok' : 'primary'}`}
-                        onClick={() => handleToggleVerify(u)}
-                      >
-                        {u.verified ? 'Verified ✓' : 'Verify Identity'}
-                      </button>
-                    ) : (
-                      <span className="meta" style={{ fontSize: 11, alignSelf: 'center' }}>
-                        {u.verified ? 'Verified ✓' : '🔒 verify locked'}
-                      </span>
-                    )}
-                    <input
-                      type="number"
-                      min={0}
-                      defaultValue={target}
-                      style={{ width: 72 }}
-                      id={`q-${u.id}`}
-                      aria-label="Target"
-                    />
-                    <button
-                      type="button"
-                      className="btn small"
-                      onClick={() => {
-                        const el = document.getElementById(`q-${u.id}`)
-                        setUserQuota(u, el?.value)
-                      }}
-                    >
-                      Set target
-                    </button>
-                    {u.active === false ? (
                       <button
                         type="button"
                         className="btn small primary"
-                        onClick={() => handleEnable(u)}
+                        style={{ fontSize: 11, padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                        onClick={() => {
+                          const el = document.getElementById(`q-${u.id}`)
+                          setUserQuota(u, el?.value)
+                        }}
                       >
-                        Enable
+                        💾 Save Target
                       </button>
-                    ) : (
+                    </div>
+                  </div>
+
+                  {/* Actions Row */}
+                  <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn small primary"
+                        style={{ fontSize: 12, padding: '4px 12px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                        onClick={() => openProfile(u)}
+                      >
+                        <Icon name="user" size={13} /> Edit Profile & Login
+                      </button>
+                      {canVerify && (
+                        <button
+                          type="button"
+                          className={`btn small ${u.verified ? 'ok' : ''}`}
+                          style={{ fontSize: 11, padding: '4px 10px' }}
+                          onClick={() => handleToggleVerify(u)}
+                        >
+                          {u.verified ? 'Verified ✓' : 'Verify'}
+                        </button>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {u.active === false ? (
+                        <button
+                          type="button"
+                          className="btn small primary"
+                          style={{ fontSize: 11, padding: '3px 8px' }}
+                          onClick={() => handleEnable(u)}
+                        >
+                          Enable
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn small danger"
+                          style={{ fontSize: 11, padding: '3px 8px' }}
+                          onClick={() => handleDisable(u)}
+                        >
+                          Disable
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="btn small"
+                        style={{ fontSize: 11, padding: '3px 8px' }}
+                        onClick={() => handleRevoke(u)}
+                        title="Force logout on surveyor app"
+                      >
+                        Revoke
+                      </button>
                       <button
                         type="button"
                         className="btn small danger"
-                        onClick={() => handleDisable(u)}
+                        style={{ fontSize: 11, padding: '3px 8px' }}
+                        onClick={() => handleDelete(u)}
+                        title="Delete surveyor account"
                       >
-                        Disable
+                        Delete
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      className="btn small"
-                      onClick={() => handleRevoke(u)}
-                    >
-                      Revoke sessions
-                    </button>
-                    <button
-                      type="button"
-                      className="btn small danger"
-                      onClick={() => handleDelete(u)}
-                    >
-                      Delete
-                    </button>
+                    </div>
                   </div>
                 </li>
               )

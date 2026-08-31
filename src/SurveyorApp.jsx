@@ -1183,7 +1183,11 @@ function SubmissionsScreen({ user, onToast, onEdit, questions, onStartNew, initi
     const updateCount = async () => {
       try {
         const [d, q] = await Promise.all([listDrafts({ media: false }), listPendingPackages()])
-        setDraftsN((d?.length || 0) + (q?.length || 0))
+        const total = (d?.length || 0) + (q?.length || 0)
+        setDraftsN(total)
+        if (total === 0) {
+          setSubTab('records')
+        }
       } catch {
         setDraftsN(0)
       }

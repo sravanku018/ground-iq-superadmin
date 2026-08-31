@@ -6282,13 +6282,18 @@ async function rawHandler(req: Request): Promise<Response> {
       const mine = url.searchParams.get("mine") === "1";
       if (mine || !isPortalAdmin(me.role)) {
         const uId = String(me.id);
-        const names = [me.name, me.username].filter(Boolean);
+        const name1 = String(me.name || "");
+        const name2 = String(me.username || "");
         const rows = await sql`
           SELECT id, payload, created_at FROM submissions
           WHERE payload->>'user_id' = ${uId}
-             OR payload->>'submitted_by' = ANY(${names})
+             OR (length(${name1}) > 0 AND payload->>'submitted_by' = ${name1})
+             OR (length(${name2}) > 0 AND payload->>'submitted_by' = ${name2})
           ORDER BY created_at DESC LIMIT 500
-        `.catch(() => []);
+        `.catch((err) => {
+          console.error("submissions mine error:", err);
+          return [];
+        });
         const mediaRows = await sql`
           SELECT submission_id, kind, url, storage, meta FROM survey_media
         `.catch(() => []);

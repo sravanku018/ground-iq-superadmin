@@ -893,8 +893,9 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
 
   const me = useMemo(() => portalUser || getStoredUser(), [portalUser])
   const allotCap = Number(me?.max_records) || 0
-  const allotUsed = Number(me?.record_count ?? me?.surveyor_record_count) || 0
+  const allotUsed = Number(board?.totals?.done ?? me?.record_count ?? me?.surveyor_record_count) || 0
   const allotLeft = allotCap > 0 ? Math.max(0, allotCap - allotUsed) : null
+  const allotPct = allotCap > 0 ? Math.min(100, Math.round((allotUsed / allotCap) * 100)) : 0
   const admins = useMemo(
     () => users.filter((u) => u.role === 'admin' || u.role === 'super_admin'),
     [users],
@@ -1056,18 +1057,59 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
         </p>
       </header>
 
+      {/* Quota Allocation Banner for Client Admin */}
       {me?.role === 'admin' && (
-        <div className="card" style={{ marginBottom: 14, padding: '12px 14px' }}>
-          <strong style={{ display: 'block', fontSize: 14 }}>
-            Records allotted{' '}
-            {allotUsed} / {allotCap > 0 ? allotCap : '∞'}
-          </strong>
-          <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
-            Super Admin set this cap on your profile.
-            {allotCap > 0
-              ? ` ${allotLeft} remaining for surveyor submissions.`
-              : ' Unlimited until Super Admin sets a number.'}
-          </p>
+        <div
+          className="card"
+          style={{
+            marginBottom: 14,
+            padding: '14px 16px',
+            background: 'linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)',
+            border: '1px solid #bbf7d0',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Allocated / Used Quota
+              </div>
+              <strong style={{ fontSize: 18, color: '#0f172a' }}>
+                {allotCap > 0 ? (
+                  <>
+                    <span style={{ color: '#059669' }}>{allotUsed}</span> of {allotCap.toLocaleString()} used
+                  </>
+                ) : (
+                  <>
+                    <span style={{ color: '#059669' }}>{allotUsed}</span> used (Unlimited allocated)
+                  </>
+                )}
+              </strong>
+            </div>
+            {allotCap > 0 && (
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: allotLeft === 0 ? '#dc2626' : '#059669' }}>
+                  {allotLeft.toLocaleString()} remaining
+                </span>
+                <div style={{ fontSize: 11, color: '#64748b' }}>
+                  {allotPct}% quota consumed
+                </div>
+              </div>
+            )}
+          </div>
+
+          {allotCap > 0 && (
+            <div style={{ height: 8, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden' }}>
+              <div
+                style={{
+                  width: `${allotPct}%`,
+                  height: '100%',
+                  background: allotPct >= 100 ? '#dc2626' : allotPct >= 80 ? '#f59e0b' : '#059669',
+                  transition: 'width 0.3s ease',
+                }}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -1078,8 +1120,10 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
             <span>Surveyors</span>
           </div>
           <div className="stat">
-            <strong>{board?.totals?.done ?? '—'}</strong>
-            <span>Records done</span>
+            <strong>
+              {allotCap > 0 ? `${allotUsed} / ${allotCap}` : (board?.totals?.done ?? '—')}
+            </strong>
+            <span>{allotCap > 0 ? 'Used / Allocated' : 'Records done'}</span>
           </div>
           <div className="stat">
             <strong>{board?.totals?.targets ?? '—'}</strong>

@@ -770,8 +770,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                           <strong style={{ color: '#059669' }}>
                             {u.surveyor_record_count ?? u.record_count ?? 0}
                           </strong>{' '}
-                          submitted /{' '}
-                          {u.max_records > 0 ? u.max_records : '∞'} allocated
+                          of {u.max_records > 0 ? `${Number(u.max_records).toLocaleString()} used` : '∞ allocated'}
                         </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input

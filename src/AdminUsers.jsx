@@ -843,16 +843,6 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     }
   }
 
-  async function setUserQuota(user, target) {
-    try {
-      await updateUser(user.id, { target_quota: Number(target) || 0 })
-      onToast?.(`${user.username} target → ${target}`, 'ok')
-      await load()
-    } catch (e) {
-      onToast?.(e.message, 'error')
-    }
-  }
-
   async function applyBulkQuota() {
     setSaving(true)
     try {
@@ -1642,64 +1632,37 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                     </span>
                   </div>
 
-                  {/* Progress & Target Quota with Inline Save */}
-                  <div style={{ marginTop: 10, padding: '8px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1, minWidth: 160 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-                        <span style={{ fontWeight: 600, color: '#334155' }}>
-                          Collected: <strong>{done}</strong> / {target || '—'} records
-                        </span>
-                        <span style={{ fontWeight: 700, color: pct >= 100 ? '#16a34a' : '#0284c7' }}>
-                          {pct}%
-                        </span>
-                      </div>
-                      <div style={{ height: 6, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden' }}>
-                        <div
-                          style={{
-                            width: `${Math.min(100, pct || 0)}%`,
-                            height: '100%',
-                            background: pct >= 100 ? '#22c55e' : '#38bdf8',
-                          }}
-                        />
-                      </div>
+                  {/* Progress Bar & Quota Status */}
+                  <div style={{ marginTop: 10, padding: '10px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #f1f5f9' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, marginBottom: 5 }}>
+                      <span style={{ fontWeight: 600, color: '#334155' }}>
+                        Progress: <strong>{done}</strong> / {target > 0 ? `${target} target` : 'No quota set'}
+                      </span>
+                      <span style={{ fontWeight: 700, color: pct >= 100 ? '#16a34a' : '#0284c7' }}>
+                        {target > 0 ? `${pct}%` : '—'}
+                      </span>
                     </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        Target:
-                        <input
-                          type="number"
-                          min={0}
-                          defaultValue={target}
-                          style={{ width: 62, padding: '3px 6px', fontSize: 12, fontWeight: 700, borderRadius: 6, border: '1px solid #cbd5e1' }}
-                          id={`q-${u.id}`}
-                          aria-label="Target"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        className="btn small primary"
-                        style={{ fontSize: 11, padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 3 }}
-                        onClick={() => {
-                          const el = document.getElementById(`q-${u.id}`)
-                          setUserQuota(u, el?.value)
+                    <div style={{ height: 6, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: `${Math.min(100, pct || 0)}%`,
+                          height: '100%',
+                          background: pct >= 100 ? '#22c55e' : '#38bdf8',
                         }}
-                      >
-                        💾 Save Target
-                      </button>
+                      />
                     </div>
                   </div>
 
                   {/* Actions Row */}
-                  <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
+                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <button
                         type="button"
                         className="btn small primary"
-                        style={{ fontSize: 12, padding: '4px 12px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                        style={{ fontSize: 12, padding: '5px 14px', display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 700 }}
                         onClick={() => openProfile(u)}
                       >
-                        <Icon name="user" size={13} /> Edit Profile & Login
+                        <Icon name="user" size={13} /> Edit Profile & Quota
                       </button>
                       {canVerify && (
                         <button

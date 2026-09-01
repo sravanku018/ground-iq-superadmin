@@ -1072,7 +1072,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Allocated / Used Quota
+                Used / Allocated
               </div>
               <strong style={{ fontSize: 18, color: '#0f172a' }}>
                 {allotCap > 0 ? (

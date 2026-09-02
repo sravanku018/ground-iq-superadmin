@@ -291,11 +291,17 @@ function HomeScreen({
   onViewRecords,
   onSync,
 }) {
+  const assignedSurveys = questionsMeta?.surveys || []
+  const surveysCount = assignedSurveys.length || (questionsMeta?.title ? 1 : 0)
+  const qCount =
+    myProgress?.questions_count ||
+    assignedSurveys.reduce((n, s) => n + (Array.isArray(s.questions) ? s.questions.length : 0), 0) ||
+    questionsMeta?.count ||
+    questionsMeta?.questions?.length ||
+    0
   const done = myProgress?.done ?? 0
-  const target = myProgress?.target ?? 0
+  const target = myProgress?.target ?? surveysCount
   const complete = myProgress?.complete || (target > 0 && done >= target)
-  const qCount = questionsMeta?.count ?? questionsMeta?.questions?.length ?? 0
-  const surveysCount = (questionsMeta?.surveys || []).length || (questionsMeta?.title ? 1 : 0)
   const localPending = pendingLocal ?? pendingSync ?? 0
   const percent = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0
   const surveyTitle = questionsMeta?.title || (questionsMeta?.surveys?.[0]?.title) || 'Field Survey Campaign'
@@ -331,7 +337,7 @@ function HomeScreen({
             </div>
             <div className="mission-progress-labels">
               <span>{done} records submitted</span>
-              <span>Target: {target}</span>
+              <span>Target: {target} survey{target === 1 ? '' : 's'}</span>
             </div>
           </div>
         ) : (

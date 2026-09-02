@@ -962,6 +962,48 @@ async function listAssignedSurveys(
   }));
 }
 
+async function syncSurveyorTargetFromAssignments(
+  sqlFn: NonNullable<typeof sql>,
+  userId: number,
+): Promise<number> {
+  const [row] = await sqlFn`
+    SELECT COUNT(*)::int AS n FROM survey_assignments WHERE user_id = ${userId}
+  `.catch(() => [{ n: 0 }]);
+  const n = sqlCountN(row);
+  await sqlFn`
+    UPDATE app_users SET target_quota = ${n}
+    WHERE id = ${userId} AND role IN ('surveyor', 'field')
+  `.catch(() => null);
+  return n;
+}
+
+async function countAssignedSurveysFilled(
+  sqlFn: NonNullable<typeof sql>,
+  user: { id: unknown; username?: string; display_name?: string },
+  formKeys: string[],
+): Promise<number> {
+  const keys = formKeys.map((k) => String(k || "").trim()).filter(Boolean);
+  if (!keys.length) return 0;
+  const uId = String(user.id);
+  const name1 = String(user.username || "");
+  const name2 = String(user.display_name || user.username || "");
+  const [row] = await sqlFn`
+    SELECT COUNT(DISTINCT payload->>'form_key')::int AS n
+    FROM submissions
+    WHERE payload->>'form_key' = ANY(${keys})
+      AND COALESCE(payload->>'source', '') NOT IN ('web-survey', 'web')
+      AND COALESCE(payload->>'status', 'pending') <> 'rejected'
+      AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+      AND COALESCE(payload->'answers'->>'_draft', 'false') NOT IN ('true', 't', '1')
+      AND (
+        payload->>'user_id' = ${uId}
+        OR (length(${name1}) > 0 AND payload->>'submitted_by' = ${name1})
+        OR (length(${name2}) > 0 AND payload->>'submitted_by' = ${name2})
+      )
+  `.catch(() => [{ n: 0 }]);
+  return sqlCountN(row);
+}
+
 /**
  * Peak questions in any one survey a Client Admin can use (owned + shared + company projects).
  * Used for "Questions / survey (peak)" vs max_questions_per_survey.
@@ -4806,12 +4848,23 @@ async function rawHandler(req: Request): Promise<Response> {
         target_quota: number;
       };
       if (!u) return json({ error: "User not found" }, 404);
-      const done = await countDoneForUser({
-        id: u.id,
-        username: u.username,
-        display_name: u.display_name,
-      });
-      const target = Number(u.target_quota) || 0;
+      const assigned = me.role === "surveyor" || me.role === "field"
+        ? await listAssignedSurveys(sql, Number(u.id))
+        : [];
+      const assignedKeys = assigned.map((s) => String(s.form_key || "")).filter(Boolean);
+      const target = assignedKeys.length;
+      const done = assignedKeys.length
+        ? await countAssignedSurveysFilled(sql, {
+          id: u.id,
+          username: u.username,
+          display_name: u.display_name,
+        }, assignedKeys)
+        : await countDoneForUser({
+          id: u.id,
+          username: u.username,
+          display_name: u.display_name,
+        });
+      const questionsCount = assigned.reduce((n, s) => n + (Array.isArray(s.questions) ? s.questions.length : 0), 0);
       const remaining = target > 0 ? Math.max(0, target - done) : null;
       const pct = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : null;
       const status = progressStatus(done, target);
@@ -4824,12 +4877,14 @@ async function rawHandler(req: Request): Promise<Response> {
         remaining,
         pct,
         status,
+        surveys_count: assigned.length,
+        questions_count: questionsCount,
         next_record: target > 0 ? Math.min(done + 1, target) : done + 1,
         complete: status === "completed",
         label:
           target > 0
-            ? `${done} / ${target} records · ${status}`
-            : `${done} records (no target set)`,
+            ? `${done} / ${target} surveys · ${status}`
+            : `${done} records (no survey assigned)`,
       });
     }
 
@@ -5085,16 +5140,24 @@ async function rawHandler(req: Request): Promise<Response> {
           );
       const users = [];
       for (const r of rows as Record<string, unknown>[]) {
-        let done = 0;
-        if (r.role === "surveyor" || r.role === "field") {
-          done = await countDoneForUser({
-            id: Number(r.id),
-            username: String(r.username),
-            display_name: String(r.display_name || r.username),
-          });
-        }
-        const target = Number(r.target_quota) || 0;
         const isCollector = r.role === "surveyor" || r.role === "field";
+        const assignedForUser = assignedMap.get(Number(r.id)) || [];
+        let done = 0;
+        if (isCollector) {
+          const keys = assignedForUser.map((s) => String(s.form_key || "")).filter(Boolean);
+          done = keys.length
+            ? await countAssignedSurveysFilled(sql, {
+              id: Number(r.id),
+              username: String(r.username),
+              display_name: String(r.display_name || r.username),
+            }, keys)
+            : await countDoneForUser({
+              id: Number(r.id),
+              username: String(r.username),
+              display_name: String(r.display_name || r.username),
+            });
+        }
+        const target = isCollector ? assignedForUser.length : Number(r.target_quota) || 0;
         // Usage vs allocated caps (Super Admin console → Client Admins tab)
         let survey_count = 0;
         let surveyor_count = 0;
@@ -5188,7 +5251,7 @@ async function rawHandler(req: Request): Promise<Response> {
           max_records: Number(r.max_records) || 0,
           // Alias for Client Admin allocation UI
           record_count: surveyor_record_count,
-          surveys: assignedMap.get(Number(r.id)) || [],
+          surveys: assignedForUser,
           status: isCollector ? progressStatus(done, target) : "admin",
           progress_label: isCollector
             ? target > 0
@@ -8502,6 +8565,10 @@ async function rawHandler(req: Request): Promise<Response> {
       if (next.size > 0 && saved.length === 0) {
         return json({ error: "Could not save surveyor assignments" }, 500);
       }
+      const touched = new Set<number>([...current, ...next]);
+      for (const uid of touched) {
+        await syncSurveyorTargetFromAssignments(sql, uid);
+      }
       return json({ ok: true, assigned: saved.length, user_ids: saved });
     }
 
@@ -8616,7 +8683,8 @@ async function rawHandler(req: Request): Promise<Response> {
       if (next.size > 0 && saved.length === 0) {
         return json({ error: "Could not save survey assignments" }, 500);
       }
-      return json({ ok: true, assigned: saved.length, survey_ids: saved });
+      const targetN = await syncSurveyorTargetFromAssignments(sql, userId);
+      return json({ ok: true, assigned: saved.length, survey_ids: saved, target_quota: targetN });
     }
 
     // Surveyor view: surveys assigned to me (with their questions) — field app
@@ -8647,9 +8715,15 @@ async function rawHandler(req: Request): Promise<Response> {
             updated_at: null,
           });
         }
+        const totalQuestions = items.reduce(
+          (n, s) => n + (Array.isArray(s.questions) ? s.questions.length : 0),
+          0,
+        );
         return json({
           ...first,
           surveys: items,
+          surveys_count: items.length,
+          questions_count: totalQuestions,
           require_geo: true,
           require_photo: true,
           require_audio: first.voice_required === true,
@@ -9137,32 +9211,22 @@ async function rawHandler(req: Request): Promise<Response> {
         }
       }
 
-      // Individual surveyor target_quota cap enforcement (stops uploads from any device once reached)
+      // Target = number of assigned surveys. Stop when each assigned survey has a field send.
       if (me.role === "surveyor") {
-        const uRows = await sql`
-          SELECT COALESCE(target_quota, 0) AS target_quota FROM app_users WHERE id = ${me.id} LIMIT 1
-        `.catch(() => []);
-        const surveyorCap = Number((uRows[0] as { target_quota?: number })?.target_quota) || 0;
-        if (surveyorCap > 0) {
-          const sUid = String(me.id);
-          const sName1 = String(me.name || "");
-          const sName2 = String(me.username || "");
-          const [sCountRow] = await sql`
-            SELECT COUNT(*)::int AS n
-            FROM submissions
-            WHERE (payload->>'user_id' = ${sUid}
-               OR (length(${sName1}) > 0 AND payload->>'submitted_by' = ${sName1})
-               OR (length(${sName2}) > 0 AND payload->>'submitted_by' = ${sName2}))
-              AND COALESCE(payload->>'status', 'pending') <> 'rejected'
-              AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
-          `.catch(() => [{ n: 0 }]);
-          const sUsed = sqlCountN(sCountRow);
-          if (sUsed >= surveyorCap) {
+        const assigned = await listAssignedSurveys(sql, Number(me.id));
+        const keys = assigned.map((s) => String(s.form_key || "")).filter(Boolean);
+        if (keys.length > 0) {
+          const filled = await countAssignedSurveysFilled(sql, {
+            id: me.id,
+            username: me.username,
+            display_name: me.name,
+          }, keys);
+          if (filled >= keys.length) {
             return json({
-              error: `Target cap reached (${sUsed}/${surveyorCap} records). Uploads stopped for this surveyor.`,
+              error: `Target cap reached (${filled}/${keys.length} assigned surveys).`,
               code: "target_quota_reached",
-              used: sUsed,
-              target_quota: surveyorCap,
+              used: filled,
+              target_quota: keys.length,
             }, 422);
           }
         }

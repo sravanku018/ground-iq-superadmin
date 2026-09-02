@@ -327,16 +327,23 @@ function HomeScreen({
     questionsMeta?.questions?.length ||
     0
   const done = myProgress?.done ?? stacked.reduce((n, s) => n + s.done, 0)
-  const target =
-    Number(myProgress?.target) ||
-    stacked.reduce((n, s) => n + s.target, 0) ||
-    0
+  const stackedTarget = stacked.reduce((n, s) => n + (Number(s.target) || 0), 0)
+  const rawTarget = Number(myProgress?.target) || 0
+  // Ignore a leftover user-level 1 when two surveys have no per-survey quota.
+  const target = stackedTarget > 0
+    ? stackedTarget
+    : (stacked.length > 1 && rawTarget <= 1 ? 0 : rawTarget)
   const withTargets = stacked.filter((s) => s.target > 0)
   const complete =
-    Boolean(myProgress?.complete) ||
-    (withTargets.length > 0 && withTargets.every((s) => s.done >= s.target))
+    withTargets.length > 0 &&
+    withTargets.every((s) => s.done >= s.target) &&
+    !stacked.some((s) => s.target <= 0)
   const localPending = pendingLocal ?? pendingSync ?? 0
   const percent = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0
+  const nextRecordNum = Math.max(
+    done + 1,
+    Number(myProgress?.next_record) || 0,
+  )
   const surveyTitle =
     stacked.length > 1
       ? `${stacked.length} assigned surveys`
@@ -364,7 +371,7 @@ function HomeScreen({
           <span className="mission-badge">
             <Icon name="pencil" size={12} /> Active Survey
           </span>
-          {target > 0 && (
+          {target > 0 && withTargets.length > 0 && (
             <span className="mission-percent">{percent}% Goal</span>
           )}
         </div>
@@ -380,7 +387,9 @@ function HomeScreen({
               {stacked.length > 1 ? (
                 stacked.map((s, i) => {
                   const share = (weightOf(s) / weightSum) * 100
-                  const fill = s.target > 0 ? Math.min(100, (s.done / s.target) * 100) : 0
+                  const fill = s.target > 0
+                    ? Math.min(100, (s.done / s.target) * 100)
+                    : (s.done > 0 ? 100 : 0)
                   return (
                     <div
                       key={s.form_key || s.id || i}
@@ -434,7 +443,7 @@ function HomeScreen({
           {complete ? (
             <><Icon name="check" size={16} /> Quota Reached</>
           ) : done > 0 ? (
-            `Start Record #${myProgress?.next_record || done + 1}`
+            `Start Record #${nextRecordNum}`
           ) : (
             'Start Survey (GPS → Photo → Q/A)'
           )}

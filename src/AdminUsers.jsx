@@ -464,9 +464,11 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     const surs = surveyIdsOf(u)
     setProfileSurveys(surs)
     const fromUser = {}
+    const inheritUser = surs.length <= 1 ? Number(u.target_quota ?? u.target) || 0 : 0
     for (const s of u.surveys || []) {
       if (s?.id == null) continue
-      fromUser[String(s.id)] = Number(s.target_quota) || Number(u.target_quota ?? u.target) || 0
+      const own = Number(s.target_quota) || 0
+      fromUser[String(s.id)] = own > 0 ? own : inheritUser
     }
     setProfileQuotas(fromUser)
     setProfileForm({

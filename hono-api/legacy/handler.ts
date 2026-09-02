@@ -4484,8 +4484,8 @@ async function rawHandler(req: Request): Promise<Response> {
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.41",
-          versionCode: 20041,
+          version: "2.0.42",
+          versionCode: 20042,
           minSupportedVersionCode: 20000,
           apkUrl: `https://${req.headers.get("x-forwarded-host") || url.hostname}/api/app.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
@@ -4933,7 +4933,9 @@ async function rawHandler(req: Request): Promise<Response> {
       const perSurveyTargets = assigned.map((s) => {
         const qn = Array.isArray(s.questions) ? s.questions.length : 0;
         let t = Number(s.target_quota) || 0;
-        if (t <= 0 && assigned.length === 1) t = userFallback;
+        // One assigned survey can inherit the user-level quota. Two or more
+        // must keep their own assignment quotas — never collapse to 1.
+        if (t <= 0 && assigned.length === 1 && userFallback > 1) t = userFallback;
         const key = String(s.form_key || "");
         const d = Number(byKey.get(key) || 0);
         const completeOne = t > 0 && d >= t;
@@ -4959,10 +4961,10 @@ async function rawHandler(req: Request): Promise<Response> {
         for (const v of byKey.values()) done += v;
       }
       // Total target = sum of per-survey quotas. Never COUNT(assignments).
-      // If no assignment quotas yet, keep the user-level number so old profiles still show.
+      // A leftover user-level 1 with two surveys is not a real quota.
       const target = assignmentQuotaSum > 0
         ? perSurveyTargets.reduce((n, s) => n + s.target, 0)
-        : userFallback;
+        : (assigned.length <= 1 && userFallback > 1 ? userFallback : 0);
       const remaining = target > 0 ? Math.max(0, target - done) : null;
       const pct = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : null;
       const status = progressStatus(done, target);
@@ -4980,7 +4982,7 @@ async function rawHandler(req: Request): Promise<Response> {
         surveys_count: assigned.length,
         questions_count: questionsCount,
         surveys: perSurveyTargets,
-        next_record: target > 0 ? Math.min(done + 1, target) : done + 1,
+        next_record: done + 1,
         complete,
         label:
           target > 0
@@ -5262,7 +5264,10 @@ async function rawHandler(req: Request): Promise<Response> {
           (n, s) => n + (Number(s.target_quota) || 0),
           0,
         );
-        const target = assignedQuotaSum > 0 ? assignedQuotaSum : (Number(r.target_quota) || 0);
+        const userLevelQuota = Number(r.target_quota) || 0;
+        const target = assignedQuotaSum > 0
+          ? assignedQuotaSum
+          : (assignedForUser.length <= 1 && userLevelQuota > 1 ? userLevelQuota : 0);
         const isCollector = r.role === "surveyor" || r.role === "field";
         // Usage vs allocated caps (Super Admin console → Client Admins tab)
         let survey_count = 0;

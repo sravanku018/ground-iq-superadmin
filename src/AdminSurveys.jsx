@@ -10,7 +10,6 @@ import {
   listUsers,
   setSurveyAdmins,
   updateSurvey,
-  mintWebFillUrl,
 } from './api'
 import CopyWebFillLink from './components/CopyWebFillLink'
 import QuestionTelugu, { fillTeluguFromEnglish } from './QuestionTelugu'
@@ -437,25 +436,6 @@ export default function AdminSurveysScreen({ onToast, user }) {
     const hit = surveys.find((s) => String(s.title || '').toLowerCase() === t)
     setExists(hit || null)
   }, [newTitle, surveys])
-
-  async function copyWebLink(formKey, title) {
-    const key = String(formKey || '').trim()
-    if (!key || key === 'default' || key === 'legacy') {
-      onToast?.('Open the survey and save it first — then copy the web link', 'error')
-      return
-    }
-    try {
-      const link = await mintWebFillUrl(key)
-      try {
-        await navigator.clipboard.writeText(link)
-        onToast?.(`One-time web link copied${title ? ` · ${title}` : ''}`, 'ok')
-      } catch {
-        onToast?.(link, 'ok')
-      }
-    } catch (e) {
-      onToast?.(e.message || 'Could not create link', 'error')
-    }
-  }
 
   async function openDetail(id) {
     setBusy(true)
@@ -1161,15 +1141,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         >
           Open
         </button>
-        <button
-          type="button"
-          className="btn small"
-          onClick={() => void copyWebLink(s.form_key, s.title)}
-          disabled={busy || !s.form_key}
-          title="Copy public web-survey link"
-        >
-          Copy web link
-        </button>
+        <CopyWebFillLink compact formKey={s.form_key} title={s.title} onToast={onToast} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <strong style={{ fontSize: 16, color: '#0f172a' }}>{s.title}</strong>
@@ -1257,7 +1229,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
           {isSuper
             ? 'Super Admin creates Projects and maps them to companies & Client Admins.'
-            : 'Client Admin creates Surveys under your company. Copy web link creates a one-time fill URL — it expires after that person submits.'}
+            : 'Client Admin creates Surveys under your company. Copy web link: pick how many responses, then the URL expires.'}
         </p>
         <button
           type="button"

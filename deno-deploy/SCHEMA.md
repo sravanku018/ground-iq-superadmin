@@ -65,16 +65,18 @@ inside this blob), `created_at`, `fact_status`, `fact_error`.
 via `.catch()`. Known broken instance: the submissions/geo section of
 `GET /api/companies/:id/dashboard` — currently always returns empty.
 
-**`web_survey_links`** — one-time public fill tokens.
+**`web_survey_links`** — public fill tokens with a Client-Admin-set response cap.
 | Column | Notes |
 |---|---|
 | `token` | PK. Random URL-safe id in `?fill=form_key&k=token`. |
 | `form_key` | Survey this invite opens. |
 | `created_by` | Client Admin / Super Admin who clicked Copy. |
-| `used_at` | Set atomically on `POST /api/web-survey/public`. After this the GET/POST return 410 expired. |
-| `submission_id` | The pending web row created by that submit. |
+| `max_uses` | How many public submits this token allows (1–9999). Set from the Web survey number picker. Default 1 for old rows. |
+| `use_count` | Successful `POST /api/web-survey/public` count. Atomic `use_count + 1 WHERE use_count < max_uses`. |
+| `used_at` | Set when `use_count` reaches `max_uses`. GET/POST then return 410 expired. |
+| `submission_id` | Last pending web row created by this token. |
 
-Copying a web link (`POST /api/web-survey/link`) always mints a **new** unused token. Each recipient needs their own copy. Generic `?fill=form_key` without `k=` is expired (410). Logged-in portal fill (`POST /api/web-survey`) is unchanged and is not one-time.
+Copying a web link (`POST /api/web-survey/link`) mints a **new** token with the chosen `max_uses`. The same URL stays valid until that many people submit. Generic `?fill=form_key` without `k=` is expired (410). Logged-in portal fill (`POST /api/web-survey`) is unchanged and does not consume the public cap.
 
 **`survey_admin_access`** — junction: `survey_id → survey_form`,
 `admin_id → app_users`. **This is the access-control source of truth.**

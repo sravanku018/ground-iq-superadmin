@@ -552,17 +552,18 @@ export function webFillUrl(formKey, token) {
   return u.toString()
 }
 
-/** Mint a one-time public fill token. Link expires after that recipient submits. */
-export function createWebFillLink(formKey) {
+/** Mint a public fill token. Expires after max_uses submissions (Client Admin picker). */
+export function createWebFillLink(formKey, maxUses = 1) {
+  const n = Math.min(9999, Math.max(1, Math.floor(Number(maxUses) || 1)))
   return request('/api/web-survey/link', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ form_key: formKey }),
+    body: JSON.stringify({ form_key: formKey, max_uses: n }),
   })
 }
 
-export async function mintWebFillUrl(formKey) {
-  const d = await createWebFillLink(formKey)
+export async function mintWebFillUrl(formKey, maxUses = 1) {
+  const d = await createWebFillLink(formKey, maxUses)
   return webFillUrl(formKey, d.token)
 }
 

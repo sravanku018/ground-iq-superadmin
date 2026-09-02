@@ -124,9 +124,9 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
         <Icon name="clipboard" size={18} /> Web survey
       </h2>
       <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-        Copy a one-time link and share it. After the recipient submits, that link expires.
-        Records land as pending (no GPS/photo/voice). Filling the form here in the portal needs Super
-        Admin to grant <strong>Web survey</strong>.
+        Pick how many responses the link allows, then copy it. The same URL stays open until that
+        number of submits, then it expires. Records land as pending (no GPS/photo/voice). Filling
+        here in the portal needs Super Admin to grant <strong>Web survey</strong>.
       </p>
 
       <label className="field" style={{ maxWidth: 420, marginBottom: 16 }}>

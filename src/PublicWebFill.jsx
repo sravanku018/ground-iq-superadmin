@@ -41,6 +41,7 @@ export default function PublicWebFill({ formKey, fillToken }) {
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
   const [expired, setExpired] = useState(false)
+  const [closed, setClosed] = useState(false)
   const [err, setErr] = useState('')
   const [toast, setToast] = useState('')
 
@@ -49,6 +50,7 @@ export default function PublicWebFill({ formKey, fillToken }) {
     setLoading(true)
     setErr('')
     setExpired(false)
+    setClosed(false)
     getPublicWebSurvey(formKey, fillToken)
       .then((d) => {
         if (dead) return
@@ -90,14 +92,15 @@ export default function PublicWebFill({ formKey, fillToken }) {
     setSaving(true)
     setToast('')
     try {
-      await submitPublicWebSurvey({
+      const res = await submitPublicWebSurvey({
         form_key: formKey,
         token: fillToken,
         submitted_by: name.trim() || 'Web',
         answers,
       })
       setDone(true)
-      setExpired(true)
+      setExpired(false)
+      setClosed(!!res.expired)
     } catch (e2) {
       if (e2.status === 410 || e2.data?.expired) {
         setExpired(true)
@@ -118,7 +121,7 @@ export default function PublicWebFill({ formKey, fillToken }) {
         <p className="eyebrow">Smart Survey X</p>
         <h1 style={{ fontSize: 22, margin: '0 0 8px' }}>{title || 'Web survey'}</h1>
         <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-          Fill and submit. This link works once — it expires after you submit.
+          Fill and submit. No login required.
         </p>
 
         {toast ? (
@@ -133,7 +136,11 @@ export default function PublicWebFill({ formKey, fillToken }) {
         {done ? (
           <div className="card success-card">
             <h3 className="success-title">Submitted</h3>
-            <p className="success-sub">Thank you. Your answers were saved. This link has expired.</p>
+            <p className="success-sub">
+              {closed
+                ? 'Thank you. Your answers were saved. This link has now expired.'
+                : 'Thank you. Your answers were saved.'}
+            </p>
           </div>
         ) : null}
 
@@ -141,8 +148,8 @@ export default function PublicWebFill({ formKey, fillToken }) {
           <div className="card">
             <h3 style={{ margin: '0 0 6px' }}>This link has expired</h3>
             <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-              It can only be used once. Ask the sender for a new web survey link if you still need
-              to fill the form.
+              The allowed number of responses has been reached. Ask the sender for a new web survey
+              link if you still need to fill the form.
             </p>
           </div>
         ) : null}

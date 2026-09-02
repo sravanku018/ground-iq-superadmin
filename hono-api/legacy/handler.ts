@@ -421,9 +421,26 @@ function newWebFillToken(): string {
 
 function webLinkExpired(extra: Record<string, unknown> = {}) {
   return json(
-    { error: "This link has expired. It can only be used once.", expired: true, ...extra },
+    {
+      error: "This link has expired. The allowed number of responses has been reached.",
+      expired: true,
+      ...extra,
+    },
     410,
   );
+}
+
+function clampWebLinkMaxUses(raw: unknown): number {
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(n, 9999);
+}
+
+function webLinkSpent(link: { used_at?: unknown; use_count?: unknown; max_uses?: unknown }): boolean {
+  if (link.used_at) return true;
+  const used = Math.max(0, Number(link.use_count) || 0);
+  const max = clampWebLinkMaxUses(link.max_uses);
+  return used >= max;
 }
 
 // ── Crypto helpers (same idea as Node auth) ───────────────
@@ -1380,7 +1397,7 @@ async function ensureSchema(): Promise<void> {
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_name TEXT`,
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_id INT`,
     () => sql`CREATE INDEX IF NOT EXISTS idx_survey_form_company ON survey_form(company_id)`,
-    // One-time public web-survey links: Copy mints a token; submit sets used_at.
+    // Public web-survey links: Copy mints a token; expires after max_uses submits.
     () => sql`
       CREATE TABLE IF NOT EXISTS web_survey_links (
         token TEXT PRIMARY KEY,
@@ -1388,10 +1405,14 @@ async function ensureSchema(): Promise<void> {
         created_by INTEGER,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         used_at TIMESTAMPTZ,
-        submission_id INTEGER
+        submission_id INTEGER,
+        max_uses INTEGER NOT NULL DEFAULT 1,
+        use_count INTEGER NOT NULL DEFAULT 0
       )
     `,
     () => sql`CREATE INDEX IF NOT EXISTS idx_web_survey_links_form ON web_survey_links (form_key)`,
+    () => sql`ALTER TABLE web_survey_links ADD COLUMN IF NOT EXISTS max_uses INTEGER NOT NULL DEFAULT 1`,
+    () => sql`ALTER TABLE web_survey_links ADD COLUMN IF NOT EXISTS use_count INTEGER NOT NULL DEFAULT 0`,
     () => sql`
       ALTER TABLE survey_form
       ADD CONSTRAINT survey_form_company_id_fkey
@@ -8636,12 +8657,13 @@ async function rawHandler(req: Request): Promise<Response> {
         SELECT form_key FROM survey_form WHERE form_key = ${formKey} LIMIT 1
       `.catch(() => []);
       if (!exists.length) return json({ error: "Survey not found" }, 404);
+      const maxUses = clampWebLinkMaxUses(body.max_uses ?? body.maxUses ?? body.limit);
       const token = newWebFillToken();
       await sql`
-        INSERT INTO web_survey_links (token, form_key, created_by)
-        VALUES (${token}, ${formKey}, ${me.id})
+        INSERT INTO web_survey_links (token, form_key, created_by, max_uses, use_count)
+        VALUES (${token}, ${formKey}, ${me.id}, ${maxUses}, 0)
       `;
-      return json({ ok: true, token, form_key: formKey }, 201);
+      return json({ ok: true, token, form_key: formKey, max_uses: maxUses, use_count: 0 }, 201);
     }
 
     if (path === "/api/web-survey" && method === "GET") {
@@ -8652,14 +8674,20 @@ async function rawHandler(req: Request): Promise<Response> {
       }
       if (!token) return webLinkExpired();
       const linkRows = await sql`
-        SELECT token, form_key, used_at FROM web_survey_links
+        SELECT token, form_key, used_at, max_uses, use_count FROM web_survey_links
         WHERE token = ${token}
         LIMIT 1
       `.catch(() => []);
       if (!linkRows.length) return webLinkExpired();
-      const link = linkRows[0] as { token: string; form_key: string; used_at: string | null };
-      if (link.used_at) return webLinkExpired();
+      const link = linkRows[0] as {
+        token: string;
+        form_key: string;
+        used_at: string | null;
+        max_uses?: number;
+        use_count?: number;
+      };
       if (String(link.form_key) !== formKey) return webLinkExpired();
+      if (webLinkSpent(link)) return webLinkExpired();
       const rows = await sql`
         SELECT form_key, title, display_lang, questions
         FROM survey_form
@@ -8679,7 +8707,8 @@ async function rawHandler(req: Request): Promise<Response> {
         title: f.title,
         display_lang: surveyDisplayLang(f.display_lang),
         questions,
-        one_time: true,
+        max_uses: clampWebLinkMaxUses(link.max_uses),
+        use_count: Math.max(0, Number(link.use_count) || 0),
       });
     }
 
@@ -8699,11 +8728,24 @@ async function rawHandler(req: Request): Promise<Response> {
       if (!token) return webLinkExpired();
       const claimed = await sql`
         UPDATE web_survey_links
-        SET used_at = NOW()
-        WHERE token = ${token} AND form_key = ${formKey} AND used_at IS NULL
-        RETURNING token, form_key
+        SET
+          use_count = use_count + 1,
+          used_at = CASE WHEN use_count + 1 >= max_uses THEN NOW() ELSE used_at END
+        WHERE token = ${token}
+          AND form_key = ${formKey}
+          AND use_count < max_uses
+        RETURNING token, form_key, use_count, max_uses, used_at
       `.catch(() => []);
       if (!claimed.length) return webLinkExpired();
+      const slot = claimed[0] as {
+        use_count: number;
+        max_uses: number;
+        used_at: string | null;
+      };
+      const useCount = Math.max(0, Number(slot.use_count) || 0);
+      const maxUses = clampWebLinkMaxUses(slot.max_uses);
+      const remaining = Math.max(0, maxUses - useCount);
+      const expired = remaining === 0 || Boolean(slot.used_at);
       const exists = await sql`
         SELECT form_key FROM survey_form WHERE form_key = ${formKey} LIMIT 1
       `.catch(() => []);
@@ -8735,7 +8777,10 @@ async function rawHandler(req: Request): Promise<Response> {
         id: row.id,
         status: "pending",
         created_at: row.created_at,
-        expired: true,
+        max_uses: maxUses,
+        use_count: useCount,
+        remaining,
+        expired,
       }, 201);
     }
 

@@ -362,10 +362,43 @@ function createSql(url: string | undefined) {
 const sql = createSql(DATABASE_URL);
 
 function sqlJson(data: unknown) {
-  if (sql && typeof (sql as unknown as { json?: (v: unknown) => unknown }).json === "function") {
-    return (sql as unknown as { json: (v: unknown) => unknown }).json(data);
+  let obj: unknown = data;
+  while (typeof obj === "string") {
+    try {
+      obj = JSON.parse(obj);
+    } catch {
+      break;
+    }
   }
-  return JSON.stringify(data);
+  if (sql && typeof (sql as unknown as { json?: (v: unknown) => unknown }).json === "function") {
+    return (sql as unknown as { json: (v: unknown) => unknown }).json(obj);
+  }
+  return JSON.stringify(obj);
+}
+
+async function insertSubmissionRow(payload: Record<string, unknown>) {
+  const param = sqlJson(payload);
+  if (typeof param === "string") {
+    return await sql`
+      INSERT INTO submissions (payload)
+      VALUES (${param}::jsonb)
+      RETURNING id, payload, created_at
+    `;
+  }
+  return await sql`
+    INSERT INTO submissions (payload)
+    VALUES (${param})
+    RETURNING id, payload, created_at
+  `;
+}
+
+async function setSubmissionPayload(id: number, payload: Record<string, unknown>) {
+  const param = sqlJson(payload);
+  if (typeof param === "string") {
+    await sql`UPDATE submissions SET payload = ${param}::jsonb WHERE id = ${id}`;
+    return;
+  }
+  await sql`UPDATE submissions SET payload = ${param} WHERE id = ${id}`;
 }
 
 // ── Rate Limiting (In-Memory) ────────────────────────────
@@ -4227,8 +4260,8 @@ async function rawHandler(req: Request): Promise<Response> {
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.34",
-          versionCode: 20034,
+          version: "2.0.35",
+          versionCode: 20035,
           minSupportedVersionCode: 20000,
           apkUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-release.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
@@ -7087,11 +7120,7 @@ async function rawHandler(req: Request): Promise<Response> {
       payload.updated_at = new Date().toISOString();
       payload.updated_by = me.name || me.username;
 
-      await sql`
-        UPDATE submissions
-        SET payload = ${JSON.stringify(payload)}::jsonb
-        WHERE id = ${id}
-      `;
+      await setSubmissionPayload(id, payload);
 
       // Fact layer: keep facts in sync when status is edited from the edit screen
       // (guard mirrors the status-change block above — empty status must not touch facts)
@@ -7216,11 +7245,7 @@ async function rawHandler(req: Request): Promise<Response> {
         confirm_note: body.note || null,
         force_confirm: next === "confirmed" && force ? true : undefined,
       };
-      await sql`
-        UPDATE submissions
-        SET payload = ${JSON.stringify(payload)}::jsonb
-        WHERE id = ${id}
-      `;
+      await setSubmissionPayload(id, payload);
 
       // Fact layer: confirmed → materialize (idempotent); pending/rejected → never in analytics
       if (next === "confirmed") {
@@ -8577,18 +8602,7 @@ async function rawHandler(req: Request): Promise<Response> {
         content_type: "qa",
         app_version: body.app_version ? String(body.app_version) : null,
       };
-      const payloadJson = JSON.stringify(payload);
-      const rows = await sql`
-        INSERT INTO submissions (payload)
-        VALUES (
-          CASE
-            WHEN jsonb_typeof(${payloadJson}::jsonb) = 'string'
-              THEN (${payloadJson}::jsonb #>> '{}')::jsonb
-            ELSE ${payloadJson}::jsonb
-          END
-        )
-        RETURNING id, payload, created_at
-      `;
+      const rows = await insertSubmissionRow(payload);
       const row = rows[0] as { id: number; created_at: string };
       logAudit(me, "submission_create", "submission", row.id, {
         form_key: formKey,
@@ -8805,18 +8819,7 @@ async function rawHandler(req: Request): Promise<Response> {
           });
         }
       }
-      const payloadJson = JSON.stringify(payload);
-      const rows = await sql`
-        INSERT INTO submissions (payload)
-        VALUES (
-          CASE
-            WHEN jsonb_typeof(${payloadJson}::jsonb) = 'string'
-              THEN (${payloadJson}::jsonb #>> '{}')::jsonb
-            ELSE ${payloadJson}::jsonb
-          END
-        )
-        RETURNING id, payload, created_at
-      `;
+      const rows = await insertSubmissionRow(payload);
       const row = rows[0] as { id: number; payload: unknown; created_at: string };
       if (me.role === "surveyor") {
         logAudit(me, "submission_create", "submission", row.id, {

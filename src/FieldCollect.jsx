@@ -119,6 +119,23 @@ function nowIso() {
   return new Date().toISOString()
 }
 
+const FIELD_TZ = 'Asia/Kolkata'
+
+function formatIstStamp(value) {
+  const d = value instanceof Date ? value : new Date(value || '')
+  if (Number.isNaN(d.getTime())) return String(value || '')
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: FIELD_TZ,
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).format(d)
+}
+
 function secBetweenClient(a, b) {
   const t1 = new Date(a || '').getTime()
   const t2 = new Date(b || '').getTime()
@@ -1303,7 +1320,7 @@ export default function FieldCollectScreen({
       if (complete) {
         onToast?.(`Target reached (${effectiveDone}/${target}) · queue will sync`, 'ok')
       } else {
-        onToast?.('Finished survey · saved to draft', 'ok')
+        onToast?.('Finished survey · saved and syncing', 'ok')
       }
     } catch (e) {
       onToast?.(e.message || 'Local save failed', 'error')
@@ -1457,7 +1474,11 @@ export default function FieldCollectScreen({
           answered: answeredCount,
           total: questions.length,
         },
-        { draft: true },
+        {
+          // Finish (autoNext) must queue so the VPS gets GPS/photo/answers.
+          // Next-question checkpoints and "Keep as draft" stay drafts.
+          draft: checkpoint || (editingDraft && !autoNext),
+        },
       )
       if (draft?.id && draft.id !== workingDraftIdRef.current) {
         await deleteDraft(draft.id).catch(() => {})
@@ -1477,7 +1498,7 @@ export default function FieldCollectScreen({
         writeStoredOpenDraft(user, null)
         void forceSyncNow()
         setStep(3)
-        onToast?.('Finished survey · saved to draft', 'ok')
+        onToast?.('Finished survey · saved and syncing', 'ok')
       } else {
         workingDraftIdRef.current = null
         draftCreatedAtRef.current = null
@@ -2213,7 +2234,7 @@ export default function FieldCollectScreen({
                   </strong>
                   <br />
                   <span className="muted">
-                    ±{Math.round(geo.accuracy)}m · {geo.at?.slice(0, 19).replace('T', ' ')}
+                    ±{Math.round(geo.accuracy)}m · {formatIstStamp(geo.at)} IST
                   </span>
                 </p>
                 {locationDetails && (
@@ -2482,7 +2503,7 @@ export default function FieldCollectScreen({
             <p className="success-sub">
               {progress?.complete
                 ? `You have completed all ${progress.done} / ${progress.target} assigned records.`
-                : 'Saved to draft'}
+                : 'Saved · sending to server'}
             </p>
 
             <div className="success-checklist">
@@ -2492,7 +2513,7 @@ export default function FieldCollectScreen({
               </div>
               <div className="success-item">
                 <span className="success-chk"><Icon name="check" size={10} /></span>
-                <span>Saved to draft</span>
+                <span>Saved · syncing</span>
               </div>
             </div>
 

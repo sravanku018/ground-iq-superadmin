@@ -1310,20 +1310,23 @@ export default function FieldCollectScreen({
       void forceSyncNow()
 
       const p = await refreshProgress()
-      const target = p?.target ?? 0
-      const effectiveDone = Math.max(p?.done || 0, localSeq)
-      const complete = target > 0 && effectiveDone >= target
+      const formKey = String(formMeta?.form_key || '')
+      const slice = (Array.isArray(p?.surveys) ? p.surveys : []).find(
+        (s) => String(s.form_key) === formKey,
+      )
+      const target = Number(slice?.target ?? p?.target) || 0
+      const serverDone = Number(slice?.done ?? p?.done) || 0
+      const complete = target > 0 && serverDone >= target
 
       onDone?.(packageId, {
         ...p,
-        done: effectiveDone,
         local_queued: true,
         package_id: packageId,
       })
 
       setStep(3)
       if (complete) {
-        onToast?.(`Target reached (${effectiveDone}/${target}) · queue will sync`, 'ok')
+        onToast?.(`Target reached (${serverDone}/${target}) · queue will sync`, 'ok')
       } else {
         onToast?.('Finished survey · saved and syncing', 'ok')
       }
@@ -2012,18 +2015,30 @@ export default function FieldCollectScreen({
     )
   }
 
-  const doneCount = Math.max(
-    Number(localDoneCount) || 0,
-    Number(progress?.done) || 0,
+  const currentKey = String(formMeta?.form_key || '')
+  const surveyParts = Array.isArray(progress?.surveys) ? progress.surveys : []
+  const currentProg = surveyParts.find(
+    (s) => String(s.form_key) === currentKey || String(s.id) === String(formMeta?.id || ''),
   )
+  const doneCount = Number(currentProg?.done ?? progress?.done) || 0
   const nextRecordNum = Math.max(
     doneCount + 1,
-    Number(progress?.next_record) || 0,
+    Number(currentProg ? doneCount + 1 : progress?.next_record) || 0,
   )
-  const targetCount = Number(progress?.target) || 0
+  const targetCount = Number(currentProg?.target ?? progress?.target) || 0
+  const thisSurveyComplete = targetCount > 0 && doneCount >= targetCount
+  const allSurveysComplete = Boolean(progress?.complete)
+  const otherOpen = surveyParts.some(
+    (s) =>
+      String(s.form_key) !== currentKey &&
+      Number(s.target) > 0 &&
+      Number(s.done) < Number(s.target),
+  )
 
   const progLabel =
-    progress?.label || (progress ? `${doneCount}/${targetCount || '—'}` : '…')
+    currentProg?.label ||
+    progress?.label ||
+    (progress ? `${doneCount}/${targetCount || '—'}` : '…')
 
   // Shell pull-to-refresh remounts this screen (collectKey) → useEffect reloads questions
   return (
@@ -2052,6 +2067,12 @@ export default function FieldCollectScreen({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {(formMeta.surveys || []).map((s) => {
                 const on = surveyChosen && String(s.form_key) === String(formMeta?.form_key)
+                const slice = surveyParts.find(
+                  (p) => String(p.form_key) === String(s.form_key) || String(p.id) === String(s.id),
+                )
+                const t = Number(slice?.target ?? s.target_quota) || 0
+                const d = Number(slice?.done) || 0
+                const qn = Array.isArray(s.questions) ? s.questions.length : Number(slice?.questions_count) || 0
                 return (
                   <button
                     key={s.id || s.form_key}
@@ -2074,6 +2095,10 @@ export default function FieldCollectScreen({
                     }}
                   >
                     {on ? '✓ ' : ''}{s.title}
+                    <span style={{ display: 'block', fontWeight: 500, fontSize: 12, opacity: 0.8 }}>
+                      {t > 0 ? `${d} / ${t} target` : `${d} sent`}
+                      {qn ? ` · ${qn} questions` : ''}
+                    </span>
                   </button>
                 )
               })}
@@ -2176,7 +2201,7 @@ export default function FieldCollectScreen({
                     Math.round((doneCount / targetCount) * 100),
                   )}%`,
                   height: '100%',
-                  background: progress?.complete ? '#22c55e' : '#38bdf8',
+                  background: thisSurveyComplete ? '#22c55e' : '#38bdf8',
                   transition: 'width 0.3s ease',
                 }}
               />
@@ -2198,14 +2223,18 @@ export default function FieldCollectScreen({
           </button>
         </div>
 
-        {targetCount > 0 && doneCount >= targetCount ? (
+        {thisSurveyComplete ? (
           <div className="card" style={{ textAlign: 'center', padding: '28px 16px', marginTop: 12 }}>
             <div style={{ fontSize: 42, marginBottom: 10 }}>🎯</div>
             <h3 style={{ margin: '0 0 6px', fontSize: 18, color: '#059669', fontWeight: 800 }}>
-              Target Cap Reached!
+              {allSurveysComplete || !otherOpen ? 'Target Cap Reached!' : 'This survey quota is full'}
             </h3>
             <p className="muted" style={{ margin: '0 0 18px', fontSize: 14, lineHeight: 1.5 }}>
-              You have completed all <strong>{doneCount} / {targetCount}</strong> assigned records for this campaign. Further collection and uploads are locked.
+              You have completed all <strong>{doneCount} / {targetCount}</strong> records
+              {formMeta?.title ? ` for ${formMeta.title}` : ' for this survey'}.
+              {otherOpen
+                ? ' Pick another assigned survey above to keep collecting.'
+                : ' Further collection and uploads are locked for this survey.'}
             </p>
             <button
               type="button"
@@ -2505,8 +2534,8 @@ export default function FieldCollectScreen({
             </div>
             <h3 className="success-title">Finished survey</h3>
             <p className="success-sub">
-              {progress?.complete
-                ? `You have completed all ${progress.done} / ${progress.target} assigned records.`
+              {thisSurveyComplete
+                ? `You have completed all ${doneCount} / ${targetCount} records${formMeta?.title ? ` for ${formMeta.title}` : ''}.`
                 : 'Saved to draft for corrections. Send from Pending when it is right.'}
             </p>
 
@@ -2540,7 +2569,7 @@ export default function FieldCollectScreen({
               </button>
             )}
 
-            {!progress?.complete && (
+            {!thisSurveyComplete && (
               <button
                 type="button"
                 className="cta secondary"

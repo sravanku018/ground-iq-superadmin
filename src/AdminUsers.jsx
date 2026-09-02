@@ -55,6 +55,69 @@ function surveyIdsOf(u) {
     .filter((id) => id && id !== 'undefined' && id !== 'null')
 }
 
+function nextSurveyQuotas(prev, ids, fallback) {
+  const next = {}
+  const prevMap = prev && typeof prev === 'object' ? prev : {}
+  const fb = Math.max(0, Number(fallback) || 0)
+  for (const id of ids || []) {
+    const sid = String(id)
+    const cur = Number(prevMap[sid])
+    next[sid] = Number.isFinite(cur) ? cur : fb
+  }
+  return next
+}
+
+function quotasPayload(ids, quotas, fallback) {
+  const out = {}
+  const fb = Math.max(0, Number(fallback) || 0)
+  for (const id of ids || []) {
+    const n = Number(quotas?.[String(id)])
+    out[String(id)] = Number.isFinite(n) ? Math.max(0, n) : fb
+  }
+  return out
+}
+
+function SurveyQuotaFields({ surveyIds, all, quotas, onChange, fallback = 0 }) {
+  const selected = (Array.isArray(all) ? all : []).filter((s) =>
+    (surveyIds || []).map(String).includes(String(s.id)),
+  )
+  if (!selected.length) return null
+  const total = selected.reduce((n, s) => {
+    const v = Number(quotas?.[String(s.id)])
+    return n + (Number.isFinite(v) ? v : Number(fallback) || 0)
+  }, 0)
+  const qTotal = selected.reduce((n, s) => n + (Number(s.question_count) || 0), 0)
+  return (
+    <div style={{ marginTop: 8 }}>
+      {selected.map((s) => {
+        const sid = String(s.id)
+        const val = quotas?.[sid] ?? fallback
+        return (
+          <label key={sid} className="field compact" style={{ margin: '6px 0 0' }}>
+            <span style={{ fontSize: 11 }}>
+              Target records · {s.title || sid}
+              {s.question_count ? ` · ${s.question_count} questions` : ''}
+            </span>
+            <input
+              type="number"
+              min={0}
+              value={val}
+              onChange={(e) => onChange(sid, Math.max(0, Number(e.target.value) || 0))}
+            />
+          </label>
+        )
+      })}
+      <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+        Total target {total}
+        {qTotal ? ` · total questions ${qTotal}` : ''}
+        {selected.length > 1
+          ? ' · Home shows a stretched bar with one segment per survey'
+          : ''}
+      </p>
+    </div>
+  )
+}
+
 function SurveySelect({ value, onChange, all, inline = false }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -192,6 +255,8 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     name: '',
     password: '',
     target_quota: 0,
+    surveys: [],
+    surveyQuotas: {},
   })
   const [gen, setGen] = useState({
     count: 10,
@@ -199,6 +264,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     password: 'survey123',
     target_quota: 20,
     surveys: [],
+    surveyQuotas: {},
     usernames_list: '',
   })
   const [bulkTarget, setBulkTarget] = useState(20)
@@ -211,6 +277,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     target_quota: 20,
     phone: '',
     surveys: [],
+    surveyQuotas: {},
   })
   const [allSurveys, setAllSurveys] = useState([])
   const [tab, setTab] = useState('create') // create | bulk | profiles
@@ -225,6 +292,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     password: '',
     target_quota: 20,
   })
+  const [profileQuotas, setProfileQuotas] = useState({})
   const [profileSaving, setProfileSaving] = useState(false)
   const drawerRef = useRef(null)
   const drawerPrevFocus = useRef(null)
@@ -290,6 +358,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
   const closeProfile = useCallback(() => {
     setProfileUser(null)
     setProfileSurveys([])
+    setProfileQuotas({})
   }, [])
 
   const profileId = profileUser?.id
@@ -394,6 +463,12 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     setProfileUser(u)
     const surs = surveyIdsOf(u)
     setProfileSurveys(surs)
+    const fromUser = {}
+    for (const s of u.surveys || []) {
+      if (s?.id == null) continue
+      fromUser[String(s.id)] = Number(s.target_quota) || Number(u.target_quota ?? u.target) || 0
+    }
+    setProfileQuotas(fromUser)
     setProfileForm({
       name: u.display_name || u.name || '',
       username: u.username || '',
@@ -410,6 +485,15 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
       .then((d) => {
         const ids = (d.items || []).map((s) => String(s.id)).filter(Boolean)
         if (ids.length) setProfileSurveys(ids)
+        setProfileQuotas((prev) => {
+          const next = { ...prev }
+          for (const s of d.items || []) {
+            if (s?.id == null) continue
+            const qn = Number(s.target_quota) || 0
+            if (qn > 0) next[String(s.id)] = qn
+          }
+          return next
+        })
       })
       .catch(() => {})
   }
@@ -455,10 +539,15 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
         patch.password = profileForm.password.trim()
       }
 
-      await updateUser(profileUser.id, patch)
-
       if (canAssignSurveys && profileSurveys) {
-        await setUserSurveys(profileUser.id, profileSurveys.map(Number))
+        const ids = profileSurveys.map(Number)
+        const quotas = quotasPayload(ids, profileQuotas, patch.target_quota)
+        const total = Object.values(quotas).reduce((n, v) => n + (Number(v) || 0), 0)
+        if (ids.length) patch.target_quota = total
+        await updateUser(profileUser.id, patch)
+        await setUserSurveys(profileUser.id, ids, { quotas })
+      } else {
+        await updateUser(profileUser.id, patch)
       }
 
       onToast?.(`Profile for @${uname} saved successfully! ✓`, 'ok')
@@ -504,12 +593,19 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
       password: '',
       target_quota: u.target ?? u.target_quota ?? 0,
       surveys: surveyIdsOf(u),
+      surveyQuotas: nextSurveyQuotas(
+        Object.fromEntries(
+          (u.surveys || []).map((s) => [String(s.id), Number(s.target_quota) || Number(u.target_quota) || 0]),
+        ),
+        surveyIdsOf(u),
+        u.target ?? u.target_quota ?? 0,
+      ),
     })
   }
 
   function closeEdit() {
     setEditingId(null)
-    setEdit({ username: '', name: '', phone: '', password: '', target_quota: 0, surveys: [] })
+    setEdit({ username: '', name: '', phone: '', password: '', target_quota: 0, surveys: [], surveyQuotas: {} })
   }
 
   async function handleCreate(e) {
@@ -548,7 +644,8 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
         const surveyIds = Array.isArray(form.surveys) ? form.surveys.map(Number) : []
         if (surveyIds.length && created.id) {
           try {
-            await setUserSurveys(created.id, surveyIds)
+            const quotas = quotasPayload(surveyIds, form.surveyQuotas, typedQuota)
+            await setUserSurveys(created.id, surveyIds, { quotas })
           } catch (e) {
             onToast?.(`User created but survey assign failed: ${e.message}`, 'error')
           }
@@ -592,6 +689,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
         target_quota: 20,
         phone: '',
         surveys: [],
+        surveyQuotas: {},
       })
       // Scroll credentials into view
       setTimeout(() => {
@@ -629,7 +727,9 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
             const u = byName.get(String(cu.username).toLowerCase())
             if (u?.id) {
               try {
-                await setUserSurveys(u.id, genSurveyIds)
+                await setUserSurveys(u.id, genSurveyIds, {
+                  quotas: quotasPayload(genSurveyIds, gen.surveyQuotas, gen.target_quota),
+                })
                 assigned += 1
               } catch {
                 /* skip */
@@ -710,20 +810,19 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
       }
       const res = await updateUser(user.id, body)
       if (user.role === 'surveyor' || user.role === 'field') {
-        const cur = (user.surveys || []).map((s) => Number(s.id))
         const next = Array.isArray(edit.surveys)
           ? edit.surveys.map(Number)
           : []
-        const same =
-          cur.length === next.length &&
-          [...cur].sort().join() === [...next].sort().join()
-        if (!same) {
-          try {
-            await setUserSurveys(user.id, next)
-            onToast?.(`Assigned surveys updated for @${user.username}`, 'ok')
-          } catch (e) {
-            onToast?.(`Surveys assign failed: ${e.message}`, 'error')
+        try {
+          const quotas = quotasPayload(next, edit.surveyQuotas, edit.target_quota)
+          const total = Object.values(quotas).reduce((n, v) => n + (Number(v) || 0), 0)
+          if (next.length) {
+            await updateUser(user.id, { ...body, target_quota: total })
           }
+          await setUserSurveys(user.id, next, { quotas })
+          onToast?.(`Assigned surveys updated for @${user.username}`, 'ok')
+        } catch (e) {
+          onToast?.(`Surveys assign failed: ${e.message}`, 'error')
         }
       }
       const parts = ['Saved']
@@ -1437,7 +1536,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
             />
           </label>
           <label className="field">
-            <span>Records each must complete (target)</span>
+            <span>Default target records per assigned survey</span>
             <input
               type="number"
               min={0}
@@ -1457,13 +1556,29 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
           <div className="field">
             <span>Assign surveys to all created users (required on the phone)</span>
             <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
-              Pick one or more surveys — every created surveyor gets all of them. Collect will
-              not start until at least one survey is assigned.
+              Pick one or more surveys — every created surveyor gets all of them. Set a
+              different target on each survey. Collect will not start until at least one
+              survey is assigned.
             </p>
             <SurveySelect
               value={gen.surveys}
-              onChange={(ids) => setGen((g) => ({ ...g, surveys: ids }))}
+              onChange={(ids) =>
+                setGen((g) => ({
+                  ...g,
+                  surveys: ids,
+                  surveyQuotas: nextSurveyQuotas(g.surveyQuotas, ids, g.target_quota),
+                }))
+              }
               all={surveysForAssign(gen.surveys)}
+            />
+            <SurveyQuotaFields
+              surveyIds={gen.surveys}
+              all={surveysForAssign(gen.surveys)}
+              quotas={gen.surveyQuotas}
+              fallback={gen.target_quota}
+              onChange={(sid, n) =>
+                setGen((g) => ({ ...g, surveyQuotas: { ...g.surveyQuotas, [sid]: n } }))
+              }
             />
           </div>
           <button type="submit" className="btn primary" disabled={saving}>
@@ -1477,7 +1592,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
           <h3>Add one surveyor</h3>
           <label className="field">
             <span>
-              Target records
+              Default target per survey
               {allotCap > 0 ? ` (allotted ${allotUsed}/${allotCap}, ${allotLeft} left)` : ''}
             </span>
             <input
@@ -1492,13 +1607,29 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
           <div className="field">
             <span>Assign surveys (required on the phone)</span>
             <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
-              Collect will not start until at least one survey is assigned. Tick every survey they
-              must fill. Questions on the phone come from these surveys.
+              Tick every survey they must fill. Each survey has its own target — assigning 2
+              surveys does not change the quota to 2. Home stretches one bar with both quotas.
+              Questions on the phone come from these surveys.
             </p>
             <SurveySelect
               value={form.surveys}
-              onChange={(ids) => setForm((f) => ({ ...f, surveys: ids }))}
+              onChange={(ids) =>
+                setForm((f) => ({
+                  ...f,
+                  surveys: ids,
+                  surveyQuotas: nextSurveyQuotas(f.surveyQuotas, ids, f.target_quota),
+                }))
+              }
               all={surveysForAssign(form.surveys)}
+            />
+            <SurveyQuotaFields
+              surveyIds={form.surveys}
+              all={surveysForAssign(form.surveys)}
+              quotas={form.surveyQuotas}
+              fallback={form.target_quota}
+              onChange={(sid, n) =>
+                setForm((f) => ({ ...f, surveyQuotas: { ...f.surveyQuotas, [sid]: n } }))
+              }
             />
           </div>
           <label className="field">
@@ -1909,11 +2040,34 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                           <span>Assign surveys (required on the phone)</span>
                           <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
                             The app will not collect until at least one survey is assigned.
+                            Set a target on each survey — Home stretches one bar per quota.
                           </p>
                           <SurveySelect
                             value={edit.surveys}
-                            onChange={(ids) => setEdit((ed) => ({ ...ed, surveys: ids }))}
+                            onChange={(ids) =>
+                              setEdit((ed) => ({
+                                ...ed,
+                                surveys: ids,
+                                surveyQuotas: nextSurveyQuotas(
+                                  ed.surveyQuotas,
+                                  ids,
+                                  ed.target_quota,
+                                ),
+                              }))
+                            }
                             all={surveysForAssign(edit.surveys)}
+                          />
+                          <SurveyQuotaFields
+                            surveyIds={edit.surveys}
+                            all={surveysForAssign(edit.surveys)}
+                            quotas={edit.surveyQuotas}
+                            fallback={edit.target_quota}
+                            onChange={(sid, n) =>
+                              setEdit((ed) => ({
+                                ...ed,
+                                surveyQuotas: { ...ed.surveyQuotas, [sid]: n },
+                              }))
+                            }
                           />
                         </div>
                       )}
@@ -2118,7 +2272,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       />
                     </label>
                     <label className="field compact" style={{ margin: 0 }}>
-                      <span style={{ fontSize: 11 }}>Target records quota</span>
+                      <span style={{ fontSize: 11 }}>Default target (used when a survey has no quota yet)</span>
                       <input
                         type="number"
                         min={0}
@@ -2152,11 +2306,27 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                         Assigned Surveys
                       </span>
                       {canAssignSurveys ? (
+                        <>
                         <SurveySelect
                           value={profileSurveys}
-                          onChange={(ids) => setProfileSurveys(ids)}
+                          onChange={(ids) => {
+                            setProfileSurveys(ids)
+                            setProfileQuotas((prev) =>
+                              nextSurveyQuotas(prev, ids, profileForm.target_quota),
+                            )
+                          }}
                           all={surveysForAssign(profileSurveys)}
                         />
+                        <SurveyQuotaFields
+                          surveyIds={profileSurveys}
+                          all={surveysForAssign(profileSurveys)}
+                          quotas={profileQuotas}
+                          fallback={profileForm.target_quota}
+                          onChange={(sid, n) =>
+                            setProfileQuotas((prev) => ({ ...prev, [sid]: n }))
+                          }
+                        />
+                        </>
                       ) : (
                         <p className="muted" style={{ fontSize: 11, margin: 0 }}>
                           {(profileUser.surveys || []).length > 0

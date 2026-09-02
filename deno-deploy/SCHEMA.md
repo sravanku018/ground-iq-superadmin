@@ -91,6 +91,17 @@ field app with nothing to load. Read by `GET /api/users` (`user.surveys`),
 field `GET /api/my-surveys`, and field `GET /api/questions` (surveyor role
 returns assigned surveys, never the platform `default` form).
 
+`target_quota INTEGER` is **this surveyor's record target for that
+survey**. Two assigned surveys ⇒ two quotas (e.g. 40 and 20). Home
+stretches one stacked bar with a segment per survey; Home stats are
+**total questions** (sum of questions on assigned surveys) and **total
+target** (sum of those assignment quotas). `PUT /api/users/:id/surveys`
+accepts `quotas: { "<survey_id>": n }` and, when quotas are sent, sets
+`app_users.target_quota` to that **sum** — never to `COUNT(assignments)`.
+Single-survey rows with quota 0 are backfilled from `app_users.target_quota`
+on boot. Field `POST /api/submissions` caps **that form_key** against that
+assignment quota so filling survey 1 does not lock survey 2.
+
 **`record_facts`**, **`survey_media`**, **`survey_respondents`**,
 **`question_bank`**, **`seat_limit_requests`**, **`seat_limits`** — see
 `ensureSchema()` directly.
@@ -132,13 +143,16 @@ e.g. `13 Aug 2026` · `4 sent`. Then that day's cards. Each card shows
 **Record #N** (`payload.record_index`, else 1..N by `created_at`).
 Drafts are excluded; they live on the Pending tab.
 
-- Do **not** put daily counts on Home. Home stays overall
-  done/target, pending-on-phone, questions, status.
+- Do **not** put daily counts on Home. Home stays allotment: stacked
+  per-survey target bar, total questions, total target, pending-on-phone.
 - Do **not** label groups Today / Yesterday / Day before, and do
   **not** add weekday names. Date is enough.
 - Do **not** add a `by_day` payload to `GET /api/progress/me` for this.
-  Grouping is client-side. `GET /api/progress/me` stays overall
-  `done` / `target` / `status` only.
+  Grouping is client-side. `GET /api/progress/me` returns overall
+  `done` / `target` / `status` / `questions_count` plus `surveys[]`
+  (`form_key`, `title`, `target`, `done`, `questions_count`) for the
+  stacked Home bar. `target` is the sum of assignment quotas, never
+  the number of assigned surveys.
 
 ## Decisions log
 
@@ -161,6 +175,8 @@ Drafts are excluded; they live on the Pending tab.
 | Respondent PII Stripping on `submissions` (`stripPii`) | Field records must not persist respondent Aadhaar or phone numbers in `submissions.payload.answers`. Prevents privacy liabilities. Surveyor KYC documents on `app_users` (photo, Aadhaar front/back) are preserved strictly for Admin verification. | **Settled rule.** `stripPii()` runs on all `POST /api/submissions` and `POST /api/web-survey` answers. Legacy `PATCH /api/submissions/:id/proof` returns `410 Gone`. |
 | Internal `redispatch` for non-breaking API endpoint consolidation | Old mobile APKs and external portals call legacy paths (`/me`, `stats`, `geo-summary`, `seat-limit-requests/:id/approve`). Rewriting requests internally preserves full backward compatibility without duplicate database query logic. | **Done.** Retired routes return explicit `410 Gone` with clear detail messages. Canonical endpoints (`/api/analytics?group_by=...`, `/api/geo/children`, `/api/seat-limit-requests/:id`) are used by the modern client. |
 | Voice minute auto-stop is Super Admin only | Client Admin with `can_record_voice` may turn a survey Off vs Required. Duration chips (2 / 5 / 10 / 15 min) live on Super Admin project create/edit (Surveys + Companies). `voice_time_limit` writes from Client Admin are ignored. | **Settled.** Do not put duration chips back on the Client Admin survey form. |
+| Per-survey assignment quota, not survey count | Two assigned surveys must keep their own targets (e.g. 40 and 20). Home is a stretched stacked bar plus **total questions** and **total target**. Never write `COUNT(assignments)` into `app_users.target_quota`. | **Done.** `survey_assignments.target_quota`; `PUT /api/users/:id/surveys` `quotas` map; `GET /api/progress/me` `surveys[]`. |
+| Web fills are not field quota | Public / portal web-survey rows must not count toward surveyor target, Client Admin `max_records`, Dashboard field charts, or `GET /api/stats` confirmed/pending. They are counted on Web survey (`submitted` = real fill count, separate from this-link `use_count`). | **Done.** KPI returns `web_*`; surveys list `web_submissions`; `/api/web-survey/stats` groups without `ANY(keys)`. |
 
 ## Known open items — not yet fixed, don't assume they are
 

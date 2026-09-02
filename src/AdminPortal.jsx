@@ -189,13 +189,18 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
   const [activityFilter, setActivityFilter] = useState('all')
 
   const allotCap = Number(user?.max_records) || 0
-  const allotUsed = Number(stats?.confirmed ?? stats?.submissions ?? user?.record_count ?? user?.surveyor_record_count) || 0
+  const webPending = Number(stats?.web_pending) || 0
+  const webConfirmed = Number(stats?.web_confirmed) || 0
+  const webSubmitted = Number(stats?.web_submissions) || webPending + webConfirmed
+  const fieldPending = Number(stats?.pending) || 0
+  const reviewPending = fieldPending + webPending
+  const allotUsed = Number(stats?.confirmed ?? user?.record_count ?? user?.surveyor_record_count) || 0
   const allotLeft = allotCap > 0 ? Math.max(0, allotCap - allotUsed) : null
   const allotPct = allotCap > 0 ? Math.min(100, Math.round((allotUsed / allotCap) * 100)) : 0
 
   useEffect(() => {
     let alive = true
-    listSubmissions(20, 'pending', { source: 'field' })
+    listSubmissions(30, 'all', {})
       .then((d) => {
         if (alive) setRecentItems(d.items || [])
       })
@@ -304,12 +309,12 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
       {/* KPI tiles — Mock 3 style with Total Allocations and Rejected */}
       <div className="portal-kpi-grid">
         <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
-          <strong>{stats?.pending?.toLocaleString?.() ?? '—'}</strong>
+          <strong>{reviewPending.toLocaleString()}</strong>
           <span>Pending review</span>
         </button>
         <button type="button" className="portal-kpi" onClick={() => onNav(gated('review') ? 'review' : 'analyze')}>
           <strong>{stats?.confirmed?.toLocaleString?.() ?? '—'}</strong>
-          <span>Confirmed</span>
+          <span>Field confirmed</span>
         </button>
         <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
           <strong style={{ color: (stats?.rejected || 0) > 0 ? '#ef4444' : undefined }}>
@@ -322,9 +327,9 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           </strong>
           <span>Rejected</span>
         </button>
-        <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
-          <strong>{stats?.submissions?.toLocaleString?.() ?? '—'}</strong>
-          <span>All submissions</span>
+        <button type="button" className="portal-kpi" onClick={() => onNav('web')}>
+          <strong>{webSubmitted.toLocaleString()}</strong>
+          <span>Web submitted</span>
         </button>
         <button type="button" className="portal-kpi" onClick={() => onNav('users')}>
           <strong>
@@ -452,16 +457,17 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
             {displayedItems.map((it) => {
               const a = it.answers || {}
-              const surveyor = it.submitted_by || a.data_collector || 'Field Surveyor'
-              const district = a.district || a.constituency || 'General'
-              const respondent = a.respondent_name || a.name || 'Respondent'
+              const isWeb = it.source === 'web-survey' || it.source === 'web'
+              const surveyor = it.submitted_by || a.data_collector || (isWeb ? 'Web survey' : 'Field Surveyor')
+              const district = a.district || a.constituency || (isWeb ? 'Web' : 'General')
+              const respondent = a.respondent_name || a.name || (isWeb ? 'Web respondent' : 'Respondent')
               const status = it.status || 'pending'
               const timeStr = it.created_at ? new Date(it.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '9:32 AM'
 
               return (
                 <div
                   key={it.id}
-                  onClick={() => onNav('review')}
+                  onClick={() => onNav(isWeb ? 'web' : 'review')}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -485,6 +491,20 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                     </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    {isWeb ? (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: '3px 10px',
+                          borderRadius: 6,
+                          background: '#eff6ff',
+                          color: '#1d4ed8',
+                        }}
+                      >
+                        Web
+                      </span>
+                    ) : null}
                     <span
                       style={{
                         fontSize: 11,

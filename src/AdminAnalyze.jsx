@@ -43,6 +43,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
   const [qFilters, setQFilters] = useState({}) // q_<questionId> → value
   const [surveys, setSurveys] = useState([])
   const [completeness, setCompleteness] = useState('all')
+  const [source, setSource] = useState('all')
   const [board, setBoard] = useState(null)
   const [items, setItems] = useState([])
   const [summary, setSummary] = useState(null)
@@ -69,6 +70,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
           district,
           constituency,
           completeness,
+          source,
           ...overrides,
         }
         const periodVal = p.period || 'total'
@@ -79,6 +81,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
         const districtVal = p.district ?? district
         const constituencyVal = p.constituency ?? constituency
         const completenessVal = p.completeness ?? completeness
+        const sourceVal = p.source ?? source
 
         const baseScope = {
           period: periodVal,
@@ -103,6 +106,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
             ...baseScope,
             survey: surveyVal,
             completeness: completenessVal === 'all' ? undefined : completenessVal,
+            source: sourceVal === 'all' ? undefined : sourceVal,
             ...qParams,
           }),
           listSubmissions(300, 'all', {
@@ -114,6 +118,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
             district: districtVal || undefined,
             constituency: constituencyVal || undefined,
             completeness: completenessVal === 'all' ? '' : completenessVal,
+            source: sourceVal === 'all' ? undefined : sourceVal,
             ...qParams,
             date_from:
               periodVal === 'day'
@@ -142,6 +147,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
             district: districtVal || undefined,
             constituency: constituencyVal || undefined,
             completeness: completenessVal === 'all' ? 'all' : completenessVal,
+            source: sourceVal === 'all' ? undefined : sourceVal,
             ...qParams,
           }).catch(() => null),
         ])
@@ -168,6 +174,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
       district,
       constituency,
       completeness,
+      source,
       qFilters,
       onToast,
     ],
@@ -270,6 +277,22 @@ export default function AdminAnalyzeScreen({ onToast }) {
           Step by step: <strong>1. Survey name</strong> → <strong>2. Surveyor name</strong> →{' '}
           <strong>3. Geolocation</strong> → <strong>4. Day / Month</strong> → <strong>5. Rest</strong> (questions & status).
         </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+          {[
+            { id: 'all', label: 'Field + web' },
+            { id: 'field', label: 'Field app' },
+            { id: 'web', label: 'Web survey' },
+          ].map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={`chip ${source === s.id ? 'selected' : ''}`}
+              onClick={() => setSource(s.id)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
 
         {/* Step 1 · Survey name */}
         <div className="filter-step">

@@ -938,7 +938,33 @@ async function listAssignedSurveys(
   updated_at: unknown;
   voice_required: boolean;
   voice_time_limit: number;
+  target_quota: number;
 }[]> {
+  const mapRows = (rows: Record<string, unknown>[]) =>
+    rows.map((r) => ({
+      id: r.id,
+      form_key: r.form_key,
+      title: r.title,
+      display_lang: surveyDisplayLang(r.display_lang),
+      questions: parseQuestionsArray(r.questions),
+      updated_at: r.updated_at,
+      voice_required: r.voice_required === true,
+      voice_time_limit: Number(r.voice_time_limit) || 0,
+      target_quota: Math.max(0, Number(r.target_quota) || 0),
+    }));
+  const withQuota = await retryOnce(() =>
+    sqlFn`
+      SELECT f.id, f.form_key, f.title, f.display_lang, f.questions, f.updated_at,
+             COALESCE(f.voice_required, FALSE) AS voice_required,
+             COALESCE(f.voice_time_limit, 0) AS voice_time_limit,
+             COALESCE(sa.target_quota, 0) AS target_quota
+      FROM survey_assignments sa
+      JOIN survey_form f ON f.id = sa.survey_id
+      WHERE sa.user_id = ${userId}
+      ORDER BY f.title
+    `
+  ).catch(() => null);
+  if (Array.isArray(withQuota)) return mapRows(withQuota as Record<string, unknown>[]);
   const rows = await retryOnce(() =>
     sqlFn`
       SELECT f.id, f.form_key, f.title, f.display_lang, f.questions, f.updated_at,
@@ -950,16 +976,9 @@ async function listAssignedSurveys(
       ORDER BY f.title
     `
   ).catch(() => []);
-  return (rows as Record<string, unknown>[]).map((r) => ({
-    id: r.id,
-    form_key: r.form_key,
-    title: r.title,
-    display_lang: surveyDisplayLang(r.display_lang),
-    questions: parseQuestionsArray(r.questions),
-    updated_at: r.updated_at,
-    voice_required: r.voice_required === true,
-    voice_time_limit: Number(r.voice_time_limit) || 0,
-  }));
+  return mapRows(
+    (rows as Record<string, unknown>[]).map((r) => ({ ...r, target_quota: 0 })),
+  );
 }
 
 /**
@@ -995,21 +1014,72 @@ function hasPower(
   return !!me && (me.role === "super_admin" || sqlBool(me[key]));
 }
 
+/** Per-survey quotas from PUT /api/users/:id/surveys (`quotas` map or `survey_quotas` array). */
+function parseSurveyQuotas(body: Record<string, unknown>): Map<number, number> {
+  const out = new Map<number, number>();
+  const clamp = (v: unknown) => Math.max(0, Math.min(Math.round(Number(v) || 0), 100000));
+  const raw = body.quotas ?? body.survey_quotas;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      const id = Number(k);
+      if (Number.isFinite(id)) out.set(id, clamp(v));
+    }
+  }
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const rec = item as Record<string, unknown>;
+      const id = Number(rec.id ?? rec.survey_id);
+      if (Number.isFinite(id)) out.set(id, clamp(rec.target_quota ?? rec.quota));
+    }
+  }
+  return out;
+}
+
 /**
  * Surveyor ↔ survey mapping. ON CONFLICT needs UNIQUE(survey_id, user_id);
  * if an older table is missing that constraint, fall back to a plain INSERT.
+ * Optional `quota` is this surveyor's target for THIS survey (not survey count).
  */
-async function upsertSurveyAssignment(surveyId: number, userId: number): Promise<boolean> {
+async function upsertSurveyAssignment(
+  surveyId: number,
+  userId: number,
+  quota?: number | null,
+): Promise<boolean> {
   if (!sql || !Number.isFinite(surveyId) || !Number.isFinite(userId)) return false;
+  const hasQuota = quota != null && Number.isFinite(Number(quota));
+  const q = hasQuota ? Math.max(0, Math.min(Math.round(Number(quota)), 100000)) : 0;
   try {
-    await sql`
-      INSERT INTO survey_assignments (survey_id, user_id)
-      VALUES (${surveyId}, ${userId})
-      ON CONFLICT (survey_id, user_id) DO NOTHING
-    `;
+    if (hasQuota) {
+      await sql`
+        INSERT INTO survey_assignments (survey_id, user_id, target_quota)
+        VALUES (${surveyId}, ${userId}, ${q})
+        ON CONFLICT (survey_id, user_id) DO UPDATE SET target_quota = EXCLUDED.target_quota
+      `;
+    } else {
+      await sql`
+        INSERT INTO survey_assignments (survey_id, user_id)
+        VALUES (${surveyId}, ${userId})
+        ON CONFLICT (survey_id, user_id) DO NOTHING
+      `;
+    }
     return true;
   } catch {
-    return false;
+    try {
+      await sql`
+        INSERT INTO survey_assignments (survey_id, user_id)
+        VALUES (${surveyId}, ${userId})
+      `;
+      if (hasQuota) {
+        await sql`
+          UPDATE survey_assignments SET target_quota = ${q}
+          WHERE survey_id = ${surveyId} AND user_id = ${userId}
+        `.catch(() => null);
+      }
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -1416,6 +1486,16 @@ async function ensureSchema(): Promise<void> {
     () => sql`ALTER TABLE app_users ADD CONSTRAINT app_users_role_check CHECK (role IN ('super_admin','admin','field','user','surveyor'))`,
     // Enables ON CONFLICT (survey_id, user_id) in upsertSurveyAssignment
     () => sql`CREATE UNIQUE INDEX IF NOT EXISTS survey_assignments_survey_user_uidx ON survey_assignments (survey_id, user_id)`,
+    // Per-assigned-survey target (Home stacked bar). Never store COUNT(assignments) here.
+    () => sql`ALTER TABLE survey_assignments ADD COLUMN IF NOT EXISTS target_quota INTEGER NOT NULL DEFAULT 0`,
+    () => sql`
+      UPDATE survey_assignments sa
+      SET target_quota = COALESCE((
+        SELECT COALESCE(u.target_quota, 0) FROM app_users u WHERE u.id = sa.user_id
+      ), 0)
+      WHERE COALESCE(sa.target_quota, 0) = 0
+        AND (SELECT COUNT(*) FROM survey_assignments x WHERE x.user_id = sa.user_id) = 1
+    `.catch(() => null),
     // Companies table
     () => sql`
       CREATE TABLE IF NOT EXISTS companies (
@@ -3535,6 +3615,7 @@ async function loadAnalyticsRows(
       submitted_by: surveyor === "unknown" ? "" : surveyor,
       respondent: respondent || String(a.respondent_name || ""),
       formKey: String(payload.form_key || payload.formKey || "default"),
+      source: String(payload.source || "app"),
       answers: a,
       duration_sec: durationSecOf(a),
     };
@@ -3564,6 +3645,7 @@ async function buildAnalytics(
   let dateFrom = (url.searchParams.get("date_from") || url.searchParams.get("from") || "").trim();
   let dateTo = (url.searchParams.get("date_to") || url.searchParams.get("to") || "").trim();
   const userFilter = (url.searchParams.get("user") || url.searchParams.get("submitted_by") || "").trim();
+  const sourceFilter = (url.searchParams.get("source") || "").trim().toLowerCase();
   let formFilter = (url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim();
   // Client Admin: never load another tenant's questionnaire via a guessable form_key.
   // Super Admin (scopeKeys = null) may still select any survey.
@@ -3628,6 +3710,17 @@ async function buildAnalytics(
     universe = universe.filter((r) =>
       String(r.formKey || "") === formFilter
     );
+  }
+  if (sourceFilter === "web") {
+    universe = universe.filter((r) => {
+      const src = String(r.source || "");
+      return src === "web-survey" || src === "web";
+    });
+  } else if (sourceFilter === "field" || sourceFilter === "app") {
+    universe = universe.filter((r) => {
+      const src = String(r.source || "");
+      return src !== "web-survey" && src !== "web";
+    });
   }
 
   // Survey questions → dynamic filter bar (options from defined choices + submitted answers)
@@ -4391,8 +4484,8 @@ async function rawHandler(req: Request): Promise<Response> {
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.40",
-          versionCode: 20040,
+          version: "2.0.41",
+          versionCode: 20041,
           minSupportedVersionCode: 20000,
           apkUrl: `https://${req.headers.get("x-forwarded-host") || url.hostname}/api/app.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
@@ -4691,6 +4784,7 @@ async function rawHandler(req: Request): Promise<Response> {
           WHERE u.role = 'surveyor' AND u.created_by = ${me.id}
             AND COALESCE(s.payload->>'status', 'pending') <> 'rejected'
             AND COALESCE(s.payload->>'draft', 'false') NOT IN ('true', 't', '1')
+            AND COALESCE(s.payload->>'source', '') NOT IN ('web-survey', 'web')
         `.catch(() => [{ n: 0 }]);
         const teamRows = await sql`
           SELECT f.id AS sid, f.title,
@@ -4749,18 +4843,21 @@ async function rawHandler(req: Request): Promise<Response> {
 
     // Count finished records for one surveyor (by user_id or username/name).
     // Excludes drafts and rejected rows so targets reflect real completed work.
-    async function countDoneForUser(u: {
+    async function countDoneByFormKeyForUser(u: {
       id: number;
       username: string;
       name?: string;
       display_name?: string;
-    }) {
-      if (!sql) return 0;
+    }): Promise<Map<string, number>> {
+      const map = new Map<string, number>();
+      if (!sql) return map;
       const uid = String(u.id);
       const uname = u.username;
       const dname = u.name || u.display_name || uname;
       const rows = await sql`
-        SELECT COUNT(*)::int AS n FROM submissions
+        SELECT COALESCE(NULLIF(payload->>'form_key', ''), payload->>'formKey', '') AS form_key,
+               COUNT(*)::int AS n
+        FROM submissions
         WHERE (
              payload->>'user_id' = ${uid}
           OR payload->>'submitted_by' = ${uname}
@@ -4768,13 +4865,30 @@ async function rawHandler(req: Request): Promise<Response> {
           OR payload->'answers'->>'data_collector' = ${uname}
           OR payload->'answers'->>'data_collector' = ${dname}
         )
+          AND COALESCE(payload->>'source', '') NOT IN ('web-survey', 'web')
           AND COALESCE(payload->>'status', 'pending') <> 'rejected'
           AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
           AND COALESCE(payload->'answers'->>'_draft', 'false') NOT IN ('true', 't', '1')
           AND COALESCE(payload->'answers'->>'draft', 'false') NOT IN ('true', 't', '1')
           AND COALESCE(payload->>'content_type', '') <> 'draft'
-      `.catch(() => [{ n: 0 }]);
-      return sqlCountN(rows[0]);
+        GROUP BY 1
+      `.catch(() => []);
+      for (const r of rows as { form_key?: string; n?: number }[]) {
+        map.set(String(r.form_key || ""), sqlCountN(r));
+      }
+      return map;
+    }
+
+    async function countDoneForUser(u: {
+      id: number;
+      username: string;
+      name?: string;
+      display_name?: string;
+    }) {
+      const byKey = await countDoneByFormKeyForUser(u);
+      let n = 0;
+      for (const v of byKey.values()) n += v;
+      return n;
     }
 
     function progressStatus(done: number, target: number) {
@@ -4809,16 +4923,51 @@ async function rawHandler(req: Request): Promise<Response> {
       const assigned = me.role === "surveyor" || me.role === "field"
         ? await listAssignedSurveys(sql, Number(u.id))
         : [];
-      const done = await countDoneForUser({
+      const byKey = await countDoneByFormKeyForUser({
         id: u.id,
         username: u.username,
         display_name: u.display_name,
       });
-      const target = Number(u.target_quota) || 0;
-      const questionsCount = assigned.reduce((n, s) => n + (Array.isArray(s.questions) ? s.questions.length : 0), 0);
+      const userFallback = Number(u.target_quota) || 0;
+      const assignmentQuotaSum = assigned.reduce((n, s) => n + (Number(s.target_quota) || 0), 0);
+      const perSurveyTargets = assigned.map((s) => {
+        const qn = Array.isArray(s.questions) ? s.questions.length : 0;
+        let t = Number(s.target_quota) || 0;
+        if (t <= 0 && assigned.length === 1) t = userFallback;
+        const key = String(s.form_key || "");
+        const d = Number(byKey.get(key) || 0);
+        const completeOne = t > 0 && d >= t;
+        const remainingOne = t > 0 ? Math.max(0, t - d) : null;
+        const pctOne = t > 0 ? Math.min(100, Math.round((d / t) * 100)) : null;
+        return {
+          id: s.id,
+          form_key: s.form_key,
+          title: s.title,
+          target: t,
+          done: d,
+          remaining: remainingOne,
+          pct: pctOne,
+          questions_count: qn,
+          complete: completeOne,
+          label: t > 0 ? `${d} / ${t}` : `${d} records`,
+        };
+      });
+      const questionsCount = perSurveyTargets.reduce((n, s) => n + s.questions_count, 0);
+      const assignedDone = perSurveyTargets.reduce((n, s) => n + s.done, 0);
+      let done = assigned.length ? assignedDone : 0;
+      if (!assigned.length) {
+        for (const v of byKey.values()) done += v;
+      }
+      // Total target = sum of per-survey quotas. Never COUNT(assignments).
+      // If no assignment quotas yet, keep the user-level number so old profiles still show.
+      const target = assignmentQuotaSum > 0
+        ? perSurveyTargets.reduce((n, s) => n + s.target, 0)
+        : userFallback;
       const remaining = target > 0 ? Math.max(0, target - done) : null;
       const pct = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : null;
       const status = progressStatus(done, target);
+      const withTargets = perSurveyTargets.filter((s) => s.target > 0);
+      const complete = withTargets.length > 0 && withTargets.every((s) => s.complete);
       return json({
         user_id: u.id,
         username: u.username,
@@ -4830,8 +4979,9 @@ async function rawHandler(req: Request): Promise<Response> {
         status,
         surveys_count: assigned.length,
         questions_count: questionsCount,
+        surveys: perSurveyTargets,
         next_record: target > 0 ? Math.min(done + 1, target) : done + 1,
-        complete: status === "completed",
+        complete,
         label:
           target > 0
             ? `${done} / ${target} records · ${status}`
@@ -4993,25 +5143,33 @@ async function rawHandler(req: Request): Promise<Response> {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const assignedRows = await sql`
-        SELECT sa.user_id, f.id AS survey_id, f.title, f.form_key
+        SELECT sa.user_id, f.id AS survey_id, f.title, f.form_key,
+               COALESCE(sa.target_quota, 0) AS target_quota
         FROM survey_assignments sa JOIN survey_form f ON f.id = sa.survey_id
         ORDER BY f.title
       `.catch(async () =>
         await sql`
-          SELECT sa.user_id, sa.survey_id, COALESCE(f.title, '') AS title, COALESCE(f.form_key, '') AS form_key
+          SELECT sa.user_id, sa.survey_id, COALESCE(f.title, '') AS title, COALESCE(f.form_key, '') AS form_key,
+                 0 AS target_quota
           FROM survey_assignments sa
           LEFT JOIN survey_form f ON f.id = sa.survey_id
         `.catch(() => [])
       );
-      const assignedMap = new Map<number, { id: number; title: string; form_key: string }[]>();
+      const assignedMap = new Map<number, { id: number; title: string; form_key: string; target_quota: number }[]>();
       for (const a of assignedRows as {
         user_id: number;
         survey_id: number;
         title: string;
         form_key: string;
+        target_quota?: number;
       }[]) {
         const arr = assignedMap.get(Number(a.user_id)) || [];
-        arr.push({ id: Number(a.survey_id), title: a.title, form_key: a.form_key });
+        arr.push({
+          id: Number(a.survey_id),
+          title: a.title,
+          form_key: a.form_key,
+          target_quota: Math.max(0, Number(a.target_quota) || 0),
+        });
         assignedMap.set(Number(a.user_id), arr);
       }
       // BR-004 tenant scoping: a Client Admin only sees themselves + surveyors they
@@ -5099,9 +5257,13 @@ async function rawHandler(req: Request): Promise<Response> {
             display_name: String(r.display_name || r.username),
           });
         }
-        const target = Number(r.target_quota) || 0;
-        const isCollector = r.role === "surveyor" || r.role === "field";
         const assignedForUser = assignedMap.get(Number(r.id)) || [];
+        const assignedQuotaSum = assignedForUser.reduce(
+          (n, s) => n + (Number(s.target_quota) || 0),
+          0,
+        );
+        const target = assignedQuotaSum > 0 ? assignedQuotaSum : (Number(r.target_quota) || 0);
+        const isCollector = r.role === "surveyor" || r.role === "field";
         // Usage vs allocated caps (Super Admin console → Client Admins tab)
         let survey_count = 0;
         let surveyor_count = 0;
@@ -5120,6 +5282,9 @@ async function rawHandler(req: Request): Promise<Response> {
               OR s.payload->>'submitted_by' = COALESCE(u.display_name, u.username)
             )
             WHERE u.role = 'surveyor' AND u.created_by = ${Number(r.id)}
+              AND COALESCE(s.payload->>'source', '') NOT IN ('web-survey', 'web')
+              AND COALESCE(s.payload->>'status', 'pending') <> 'rejected'
+              AND COALESCE(s.payload->>'draft', 'false') NOT IN ('true', 't', '1')
           `.catch(() => [{ n: 0 }]);
           surveyor_record_count = sqlCountN(recordCnt);
           // Peak questions across owned + shared + company projects
@@ -6834,6 +6999,7 @@ async function rawHandler(req: Request): Promise<Response> {
       const dayParam = (url.searchParams.get("day") || "").trim();
       const monthParam = (url.searchParams.get("month") || "").trim();
       const completenessQ = (url.searchParams.get("completeness") || "").trim().toLowerCase();
+      const sourceQ = (url.searchParams.get("source") || "").trim().toLowerCase();
       // Dynamic question filters (q_<questionId> → value) — from Client Admin question naming
       const qFilters: [string, string][] = [];
       for (const [k, v] of url.searchParams) {
@@ -6964,6 +7130,12 @@ async function rawHandler(req: Request): Promise<Response> {
         if (dateTo && date > dateTo) continue;
         if (userQ && !user.toLowerCase().includes(userQ)) continue;
         if (surveyQ && String(payload.form_key || "default") !== surveyQ) continue;
+        {
+          const src = String(payload.source || "").toLowerCase();
+          const isWeb = src === "web-survey" || src === "web";
+          if (sourceQ === "web" && !isWeb) continue;
+          if ((sourceQ === "field" || sourceQ === "app") && isWeb) continue;
+        }
         if (districtQ && !String(a.district || "").toLowerCase().includes(districtQ)) continue;
         if (constituencyQ && !String(a.constituency || a.assembly || "").toLowerCase().includes(constituencyQ)) continue;
         let qSkip = false;
@@ -7612,18 +7784,28 @@ async function rawHandler(req: Request): Promise<Response> {
         FROM survey_respondents GROUP BY survey_id
       `.catch(() => []);
 
-      // Fast indexed submissions count
-      const sub = await sql`
-        SELECT survey_id, COUNT(*)::int AS n FROM submissions WHERE survey_id IS NOT NULL GROUP BY survey_id
-      `.catch(() => []);
+      // Counts by form_key — field vs web kept separate (web is not field quota).
       const subByFk = await sql`
-        SELECT payload->>'form_key' AS fk, COUNT(*)::int AS n FROM submissions WHERE survey_id IS NULL AND payload->>'form_key' IS NOT NULL GROUP BY payload->>'form_key'
+        SELECT payload->>'form_key' AS fk,
+               COUNT(*) FILTER (
+                 WHERE COALESCE(payload->>'source', '') NOT IN ('web-survey', 'web')
+                   AND COALESCE(payload->>'status', 'pending') <> 'rejected'
+                   AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+               )::int AS n,
+               COUNT(*) FILTER (
+                 WHERE COALESCE(payload->>'source', '') IN ('web-survey', 'web')
+                   AND COALESCE(payload->>'status', 'pending') <> 'rejected'
+                   AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+               )::int AS web_n
+        FROM submissions
+        WHERE payload->>'form_key' IS NOT NULL
+        GROUP BY 1
       `.catch(() => []);
 
       const asgMap = new Map((asg as any[]).map((r) => [Number(r.survey_id), r]));
       const rspMap = new Map((rsp as any[]).map((r) => [Number(r.survey_id), r]));
-      const subMap = new Map((sub as any[]).map((r) => [Number(r.survey_id), Number(r.n)]));
       const subByFkMap = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.n)]));
+      const webByFkMap = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.web_n)]));
 
       const items = (rows as Record<string, unknown>[])
         // Client Admin never sees platform seed forms (Field Survey / Legacy)
@@ -7643,7 +7825,8 @@ async function rawHandler(req: Request): Promise<Response> {
         const admins = (owner && owner.role === 'admin' && !connectedAdmins.some((a) => a.id === ownerId))
           ? [{ id: ownerId, username: '', name: owner.name, company_name: owner.company_name }, ...connectedAdmins]
           : connectedAdmins;
-        const subCount = subMap.get(Number(r.id)) || subByFkMap.get(String(r.form_key)) || 0;
+        const subCount = subByFkMap.get(String(r.form_key)) || 0;
+        const webCount = webByFkMap.get(String(r.form_key)) || 0;
         return {
           id: r.id,
           form_key: r.form_key,
@@ -7663,6 +7846,7 @@ async function rawHandler(req: Request): Promise<Response> {
           respondents_total: (rspMap.get(Number(r.id)) as any)?.total || 0,
           respondents_done: (rspMap.get(Number(r.id)) as any)?.done || 0,
           submissions: subCount,
+          web_submissions: webCount,
         };
       });
       return json({ items, count: items.length });
@@ -8531,6 +8715,8 @@ async function rawHandler(req: Request): Promise<Response> {
           form_key: s.form_key,
           title: s.title,
           display_lang: s.display_lang,
+          target_quota: Number(s.target_quota) || 0,
+          questions_count: Array.isArray(s.questions) ? s.questions.length : 0,
         })),
         count: items.length,
       });
@@ -8562,6 +8748,7 @@ async function rawHandler(req: Request): Promise<Response> {
         .map(Number)
         .filter((v: number) => Number.isFinite(v)))];
       const incremental = addIds.length > 0 || removeIds.length > 0;
+      const quotas = parseSurveyQuotas(body as Record<string, unknown>);
 
       // Must be a surveyor this Client Admin created
       const userRows = await sql`
@@ -8615,15 +8802,47 @@ async function rawHandler(req: Request): Promise<Response> {
           `.catch(() => null);
         }
       }
-      const saved: number[] = [...next].filter((sid) => current.has(sid));
+      const saved: number[] = [];
       for (const sid of next) {
-        if (current.has(sid)) continue;
-        if (await upsertSurveyAssignment(sid, userId)) saved.push(sid);
+        const q = quotas.has(sid) ? quotas.get(sid) : undefined;
+        if (current.has(sid)) {
+          if (q != null) {
+            await sql`
+              UPDATE survey_assignments SET target_quota = ${q}
+              WHERE survey_id = ${sid} AND user_id = ${userId}
+            `.catch(() => null);
+          }
+          saved.push(sid);
+          continue;
+        }
+        if (await upsertSurveyAssignment(sid, userId, q)) saved.push(sid);
       }
       if (next.size > 0 && saved.length === 0) {
         return json({ error: "Could not save survey assignments" }, 500);
       }
-      return json({ ok: true, assigned: saved.length, survey_ids: saved });
+      // Keep user-level target_quota as the SUM of per-survey quotas (not survey count).
+      if (quotas.size > 0) {
+        let sum = 0;
+        for (const sid of saved) sum += Number(quotas.get(sid) || 0);
+        if (sum <= 0) {
+          const qRows = await sql`
+            SELECT COALESCE(SUM(target_quota), 0)::int AS n
+            FROM survey_assignments WHERE user_id = ${userId}
+          `.catch(() => [{ n: 0 }]);
+          sum = sqlCountN(qRows[0]);
+        }
+        await sql`
+          UPDATE app_users SET target_quota = ${sum} WHERE id = ${userId}
+        `.catch(() => null);
+      }
+      return json({
+        ok: true,
+        assigned: saved.length,
+        survey_ids: saved,
+        quotas: Object.fromEntries(
+          saved.map((sid) => [sid, quotas.get(sid) ?? null]),
+        ),
+      });
     }
 
     // Surveyor view: surveys assigned to me (with their questions) — field app
@@ -8816,15 +9035,19 @@ async function rawHandler(req: Request): Promise<Response> {
             payload->>'source' = 'web-survey'
             OR payload->>'source' = 'web'
           )
+          AND COALESCE(payload->>'status', 'pending') <> 'rejected'
+          AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
       `.catch(() => [{ n: 0 }]);
       const submitted = sqlCountN(subRow);
       const cap = live ? clampWebLinkMaxUses(live.max_uses) : 100;
+      const linkUsed = live ? Number(live.use_count) || 0 : 0;
       return json({
         items,
         live,
         submitted,
         cap,
-        used: live ? Number(live.use_count) || 0 : submitted,
+        link_used: linkUsed,
+        used: submitted,
       });
     }
 
@@ -8845,21 +9068,25 @@ async function rawHandler(req: Request): Promise<Response> {
             ORDER BY title
           `.catch(() => []);
       const keys = (forms as { form_key: string }[]).map((f) => String(f.form_key));
-      const counts = keys.length
-        ? await sql`
-            SELECT payload->>'form_key' AS form_key, COUNT(*)::int AS n
-            FROM submissions
-            WHERE payload->>'form_key' = ANY(${keys})
-              AND (
-                payload->>'source' = 'web-survey'
-                OR payload->>'source' = 'web'
-              )
-            GROUP BY 1
-          `.catch(() => [])
-        : [];
+      const keySet = new Set(keys);
+      // Group all web fills in SQL, then keep this admin's surveys in JS.
+      // Avoid ANY(${keys}) — the neon driver has dropped that list on some deploys.
+      const counts = await sql`
+        SELECT payload->>'form_key' AS form_key, COUNT(*)::int AS n
+        FROM submissions
+        WHERE (
+          payload->>'source' = 'web-survey'
+          OR payload->>'source' = 'web'
+        )
+          AND COALESCE(payload->>'status', 'pending') <> 'rejected'
+          AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+        GROUP BY 1
+      `.catch(() => []);
       const countMap = new Map<string, number>();
       for (const r of counts as { form_key?: string; n?: number }[]) {
-        countMap.set(String(r.form_key || ""), Number(r.n) || 0);
+        const k = String(r.form_key || "");
+        if (keySet.size && !keySet.has(k)) continue;
+        countMap.set(k, Number(r.n) || 0);
       }
       const liveRows = keys.length
         ? await sql`
@@ -8892,16 +9119,17 @@ async function rawHandler(req: Request): Promise<Response> {
         const live = liveMap.get(key);
         const submitted = countMap.get(key) || 0;
         const cap = live ? live.max_uses : 100;
-        const used = live ? live.use_count : submitted;
+        const linkUsed = live ? live.use_count : 0;
         const expired = live ? live.expired : false;
         return {
           id: f.id,
           form_key: key,
           title: f.title || key,
           submitted,
-          used,
+          used: submitted,
+          link_used: linkUsed,
           cap,
-          remaining: Math.max(0, cap - used),
+          remaining: Math.max(0, cap - linkUsed),
           expired,
           created_at: live?.created_at || null,
           ended_at: live?.used_at || null,
@@ -9137,6 +9365,7 @@ async function rawHandler(req: Request): Promise<Response> {
             WHERE u.role = 'surveyor' AND u.created_by = ${ownerId}
               AND COALESCE(s.payload->>'status', 'pending') <> 'rejected'
               AND COALESCE(s.payload->>'draft', 'false') NOT IN ('true', 't', '1')
+              AND COALESCE(s.payload->>'source', '') NOT IN ('web-survey', 'web')
           `.catch(() => [{ n: 0 }]);
           const used = sqlCountN(rc);
           if (used >= maxRec) {
@@ -9150,32 +9379,71 @@ async function rawHandler(req: Request): Promise<Response> {
         }
       }
 
-      // Individual surveyor target_quota cap enforcement (stops uploads from any device once reached)
+      // Per-survey target cap (this form_key vs that assignment's quota).
+      // Does not lock other assigned surveys when one survey's quota is full.
       if (me.role === "surveyor") {
-        const uRows = await sql`
-          SELECT COALESCE(target_quota, 0) AS target_quota FROM app_users WHERE id = ${me.id} LIMIT 1
-        `.catch(() => []);
-        const surveyorCap = Number((uRows[0] as { target_quota?: number })?.target_quota) || 0;
-        if (surveyorCap > 0) {
-          const sUid = String(me.id);
-          const sName1 = String(me.name || "");
-          const sName2 = String(me.username || "");
-          const [sCountRow] = await sql`
-            SELECT COUNT(*)::int AS n
-            FROM submissions
-            WHERE (payload->>'user_id' = ${sUid}
-               OR (length(${sName1}) > 0 AND payload->>'submitted_by' = ${sName1})
-               OR (length(${sName2}) > 0 AND payload->>'submitted_by' = ${sName2}))
-              AND COALESCE(payload->>'status', 'pending') <> 'rejected'
-              AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+        const incomingKey = String(body.form_key || body.form_id || "").trim();
+        const sUid = String(me.id);
+        const sName1 = String(me.name || "");
+        const sName2 = String(me.username || "");
+        let surveyorCap = 0;
+        let capFormKey = incomingKey;
+        if (incomingKey && incomingKey !== "default") {
+          const qRows = await sql`
+            SELECT COALESCE(sa.target_quota, 0) AS target_quota, f.form_key
+            FROM survey_assignments sa
+            JOIN survey_form f ON f.id = sa.survey_id
+            WHERE sa.user_id = ${me.id} AND f.form_key = ${incomingKey}
+            LIMIT 1
+          `.catch(() => []);
+          surveyorCap = Number((qRows[0] as { target_quota?: number })?.target_quota) || 0;
+        }
+        if (surveyorCap <= 0) {
+          const uRows = await sql`
+            SELECT COALESCE(target_quota, 0) AS target_quota FROM app_users WHERE id = ${me.id} LIMIT 1
+          `.catch(() => []);
+          const userCap = Number((uRows[0] as { target_quota?: number })?.target_quota) || 0;
+          const nAssigned = await sql`
+            SELECT COUNT(*)::int AS n FROM survey_assignments WHERE user_id = ${me.id}
           `.catch(() => [{ n: 0 }]);
+          // Only fall back to the user-level cap when this surveyor has 0–1 surveys,
+          // so a second assigned survey is not locked by the first survey's fills.
+          if ((sqlCountN(nAssigned[0]) || 0) <= 1) {
+            surveyorCap = userCap;
+            capFormKey = "";
+          }
+        }
+        if (surveyorCap > 0) {
+          const [sCountRow] = capFormKey
+            ? await sql`
+                SELECT COUNT(*)::int AS n
+                FROM submissions
+                WHERE (payload->>'user_id' = ${sUid}
+                   OR (length(${sName1}) > 0 AND payload->>'submitted_by' = ${sName1})
+                   OR (length(${sName2}) > 0 AND payload->>'submitted_by' = ${sName2}))
+                  AND COALESCE(payload->>'form_key', payload->>'formKey', '') = ${capFormKey}
+                  AND COALESCE(payload->>'source', '') NOT IN ('web-survey', 'web')
+                  AND COALESCE(payload->>'status', 'pending') <> 'rejected'
+                  AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+              `.catch(() => [{ n: 0 }])
+            : await sql`
+                SELECT COUNT(*)::int AS n
+                FROM submissions
+                WHERE (payload->>'user_id' = ${sUid}
+                   OR (length(${sName1}) > 0 AND payload->>'submitted_by' = ${sName1})
+                   OR (length(${sName2}) > 0 AND payload->>'submitted_by' = ${sName2}))
+                  AND COALESCE(payload->>'source', '') NOT IN ('web-survey', 'web')
+                  AND COALESCE(payload->>'status', 'pending') <> 'rejected'
+                  AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+              `.catch(() => [{ n: 0 }]);
           const sUsed = sqlCountN(sCountRow);
           if (sUsed >= surveyorCap) {
             return json({
-              error: `Target cap reached (${sUsed}/${surveyorCap} records). Uploads stopped for this surveyor.`,
+              error: `Target cap reached (${sUsed}/${surveyorCap} records${capFormKey ? ` for this survey` : ""}). Uploads stopped.`,
               code: "target_quota_reached",
               used: sUsed,
               target_quota: surveyorCap,
+              form_key: capFormKey || incomingKey || null,
             }, 422);
           }
         }
@@ -9784,6 +10052,7 @@ async function rawHandler(req: Request): Promise<Response> {
                     OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
                   )
                   AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+                  AND COALESCE(payload->>'source', '') NOT IN ('web-survey', 'web')
                 )::int AS confirmed,
                 COUNT(*) FILTER (
                   WHERE NOT (
@@ -9793,6 +10062,7 @@ async function rawHandler(req: Request): Promise<Response> {
                     OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
                   )
                   AND COALESCE(payload->>'status', 'pending') = 'rejected'
+                  AND COALESCE(payload->>'source', '') NOT IN ('web-survey', 'web')
                 )::int AS rejected,
                 COUNT(*) FILTER (
                   WHERE (
@@ -9805,9 +10075,41 @@ async function rawHandler(req: Request): Promise<Response> {
                     OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
                   )
                   AND COALESCE(payload->>'source', '') NOT IN ('web-survey', 'web')
-                )::int AS pending
+                )::int AS pending,
+                COUNT(*) FILTER (
+                  WHERE NOT (
+                    COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                    OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                  )
+                  AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+                  AND COALESCE(payload->>'source', '') IN ('web-survey', 'web')
+                )::int AS web_confirmed,
+                COUNT(*) FILTER (
+                  WHERE NOT (
+                    COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                    OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                  )
+                  AND COALESCE(payload->>'status', 'pending') = 'rejected'
+                  AND COALESCE(payload->>'source', '') IN ('web-survey', 'web')
+                )::int AS web_rejected,
+                COUNT(*) FILTER (
+                  WHERE (
+                    (
+                      COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                      OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                      OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                      OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                    )
+                    OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
+                  )
+                  AND COALESCE(payload->>'source', '') IN ('web-survey', 'web')
+                )::int AS web_pending
               FROM submissions WHERE payload->>'form_key' = ANY(${envScope})
-            `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }])
+            `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0, web_confirmed: 0, web_rejected: 0, web_pending: 0 }])
           : await sql`
               SELECT
                 COUNT(*) FILTER (
@@ -9818,6 +10120,7 @@ async function rawHandler(req: Request): Promise<Response> {
                     OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
                   )
                   AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+                  AND COALESCE(payload->>'source', '') NOT IN ('web-survey', 'web')
                 )::int AS confirmed,
                 COUNT(*) FILTER (
                   WHERE NOT (
@@ -9827,6 +10130,7 @@ async function rawHandler(req: Request): Promise<Response> {
                     OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
                   )
                   AND COALESCE(payload->>'status', 'pending') = 'rejected'
+                  AND COALESCE(payload->>'source', '') NOT IN ('web-survey', 'web')
                 )::int AS rejected,
                 COUNT(*) FILTER (
                   WHERE (
@@ -9839,13 +10143,48 @@ async function rawHandler(req: Request): Promise<Response> {
                     OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
                   )
                   AND COALESCE(payload->>'source', '') NOT IN ('web-survey', 'web')
-                )::int AS pending
+                )::int AS pending,
+                COUNT(*) FILTER (
+                  WHERE NOT (
+                    COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                    OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                  )
+                  AND COALESCE(payload->>'status', 'pending') = 'confirmed'
+                  AND COALESCE(payload->>'source', '') IN ('web-survey', 'web')
+                )::int AS web_confirmed,
+                COUNT(*) FILTER (
+                  WHERE NOT (
+                    COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                    OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                    OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                  )
+                  AND COALESCE(payload->>'status', 'pending') = 'rejected'
+                  AND COALESCE(payload->>'source', '') IN ('web-survey', 'web')
+                )::int AS web_rejected,
+                COUNT(*) FILTER (
+                  WHERE (
+                    (
+                      COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                      OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                      OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                      OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                    )
+                    OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
+                  )
+                  AND COALESCE(payload->>'source', '') IN ('web-survey', 'web')
+                )::int AS web_pending
               FROM submissions
-            `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }]);
+            `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0, web_confirmed: 0, web_rejected: 0, web_pending: 0 }]);
 
         const confirmed = Number((statusRow as Record<string, unknown>)?.confirmed || 0);
         const rejected = Number((statusRow as Record<string, unknown>)?.rejected || 0);
         const pending = Number((statusRow as Record<string, unknown>)?.pending || 0);
+        const webConfirmed = Number((statusRow as Record<string, unknown>)?.web_confirmed || 0);
+        const webRejected = Number((statusRow as Record<string, unknown>)?.web_rejected || 0);
+        const webPending = Number((statusRow as Record<string, unknown>)?.web_pending || 0);
 
         const [distFromData] = envScope
           ? await sql`
@@ -9914,6 +10253,10 @@ async function rawHandler(req: Request): Promise<Response> {
           pending,
           confirmed,
           rejected,
+          web_pending: webPending,
+          web_confirmed: webConfirmed,
+          web_rejected: webRejected,
+          web_submissions: webConfirmed + webPending + webRejected,
           districts: surveyDistrictsLive,
           constituencies: surveyAcsLive,
           master_districts: dists?.n ?? 0,

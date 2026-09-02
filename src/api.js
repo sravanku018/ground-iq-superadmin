@@ -756,6 +756,7 @@ export function setUserSurveys(userId, surveyIds, extra = {}) {
   const body = { survey_ids: surveyIds }
   if (Array.isArray(extra.add)) body.add_survey_ids = extra.add
   if (Array.isArray(extra.remove)) body.remove_survey_ids = extra.remove
+  if (extra.quotas && typeof extra.quotas === 'object') body.quotas = extra.quotas
   return request(`/api/users/${userId}/surveys`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

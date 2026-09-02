@@ -292,19 +292,58 @@ function HomeScreen({
   onSync,
 }) {
   const assignedSurveys = questionsMeta?.surveys || []
-  const surveysCount = assignedSurveys.length || (questionsMeta?.title ? 1 : 0)
+  const progressSurveys = Array.isArray(myProgress?.surveys) ? myProgress.surveys : []
+  const stacked = progressSurveys.length
+    ? progressSurveys.map((s) => {
+        const meta = assignedSurveys.find(
+          (m) => String(m.form_key) === String(s.form_key) || String(m.id) === String(s.id),
+        )
+        const qn =
+          Number(s.questions_count) ||
+          (Array.isArray(meta?.questions) ? meta.questions.length : 0)
+        return {
+          id: s.id || s.form_key,
+          form_key: s.form_key,
+          title: s.title || meta?.title || 'Survey',
+          target: Number(s.target) || 0,
+          done: Number(s.done) || 0,
+          questions: qn,
+        }
+      })
+    : assignedSurveys.map((s) => ({
+        id: s.id || s.form_key,
+        form_key: s.form_key,
+        title: s.title || 'Survey',
+        target: Number(s.target_quota) || 0,
+        done: 0,
+        questions: Array.isArray(s.questions) ? s.questions.length : 0,
+      }))
+  const surveysCount = stacked.length || assignedSurveys.length || (questionsMeta?.title ? 1 : 0)
   const qCount =
     myProgress?.questions_count ||
+    stacked.reduce((n, s) => n + (Number(s.questions) || 0), 0) ||
     assignedSurveys.reduce((n, s) => n + (Array.isArray(s.questions) ? s.questions.length : 0), 0) ||
     questionsMeta?.count ||
     questionsMeta?.questions?.length ||
     0
-  const done = myProgress?.done ?? 0
-  const target = myProgress?.target ?? surveysCount
-  const complete = myProgress?.complete || (target > 0 && done >= target)
+  const done = myProgress?.done ?? stacked.reduce((n, s) => n + s.done, 0)
+  const target =
+    Number(myProgress?.target) ||
+    stacked.reduce((n, s) => n + s.target, 0) ||
+    0
+  const withTargets = stacked.filter((s) => s.target > 0)
+  const complete =
+    Boolean(myProgress?.complete) ||
+    (withTargets.length > 0 && withTargets.every((s) => s.done >= s.target))
   const localPending = pendingLocal ?? pendingSync ?? 0
   const percent = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0
-  const surveyTitle = questionsMeta?.title || (questionsMeta?.surveys?.[0]?.title) || 'Field Survey Campaign'
+  const surveyTitle =
+    stacked.length > 1
+      ? `${stacked.length} assigned surveys`
+      : questionsMeta?.title || stacked[0]?.title || 'Field Survey Campaign'
+  const BAR_COLORS = ['#059669', '#2563eb', '#d97706', '#7c3aed', '#db2777', '#0d9488']
+  const weightOf = (s) => (s.target > 0 ? s.target : s.questions > 0 ? s.questions : 1)
+  const weightSum = stacked.reduce((n, s) => n + weightOf(s), 0) || 1
 
   return (
     <div className="screen home-screen">
@@ -330,15 +369,57 @@ function HomeScreen({
           )}
         </div>
         <h3 className="mission-title">{surveyTitle}</h3>
-        {target > 0 ? (
+        {stacked.length > 1 && (
+          <p className="mission-sub" style={{ marginBottom: 6 }}>
+            {stacked.map((s) => s.title).join(' · ')}
+          </p>
+        )}
+        {target > 0 || stacked.length > 1 ? (
           <div className="mission-progress-box">
-            <div className="mission-progress-bar">
-              <div className="mission-progress-fill" style={{ width: `${percent}%` }} />
+            <div className={`mission-progress-bar${stacked.length > 1 ? ' stacked' : ''}`}>
+              {stacked.length > 1 ? (
+                stacked.map((s, i) => {
+                  const share = (weightOf(s) / weightSum) * 100
+                  const fill = s.target > 0 ? Math.min(100, (s.done / s.target) * 100) : 0
+                  return (
+                    <div
+                      key={s.form_key || s.id || i}
+                      className="mission-progress-seg"
+                      style={{ width: `${Math.max(share, 4)}%` }}
+                      title={`${s.title}: ${s.done}/${s.target || '—'}`}
+                    >
+                      <div
+                        className="mission-progress-seg-fill"
+                        style={{
+                          width: `${fill}%`,
+                          background: BAR_COLORS[i % BAR_COLORS.length],
+                        }}
+                      />
+                    </div>
+                  )
+                })
+              ) : (
+                <div className="mission-progress-fill" style={{ width: `${percent}%` }} />
+              )}
             </div>
             <div className="mission-progress-labels">
               <span>{done} records submitted</span>
-              <span>Target: {target}</span>
+              <span>Total target: {target || '—'}</span>
             </div>
+            {stacked.length > 1 && (
+              <div className="mission-progress-legend">
+                {stacked.map((s, i) => (
+                  <span key={s.form_key || s.id || i} className="mission-legend-item">
+                    <i
+                      className="mission-legend-dot"
+                      style={{ background: BAR_COLORS[i % BAR_COLORS.length] }}
+                    />
+                    {s.title}: {s.done}/{s.target || '—'}
+                    {s.questions ? ` · ${s.questions} Q` : ''}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <p className="mission-sub">Continuous field data collection</p>
@@ -360,23 +441,23 @@ function HomeScreen({
         </button>
       </div>
 
-      {/* 3. Stats Grid — 4 clean cells */}
+      {/* 3. Stats Grid — submitted, total target, total questions, surveys */}
       <div className="home-stats">
         <div className="hstat">
           <span className="hstat-val">{done}</span>
           <span className="hstat-lbl">Submitted</span>
         </div>
         <div className="hstat">
-          <span className="hstat-val">{localPending}</span>
-          <span className="hstat-lbl">Queued</span>
-        </div>
-        <div className="hstat">
-          <span className="hstat-val">{surveysCount || 1}</span>
-          <span className="hstat-lbl">Surveys</span>
+          <span className="hstat-val">{target || '—'}</span>
+          <span className="hstat-lbl">Total target</span>
         </div>
         <div className="hstat">
           <span className="hstat-val">{qCount || '—'}</span>
           <span className="hstat-lbl">Questions</span>
+        </div>
+        <div className="hstat">
+          <span className="hstat-val">{surveysCount || 1}</span>
+          <span className="hstat-lbl">Surveys</span>
         </div>
       </div>
 

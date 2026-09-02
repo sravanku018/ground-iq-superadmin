@@ -193,6 +193,7 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
                   <tr>
                     <th>Survey</th>
                     <th>Submitted</th>
+                    <th>This link</th>
                     <th>Created</th>
                     <th>Ended</th>
                     <th></th>
@@ -205,8 +206,16 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
                         <strong>{s.title || s.form_key}</strong>
                       </td>
                       <td>
-                        <strong style={{ color: s.expired || s.used >= s.cap ? '#dc2626' : '#059669' }}>
-                          {s.used} used of {s.cap}
+                        <strong style={{ color: '#059669' }}>
+                          {Number(s.submitted ?? s.used) || 0}
+                        </strong>
+                        <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+                          web fills
+                        </span>
+                      </td>
+                      <td>
+                        <strong style={{ color: s.expired || (Number(s.link_used) || 0) >= (Number(s.cap) || 0) ? '#dc2626' : '#0f172a' }}>
+                          {Number(s.link_used) || 0} / {Number(s.cap) || 100}
                         </strong>
                       </td>
                       <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>

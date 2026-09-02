@@ -275,8 +275,12 @@ export default function AdminQuestionsScreen({ onToast, user }) {
               key={p.id}
               type="button"
               className={`chip ${displayLang === p.id ? 'selected' : ''}`}
-              onClick={() => setDisplayLang(p.id)}
-              disabled={!canEdit}
+              onClick={() => {
+                if (p.id === 'te' && !canTelugu) return
+                setDisplayLang(p.id)
+              }}
+              disabled={!canEdit || (p.id === 'te' && !canTelugu)}
+              title={p.id === 'te' && !canTelugu ? 'Telugu translation is locked — Super Admin must grant it' : undefined}
             >
               {p.label}
             </button>

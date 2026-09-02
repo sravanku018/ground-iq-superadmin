@@ -26,13 +26,9 @@ export function teluguFields(q) {
   return extra
 }
 
-/** Telugu add / type / auto-translate — question-management powers only. */
+/** Telugu add / type / auto-translate — Super Admin grant only. */
 export function canTeluguQuestions(user) {
-  return (
-    user?.role === 'super_admin' ||
-    !!user?.can_manage_questions ||
-    !!user?.can_crud_questionnaire
-  )
+  return user?.role === 'super_admin' || !!user?.can_translate_telugu
 }
 
 /** Question text stays exactly as typed. Field ID is created once, internally. */

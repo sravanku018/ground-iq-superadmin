@@ -1019,6 +1019,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
     { key: 'can_validate_proof', label: 'Proof validation', icon: '📞' },
     { key: 'can_web_survey', label: 'Web survey', icon: '✎' },
     { key: 'can_record_voice', label: 'Voice recording', icon: '🎙' },
+    { key: 'can_translate_telugu', label: 'Telugu translation', icon: 'తె' },
   ]
   const powersOf = (u) => (u.role === 'admin' ? POWER_DEFS.filter((p) => u[p.key]) : [])
   const canVerify = me?.role === 'super_admin' || !!me?.can_verify_surveyors

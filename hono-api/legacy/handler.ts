@@ -734,6 +734,7 @@ const BOOL_FIELDS = [
   "can_validate_proof",
   "can_web_survey",
   "can_record_voice",
+  "can_translate_telugu",
 ] as const;
 
 const NUM_FIELDS = [
@@ -944,7 +945,14 @@ async function upsertSurveyAssignment(surveyId: number, userId: number): Promise
   }
 }
 
-/** Telugu add / type / auto-translate — question-management powers only (no separate grant). */
+/** Telugu add / type / auto-translate — Super Admin grant `can_translate_telugu`. */
+function canTranslateTelugu(
+  me: { role: unknown } & Record<string, unknown> | null,
+): boolean {
+  return hasPower(me, "can_translate_telugu");
+}
+
+/** Copy question-bank templates into a survey. */
 function canQuestionCopy(
   me: { role: unknown } & Record<string, unknown> | null,
 ): boolean {
@@ -955,7 +963,7 @@ function stripTeluguUnlessAllowed(
   me: { role: unknown } & Record<string, unknown> | null,
   questions: unknown[],
 ): unknown[] {
-  if (canQuestionCopy(me)) return questions;
+  if (canTranslateTelugu(me)) return questions;
   return questions.map((q) => {
     if (!q || typeof q !== "object") return q;
     const rec = { ...(q as Record<string, unknown>) };
@@ -1326,6 +1334,7 @@ async function ensureSchema(): Promise<void> {
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_validate_proof BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_web_survey BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_record_voice BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_translate_telugu BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_questions_per_survey INTEGER NOT NULL DEFAULT 0`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveys INTEGER NOT NULL DEFAULT 0`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveyors INTEGER NOT NULL DEFAULT 0`,
@@ -4300,6 +4309,7 @@ async function rawHandler(req: Request): Promise<Response> {
                COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
                COALESCE(can_web_survey, FALSE) AS can_web_survey,
                COALESCE(can_record_voice, FALSE) AS can_record_voice,
+               COALESCE(can_translate_telugu, FALSE) AS can_translate_telugu,
                COALESCE(totp_enabled, FALSE) AS totp_enabled,
                totp_secret,
                COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
@@ -4433,6 +4443,7 @@ async function rawHandler(req: Request): Promise<Response> {
           can_validate_proof: sqlBool(uu.can_validate_proof),
           can_web_survey: sqlBool(uu.can_web_survey),
           can_record_voice: sqlBool(uu.can_record_voice),
+          can_translate_telugu: sqlBool(uu.can_translate_telugu),
           totp_enabled: uu.role === "super_admin" ? sqlBool(uu.totp_enabled) : undefined,
           max_questions_per_survey: Number(uu.max_questions_per_survey) || 0,
           max_surveys: Number(uu.max_surveys) || 0,
@@ -4895,6 +4906,7 @@ async function rawHandler(req: Request): Promise<Response> {
                    COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
                COALESCE(can_web_survey, FALSE) AS can_web_survey,
                COALESCE(can_record_voice, FALSE) AS can_record_voice,
+               COALESCE(can_translate_telugu, FALSE) AS can_translate_telugu,
                    COALESCE(totp_enabled, FALSE) AS totp_enabled,
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                    COALESCE(max_surveys, 0) AS max_surveys,
@@ -4908,7 +4920,7 @@ async function rawHandler(req: Request): Promise<Response> {
                      FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
                      FALSE AS can_assign_surveyors,
-                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey, FALSE AS can_record_voice,
+                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey, FALSE AS can_record_voice, FALSE AS can_translate_telugu,
                      0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records
               FROM app_users ORDER BY id
             `
@@ -4927,6 +4939,7 @@ async function rawHandler(req: Request): Promise<Response> {
                    COALESCE(can_validate_proof, FALSE) AS can_validate_proof,
                COALESCE(can_web_survey, FALSE) AS can_web_survey,
                COALESCE(can_record_voice, FALSE) AS can_record_voice,
+               COALESCE(can_translate_telugu, FALSE) AS can_translate_telugu,
                    COALESCE(totp_enabled, FALSE) AS totp_enabled,
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                    COALESCE(max_surveys, 0) AS max_surveys,
@@ -4941,7 +4954,7 @@ async function rawHandler(req: Request): Promise<Response> {
                      FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
                      FALSE AS can_assign_surveyors,
-                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey, FALSE AS can_record_voice,
+                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey, FALSE AS can_record_voice, FALSE AS can_translate_telugu,
                      0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records
               FROM app_users
               WHERE (id = ${me.id} OR created_by = ${me.id})
@@ -5045,6 +5058,7 @@ async function rawHandler(req: Request): Promise<Response> {
           can_validate_proof: sqlBool(r.can_validate_proof),
           can_web_survey: sqlBool(r.can_web_survey),
           can_record_voice: sqlBool(r.can_record_voice),
+          can_translate_telugu: sqlBool(r.can_translate_telugu),
           totp_enabled: r.role === "super_admin" ? sqlBool(r.totp_enabled) : undefined,
           max_questions_per_survey: Number(r.max_questions_per_survey) || 0,
           max_surveys: Number(r.max_surveys) || 0,
@@ -5121,6 +5135,7 @@ async function rawHandler(req: Request): Promise<Response> {
         const canValidateProof = canSuper && body.can_validate_proof === true;
         const canWebSurvey = canSuper && body.can_web_survey === true;
         const canRecordVoice = canSuper && body.can_record_voice === true;
+        const canTranslateTeluguGrant = canSuper && body.can_translate_telugu === true;
         const maxQuestionsPerSurvey = canSuper
           ? Math.max(0, Math.min(Number(body.max_questions_per_survey) || 0, 100000))
           : 0;      const maxSurveysCreate = canSuper
@@ -5156,9 +5171,9 @@ async function rawHandler(req: Request): Promise<Response> {
           }
         }
         const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, company_name, company_id, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, max_questions_per_survey, max_surveys, max_surveyors, max_records, created_by)
-          VALUES (${username}, ${password_hash}, ${name}, ${finalCompanyName}, ${companyId}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canAssignSurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${canWebSurvey}, ${canRecordVoice}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${maxRecordsCreate}, ${me.id})
-          RETURNING id, username, display_name, company_name, company_id, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, max_questions_per_survey, max_surveys, max_surveyors, max_records
+          INSERT INTO app_users (username, password_hash, display_name, company_name, company_id, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, can_translate_telugu, max_questions_per_survey, max_surveys, max_surveyors, max_records, created_by)
+          VALUES (${username}, ${password_hash}, ${name}, ${finalCompanyName}, ${companyId}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canAssignSurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${canWebSurvey}, ${canRecordVoice}, ${canTranslateTeluguGrant}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${maxRecordsCreate}, ${me.id})
+          RETURNING id, username, display_name, company_name, company_id, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, can_translate_telugu, max_questions_per_survey, max_surveys, max_surveyors, max_records
         `;
         const u = inserted[0] as Record<string, unknown>;
 
@@ -5216,6 +5231,7 @@ async function rawHandler(req: Request): Promise<Response> {
           can_validate_proof: canValidateProof,
           can_web_survey: canWebSurvey,
           can_record_voice: canRecordVoice,
+          can_translate_telugu: canTranslateTeluguGrant,
           max_questions_per_survey: maxQuestionsPerSurvey,
           max_surveys: maxSurveysCreate,
           max_surveyors: maxSurveyorsCreate,
@@ -5243,6 +5259,7 @@ async function rawHandler(req: Request): Promise<Response> {
             can_validate_proof: u.can_validate_proof === true,
             can_web_survey: u.can_web_survey === true,
             can_record_voice: u.can_record_voice === true,
+            can_translate_telugu: u.can_translate_telugu === true,
             starter_form_key: starterFormKey,
           },
           field_app_access: role === "surveyor",
@@ -5743,6 +5760,7 @@ async function rawHandler(req: Request): Promise<Response> {
         "can_validate_proof",
         "can_web_survey",
         "can_record_voice",
+        "can_translate_telugu",
       ] as const;
       const nextPowers: Record<string, boolean> = {};
       for (const k of POWER_KEYS) {
@@ -5796,12 +5814,13 @@ async function rawHandler(req: Request): Promise<Response> {
               can_validate_proof = ${nextPowers.can_validate_proof},
               can_web_survey = ${nextPowers.can_web_survey},
               can_record_voice = ${nextPowers.can_record_voice},
+              can_translate_telugu = ${nextPowers.can_translate_telugu},
               max_questions_per_survey = ${nextMaxQuestionsPerSurvey},
               max_surveys = ${nextMaxSurveys},
               max_surveyors = ${nextMaxSurveyors},
               max_records = ${nextMaxRecords}
           WHERE id = ${id}
-          RETURNING id, username, display_name, company_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, max_questions_per_survey, max_surveys, max_surveyors, max_records
+          RETURNING id, username, display_name, company_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, can_translate_telugu, max_questions_per_survey, max_surveys, max_surveyors, max_records
         `;
       } catch (e) {
         const msg = (e as Error).message || "";
@@ -5884,6 +5903,7 @@ async function rawHandler(req: Request): Promise<Response> {
           can_validate_proof: sqlBool(u.can_validate_proof),
           can_web_survey: sqlBool(u.can_web_survey),
           can_record_voice: sqlBool(u.can_record_voice),
+          can_translate_telugu: sqlBool(u.can_translate_telugu),
           max_questions_per_survey: Number(u.max_questions_per_survey) || 0,
           max_surveys: Number(u.max_surveys) || 0,
           max_surveyors: Number(u.max_surveyors) || 0,
@@ -6007,9 +6027,9 @@ async function rawHandler(req: Request): Promise<Response> {
     if (path === "/api/questions/translate" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      if (!canQuestionCopy(me)) {
+      if (!canTranslateTelugu(me)) {
         return json({
-          error: "Super Admin has not granted question-management rights (needed for Telugu translate)",
+          error: "Telugu translation is locked — Super Admin must grant Telugu Translation on your profile",
         }, 403);
       }
       const body = await readBody(req);
@@ -8145,7 +8165,7 @@ async function rawHandler(req: Request): Promise<Response> {
         `;
       }
       if (Array.isArray(body.questions)) {
-        if (body.translate === true && canQuestionCopy(me)) {
+        if (body.translate === true && canTranslateTelugu(me)) {
           // Auto-fill missing label_te and options_te via Google Translate
           const toTrans: string[] = [];
           for (const q of body.questions as Record<string, unknown>[]) {
@@ -8195,6 +8215,11 @@ async function rawHandler(req: Request): Promise<Response> {
       }
       if (body.display_lang !== undefined) {
         const displayLang = surveyDisplayLang(body.display_lang);
+        if (displayLang === "te" && !canTranslateTelugu(me)) {
+          return json({
+            error: "Telugu translation is locked — Super Admin must grant Telugu Translation on your profile",
+          }, 403);
+        }
         await sql`
           UPDATE survey_form SET display_lang = ${displayLang}, updated_at = NOW() WHERE id = ${id}
         `;

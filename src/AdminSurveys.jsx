@@ -1012,7 +1012,12 @@ export default function AdminSurveysScreen({ onToast, user }) {
                 key={p.id}
                 type="button"
                 className={`chip ${(detail.display_lang || 'en') === p.id ? 'selected' : ''}`}
-                onClick={() => setDetail({ ...detail, display_lang: p.id })}
+                disabled={p.id === 'te' && !canTeluguQuestions(user)}
+                title={p.id === 'te' && !canTeluguQuestions(user) ? 'Telugu translation is locked — Super Admin must grant it' : undefined}
+                onClick={() => {
+                  if (p.id === 'te' && !canTeluguQuestions(user)) return
+                  setDetail({ ...detail, display_lang: p.id })
+                }}
               >
                 {p.label}
               </button>

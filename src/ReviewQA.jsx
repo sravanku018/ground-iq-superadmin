@@ -418,7 +418,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
       ) : !items.length ? (
         <PortalEmpty title={`No ${status === 'all' ? '' : status + ' '}surveys`}>
           {status === 'pending'
-            ? 'New submits appear here until confirmed. Pull data from the field app first.'
+            ? 'New field and web submits appear here with full answers until you confirm.'
             : 'Try another status filter or survey.'}
         </PortalEmpty>
       ) : (
@@ -451,14 +451,20 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
               a.respondent_name ? { label: a.respondent_name } : null,
             ].filter(Boolean)
 
-            const signals = [
-              { label: 'GPS', status: item.has_geo || a.latitude ? 'ok' : 'warn' },
-              { label: 'Photo', status: item.has_photo || photoSrc ? 'ok' : 'bad' },
-              ...(a._voice_required === true
-                ? [{ label: 'Voice', status: item.has_voice || audioSrc ? 'ok' : 'bad' }]
-                : []),
-              { label: 'Q/A', status: qa.length > 0 ? 'ok' : 'warn' },
-            ]
+            const isWeb = item.source === 'web-survey' || item.source === 'web'
+            const signals = isWeb
+              ? [
+                  { label: 'Web', status: 'ok' },
+                  { label: 'Q/A', status: qa.length > 0 ? 'ok' : 'warn' },
+                ]
+              : [
+                  { label: 'GPS', status: item.has_geo || a.latitude ? 'ok' : 'warn' },
+                  { label: 'Photo', status: item.has_photo || photoSrc ? 'ok' : 'bad' },
+                  ...(a._voice_required === true
+                    ? [{ label: 'Voice', status: item.has_voice || audioSrc ? 'ok' : 'bad' }]
+                    : []),
+                  { label: 'Q/A', status: qa.length > 0 ? 'ok' : 'warn' },
+                ]
 
             const actions = (
               <div className="review-actions-bar user-actions" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', width: '100%' }}>
@@ -704,7 +710,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                   pills={pills}
                   signals={signals}
                   actions={actions}
-                  detail={open ? detail : null}
+                  detail={item.status === 'pending' || open ? detail : null}
                   onClick={() => {
                     setFocusIdx(idx)
                     setExpanded(open ? null : item.id)

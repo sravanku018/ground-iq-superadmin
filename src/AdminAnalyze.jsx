@@ -930,7 +930,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
                       Failures: {v.failures.join(', ')}
                     </p>
                   )}
-                  {(it.qa || []).slice(0, 8).map((row) => (
+                  {(it.qa || []).map((row) => (
                     <div key={row.q} className="kv" style={{ marginBottom: 4 }}>
                       <span className="muted">{row.q}</span>
                       <strong style={{ display: 'block' }}>{row.a}</strong>

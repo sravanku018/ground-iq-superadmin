@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { mintWebFillUrl } from '../api'
+import { useEffect, useState } from 'react'
+import { listWebFillLinks, mintWebFillUrl } from '../api'
 
 function clampMax(n) {
   const x = Math.floor(Number(n) || 0)
@@ -12,6 +12,26 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [maxUses, setMaxUses] = useState(10)
+  const [live, setLive] = useState(null)
+
+  useEffect(() => {
+    const key = String(formKey || '').trim()
+    if (!key || key === 'default' || key === 'legacy') {
+      setLive(null)
+      return undefined
+    }
+    let dead = false
+    listWebFillLinks(key)
+      .then((d) => {
+        if (!dead) setLive(d.live || null)
+      })
+      .catch(() => {
+        if (!dead) setLive(null)
+      })
+    return () => {
+      dead = true
+    }
+  }, [formKey])
 
   function bump(delta) {
     setMaxUses((n) => clampMax(n + delta))
@@ -29,6 +49,10 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
     try {
       const link = await mintWebFillUrl(key, limit)
       setUrl(link)
+      setLive({ max_uses: limit, use_count: 0, remaining: limit, expired: false })
+      listWebFillLinks(key)
+        .then((d) => setLive(d.live || { max_uses: limit, use_count: 0, remaining: limit }))
+        .catch(() => {})
       try {
         await navigator.clipboard.writeText(link)
         onToast?.(
@@ -68,13 +92,27 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
     </label>
   )
 
+  const usage =
+    live && live.max_uses ? (
+      <p style={{ margin: compact ? '0 0 6px' : '0 0 8px', fontSize: 13, fontWeight: 700 }}>
+        Web survey{' '}
+        <span style={{ color: live.expired ? '#dc2626' : '#059669' }}>
+          {live.use_count || 0} used / {live.max_uses}
+        </span>
+        {live.expired ? ' · expired' : live.remaining != null ? ` · ${live.remaining} left` : ''}
+      </p>
+    ) : null
+
   if (compact) {
     return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {usage}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         {picker}
         <button type="button" className="btn small" disabled={busy || !formKey} onClick={() => void mintAndCopy()}>
           {busy ? 'Creating…' : 'Copy web link'}
         </button>
+      </div>
       </div>
     )
   }
@@ -82,6 +120,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
   return (
     <div style={{ margin: '0 0 12px' }}>
       <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 700 }}>Web survey link</p>
+      {usage}
       <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
         Set how many people can submit with this link. After that number is reached, the link
         expires. Copy again to make a new link.

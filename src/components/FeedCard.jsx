@@ -174,8 +174,8 @@ export default function FeedCard({
         </div>
       )}
 
-      {/* Expandable detail */}
-      {detail && expanded && (
+      {/* Parent may pass detail only when open (Review). Always render if provided. */}
+      {detail && (
         <div
           style={{
             marginTop: 12, paddingTop: 12,

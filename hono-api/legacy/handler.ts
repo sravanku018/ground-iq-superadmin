@@ -2052,6 +2052,11 @@ function verifySubmission(
     !(lat === 0 && lng === 0);
 
   const kinds = (mediaKinds || []).map((k) => String(k || "").toLowerCase());
+  const src = String(payload?.source || "").toLowerCase();
+  const locks = (payload?.locks && typeof payload.locks === "object")
+    ? (payload.locks as Record<string, unknown>)
+    : {};
+  const isWebFill = src === "web-survey" || src === "web" || locks.web === true;
 
   // URL / media-id on payload also count (R2 or free Neon links may not re-set flags)
   const hasPhotoUrl = Boolean(
@@ -2098,15 +2103,15 @@ function verifySubmission(
   const qa_ok = answerKeys.length >= 1;
 
   const failures: string[] = [];
-  if (!legacy) {
+  if (!legacy && !isWebFill) {
     if (!geo_ok) failures.push("geo_missing_or_invalid");
     if (voiceRequired && !voice_ok) failures.push("voice_missing");
     if (!photo_ok) failures.push("photo_missing");
   }
   if (!qa_ok) failures.push("qa_empty");
 
-  // Strict complete = geo + photo + Q/A (+ voice only if Client Admin required it).
-  const completeness: "complete" | "incomplete" = legacy
+  // Web fill has no GPS/photo/voice by design. Strict complete = geo + photo + Q/A for field.
+  const completeness: "complete" | "incomplete" = (legacy || isWebFill)
     ? qa_ok
       ? "complete"
       : "incomplete"
@@ -2117,9 +2122,10 @@ function verifySubmission(
   return {
     completeness,
     legacy,
-    geo_ok: legacy ? true : geo_ok,
-    voice_ok,
-    photo_ok,
+    geo_ok: legacy || isWebFill ? true : geo_ok,
+    web_fill: isWebFill,
+    voice_ok: isWebFill ? true : voice_ok,
+    photo_ok: isWebFill ? true : photo_ok,
     qa_ok,
     geo: geo_ok
       ? {
@@ -2132,7 +2138,7 @@ function verifySubmission(
       ? { lat: geoPayload.lat, lng: geoPayload.lng, invalid: true }
       : null,
     failures,
-    checks: legacy
+    checks: legacy || isWebFill
       ? {
           geo_tagging: "n/a",
           voice_detection: "n/a",
@@ -2910,8 +2916,21 @@ function collectTimeStats(
   };
 }
 
-function qaFromAnswers(a: Record<string, unknown>) {
-  const keys = [
+function qaFromAnswers(a: Record<string, unknown>, questions: unknown[] = []) {
+  const out: { q: string; a: string }[] = [];
+  const used = new Set<string>();
+  const qs = Array.isArray(questions) ? questions : [];
+  for (const raw of qs) {
+    const q = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const id = String(q.id || "").trim();
+    if (!id) continue;
+    let v = a[id];
+    if (v == null || v === "") continue;
+    if (Array.isArray(v)) v = v.join(", ");
+    used.add(id);
+    out.push({ q: String(q.label || q.label_te || id), a: String(v) });
+  }
+  const core: [string, string][] = [
     ["respondent_name", "Respondent"],
     ["district", "District"],
     ["constituency", "Assembly (AC)"],
@@ -2929,14 +2948,22 @@ function qaFromAnswers(a: Record<string, unknown>) {
     ["phone", "Phone"],
     ["data_collector", "Collector"],
   ];
-  return keys
-    .map(([k, label]) => {
-      let v = a[k];
-      if (Array.isArray(v)) v = v.join(", ");
-      if (v == null || v === "") return null;
-      return { q: label, a: String(v) };
-    })
-    .filter(Boolean) as { q: string; a: string }[];
+  for (const [k, label] of core) {
+    if (used.has(k)) continue;
+    let v = a[k];
+    if (Array.isArray(v)) v = v.join(", ");
+    if (v == null || v === "") continue;
+    used.add(k);
+    out.push({ q: label, a: String(v) });
+  }
+  for (const [k, raw] of Object.entries(a || {})) {
+    if (used.has(k) || isMetaAnswerKey(k)) continue;
+    let v: unknown = raw;
+    if (Array.isArray(v)) v = v.join(", ");
+    if (v == null || v === "") continue;
+    out.push({ q: k, a: String(v) });
+  }
+  return out;
 }
 
 /** Load + resolve all submissions into analytics rows (AC → district resolution, mandal fallback, party/gender/caste normalisation). Shared by analytics + export. */
@@ -6549,6 +6576,13 @@ async function rawHandler(req: Request): Promise<Response> {
           `;
       // media kinds for strict voice/photo checks
       const mediaMap = await loadMediaKindsMap(sql);
+      const qrows = scopeKeys
+        ? await sql`SELECT form_key, questions FROM survey_form WHERE form_key = ANY(${scopeKeys})`.catch(() => [])
+        : await sql`SELECT form_key, questions FROM survey_form`.catch(() => []);
+      const qByKey = new Map<string, unknown[]>();
+      for (const qr of qrows as { form_key?: string; questions?: unknown }[]) {
+        qByKey.set(String(qr.form_key || ""), parseQuestionsArray(qr.questions));
+      }
 
       let items = (rows as Record<string, unknown>[]).map((r) => {
         const payload = parsePayload(r.payload);
@@ -6578,7 +6612,7 @@ async function rawHandler(req: Request): Promise<Response> {
           confirmed_at: payload?.confirmed_at || null,
           confirmed_by: payload?.confirmed_by || null,
           answers,
-          qa: qaFromAnswers(answers || {}),
+          qa: qaFromAnswers(answers || {}, qByKey.get(String(payload?.form_key || "")) || []),
           has_geo: verify.geo_ok,
           has_voice: verify.voice_ok,
           has_photo: verify.photo_ok,
@@ -8706,6 +8740,45 @@ async function rawHandler(req: Request): Promise<Response> {
         VALUES (${token}, ${formKey}, ${me.id}, ${maxUses}, 0)
       `;
       return json({ ok: true, token, form_key: formKey, max_uses: maxUses, use_count: 0 }, 201);
+    }
+
+    if (path === "/api/web-survey/links" && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const formKey = String(url.searchParams.get("form_key") || "").trim();
+      if (!formKey || formKey === "default" || formKey === "legacy") {
+        return json({ error: "Pick a real survey" }, 400);
+      }
+      if (me.role === "admin") {
+        const writeScope = await adminFormKeyScope(sql, me);
+        if (writeScope && !writeScope.includes(formKey)) {
+          return json({ error: "You can only view links for your own surveys" }, 403);
+        }
+      }
+      const rows = await sql`
+        SELECT token, form_key, max_uses, use_count, used_at, created_at
+        FROM web_survey_links
+        WHERE form_key = ${formKey}
+        ORDER BY created_at DESC
+        LIMIT 40
+      `.catch(() => []);
+      const items = (rows as Record<string, unknown>[]).map((r) => {
+        const max = clampWebLinkMaxUses(r.max_uses);
+        const used = Math.max(0, Number(r.use_count) || 0);
+        const expired = Boolean(r.used_at) || used >= max;
+        return {
+          token: r.token,
+          form_key: r.form_key,
+          max_uses: max,
+          use_count: used,
+          remaining: Math.max(0, max - used),
+          expired,
+          used_at: r.used_at || null,
+          created_at: r.created_at,
+        };
+      });
+      const live = items.find((x) => !x.expired) || items[0] || null;
+      return json({ items, live });
     }
 
     if (path === "/api/web-survey" && method === "GET") {

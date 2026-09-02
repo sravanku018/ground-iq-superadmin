@@ -567,7 +567,10 @@ export async function mintWebFillUrl(formKey, maxUses = 1) {
   return webFillUrl(formKey, d.token)
 }
 
-const GITHUB_WEB_REPO = 'sravanku018/ground-iq-web'
+export function listWebFillLinks(formKey) {
+  return request(`/api/web-survey/links?form_key=${encodeURIComponent(formKey)}`)
+}
+
 /** Canonical Client Admin / field-app origin (used from Super Admin console). */
 const CANONICAL_FIELD_APP = 'https://ground-iq-web-lake.vercel.app/'
 

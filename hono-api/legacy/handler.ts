@@ -8778,7 +8778,105 @@ async function rawHandler(req: Request): Promise<Response> {
         };
       });
       const live = items.find((x) => !x.expired) || items[0] || null;
-      return json({ items, live });
+      const [subRow] = await sql`
+        SELECT COUNT(*)::int AS n FROM submissions
+        WHERE payload->>'form_key' = ${formKey}
+          AND (
+            payload->>'source' = 'web-survey'
+            OR payload->>'source' = 'web'
+          )
+      `.catch(() => [{ n: 0 }]);
+      const submitted = sqlCountN(subRow);
+      const cap = live ? clampWebLinkMaxUses(live.max_uses) : 100;
+      return json({
+        items,
+        live,
+        submitted,
+        cap,
+        used: live ? Number(live.use_count) || 0 : submitted,
+      });
+    }
+
+    if (path === "/api/web-survey/stats" && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const scopeKeys = await adminFormKeyScope(sql, me);
+      const forms = scopeKeys
+        ? await sql`
+            SELECT id, form_key, title FROM survey_form
+            WHERE form_key = ANY(${scopeKeys})
+              AND form_key NOT IN ('default', 'legacy')
+            ORDER BY title
+          `.catch(() => [])
+        : await sql`
+            SELECT id, form_key, title FROM survey_form
+            WHERE form_key NOT IN ('default', 'legacy')
+            ORDER BY title
+          `.catch(() => []);
+      const keys = (forms as { form_key: string }[]).map((f) => String(f.form_key));
+      const counts = keys.length
+        ? await sql`
+            SELECT payload->>'form_key' AS form_key, COUNT(*)::int AS n
+            FROM submissions
+            WHERE payload->>'form_key' = ANY(${keys})
+              AND (
+                payload->>'source' = 'web-survey'
+                OR payload->>'source' = 'web'
+              )
+            GROUP BY 1
+          `.catch(() => [])
+        : [];
+      const countMap = new Map<string, number>();
+      for (const r of counts as { form_key?: string; n?: number }[]) {
+        countMap.set(String(r.form_key || ""), Number(r.n) || 0);
+      }
+      const liveRows = keys.length
+        ? await sql`
+            SELECT DISTINCT ON (form_key) form_key, max_uses, use_count, used_at, created_at
+            FROM web_survey_links
+            WHERE form_key = ANY(${keys})
+            ORDER BY form_key, created_at DESC
+          `.catch(() => [])
+        : [];
+      const liveMap = new Map<string, {
+        max_uses: number;
+        use_count: number;
+        expired: boolean;
+        created_at: unknown;
+        used_at: unknown;
+      }>();
+      for (const r of liveRows as Record<string, unknown>[]) {
+        const max = clampWebLinkMaxUses(r.max_uses);
+        const used = Math.max(0, Number(r.use_count) || 0);
+        liveMap.set(String(r.form_key || ""), {
+          max_uses: max,
+          use_count: used,
+          expired: Boolean(r.used_at) || used >= max,
+          created_at: r.created_at || null,
+          used_at: r.used_at || null,
+        });
+      }
+      const items = (forms as { id: number; form_key: string; title: string }[]).map((f) => {
+        const key = String(f.form_key);
+        const live = liveMap.get(key);
+        const submitted = countMap.get(key) || 0;
+        const cap = live ? live.max_uses : 100;
+        const used = live ? live.use_count : submitted;
+        const expired = live ? live.expired : false;
+        return {
+          id: f.id,
+          form_key: key,
+          title: f.title || key,
+          submitted,
+          used,
+          cap,
+          remaining: Math.max(0, cap - used),
+          expired,
+          created_at: live?.created_at || null,
+          ended_at: live?.used_at || null,
+        };
+      });
+      return json({ items });
     }
 
     if (path === "/api/web-survey" && method === "GET") {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import Icon from './Icons'
-import { createWebSurvey, getSurvey, listSurveys } from './api'
+import { createWebSurvey, getSurvey, listSurveys, listWebSurveyStats } from './api'
 import CopyWebFillLink from './components/CopyWebFillLink'
 import { slugQuestionKey } from './questionKey'
 
@@ -19,6 +19,21 @@ function meterNum(val) {
 
 function meterStored(val) {
   return `${meterNum(val)}%`
+}
+
+function formatIstStamp(v) {
+  if (!v) return '—'
+  const d = v instanceof Date ? v : new Date(v)
+  if (Number.isNaN(d.getTime())) return '—'
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(d)
 }
 
 function emptyAnswers(qs) {
@@ -41,6 +56,9 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
   const [answers, setAnswers] = useState({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [tab, setTab] = useState('link')
+  const [stats, setStats] = useState([])
+  const [statsLoading, setStatsLoading] = useState(false)
 
   const loadList = useCallback(async () => {
     setLoading(true)
@@ -61,6 +79,22 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
   useEffect(() => {
     void loadList()
   }, [loadList])
+
+  const loadStats = useCallback(async () => {
+    setStatsLoading(true)
+    try {
+      const d = await listWebSurveyStats()
+      setStats(d.items || [])
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setStatsLoading(false)
+    }
+  }, [onToast])
+
+  useEffect(() => {
+    if (tab === 'submitted') void loadStats()
+  }, [tab, loadStats])
 
   useEffect(() => {
     if (!surveyId) {
@@ -124,11 +158,88 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
         <Icon name="clipboard" size={18} /> Web survey
       </h2>
       <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-        Pick how many responses the link allows, then copy it. The same URL stays open until that
-        number of submits, then it expires. Records land as pending (no GPS/photo/voice). Filling
-        here in the portal needs Super Admin to grant <strong>Web survey</strong>.
+        Copy a web link, or see how many web fills each survey has received.
       </p>
 
+      <div className="chip-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+        {[
+          { id: 'link', label: 'Link' },
+          { id: 'submitted', label: 'Submitted' },
+        ].map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`chip ${tab === t.id ? 'selected' : ''}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'submitted' ? (
+        <div>
+          <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+            How many web surveys were submitted for each questionnaire.
+          </p>
+          {statsLoading ? (
+            <p className="muted">Loading…</p>
+          ) : stats.length === 0 ? (
+            <p className="muted">No surveys yet.</p>
+          ) : (
+            <div className="card" style={{ overflowX: 'auto' }}>
+              <table className="mini-table" style={{ width: '100%' }}>
+                <thead>
+                  <tr>
+                    <th>Survey</th>
+                    <th>Submitted</th>
+                    <th>Created</th>
+                    <th>Ended</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.map((s) => (
+                    <tr key={s.form_key}>
+                      <td>
+                        <strong>{s.title || s.form_key}</strong>
+                      </td>
+                      <td>
+                        <strong style={{ color: s.expired || s.used >= s.cap ? '#dc2626' : '#059669' }}>
+                          {s.used} used of {s.cap}
+                        </strong>
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
+                        {formatIstStamp(s.created_at)}
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
+                        {s.ended_at
+                          ? formatIstStamp(s.ended_at)
+                          : s.expired || s.used >= s.cap
+                            ? 'Expired'
+                            : 'Open'}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn small"
+                          onClick={() => {
+                            setSurveyId(String(s.id))
+                            setTab('link')
+                          }}
+                        >
+                          Open link
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+      <>
       <label className="field" style={{ maxWidth: 420, marginBottom: 16 }}>
         <span>Survey</span>
         <select
@@ -225,6 +336,8 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
           </button>
         </form>
       ) : null}
+      </>
+      )}
     </div>
   )
 }

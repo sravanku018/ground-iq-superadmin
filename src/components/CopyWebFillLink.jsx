@@ -11,22 +11,32 @@ function clampMax(n) {
 export default function CopyWebFillLink({ formKey, title, onToast, compact = false }) {
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
-  const [maxUses, setMaxUses] = useState(10)
+  const [maxUses, setMaxUses] = useState(100)
   const [live, setLive] = useState(null)
+  const [quota, setQuota] = useState({ used: 0, cap: 100 })
 
   useEffect(() => {
     const key = String(formKey || '').trim()
     if (!key || key === 'default' || key === 'legacy') {
       setLive(null)
+      setQuota({ used: 0, cap: 100 })
       return undefined
     }
     let dead = false
     listWebFillLinks(key)
       .then((d) => {
-        if (!dead) setLive(d.live || null)
+        if (dead) return
+        setLive(d.live || null)
+        const cap = Number(d.live?.max_uses || d.cap || 100) || 100
+        const used = Number(d.live?.use_count ?? d.used ?? d.submitted ?? 0) || 0
+        setQuota({ used, cap })
+        if (d.live?.max_uses) setMaxUses(clampMax(d.live.max_uses))
       })
       .catch(() => {
-        if (!dead) setLive(null)
+        if (!dead) {
+          setLive(null)
+          setQuota({ used: 0, cap: 100 })
+        }
       })
     return () => {
       dead = true
@@ -50,8 +60,14 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
       const link = await mintWebFillUrl(key, limit)
       setUrl(link)
       setLive({ max_uses: limit, use_count: 0, remaining: limit, expired: false })
+      setQuota({ used: 0, cap: limit })
       listWebFillLinks(key)
-        .then((d) => setLive(d.live || { max_uses: limit, use_count: 0, remaining: limit }))
+        .then((d) => {
+          setLive(d.live || { max_uses: limit, use_count: 0, remaining: limit })
+          const cap = Number(d.live?.max_uses || limit) || limit
+          const used = Number(d.live?.use_count ?? d.used ?? 0) || 0
+          setQuota({ used, cap })
+        })
         .catch(() => {})
       try {
         await navigator.clipboard.writeText(link)
@@ -92,16 +108,47 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
     </label>
   )
 
-  const usage =
-    live && live.max_uses ? (
-      <p style={{ margin: compact ? '0 0 6px' : '0 0 8px', fontSize: 13, fontWeight: 700 }}>
-        Web survey{' '}
-        <span style={{ color: live.expired ? '#dc2626' : '#059669' }}>
-          {live.use_count || 0} used / {live.max_uses}
-        </span>
-        {live.expired ? ' · expired' : live.remaining != null ? ` · ${live.remaining} left` : ''}
-      </p>
-    ) : null
+  const cap = Number(quota.cap || maxUses || 100) || 100
+  const used = Math.max(0, Number(quota.used) || 0)
+  const pct = Math.min(100, Math.round((used / cap) * 100))
+  const full = used >= cap
+  const usage = (
+    <div
+      style={{
+        margin: compact ? '0 0 6px' : '0 0 12px',
+        padding: compact ? '8px 10px' : '12px 14px',
+        borderRadius: 10,
+        border: `1px solid ${full ? '#fecaca' : '#bbf7d0'}`,
+        background: full ? '#fef2f2' : '#f0fdf4',
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 700, color: full ? '#b91c1c' : '#15803d', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+        Web survey quota
+      </div>
+      <div style={{ fontSize: compact ? 16 : 20, fontWeight: 800, color: '#0f172a', marginTop: 2 }}>
+        <span style={{ color: full ? '#dc2626' : '#059669' }}>{used}</span>
+        <span style={{ fontWeight: 600, color: '#64748b' }}> used of {cap}</span>
+      </div>
+      <div style={{ height: 8, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden', marginTop: 8 }}>
+        <div
+          style={{
+            width: `${pct}%`,
+            height: '100%',
+            background: full ? '#dc2626' : pct >= 80 ? '#f59e0b' : '#059669',
+          }}
+        />
+      </div>
+      {live?.expired || full ? (
+        <p className="muted" style={{ margin: '6px 0 0', fontSize: 12 }}>
+          This link has reached its limit. Copy a new link to collect more.
+        </p>
+      ) : (
+        <p className="muted" style={{ margin: '6px 0 0', fontSize: 12 }}>
+          {Math.max(0, cap - used)} remaining
+        </p>
+      )}
+    </div>
+  )
 
   if (compact) {
     return (

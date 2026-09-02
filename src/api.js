@@ -571,6 +571,10 @@ export function listWebFillLinks(formKey) {
   return request(`/api/web-survey/links?form_key=${encodeURIComponent(formKey)}`)
 }
 
+export function listWebSurveyStats() {
+  return request('/api/web-survey/stats')
+}
+
 /** Canonical Client Admin / field-app origin (used from Super Admin console). */
 const CANONICAL_FIELD_APP = 'https://ground-iq-web-lake.vercel.app/'
 

@@ -425,7 +425,11 @@ function MyRecordsScreen({ user, onToast, questions }) {
     load()
     const onRefresh = () => load()
     window.addEventListener('esurvey-activity-refresh', onRefresh)
-    return () => window.removeEventListener('esurvey-activity-refresh', onRefresh)
+    window.addEventListener('esurvey-queue-change', onRefresh)
+    return () => {
+      window.removeEventListener('esurvey-activity-refresh', onRefresh)
+      window.removeEventListener('esurvey-queue-change', onRefresh)
+    }
   }, [load])
 
   return (
@@ -976,11 +980,23 @@ function DraftsScreen({ user, onToast, onEdit, questions, onPushed, onStartNew }
     setPushing(id)
     try {
       await pushDraft(id)
-      onToast?.('✓ Record sent successfully to server!', 'ok')
-      void forceSyncNow()
+      let res = await forceSyncNow()
+      if (res?.skipped && res.reason === 'busy') {
+        await new Promise((r) => setTimeout(r, 2500))
+        res = await forceSyncNow()
+      }
       await load()
       window.dispatchEvent(new CustomEvent('esurvey-activity-refresh'))
-      onPushed?.()
+      if (res?.fail > 0 && !(res?.ok > 0) && res?.pending > 0) {
+        onToast?.('Send queued — still on this phone until sync finishes', 'error')
+        return
+      }
+      if (res?.ok > 0 || res?.reason === 'empty' || res?.pending === 0) {
+        onToast?.('Sent · now in My activity', 'ok')
+        onPushed?.()
+      } else {
+        onToast?.('Queued on this phone · will appear in My activity after sync', 'ok')
+      }
     } catch (e) {
       onToast?.(e.message || 'Send failed', 'error')
     } finally {
@@ -1185,9 +1201,6 @@ function SubmissionsScreen({ user, onToast, onEdit, questions, onStartNew, initi
         const [d, q] = await Promise.all([listDrafts({ media: false }), listPendingPackages()])
         const total = (d?.length || 0) + (q?.length || 0)
         setDraftsN(total)
-        if (total === 0) {
-          setSubTab('records')
-        }
       } catch {
         setDraftsN(0)
       }

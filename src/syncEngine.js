@@ -225,6 +225,11 @@ export async function syncOnePackage(id) {
     // keep lightweight trail then remove media shell
     await removePackage(id)
     emit({ type: 'package-done', id, serverId })
+    try {
+      window.dispatchEvent(new CustomEvent('esurvey-activity-refresh', { detail: { serverId } }))
+    } catch {
+      /* ignore */
+    }
     return { ok: true, id, serverId }
   } catch (e) {
     const attempts = (pkg.attempts || 0) + 1

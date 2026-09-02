@@ -4391,8 +4391,8 @@ async function rawHandler(req: Request): Promise<Response> {
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.37",
-          versionCode: 20037,
+          version: "2.0.38",
+          versionCode: 20038,
           minSupportedVersionCode: 20000,
           apkUrl: `https://${req.headers.get("x-forwarded-host") || url.hostname}/api/app.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
@@ -6468,10 +6468,19 @@ async function rawHandler(req: Request): Promise<Response> {
         const name1 = String(me.name || "");
         const name2 = String(me.username || "");
         const rows = await sql`
-          SELECT id, payload, created_at FROM submissions
-          WHERE payload->>'user_id' = ${uId}
-             OR (length(${name1}) > 0 AND payload->>'submitted_by' = ${name1})
-             OR (length(${name2}) > 0 AND payload->>'submitted_by' = ${name2})
+          SELECT id, payload, created_at FROM (
+            SELECT id, created_at,
+              CASE
+                WHEN jsonb_typeof(payload) = 'string' THEN (payload #>> '{}')::jsonb
+                ELSE payload
+              END AS payload
+            FROM submissions
+          ) s
+          WHERE s.payload->>'user_id' = ${uId}
+             OR (length(${name1}) > 0 AND s.payload->>'submitted_by' = ${name1})
+             OR (length(${name2}) > 0 AND s.payload->>'submitted_by' = ${name2})
+             OR (length(${name1}) > 0 AND s.payload->'answers'->>'data_collector' = ${name1})
+             OR (length(${name2}) > 0 AND s.payload->'answers'->>'data_collector' = ${name2})
           ORDER BY created_at DESC LIMIT 500
         `.catch((err) => {
           console.error("submissions mine error:", err);

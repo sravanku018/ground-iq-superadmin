@@ -777,7 +777,10 @@ async function getUser(token: string | null): Promise<PortalUser | null> {
        AND u.role IN ('super_admin', 'admin', 'surveyor')
      LIMIT 1`,
     [token],
-  ).catch(() => [])) as Record<string, unknown>[];
+  ).catch((e: unknown) => {
+    console.error("getUser session lookup failed:", (e as Error)?.message || e);
+    return [];
+  })) as Record<string, unknown>[];
 
   const u = rows[0];
   if (!u) return null;
@@ -1375,7 +1378,12 @@ async function ensureSchema(): Promise<void> {
   ];
 
   for (const step of steps) {
-    await step().catch(() => null);
+    await step().catch((e: unknown) => {
+      const msg = String((e as Error)?.message || e || "");
+      if (msg && !/already exists|duplicate/i.test(msg)) {
+        console.error("schema step:", msg.slice(0, 200));
+      }
+    });
   }
 
   // Backfill key_id for existing users

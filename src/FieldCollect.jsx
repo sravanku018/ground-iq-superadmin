@@ -2060,10 +2060,15 @@ export default function FieldCollectScreen({
 
         {(formMeta?.surveys || []).length > 1 && (
           <div className="card" style={{ marginBottom: 10, padding: 14 }}>
-            <h3 style={{ margin: '0 0 6px', fontSize: 16 }}>Choose survey</h3>
-            <p className="muted" style={{ margin: '0 0 10px', fontSize: 13 }}>
-              Required — pick which survey this record is for before GPS.
-            </p>
+            {surveyChosen ? (
+              <p className="muted" style={{ margin: '0 0 10px', fontSize: 13 }}>
+                Switch survey for the next record.
+              </p>
+            ) : (
+              <p className="muted" style={{ margin: '0 0 10px', fontSize: 13 }}>
+                Pick which survey this record is for before GPS.
+              </p>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {(formMeta.surveys || []).map((s) => {
                 const on = surveyChosen && String(s.form_key) === String(formMeta?.form_key)
@@ -2073,12 +2078,15 @@ export default function FieldCollectScreen({
                 const t = Number(slice?.target ?? s.target_quota) || 0
                 const d = Number(slice?.done) || 0
                 const qn = Array.isArray(s.questions) ? s.questions.length : Number(slice?.questions_count) || 0
+                const full = t > 0 && d >= t
+                const pct = t > 0 ? Math.min(100, Math.round((d / t) * 100)) : (d > 0 ? 100 : 0)
                 return (
                   <button
                     key={s.id || s.form_key}
                     type="button"
-                    className={`btn ${on ? 'primary' : 'secondary'}`}
-                    style={{ width: '100%', textAlign: 'left', fontWeight: 700 }}
+                    className="survey-pick"
+                    aria-pressed={on}
+                    disabled={full && !on}
                     onClick={() => {
                       setFormMeta({ ...s, surveys: formMeta.surveys })
                       setQuestions(s.questions || [])
@@ -2093,11 +2101,55 @@ export default function FieldCollectScreen({
                       setPhotoDataUrl('')
                       onToast?.(`Collecting "${s.title}"`, 'ok')
                     }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      border: on ? '2px solid #059669' : '1px solid #e2e8f0',
+                      background: on ? '#f0fdf4' : '#ffffff',
+                      borderRadius: 12,
+                      padding: '12px 14px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'stretch',
+                      gap: 6,
+                      whiteSpace: 'normal',
+                      minHeight: 64,
+                      cursor: full && !on ? 'not-allowed' : 'pointer',
+                      opacity: full && !on ? 0.65 : 1,
+                    }}
                   >
-                    {on ? '✓ ' : ''}{s.title}
-                    <span style={{ display: 'block', fontWeight: 500, fontSize: 12, opacity: 0.8 }}>
-                      {t > 0 ? `${d} / ${t} target` : `${d} sent`}
-                      {qn ? ` · ${qn} questions` : ''}
+                    <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                      <strong style={{ fontSize: 15, color: '#0f172a' }}>
+                        {on ? '✓ ' : ''}{s.title}
+                      </strong>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: full ? '#059669' : '#334155' }}>
+                        {t > 0 ? `${d} / ${t}` : `${d} sent`}
+                      </span>
+                    </span>
+                    <span
+                      aria-hidden
+                      style={{
+                        display: 'block',
+                        height: 8,
+                        background: '#e2e8f0',
+                        borderRadius: 99,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: 'block',
+                          height: '100%',
+                          width: `${pct}%`,
+                          background: full ? '#059669' : on ? '#059669' : '#2563eb',
+                          borderRadius: 99,
+                        }}
+                      />
+                    </span>
+                    <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>
+                      {qn ? `${qn} questions` : 'No questions'}
+                      {t > 0 ? ` · ${Math.max(0, t - d)} left` : ''}
+                      {full ? ' · quota full' : ''}
                     </span>
                   </button>
                 )

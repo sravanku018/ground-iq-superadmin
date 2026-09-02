@@ -3295,6 +3295,25 @@ async function adminFormKeyScope(
   return [...new Set((rows as { form_key: string }[]).map((r) => String(r.form_key)))];
 }
 
+/** Tenant record total for Super Admin max_records: field + web, not rejected/draft. */
+async function countTenantRecords(
+  sqlFn: NonNullable<typeof sql>,
+  adminId: number,
+): Promise<number> {
+  const keys = await adminFormKeyScope(sqlFn, { role: "admin", id: adminId });
+  if (!keys || !keys.length) return 0;
+  const [row] = await sqlFn`
+    SELECT COUNT(*)::int AS n
+    FROM submissions
+    WHERE payload->>'form_key' = ANY(${keys})
+      AND COALESCE(payload->>'status', 'pending') <> 'rejected'
+      AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+      AND COALESCE(payload->'answers'->>'_draft', 'false') NOT IN ('true', 't', '1')
+      AND COALESCE(payload->>'content_type', '') <> 'draft'
+  `.catch(() => [{ n: 0 }]);
+  return sqlCountN(row);
+}
+
 // In-memory cache for assembly_constituencies — this table is only ever
 // changed by a manual seed script run outside the app (see REDEPLOY.md,
 // which already says to re-seed after a redeploy, i.e. after a fresh Deno
@@ -4774,18 +4793,7 @@ async function rawHandler(req: Request): Promise<Response> {
         const [srCnt] = await sql`SELECT COUNT(*)::int AS n FROM app_users WHERE role = 'surveyor' AND created_by = ${me.id}`.catch(() => [{ n: 0 }]);
         // Peak Q across owned + shared + company projects (not only created_by)
         const questionPeak = await peakQuestionsForAdmin(sql, Number(me.id), meCompany);
-        const [recCnt] = await sql`
-          SELECT COUNT(*)::int AS n
-          FROM submissions s JOIN app_users u ON (
-            s.payload->>'user_id' = u.id::text
-            OR s.payload->>'submitted_by' = u.username
-            OR s.payload->>'submitted_by' = COALESCE(u.display_name, u.username)
-          )
-          WHERE u.role = 'surveyor' AND u.created_by = ${me.id}
-            AND COALESCE(s.payload->>'status', 'pending') <> 'rejected'
-            AND COALESCE(s.payload->>'draft', 'false') NOT IN ('true', 't', '1')
-            AND COALESCE(s.payload->>'source', '') NOT IN ('web-survey', 'web')
-        `.catch(() => [{ n: 0 }]);
+        const recUsed = await countTenantRecords(sql, Number(me.id));
         const teamRows = await sql`
           SELECT f.id AS sid, f.title,
                  jsonb_array_length(COALESCE(
@@ -4821,8 +4829,8 @@ async function rawHandler(req: Request): Promise<Response> {
             survey_count: sqlCountN(sCnt),
             surveyor_count: sqlCountN(srCnt),
             question_count: questionPeak,
-            record_count: sqlCountN(recCnt),
-            surveyor_record_count: sqlCountN(recCnt),
+            record_count: recUsed,
+            surveyor_record_count: recUsed,
             max_records: Number((me as { max_records?: unknown }).max_records) || 0,
             survey_team,
             granted_surveys: (granted as { id: number; title: string }[]).map((p) => ({
@@ -9225,9 +9233,27 @@ async function rawHandler(req: Request): Promise<Response> {
       const remaining = Math.max(0, maxUses - useCount);
       const expired = remaining === 0 || Boolean(slot.used_at);
       const exists = await sql`
-        SELECT form_key FROM survey_form WHERE form_key = ${formKey} LIMIT 1
+        SELECT form_key, created_by FROM survey_form WHERE form_key = ${formKey} LIMIT 1
       `.catch(() => []);
       if (!exists.length) return json({ error: "Survey not found" }, 404);
+      const ownerId = Number((exists[0] as { created_by?: number }).created_by);
+      if (Number.isFinite(ownerId)) {
+        const [capRow] = await sql`
+          SELECT COALESCE(max_records, 0) AS max_records FROM app_users WHERE id = ${ownerId} LIMIT 1
+        `.catch(() => [{ max_records: 0 }]);
+        const maxRec = Number((capRow as { max_records?: number })?.max_records) || 0;
+        if (maxRec > 0) {
+          const used = await countTenantRecords(sql, ownerId);
+          if (used >= maxRec) {
+            return json({
+              error: `Record limit reached — maximum ${maxRec} records for this account.`,
+              code: "max_records",
+              used,
+              max_records: maxRec,
+            }, 422);
+          }
+        }
+      }
       const payload = {
         form_key: formKey,
         form_id: formKey,
@@ -9361,19 +9387,7 @@ async function rawHandler(req: Request): Promise<Response> {
           }
         }
         if (maxRec > 0 && Number.isFinite(ownerId)) {
-          const [rc] = await sql`
-            SELECT COUNT(*)::int AS n
-            FROM submissions s JOIN app_users u ON (
-              s.payload->>'user_id' = u.id::text
-              OR s.payload->>'submitted_by' = u.username
-              OR s.payload->>'submitted_by' = COALESCE(u.display_name, u.username)
-            )
-            WHERE u.role = 'surveyor' AND u.created_by = ${ownerId}
-              AND COALESCE(s.payload->>'status', 'pending') <> 'rejected'
-              AND COALESCE(s.payload->>'draft', 'false') NOT IN ('true', 't', '1')
-              AND COALESCE(s.payload->>'source', '') NOT IN ('web-survey', 'web')
-          `.catch(() => [{ n: 0 }]);
-          const used = sqlCountN(rc);
+          const used = await countTenantRecords(sql, ownerId);
           if (used >= maxRec) {
             return json({
               error: `Record limit reached — maximum ${maxRec} records for this Client Admin (set by Super Admin).`,

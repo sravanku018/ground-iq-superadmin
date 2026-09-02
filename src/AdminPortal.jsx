@@ -199,20 +199,13 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
   const confirmedTotal = Number(stats?.confirmed) || fieldConfirmed + webConfirmed
   const rejectedTotal = Number(stats?.rejected) || (Number(stats?.field_rejected) || 0) + webRejected
   const allSubmitted = Number(stats?.submissions) || fieldPending + fieldConfirmed + rejectedTotal + webSubmitted
-  const allotUsed = Number(
-    stats?.field_confirmed ??
-      (stats?.confirmed != null && stats?.web_confirmed != null
-        ? Number(stats.confirmed) - Number(stats.web_confirmed)
-        : null) ??
-      user?.record_count ??
-      user?.surveyor_record_count,
-  ) || 0
+  const allotUsed = Math.max(0, allSubmitted - rejectedTotal)
   const allotLeft = allotCap > 0 ? Math.max(0, allotCap - allotUsed) : null
   const allotPct = allotCap > 0 ? Math.min(100, Math.round((allotUsed / allotCap) * 100)) : 0
 
   useEffect(() => {
     let alive = true
-    listSubmissions(30, 'all', {})
+    listSubmissions(100, 'all', {})
       .then((d) => {
         if (alive) setRecentItems(d.items || [])
       })
@@ -237,9 +230,10 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
     }
   }, [stats?.submissions])
 
-  const pendingCount = recentItems.filter((i) => (i.status || 'pending') === 'pending').length
-  const confirmedCount = recentItems.filter((i) => i.status === 'confirmed').length
-  const rejectedCount = recentItems.filter((i) => i.status === 'rejected').length
+  const pendingCount = reviewPending
+  const confirmedCount = confirmedTotal
+  const rejectedCount = rejectedTotal
+  const liveAllCount = allSubmitted
 
   const displayedItems = recentItems.filter((it) => {
     if (activityFilter === 'all') return true
@@ -283,6 +277,11 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                 {allotCap > 0 ? (
                   <>
                     <span style={{ color: '#059669' }}>{allotUsed}</span> of {allotCap.toLocaleString()} used
+                    {webSubmitted > 0 ? (
+                      <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginTop: 2 }}>
+                        includes {webSubmitted} web
+                      </span>
+                    ) : null}
                   </>
                 ) : (
                   <>
@@ -336,7 +335,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         </button>
         <button type="button" className="portal-kpi" onClick={() => onNav(gated('report') ? 'report' : 'analyze')}>
           <strong>{allSubmitted.toLocaleString()}</strong>
-          <span>All submissions</span>
+          <span>{webSubmitted > 0 ? `All submissions · ${webSubmitted} web` : 'All submissions'}</span>
         </button>
         <button type="button" className="portal-kpi" onClick={() => onNav('users')}>
           <strong>
@@ -380,7 +379,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                   boxShadow: activityFilter === 'all' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
                 }}
               >
-                All ({recentItems.length})
+                All ({liveAllCount})
               </button>
               <button
                 type="button"

@@ -210,7 +210,7 @@ export default function FieldCollectScreen({
   onDone,
   onSavedDraft,
   onIdleHome,
-  draft,
+  draft: draftFromParent,
   active = true,
   navMode: navModeProp,
 }) {
@@ -224,6 +224,9 @@ export default function FieldCollectScreen({
     return () => window.removeEventListener('esurvey-display-lang', onLang)
   }, [])
   const [step, setStep] = useState(0) // 0 geo, 1 photo, 2 voice+qa, 3 done
+  const [heldDraft, setHeldDraft] = useState(null)
+  const [lastFinishedId, setLastFinishedId] = useState(null)
+  const draft = draftFromParent || heldDraft
   const [formMeta, setFormMeta] = useState(null)
   const [surveyChosen, setSurveyChosen] = useState(false)
   const displayLang = formMeta?.display_lang === 'te' || formMeta?.display_lang === 'en'
@@ -676,6 +679,8 @@ export default function FieldCollectScreen({
 
   function resetForNextRecord() {
     void stopSurveyNotify()
+    setHeldDraft(null)
+    setLastFinishedId(null)
     setStep(0)
     setGeo(null)
     setLocationDetails(null)
@@ -1474,11 +1479,7 @@ export default function FieldCollectScreen({
           answered: answeredCount,
           total: questions.length,
         },
-        {
-          // Finish (autoNext) must queue so the VPS gets GPS/photo/answers.
-          // Next-question checkpoints and "Keep as draft" stay drafts.
-          draft: checkpoint || (editingDraft && !autoNext),
-        },
+        { draft: true },
       )
       if (draft?.id && draft.id !== workingDraftIdRef.current) {
         await deleteDraft(draft.id).catch(() => {})
@@ -1492,13 +1493,16 @@ export default function FieldCollectScreen({
         return true
       }
       if (autoNext || !editingDraft) {
+        const savedId = workingDraftIdRef.current
+        setLastFinishedId(savedId)
+        const savedPkg = savedId ? await getPackage(savedId).catch(() => null) : null
+        if (savedPkg) setHeldDraft(savedPkg)
         workingDraftIdRef.current = null
         draftCreatedAtRef.current = null
         workingRecordIndexRef.current = null
         writeStoredOpenDraft(user, null)
-        void forceSyncNow()
         setStep(3)
-        onToast?.('Finished survey · saved and syncing', 'ok')
+        onToast?.('Finished survey · saved to draft for corrections', 'ok')
       } else {
         workingDraftIdRef.current = null
         draftCreatedAtRef.current = null
@@ -2503,7 +2507,7 @@ export default function FieldCollectScreen({
             <p className="success-sub">
               {progress?.complete
                 ? `You have completed all ${progress.done} / ${progress.target} assigned records.`
-                : 'Saved · sending to server'}
+                : 'Saved to draft for corrections. Send from Pending when it is right.'}
             </p>
 
             <div className="success-checklist">
@@ -2513,14 +2517,33 @@ export default function FieldCollectScreen({
               </div>
               <div className="success-item">
                 <span className="success-chk"><Icon name="check" size={10} /></span>
-                <span>Saved · syncing</span>
+                <span>Saved to draft</span>
               </div>
             </div>
+
+            {lastFinishedId && (
+              <button
+                type="button"
+                className="cta success-cta"
+                onClick={async () => {
+                  const pkg = await getPackage(lastFinishedId).catch(() => heldDraft)
+                  if (!pkg) {
+                    onToast?.('Draft not found on this phone', 'error')
+                    return
+                  }
+                  setHeldDraft(pkg)
+                  setStep(typeof pkg.step === 'number' ? Math.min(pkg.step, 2) : 2)
+                  onToast?.('Draft opened — correct, then Send', 'ok')
+                }}
+              >
+                Correct draft
+              </button>
+            )}
 
             {!progress?.complete && (
               <button
                 type="button"
-                className="cta success-cta"
+                className="cta secondary"
                 onClick={resetForNextRecord}
               >
                 Restart survey

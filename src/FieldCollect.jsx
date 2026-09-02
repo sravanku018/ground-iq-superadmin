@@ -1299,16 +1299,11 @@ export default function FieldCollectScreen({
         package_id: packageId,
       })
 
+      setStep(3)
       if (complete) {
-        setStep(3)
         onToast?.(`Target reached (${effectiveDone}/${target}) · queue will sync`, 'ok')
       } else {
-        resetForNextRecord()
-        const next = effectiveDone + 1
-        onToast?.(
-          `Auto next · activity ${next}${target ? ` / ${target}` : ''}`,
-          'ok',
-        )
+        onToast?.('Finished survey · saved to draft', 'ok')
       }
     } catch (e) {
       onToast?.(e.message || 'Local save failed', 'error')
@@ -1482,7 +1477,7 @@ export default function FieldCollectScreen({
         writeStoredOpenDraft(user, null)
         void forceSyncNow()
         setStep(3)
-        onToast?.(`Record #${localSeq} saved & queued for sync`, 'ok')
+        onToast?.('Finished survey · saved to draft', 'ok')
       } else {
         workingDraftIdRef.current = null
         draftCreatedAtRef.current = null
@@ -2100,8 +2095,8 @@ export default function FieldCollectScreen({
               </>
             )}
             <div className={`audit-step-line ${locks.geo && locks.photo ? 'filled' : ''}`} />
-            <div className={`audit-step ${step === 2 ? 'active' : ''}`}>
-              <span className="audit-step-badge">{voiceRequired ? '4' : '3'}</span>
+            <div className={`audit-step ${step === 3 ? 'locked' : step === 2 ? 'active' : ''}`}>
+              <span className="audit-step-badge">{step === 3 ? '✓' : voiceRequired ? '4' : '3'}</span>
               <span className="audit-step-label">Questions</span>
             </div>
           </div>
@@ -2483,27 +2478,21 @@ export default function FieldCollectScreen({
             <div className="success-icon-wrap">
               <Icon name="check" size={24} />
             </div>
-            <h3 className="success-title">
-              {progress?.complete ? 'Survey Target Complete' : `Record #${localDoneCount || 1} Saved`}
-            </h3>
+            <h3 className="success-title">Finished survey</h3>
             <p className="success-sub">
               {progress?.complete
                 ? `You have completed all ${progress.done} / ${progress.target} assigned records.`
-                : 'Record saved securely to local queue. Ready to sync.'}
+                : 'Saved to draft'}
             </p>
 
             <div className="success-checklist">
               <div className="success-item">
                 <span className="success-chk"><Icon name="check" size={10} /></span>
-                <span>GPS Location Locked</span>
+                <span>Finished survey</span>
               </div>
               <div className="success-item">
                 <span className="success-chk"><Icon name="check" size={10} /></span>
-                <span>Photo Stamped</span>
-              </div>
-              <div className="success-item">
-                <span className="success-chk"><Icon name="check" size={10} /></span>
-                <span>Survey Questions Completed</span>
+                <span>Saved to draft</span>
               </div>
             </div>
 
@@ -2513,7 +2502,7 @@ export default function FieldCollectScreen({
                 className="cta success-cta"
                 onClick={resetForNextRecord}
               >
-                Start Next Record (#{Number(localDoneCount || 0) + 1})
+                Restart survey
               </button>
             )}
 

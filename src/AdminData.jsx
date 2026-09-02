@@ -15,6 +15,15 @@ import { FilterSection } from './PortalUI'
 import SurveyMap from './SurveyMap'
 import { getDisplayLang } from './prefs'
 
+function pickFirstSurveyKey(items) {
+  const list = Array.isArray(items) ? items : []
+  const real = list.filter((s) => {
+    const k = String(s?.form_key || '')
+    return k && k !== 'default' && k !== 'legacy'
+  })
+  return String((real[0] || list[0])?.form_key || '')
+}
+
 /**
  * Admin-only: 2 tabs
  * 1) Geography — uploaded districts, mandals, assembly, MP + map
@@ -112,7 +121,12 @@ export default function AdminDataScreen({ onToast }) {
   useEffect(() => {
     import('./api').then(({ listSurveys }) =>
       listSurveys()
-        .then((d) => setSurveys(d.items || []))
+        .then((d) => {
+          const items = d.items || []
+          setSurveys(items)
+          const key = pickFirstSurveyKey(items)
+          if (key) setSurvey((cur) => cur || key)
+        })
         .catch(() => {}),
     )
   }, [])
@@ -122,7 +136,7 @@ export default function AdminDataScreen({ onToast }) {
     try {
       const [summary, analytics] = await Promise.all([
         getGeoSummary(),
-        getAnalytics({ survey }).catch(() => null),
+        survey ? getAnalytics({ survey }).catch(() => null) : Promise.resolve(null),
       ])
       setGeo(summary)
       setMapAnalytics(analytics)
@@ -413,7 +427,7 @@ export default function AdminDataScreen({ onToast }) {
                     <label className="field compact">
                       <span>By survey</span>
                       <select value={survey} onChange={(e) => setSurvey(e.target.value)}>
-                        <option value="">All surveys</option>
+                        {surveys.length === 0 ? <option value="">Select survey</option> : null}
                         {surveys.map((s) => (
                           <option key={s.id} value={s.form_key}>
                             {s.title}
@@ -617,7 +631,7 @@ export default function AdminDataScreen({ onToast }) {
               )}
             </FilterSection>
 
-            <FilterSection title="Survey & surveyor" badge={survey || 'all'} defaultOpen>
+            <FilterSection title="Survey & surveyor" badge={survey || 'select'} defaultOpen>
               <label className="field compact">
                 <span>Survey</span>
                 <select
@@ -631,7 +645,7 @@ export default function AdminDataScreen({ onToast }) {
                     }
                   }}
                 >
-                  <option value="">All surveys</option>
+                  {surveys.length === 0 ? <option value="">Select survey</option> : null}
                   {surveys.map((s) => (
                     <option key={s.id} value={s.form_key}>
                       {s.title} {s.surveyor_names ? `(👥 ${s.surveyor_names})` : ''}

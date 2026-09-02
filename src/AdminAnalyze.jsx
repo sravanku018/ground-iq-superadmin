@@ -23,6 +23,15 @@ function thisMonthStr() {
   return new Date().toISOString().slice(0, 7)
 }
 
+function pickFirstSurveyKey(items) {
+  const list = Array.isArray(items) ? items : []
+  const real = list.filter((s) => {
+    const k = String(s?.form_key || '')
+    return k && k !== 'default' && k !== 'legacy'
+  })
+  return String((real[0] || list[0])?.form_key || '')
+}
+
 export default function AdminAnalyzeScreen({ onToast }) {
   const [period, setPeriod] = useState('total') // total | today | day | month
   const [day, setDay] = useState(todayStr())
@@ -46,13 +55,6 @@ export default function AdminAnalyzeScreen({ onToast }) {
   const setFilterLangPersist = (lang) => {
     setFilterLang(setDisplayLang(lang))
   }
-
-  useEffect(() => {
-    import('./api')
-      .then(({ listSurveys }) => listSurveys())
-      .then((d) => setSurveys(d.items || []))
-      .catch(() => {})
-  }, [])
 
   const load = useCallback(
     async (overrides = {}) => {
@@ -88,6 +90,13 @@ export default function AdminAnalyzeScreen({ onToast }) {
         if (periodVal === 'month') baseScope.month = monthVal
 
         const qParams = Object.fromEntries(Object.entries(qFilters).filter(([, v]) => v))
+        if (!surveyVal) {
+          setBoard(null)
+          setItems([])
+          setSummary(null)
+          setAnalytics(null)
+          return
+        }
 
         const [analyze, list, charts] = await Promise.all([
           getAdminAnalyze({
@@ -164,11 +173,25 @@ export default function AdminAnalyzeScreen({ onToast }) {
     ],
   )
 
-  // Auto-load report boards on first open
   useEffect(() => {
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
+    import('./api')
+      .then(({ listSurveys }) => listSurveys())
+      .then((d) => {
+        const items = d.items || []
+        setSurveys(items)
+        const key = pickFirstSurveyKey(items)
+        if (key) {
+          setSurvey(key)
+          return load({ survey: key })
+        }
+        return undefined
+      })
+      .catch(() => {})
+    // load on first survey pick — not all-surveys
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+
 
   // Optimistic UI (Twitter principle: tap → instant, sync later)
   async function confirmOne(id, force = false) {
@@ -266,7 +289,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
                 }
               }}
             >
-              <option value="">All surveys</option>
+              {surveys.length === 0 ? <option value="">Select survey</option> : null}
               {surveys.map((s) => (
                 <option key={s.id} value={s.form_key}>
                   {s.title}

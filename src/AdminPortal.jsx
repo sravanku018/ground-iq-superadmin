@@ -621,7 +621,7 @@ function DataList({ items, loading, onRefresh, surveys, surveyFilter, onSurveyCh
         <label className="field compact">
           <span>By survey</span>
           <select value={surveyFilter} onChange={(e) => onSurveyChange(e.target.value)}>
-            <option value="">All surveys</option>
+            {surveys.length === 0 ? <option value="">Select survey</option> : null}
             {surveys.map((s) => (
               <option key={s.id} value={s.form_key}>
                 {s.title}
@@ -781,6 +781,10 @@ export default function AdminPortal({ superAdminOnly = false }) {
   /** Raw data tab only */
   const refreshData = useCallback(async () => {
     if (!getToken()) return
+    if (!surveyFilter) {
+      setItems([])
+      return
+    }
     setLoadingData(true)
     try {
       const data = await listSubmissions(150, '', { survey: surveyFilter })
@@ -908,7 +912,16 @@ export default function AdminPortal({ superAdminOnly = false }) {
     if (!['data', 'upload', 'review'].includes(page)) return
     if (surveys.length) return
     listSurveys()
-      .then((d) => setSurveys(d.items || []))
+      .then((d) => {
+        const items = d.items || []
+        setSurveys(items)
+        const real = items.filter((s) => {
+          const k = String(s?.form_key || '')
+          return k && k !== 'default' && k !== 'legacy'
+        })
+        const key = String((real[0] || items[0])?.form_key || '')
+        if (key) setSurveyFilter((cur) => cur || key)
+      })
       .catch(() => {})
   }, [user, authReady, page, surveys.length])
 

@@ -50,6 +50,15 @@ const PALETTE = [
 
 const CLEAR_AC = { constituency: '' }
 
+function pickFirstSurveyKey(items) {
+  const list = Array.isArray(items) ? items : []
+  const real = list.filter((s) => {
+    const k = String(s?.form_key || '')
+    return k && k !== 'default' && k !== 'legacy'
+  })
+  return String((real[0] || list[0])?.form_key || '')
+}
+
 function colorFor(name, i = 0) {
   return PARTY_COLORS[name] || PALETTE[i % PALETTE.length]
 }
@@ -582,7 +591,12 @@ export default function DashboardScreen({ onToast }) {
   useEffect(() => {
     import('./api').then(({ listSurveys }) =>
       listSurveys()
-        .then((d) => setSurveys(d.items || []))
+        .then((d) => {
+          const items = d.items || []
+          setSurveys(items)
+          const key = pickFirstSurveyKey(items)
+          if (key) setFilters((f) => (f.survey ? f : { ...f, survey: key }))
+        })
         .catch(() => {}),
     )
   }, [])
@@ -625,9 +639,10 @@ export default function DashboardScreen({ onToast }) {
   }, [filters, onToast])
 
   useEffect(() => {
+    if (!filters.survey) return undefined
     const t = setTimeout(load, 180)
     return () => clearTimeout(t)
-  }, [load])
+  }, [load, filters.survey])
 
   const onToggleFilter = useCallback((key, name, extra) => {
     setFilters((f) => ({
@@ -649,19 +664,19 @@ export default function DashboardScreen({ onToast }) {
 
   const clearFilters = useCallback(
     () =>
-      setFilters({
+      setFilters((f) => ({
         district: '',
         party: '',
         gender: '',
         caste: '',
         constituency: '',
         user: '',
-        survey: '',
+        survey: f.survey || pickFirstSurveyKey(surveys),
         period: 'total',
         day: new Date().toISOString().slice(0, 10),
         month: new Date().toISOString().slice(0, 7),
-      }),
-    [],
+      })),
+    [surveys],
   )
 
   // Active-filter chips (08-UXUI-SPEC §4.1: filter bar chips, accent-tinted when active)
@@ -1702,7 +1717,7 @@ export default function DashboardScreen({ onToast }) {
                   setFilters((f) => ({ ...drop, ...f, survey }))
                 }}
               >
-                <option value="">All surveys</option>
+                {surveys.length === 0 ? <option value="">Select survey</option> : null}
                 {surveys.map((s) => (
                   <option key={s.id} value={s.form_key}>
                     {s.title}

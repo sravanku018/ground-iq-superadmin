@@ -31,6 +31,7 @@ function emptyAnswers(qs) {
 }
 
 export default function AdminWebSurveyScreen({ onToast, user }) {
+  const canFillHere = user?.role === 'super_admin' || !!user?.can_web_survey
   const [surveys, setSurveys] = useState([])
   const [surveyId, setSurveyId] = useState('')
   const [title, setTitle] = useState('')
@@ -123,8 +124,8 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
       </h2>
       <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
         Copy the link for this survey and share it. Anyone with the link can fill it (no login).
-        You can also fill it here. Records land as pending (no GPS/photo/voice). Super Admin must
-        grant <strong>Web survey</strong>.
+        Records land as pending (no GPS/photo/voice). Filling the form here in the portal needs Super
+        Admin to grant <strong>Web survey</strong>.
       </p>
 
       <label className="field" style={{ maxWidth: 420, marginBottom: 16 }}>
@@ -177,9 +178,14 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
 
       {title ? <h3 style={{ margin: '0 0 12px' }}>{title}</h3> : null}
 
-      {questions.length === 0 && !loading ? (
+      {!canFillHere ? (
+        <p className="muted" style={{ fontSize: 13 }}>
+          Copy the link above to share. Filling from this page needs Super Admin to grant Web
+          survey.
+        </p>
+      ) : questions.length === 0 && !loading ? (
         <p className="muted">This survey has no questions yet.</p>
-      ) : (
+      ) : canFillHere ? (
         <form onSubmit={submit}>
           {questions.map((q, i) => {
             const id = qid(q)
@@ -243,7 +249,7 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
             {saving ? 'Saving…' : 'Submit web survey'}
           </button>
         </form>
-      )}
+      ) : null}
     </div>
   )
 }

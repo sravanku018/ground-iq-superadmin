@@ -10,6 +10,7 @@ import {
   listUsers,
   setSurveyAdmins,
   updateSurvey,
+  webFillUrl,
 } from './api'
 import QuestionTelugu, { fillTeluguFromEnglish } from './QuestionTelugu'
 import { canTeluguQuestions, isQuestionVisible, labelPatch, nextQuestionId, teluguFields } from './questionKey'
@@ -357,6 +358,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
   const unit = isSuper ? 'project' : 'survey'
   const Unit = isSuper ? 'Project' : 'Survey'
   const Units = isSuper ? 'Projects' : 'Surveys'
+
   const [mode, setMode] = useState('list') // list | create | detail
   const [surveys, setSurveys] = useState([])
   const [search, setSearch] = useState('')
@@ -434,6 +436,21 @@ export default function AdminSurveysScreen({ onToast, user }) {
     const hit = surveys.find((s) => String(s.title || '').toLowerCase() === t)
     setExists(hit || null)
   }, [newTitle, surveys])
+
+  async function copyWebLink(formKey, title) {
+    const key = String(formKey || '').trim()
+    if (!key || key === 'default' || key === 'legacy') {
+      onToast?.('Open the survey and save it first — then copy the web link', 'error')
+      return
+    }
+    const link = webFillUrl(key)
+    try {
+      await navigator.clipboard.writeText(link)
+      onToast?.(`Web link copied${title ? ` · ${title}` : ''}`, 'ok')
+    } catch {
+      onToast?.(link, 'ok')
+    }
+  }
 
   async function openDetail(id) {
     setBusy(true)
@@ -856,6 +873,30 @@ export default function AdminSurveysScreen({ onToast, user }) {
           <h3 style={{ margin: '4px 0 8px', fontSize: 20, color: '#0f172a', fontWeight: 'bold' }}>
             {detail.title}
           </h3>
+          {detail.form_key && detail.form_key !== 'default' && detail.form_key !== 'legacy' ? (
+            <div style={{ margin: '0 0 12px' }}>
+              <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 700 }}>Web survey link</p>
+              <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
+                Anyone with this link can fill the survey (no login). Records land as pending — no
+                GPS, photo, or voice.
+              </p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <input
+                  readOnly
+                  value={webFillUrl(detail.form_key)}
+                  style={{ flex: 1, minWidth: 220, fontSize: 13 }}
+                  onFocus={(e) => e.target.select()}
+                />
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={() => void copyWebLink(detail.form_key, detail.title)}
+                >
+                  Copy web link
+                </button>
+              </div>
+            </div>
+          ) : null}
           {user?.role === 'super_admin' && (
             <label className="field" style={{ marginTop: 8, maxWidth: 420 }}>
               <span>Company (project mapped under)</span>
@@ -1136,6 +1177,15 @@ export default function AdminSurveysScreen({ onToast, user }) {
         >
           Open
         </button>
+        <button
+          type="button"
+          className="btn small"
+          onClick={() => void copyWebLink(s.form_key, s.title)}
+          disabled={busy || !s.form_key}
+          title="Copy public web-survey link"
+        >
+          Copy web link
+        </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <strong style={{ fontSize: 16, color: '#0f172a' }}>{s.title}</strong>
@@ -1223,7 +1273,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
           {isSuper
             ? 'Super Admin creates Projects and maps them to companies & Client Admins.'
-            : 'Client Admin creates Surveys under your company. Super Admin creates shared Projects separately.'}
+            : 'Client Admin creates Surveys under your company. Copy web link on a survey to share a public fill URL (no login).'}
         </p>
         <button
           type="button"

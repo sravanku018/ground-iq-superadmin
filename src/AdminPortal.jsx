@@ -43,7 +43,7 @@ const NAV = [
   { id: 'analyze', label: 'Analyze & Export', icon: 'chart', pages: ['analyze', 'report', 'upload', 'data'] },
   { id: 'review', label: 'Review QA', icon: 'check', pages: ['review'] },
   { id: 'surveyors', label: 'Surveyors', icon: 'user', pages: ['users'] },
-  { id: 'surveys', label: 'Surveys & Forms', icon: 'clipboard', pages: ['surveys', 'questions', 'bank', 'web'] },
+  { id: 'surveys', label: 'Surveys & Forms', icon: 'clipboard', pages: ['surveys', 'questions', 'web', 'bank'] },
   { id: 'profile', label: 'Organization', icon: 'building', pages: ['profile'] },
 ]
 
@@ -95,7 +95,8 @@ const PAGE_POWER = {
   surveys: ['can_crud_questionnaire', 'can_edit_surveys'],
   questions: 'can_edit_surveys',
   bank: 'can_manage_questions',
-  web: 'can_web_survey',
+  // Copy public fill link is available with Surveys. In-portal fill still checks can_web_survey on the API.
+  web: ['can_web_survey', 'can_crud_questionnaire', 'can_edit_surveys'],
   review: 'can_review_data',
   upload: 'can_validate_proof',
   data: 'can_validate_proof',

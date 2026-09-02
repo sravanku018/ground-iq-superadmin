@@ -55,70 +55,95 @@ function surveyIdsOf(u) {
     .filter((id) => id && id !== 'undefined' && id !== 'null')
 }
 
+function defaultSurveyQuota(fallback) {
+  const fb = Math.max(0, Number(fallback) || 0)
+  return fb > 1 ? fb : 20
+}
+
+function clampSurveyQuota(n) {
+  const x = Math.round(Number(n) || 0)
+  if (x < 0) return 0
+  if (x > 100000) return 100000
+  return x
+}
+
 function nextSurveyQuotas(prev, ids, fallback) {
   const next = {}
   const prevMap = prev && typeof prev === 'object' ? prev : {}
-  const fb = Math.max(0, Number(fallback) || 0)
+  const seed = defaultSurveyQuota(fallback)
+  const multi = (ids || []).length >= 2
   for (const id of ids || []) {
     const sid = String(id)
     const cur = Number(prevMap[sid])
-    next[sid] = Number.isFinite(cur) ? cur : fb
+    if (Number.isFinite(cur) && cur > 0) next[sid] = cur
+    else next[sid] = multi ? seed : clampSurveyQuota(cur)
   }
   return next
 }
 
 function quotasPayload(ids, quotas, fallback) {
   const out = {}
-  const fb = Math.max(0, Number(fallback) || 0)
+  const fb = clampSurveyQuota(fallback)
+  const seed = defaultSurveyQuota(fallback)
+  const multi = (ids || []).length >= 2
   for (const id of ids || []) {
     const n = Number(quotas?.[String(id)])
-    out[String(id)] = Number.isFinite(n) ? Math.max(0, n) : fb
+    if (Number.isFinite(n) && (multi ? n > 0 : true)) {
+      out[String(id)] = clampSurveyQuota(n)
+    } else {
+      out[String(id)] = multi ? seed : fb
+    }
   }
   return out
 }
 
-function SurveyQuotaFields({ surveyIds, all, quotas, onChange, fallback = 0 }) {
-  const selected = (Array.isArray(all) ? all : []).filter((s) =>
-    (surveyIds || []).map(String).includes(String(s.id)),
-  )
-  if (!selected.length) return null
-  const total = selected.reduce((n, s) => {
-    const v = Number(quotas?.[String(s.id)])
-    return n + (Number.isFinite(v) ? v : Number(fallback) || 0)
-  }, 0)
-  const qTotal = selected.reduce((n, s) => n + (Number(s.question_count) || 0), 0)
+function QuotaStepper({ value, onChange, min = 0, max = 100000 }) {
+  const n = clampSurveyQuota(value)
+  function bump(delta) {
+    onChange(Math.max(min, Math.min(max, n + delta)))
+  }
   return (
-    <div style={{ marginTop: 8 }}>
-      {selected.map((s) => {
-        const sid = String(s.id)
-        const val = quotas?.[sid] ?? fallback
-        return (
-          <label key={sid} className="field compact" style={{ margin: '6px 0 0' }}>
-            <span style={{ fontSize: 11 }}>
-              Target records · {s.title || sid}
-              {s.question_count ? ` · ${s.question_count} questions` : ''}
-            </span>
-            <input
-              type="number"
-              min={0}
-              value={val}
-              onChange={(e) => onChange(sid, Math.max(0, Number(e.target.value) || 0))}
-            />
-          </label>
-        )
-      })}
-      <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
-        Total target {total}
-        {qTotal ? ` · total questions ${qTotal}` : ''}
-        {selected.length > 1
-          ? ' · Home shows a stretched bar with one segment per survey'
-          : ''}
-      </p>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <button
+        type="button"
+        className="btn small"
+        disabled={n <= min}
+        onClick={() => bump(-1)}
+        aria-label="Decrease quota"
+      >
+        −
+      </button>
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step={1}
+        value={n}
+        onChange={(e) => onChange(clampSurveyQuota(e.target.value))}
+        style={{ width: 72, textAlign: 'center' }}
+      />
+      <button
+        type="button"
+        className="btn small"
+        disabled={n >= max}
+        onClick={() => bump(1)}
+        aria-label="Increase quota"
+      >
+        +
+      </button>
     </div>
   )
 }
 
-function SurveySelect({ value, onChange, all, inline = false }) {
+function SurveySelect({
+  value,
+  onChange,
+  all,
+  inline = false,
+  quotas,
+  onQuotaChange,
+  quotaFallback = 20,
+}) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const selected = Array.isArray(value) ? value.map(String) : []
@@ -169,6 +194,67 @@ function SurveySelect({ value, onChange, all, inline = false }) {
     )
   })
 
+  const enabled = list.filter((s) => selected.includes(String(s.id)))
+  const showQuotaPickers = enabled.length >= 2 && typeof onQuotaChange === 'function'
+  const quotaTotal = enabled.reduce((n, s) => {
+    const v = Number(quotas?.[String(s.id)])
+    return n + (Number.isFinite(v) && v > 0 ? v : defaultSurveyQuota(quotaFallback))
+  }, 0)
+  const qTotal = enabled.reduce((n, s) => n + (Number(s.question_count) || 0), 0)
+  const quotaPanel = showQuotaPickers ? (
+    <div
+      style={{
+        marginTop: 8,
+        padding: 10,
+        border: '1px solid #e2e8f0',
+        borderRadius: 8,
+        background: '#f8fafc',
+      }}
+    >
+      <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 700, color: '#334155' }}>
+        Quota per enabled survey
+      </p>
+      <p className="muted" style={{ margin: '0 0 8px', fontSize: 11 }}>
+        − / + after ticking 2 or more. Home stretches one bar segment per quota.
+      </p>
+      {enabled.map((s) => {
+        const sid = String(s.id)
+        const val = Number(quotas?.[sid])
+        const shown = Number.isFinite(val) && val > 0 ? val : defaultSurveyQuota(quotaFallback)
+        return (
+          <div
+            key={sid}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              marginBottom: 8,
+              flexWrap: 'wrap',
+            }}
+          >
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#0f172a', minWidth: 0, flex: 1 }}>
+              {s.title || sid}
+              {s.question_count ? (
+                <span className="muted" style={{ fontWeight: 500 }}>
+                  {` · ${s.question_count} Q`}
+                </span>
+              ) : null}
+            </span>
+            <QuotaStepper
+              value={shown}
+              onChange={(n) => onQuotaChange(sid, n)}
+            />
+          </div>
+        )
+      })}
+      <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+        Total target {quotaTotal}
+        {qTotal ? ` · total questions ${qTotal}` : ''}
+      </p>
+    </div>
+  ) : null
+
   if (inline) {
     return (
       <div>
@@ -181,6 +267,7 @@ function SurveySelect({ value, onChange, all, inline = false }) {
             Clear
           </button>
         </div>
+        {quotaPanel}
       </div>
     )
   }
@@ -231,6 +318,7 @@ function SurveySelect({ value, onChange, all, inline = false }) {
           </div>
         </div>
       )}
+      {quotaPanel}
     </div>
   )
 }
@@ -1572,13 +1660,9 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                 }))
               }
               all={surveysForAssign(gen.surveys)}
-            />
-            <SurveyQuotaFields
-              surveyIds={gen.surveys}
-              all={surveysForAssign(gen.surveys)}
               quotas={gen.surveyQuotas}
-              fallback={gen.target_quota}
-              onChange={(sid, n) =>
+              quotaFallback={gen.target_quota}
+              onQuotaChange={(sid, n) =>
                 setGen((g) => ({ ...g, surveyQuotas: { ...g.surveyQuotas, [sid]: n } }))
               }
             />
@@ -1623,13 +1707,9 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                 }))
               }
               all={surveysForAssign(form.surveys)}
-            />
-            <SurveyQuotaFields
-              surveyIds={form.surveys}
-              all={surveysForAssign(form.surveys)}
               quotas={form.surveyQuotas}
-              fallback={form.target_quota}
-              onChange={(sid, n) =>
+              quotaFallback={form.target_quota}
+              onQuotaChange={(sid, n) =>
                 setForm((f) => ({ ...f, surveyQuotas: { ...f.surveyQuotas, [sid]: n } }))
               }
             />
@@ -2058,13 +2138,9 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                               }))
                             }
                             all={surveysForAssign(edit.surveys)}
-                          />
-                          <SurveyQuotaFields
-                            surveyIds={edit.surveys}
-                            all={surveysForAssign(edit.surveys)}
                             quotas={edit.surveyQuotas}
-                            fallback={edit.target_quota}
-                            onChange={(sid, n) =>
+                            quotaFallback={edit.target_quota}
+                            onQuotaChange={(sid, n) =>
                               setEdit((ed) => ({
                                 ...ed,
                                 surveyQuotas: { ...ed.surveyQuotas, [sid]: n },
@@ -2318,13 +2394,9 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                             )
                           }}
                           all={surveysForAssign(profileSurveys)}
-                        />
-                        <SurveyQuotaFields
-                          surveyIds={profileSurveys}
-                          all={surveysForAssign(profileSurveys)}
                           quotas={profileQuotas}
-                          fallback={profileForm.target_quota}
-                          onChange={(sid, n) =>
+                          quotaFallback={profileForm.target_quota}
+                          onQuotaChange={(sid, n) =>
                             setProfileQuotas((prev) => ({ ...prev, [sid]: n }))
                           }
                         />

@@ -628,7 +628,6 @@ export default function DashboardScreen({ onToast }) {
         status: 'confirmed',
         completeness: 'complete',
         report: 'locked',
-        source: 'field',
       })
       setData(res)
     } catch (e) {

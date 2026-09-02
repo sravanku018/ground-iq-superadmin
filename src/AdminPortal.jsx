@@ -191,10 +191,22 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
   const allotCap = Number(user?.max_records) || 0
   const webPending = Number(stats?.web_pending) || 0
   const webConfirmed = Number(stats?.web_confirmed) || 0
-  const webSubmitted = Number(stats?.web_submissions) || webPending + webConfirmed
-  const fieldPending = Number(stats?.pending) || 0
-  const reviewPending = fieldPending + webPending
-  const allotUsed = Number(stats?.confirmed ?? user?.record_count ?? user?.surveyor_record_count) || 0
+  const webRejected = Number(stats?.web_rejected) || 0
+  const webSubmitted = Number(stats?.web_submissions) || webPending + webConfirmed + webRejected
+  const fieldPending = Number(stats?.field_pending ?? stats?.pending) || 0
+  const fieldConfirmed = Number(stats?.field_confirmed ?? stats?.confirmed) || 0
+  const reviewPending = Number(stats?.pending) || fieldPending + webPending
+  const confirmedTotal = Number(stats?.confirmed) || fieldConfirmed + webConfirmed
+  const rejectedTotal = Number(stats?.rejected) || (Number(stats?.field_rejected) || 0) + webRejected
+  const allSubmitted = Number(stats?.submissions) || fieldPending + fieldConfirmed + rejectedTotal + webSubmitted
+  const allotUsed = Number(
+    stats?.field_confirmed ??
+      (stats?.confirmed != null && stats?.web_confirmed != null
+        ? Number(stats.confirmed) - Number(stats.web_confirmed)
+        : null) ??
+      user?.record_count ??
+      user?.surveyor_record_count,
+  ) || 0
   const allotLeft = allotCap > 0 ? Math.max(0, allotCap - allotUsed) : null
   const allotPct = allotCap > 0 ? Math.min(100, Math.round((allotUsed / allotCap) * 100)) : 0
 
@@ -313,23 +325,18 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           <span>Pending review</span>
         </button>
         <button type="button" className="portal-kpi" onClick={() => onNav(gated('review') ? 'review' : 'analyze')}>
-          <strong>{stats?.confirmed?.toLocaleString?.() ?? '—'}</strong>
-          <span>Field confirmed</span>
+          <strong>{confirmedTotal.toLocaleString()}</strong>
+          <span>Confirmed</span>
         </button>
         <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
-          <strong style={{ color: (stats?.rejected || 0) > 0 ? '#ef4444' : undefined }}>
-            {(stats?.rejected != null
-              ? stats.rejected
-              : stats?.submissions != null && stats?.confirmed != null && stats?.pending != null
-                ? Math.max(0, stats.submissions - stats.confirmed - stats.pending)
-                : 0
-            ).toLocaleString()}
+          <strong style={{ color: rejectedTotal > 0 ? '#ef4444' : undefined }}>
+            {rejectedTotal.toLocaleString()}
           </strong>
           <span>Rejected</span>
         </button>
-        <button type="button" className="portal-kpi" onClick={() => onNav('web')}>
-          <strong>{webSubmitted.toLocaleString()}</strong>
-          <span>Web submitted</span>
+        <button type="button" className="portal-kpi" onClick={() => onNav(gated('report') ? 'report' : 'analyze')}>
+          <strong>{allSubmitted.toLocaleString()}</strong>
+          <span>All submissions</span>
         </button>
         <button type="button" className="portal-kpi" onClick={() => onNav('users')}>
           <strong>

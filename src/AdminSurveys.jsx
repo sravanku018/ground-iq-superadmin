@@ -1186,7 +1186,9 @@ export default function AdminSurveysScreen({ onToast, user }) {
           <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
             {Number(s.submissions) > 0 ? (
               <>
-                <Icon name="chart" size={12} /> {s.submissions} Submissions ·{' '}
+                <Icon name="chart" size={12} /> {s.submissions} Submissions
+                {Number(s.web_submissions) > 0 ? ` · ${s.web_submissions} web` : ''}
+                {' · '}
               </>
             ) : null}
             <Icon name="clipboard" size={12} /> {s.question_count || 0} Questions

@@ -7850,7 +7850,8 @@ async function rawHandler(req: Request): Promise<Response> {
           admin_names: admins.map((a) => `${a.company_name || 'No company'} · ${a.name}`).join(", "),
           respondents_total: (rspMap.get(Number(r.id)) as any)?.total || 0,
           respondents_done: (rspMap.get(Number(r.id)) as any)?.done || 0,
-          submissions: subCount,
+          submissions: subCount + webCount,
+          field_submissions: subCount,
           web_submissions: webCount,
         };
       });
@@ -10253,11 +10254,15 @@ async function rawHandler(req: Request): Promise<Response> {
         const surveyAcsLive = dataAcs || Number((factGeo as Record<string, unknown>)?.ac_count || 0);
 
         return json({
-          submissions: confirmed + pending + rejected,
+          field_pending: pending,
+          field_confirmed: confirmed,
+          field_rejected: rejected,
+          field_submissions: confirmed + pending + rejected,
+          pending: pending + webPending,
+          confirmed: confirmed + webConfirmed,
+          rejected: rejected + webRejected,
+          submissions: confirmed + pending + rejected + webConfirmed + webPending + webRejected,
           survey_responses: srs?.n ?? 0,
-          pending,
-          confirmed,
-          rejected,
           web_pending: webPending,
           web_confirmed: webConfirmed,
           web_rejected: webRejected,

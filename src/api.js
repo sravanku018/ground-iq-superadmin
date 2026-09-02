@@ -538,6 +538,56 @@ export function createWebSurvey({ form_key, form_id, submitted_by, answers }) {
   })
 }
 
+export function webFillUrl(formKey) {
+  if (typeof window === 'undefined' || !formKey) return ''
+  const base = String(import.meta.env.BASE_URL || '/')
+  const root = `${window.location.origin}${base.endsWith('/') ? base : `${base}/`}`
+  const u = new URL(root)
+  u.searchParams.set('fill', formKey)
+  return u.toString()
+}
+
+const GITHUB_WEB_REPO = 'sravanku018/ground-iq-web'
+/** Canonical Client Admin / field-app origin (used from Super Admin console). */
+const CANONICAL_FIELD_APP = 'https://ground-iq-web-lake.vercel.app/'
+
+export function apkDownloadUrl() {
+  return `https://github.com/${GITHUB_WEB_REPO}/releases/latest/download/ElectionSurvey-release.apk`
+}
+
+/** Shareable field-app URL. Portal-only builds open the collector via ?app=1. */
+export function fieldAppUrl() {
+  const superConsole = (import.meta.env.VITE_SUPER_ADMIN ?? '0') === '1'
+  let root = CANONICAL_FIELD_APP
+  if (!superConsole && typeof window !== 'undefined') {
+    const base = String(import.meta.env.BASE_URL || '/')
+    root = `${window.location.origin}${base.endsWith('/') ? base : `${base}/`}`
+  }
+  const u = new URL(root)
+  u.searchParams.set('app', '1')
+  return u.toString()
+}
+
+export function fieldAppShareText() {
+  return `Smart Survey X field app\n${fieldAppUrl()}\n\nAndroid APK\n${apkDownloadUrl()}`
+}
+
+export function getPublicWebSurvey(formKey) {
+  return request(`/api/web-survey?form_key=${encodeURIComponent(formKey)}`)
+}
+
+export function submitPublicWebSurvey({ form_key, submitted_by, answers }) {
+  return request('/api/web-survey/public', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      form_key,
+      submitted_by: submitted_by || 'Web',
+      answers,
+    }),
+  })
+}
+
 /** Telugu auto-translate — requires can_manage_questions or can_crud_questionnaire. */
 export function translateQuestion({ text, options }) {
   return request('/api/questions/translate', {

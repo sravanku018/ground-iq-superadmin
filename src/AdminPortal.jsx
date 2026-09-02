@@ -2,6 +2,7 @@ import { Component, lazy, Suspense, useCallback, useEffect, useRef, useState } f
 import Icon from './Icons'
 import {
   clearSession,
+  fieldAppUrl,
   getStats,
   getStoredUser,
   getToken,
@@ -12,6 +13,7 @@ import {
 
   me,
 } from './api'
+import ShareAppLink from './components/ShareAppLink'
 import AdminLogin from './AdminLogin'
 import VerifiedBadge from './VerifiedBadge'
 import { PortalEmpty, PortalSkeleton } from './PortalUI'
@@ -172,7 +174,7 @@ function formatDate(v) {
   }
 }
 
-function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => true }) {
+function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => true, onToast }) {
   const isSuper = superAdminOnly || user?.role === 'super_admin'
   const gated = (p) => {
     // Super Admin (or console mode) always sees every feature
@@ -239,6 +241,8 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           </p>
         </div>
       </header>
+
+      {!isSuper && <ShareAppLink onToast={onToast} />}
 
       {/* Quota Allocation Banner for Client Admin */}
       {!isSuper && (
@@ -1071,7 +1075,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
               {user.role === 'super_admin' ? ' · Profile' : ''}
             </span>
           </button>
-          <a className="portal-link" href="/" target="_blank" rel="noreferrer">
+          <a className="portal-link" href={fieldAppUrl()} target="_blank" rel="noreferrer">
             Field app ↗
           </a>
           <button type="button" className="btn small danger" onClick={handleLogout}>
@@ -1104,6 +1108,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
               onNav={goPage}
               superAdminOnly={isSuper}
               canPage={canPage}
+              onToast={notify}
             />
           )}
           {page === 'users' && canPage('users') && (

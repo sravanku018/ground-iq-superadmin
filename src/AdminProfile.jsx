@@ -1,5 +1,6 @@
 import { resetSuperAdminTotp, updateUser } from './api'
 import CredentialsCard from './components/CredentialsCard'
+import ShareAppLink from './components/ShareAppLink'
 
 
 /** Admin console — own account (name / password / TOTP for Super Admin; Granted powers for Client Admin). */
@@ -30,6 +31,7 @@ export default function AdminProfileScreen({ user, onToast, onUserUpdated }) {
       </header>
 
       <div style={{ maxWidth: 680 }}>
+        {!isSuper && <ShareAppLink onToast={onToast} />}
         <CredentialsCard
           name={user?.name || user?.username}
           username={user?.username}

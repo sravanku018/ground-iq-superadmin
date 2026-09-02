@@ -5,7 +5,7 @@
 
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import { APP_VERSION, APP_VERSION_CODE } from "./version"
-import { getApiBase } from "./api"
+import { apkDownloadUrl, getApiBase } from "./api"
 
 const GITHUB_REPO = "sravanku018/ground-iq-web"
 const DISMISSED_UPDATE_KEY = "esurvey_dismissed_update_version"
@@ -25,7 +25,7 @@ export function semverCompare(a, b) {
 }
 
 function defaultApkUrl() {
-  return `https://github.com/${GITHUB_REPO}/releases/latest/download/ElectionSurvey-release.apk`
+  return apkDownloadUrl()
 }
 
 /**

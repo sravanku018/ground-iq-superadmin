@@ -21,9 +21,12 @@ import {
   setProgressQuota,
   setUserSurveys,
   updateUser,
+  fieldAppUrl,
+  apkDownloadUrl,
 } from './api'
 import VerifiedBadge from './VerifiedBadge'
 import PhoneIndiaField from './PhoneIndiaField'
+import ShareAppLink from './components/ShareAppLink'
 import { digits10, isValidInMobile, toE164In, formatInMobile } from './phoneIn'
 import { compressImageFile } from './mediaOptimize'
 
@@ -1058,6 +1061,8 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
         </p>
       </header>
 
+      <ShareAppLink onToast={onToast} />
+
       {/* Quota Allocation Banner for Client Admin */}
       {me?.role === 'admin' && (
         <div
@@ -1551,8 +1556,40 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
           <h3>Just created — app logins</h3>
           <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
             Username is the field-app login (usually lowercase). Copy password now — it is not
-            shown again later.
+            shown again later. Share the field app link with them.
           </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={async () => {
+                const link = fieldAppUrl()
+                try {
+                  await navigator.clipboard.writeText(link)
+                  onToast?.('App link copied', 'ok')
+                } catch {
+                  onToast?.(link, 'ok')
+                }
+              }}
+            >
+              Copy app link
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={async () => {
+                const link = apkDownloadUrl()
+                try {
+                  await navigator.clipboard.writeText(link)
+                  onToast?.('APK link copied', 'ok')
+                } catch {
+                  onToast?.(link, 'ok')
+                }
+              }}
+            >
+              Copy APK
+            </button>
+          </div>
           <ul className="user-list">
             {lastGenerated.map((u) => (
               <li key={u.username || u.name}>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import Icon from './Icons'
-import { createWebSurvey, getSurvey, listSurveys } from './api'
+import { createWebSurvey, getSurvey, listSurveys, webFillUrl } from './api'
 import { slugQuestionKey } from './questionKey'
 
 function qid(q) {
@@ -122,8 +122,9 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
         <Icon name="clipboard" size={18} /> Web survey
       </h2>
       <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-        Fill a survey in the portal. Super Admin must grant <strong>Web survey</strong> to this
-        Client Admin. Records land as pending (no GPS/photo/voice lock).
+        Copy the link for this survey and share it. Anyone with the link can fill it (no login).
+        You can also fill it here. Records land as pending (no GPS/photo/voice). Super Admin must
+        grant <strong>Web survey</strong>.
       </p>
 
       <label className="field" style={{ maxWidth: 420, marginBottom: 16 }}>
@@ -141,6 +142,38 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
           ))}
         </select>
       </label>
+
+      {formKey ? (
+        <div className="card" style={{ marginBottom: 16, padding: 14 }}>
+          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>Web survey link</p>
+          <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
+            Share this URL. Opens a public form for <strong>{title || formKey}</strong>.
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              readOnly
+              value={webFillUrl(formKey)}
+              style={{ flex: 1, minWidth: 220, fontSize: 13 }}
+              onFocus={(e) => e.target.select()}
+            />
+            <button
+              type="button"
+              className="btn primary"
+              onClick={async () => {
+                const link = webFillUrl(formKey)
+                try {
+                  await navigator.clipboard.writeText(link)
+                  onToast?.('Link copied', 'ok')
+                } catch {
+                  onToast?.(link, 'ok')
+                }
+              }}
+            >
+              Copy link
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {title ? <h3 style={{ margin: '0 0 12px' }}>{title}</h3> : null}
 

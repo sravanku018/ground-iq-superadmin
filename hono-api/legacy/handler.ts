@@ -405,13 +405,14 @@ async function setSubmissionPayload(id: number, payload: Record<string, unknown>
 const loginAttempts = new Map<string, { count: number; reset: number }>();
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
+  const cap = String(ip).startsWith("web:") ? 30 : 5;
   const a = loginAttempts.get(ip);
   if (!a || now > a.reset) {
     loginAttempts.set(ip, { count: 1, reset: now + 60000 });
     return true;
   }
   a.count++;
-  return a.count <= 5;
+  return a.count <= cap;
 }
 
 // ── Crypto helpers (same idea as Node auth) ───────────────
@@ -8593,6 +8594,75 @@ async function rawHandler(req: Request): Promise<Response> {
       return json({ ok: true, title, questions, count: questions.length });
     }
 
+
+    if (path === "/api/web-survey" && method === "GET") {
+      const formKey = String(url.searchParams.get("form_key") || "").trim();
+      if (!formKey || formKey === "default" || formKey === "legacy") {
+        return json({ error: "Unknown survey" }, 404);
+      }
+      const rows = await sql`
+        SELECT form_key, title, display_lang, questions
+        FROM survey_form
+        WHERE form_key = ${formKey}
+        LIMIT 1
+      `.catch(() => []);
+      if (!rows.length) return json({ error: "Survey not found" }, 404);
+      const f = rows[0] as {
+        form_key: string;
+        title: string;
+        display_lang?: string;
+        questions: unknown;
+      };
+      const questions = parseQuestionsArray(f.questions);
+      return json({
+        form_key: f.form_key,
+        title: f.title,
+        display_lang: surveyDisplayLang(f.display_lang),
+        questions,
+      });
+    }
+
+    if (path === "/api/web-survey/public" && method === "POST") {
+      const ip = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown";
+      if (!checkRateLimit(`web:${ip}`)) {
+        return json({ error: "Too many submissions. Try again in a minute." }, 429);
+      }
+      const body = await readBody(req);
+      const answers = (body.answers || {}) as Record<string, unknown>;
+      const agent = String(body.submitted_by || body.name || "Web").trim().slice(0, 120) || "Web";
+      const formKey = String(body.form_key || body.form_id || "").trim();
+      if (!formKey || formKey === "default" || formKey === "legacy") {
+        return json({ error: "Unknown survey" }, 400);
+      }
+      const exists = await sql`
+        SELECT form_key FROM survey_form WHERE form_key = ${formKey} LIMIT 1
+      `.catch(() => []);
+      if (!exists.length) return json({ error: "Survey not found" }, 404);
+      const payload = {
+        form_key: formKey,
+        form_id: formKey,
+        source: "web-survey",
+        submitted_by: agent,
+        user_id: null,
+        user_role: "web",
+        status: "pending",
+        geo: null,
+        location_details: null,
+        locks: { geo: false, web: true },
+        has_photo: false,
+        has_audio: false,
+        answers: stripPii({ ...answers, data_collector: agent }),
+        content_type: "qa",
+      };
+      const rows = await insertSubmissionRow(payload);
+      const row = rows[0] as { id: number; created_at: string };
+      return json({
+        ok: true,
+        id: row.id,
+        status: "pending",
+        created_at: row.created_at,
+      }, 201);
+    }
 
     if (path === "/api/web-survey" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);

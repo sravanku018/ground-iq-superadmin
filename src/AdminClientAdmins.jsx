@@ -28,6 +28,7 @@ const POWER_DEFS = [
   { key: 'can_validate_proof', label: 'Proof validation', icon: '📞', hint: 'Phone + Aadhaar format checks' },
   { key: 'can_web_survey', label: 'Web survey', icon: '✎', hint: 'Fill surveys in the portal (desk / web)' },
   { key: 'can_record_voice', label: 'Voice recording', icon: '🎙', hint: 'Turn field-app voice Off vs Required. Minute limits stay Super Admin only.' },
+  { key: 'can_translate_telugu', label: 'Telugu translation', icon: 'తె', hint: 'Auto-translate and edit Telugu question text' },
 ]
 
 function powersFromUser(u) {

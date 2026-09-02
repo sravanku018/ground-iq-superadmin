@@ -309,7 +309,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       </div>
       )}
 
-      {canTelugu && displayLang === 'te' && questions.length > 0 && (
+      {canTelugu && questions.length > 0 && (
         <div style={{ marginBottom: 12 }}>
           <button type="button" className="btn small" disabled={translatingAll || !canEdit} onClick={() => void translateAll()}>
             {translatingAll ? 'Translating all…' : 'Auto-translate all questions + options'}
@@ -342,7 +342,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                 placeholder="Type the question"
               />
             </label>
-            {canTelugu && displayLang === 'te' ? (
+            {canTelugu ? (
               <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} onToast={onToast} />
             ) : null}
 

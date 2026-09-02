@@ -195,7 +195,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
 
   useEffect(() => {
     let alive = true
-    listSubmissions(10, '')
+    listSubmissions(20, 'pending', { source: 'field' })
       .then((d) => {
         if (alive) setRecentItems(d.items || [])
       })

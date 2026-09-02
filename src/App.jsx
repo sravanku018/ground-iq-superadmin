@@ -64,7 +64,8 @@ function FieldBoot() {
 import AppUpdateModal from './AppUpdateModal'
 
 export default function App() {
-  const fillKey = publicFillKey()
+  // Web fill is portal-only. Field APK / field builds never open the public form.
+  const fillKey = FIELD_APP_ENABLED ? '' : publicFillKey()
   const openFieldApp =
     !SUPER_ADMIN_CONSOLE &&
     !isAdminPath() &&

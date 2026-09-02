@@ -4391,8 +4391,8 @@ async function rawHandler(req: Request): Promise<Response> {
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.36",
-          versionCode: 20036,
+          version: "2.0.37",
+          versionCode: 20037,
           minSupportedVersionCode: 20000,
           apkUrl: `https://${req.headers.get("x-forwarded-host") || url.hostname}/api/app.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
@@ -6561,7 +6561,8 @@ async function rawHandler(req: Request): Promise<Response> {
         Boolean(districtQ) ||
         Boolean(completenessQ && completenessQ !== "all") ||
         qFilters.length > 0 ||
-        Boolean((url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim());
+        Boolean((url.searchParams.get("survey") || url.searchParams.get("form_key") || "").trim()) ||
+        Boolean((url.searchParams.get("source") || "").trim());
       const fetchRows = hasSliceFilter ? 5000 : limit;
       const scopeKeys = await adminFormKeyScope(sql, me);
       const rows = scopeKeys
@@ -6635,6 +6636,14 @@ async function rawHandler(req: Request): Promise<Response> {
         } else {
           items = items.filter((x) => x.status === statusQ);
         }
+      }
+      const sourceQ = (url.searchParams.get("source") || "").trim().toLowerCase();
+      const isWebSrc = (x: { source?: string }) =>
+        x.source === "web-survey" || x.source === "web";
+      if (sourceQ === "web") {
+        items = items.filter((x) => isWebSrc(x));
+      } else if (sourceQ === "field" || sourceQ === "app") {
+        items = items.filter((x) => !isWebSrc(x));
       }
       if (qFilters.length) {
         // question id → type, so age-type filters bucket-match ranges
@@ -9765,12 +9774,15 @@ async function rawHandler(req: Request): Promise<Response> {
                 )::int AS rejected,
                 COUNT(*) FILTER (
                   WHERE (
-                    COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
-                    OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
-                    OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
-                    OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                    (
+                      COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                      OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                      OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                      OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                    )
+                    OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
                   )
-                  OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
+                  AND COALESCE(payload->>'source', '') NOT IN ('web-survey', 'web')
                 )::int AS pending
               FROM submissions WHERE payload->>'form_key' = ANY(${envScope})
             `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }])
@@ -9796,12 +9808,15 @@ async function rawHandler(req: Request): Promise<Response> {
                 )::int AS rejected,
                 COUNT(*) FILTER (
                   WHERE (
-                    COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
-                    OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
-                    OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
-                    OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                    (
+                      COALESCE(payload->>'draft', 'false') IN ('true', 't', '1')
+                      OR COALESCE(payload->'answers'->>'_draft', 'false') IN ('true', 't', '1')
+                      OR COALESCE(payload->'answers'->>'draft', 'false') IN ('true', 't', '1')
+                      OR LOWER(COALESCE(payload->>'content_type', '')) = 'draft'
+                    )
+                    OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
                   )
-                  OR COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
+                  AND COALESCE(payload->>'source', '') NOT IN ('web-survey', 'web')
                 )::int AS pending
               FROM submissions
             `.catch(() => [{ confirmed: 0, rejected: 0, pending: 0 }]);

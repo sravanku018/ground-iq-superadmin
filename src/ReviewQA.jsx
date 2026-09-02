@@ -35,6 +35,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
   const canReview = user?.role === 'super_admin' || !!user?.can_review_data
   const isSuper = user?.role === 'super_admin'
   const [status, setStatus] = useState('pending')
+  const [source, setSource] = useState('field')
 
   const [survey, setSurvey] = useState('')
   const [surveys, setSurveys] = useState([])
@@ -52,7 +53,10 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
     setLoading(true)
     setError('')
     try {
-      const data = await listSubmissions(200, status === 'all' ? '' : status, { survey })
+      const data = await listSubmissions(200, status === 'all' ? '' : status, {
+        survey,
+        source,
+      })
       const next = data.items || []
       setItems(next)
       setFocusIdx((i) => (next.length ? Math.min(i, next.length - 1) : 0))
@@ -62,7 +66,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
     } finally {
       setLoading(false)
     }
-  }, [status, survey, onToast])
+  }, [status, survey, source, onToast])
 
   useEffect(() => {
     load()
@@ -359,6 +363,22 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
             </button>
           ))}
         </div>
+        <div className="chip-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+          {[
+            { id: 'field', label: 'Field app' },
+            { id: 'web', label: 'Web survey' },
+            { id: 'all', label: 'All sources' },
+          ].map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={`chip ${source === s.id ? 'selected' : ''}`}
+              onClick={() => setSource(s.id)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
         <label className="field compact" style={{ marginTop: 10 }}>
           <span>By survey</span>
           <select value={survey} onChange={(e) => setSurvey(e.target.value)}>
@@ -418,7 +438,9 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
       ) : !items.length ? (
         <PortalEmpty title={`No ${status === 'all' ? '' : status + ' '}surveys`}>
           {status === 'pending'
-            ? 'New field and web submits appear here with full answers until you confirm.'
+            ? source === 'web'
+              ? 'Web fills appear here until confirmed. Copy a web link from Web survey.'
+              : 'Field Send appears here as pending until you confirm. Use Web survey for public fills.'
             : 'Try another status filter or survey.'}
         </PortalEmpty>
       ) : (

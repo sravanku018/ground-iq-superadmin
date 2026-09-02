@@ -337,7 +337,7 @@ function HomeScreen({
             </div>
             <div className="mission-progress-labels">
               <span>{done} records submitted</span>
-              <span>Target: {target} survey{target === 1 ? '' : 's'}</span>
+              <span>Target: {target}</span>
             </div>
           </div>
         ) : (

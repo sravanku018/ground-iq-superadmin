@@ -431,7 +431,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
         name: displayName,
         display_name: displayName,
         username: uname,
-        target_quota: Array.isArray(profileSurveys) ? profileSurveys.length : Number(profileForm.target_quota) || 0,
+        target_quota: Number(profileForm.target_quota) || 0,
       }
 
       const rawPhone = (profileForm.phone || '').trim()
@@ -535,7 +535,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
         password: typedPass,
         name: typedName || typedUser,
         role: typedRole,
-        target_quota: Array.isArray(form.surveys) ? form.surveys.length : typedQuota,
+        target_quota: typedQuota,
         ...(typedPhone ? { phone: typedPhone } : {}),
       }
       const res = await createUser(body)
@@ -615,7 +615,6 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
       const res = await generateUsers({
         ...gen,
         role: 'surveyor',
-        target_quota: Array.isArray(gen.surveys) ? gen.surveys.length : 0,
       })
       const createdUsers = Array.isArray(res.users) ? res.users : []
       const genSurveyIds = Array.isArray(gen.surveys) ? gen.surveys.map(Number) : []
@@ -704,7 +703,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
         username: edit.username.trim().toLowerCase(),
         name: edit.name.trim(),
         phone: edit.phone ? toE164In(edit.phone) : null,
-        target_quota: Array.isArray(edit.surveys) ? edit.surveys.length : Number(edit.target_quota) || 0,
+        target_quota: Number(edit.target_quota) || 0,
       }
       if (edit.password.trim()) {
         body.password = edit.password.trim()
@@ -1438,6 +1437,17 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
             />
           </label>
           <label className="field">
+            <span>Records each must complete (target)</span>
+            <input
+              type="number"
+              min={0}
+              value={gen.target_quota}
+              onChange={(e) =>
+                setGen({ ...gen, target_quota: Number(e.target.value) || 0 })
+              }
+            />
+          </label>
+          <label className="field">
             <span>Password (batch — same for all)</span>
             <input
               value={gen.password}
@@ -1452,16 +1462,9 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
             </p>
             <SurveySelect
               value={gen.surveys}
-              onChange={(ids) => setGen((g) => ({ ...g, surveys: ids, target_quota: ids.length }))}
+              onChange={(ids) => setGen((g) => ({ ...g, surveys: ids }))}
               all={surveysForAssign(gen.surveys)}
             />
-            <p style={{ margin: '8px 0 0', fontSize: 13, fontWeight: 700 }}>
-              Target {gen.surveys.length} survey{gen.surveys.length === 1 ? '' : 's'} ·{' '}
-              {surveysForAssign(gen.surveys)
-                .filter((s) => gen.surveys.map(String).includes(String(s.id)))
-                .reduce((n, s) => n + (Number(s.question_count) || 0), 0)}{' '}
-              questions
-            </p>
           </div>
           <button type="submit" className="btn primary" disabled={saving}>
             {saving ? 'Generating…' : 'Create surveyors + assign surveys'}
@@ -1472,24 +1475,31 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
       {tab === 'create' && (
         <form className="card" onSubmit={handleCreate} style={{ marginBottom: 14 }}>
           <h3>Add one surveyor</h3>
+          <label className="field">
+            <span>
+              Target records
+              {allotCap > 0 ? ` (allotted ${allotUsed}/${allotCap}, ${allotLeft} left)` : ''}
+            </span>
+            <input
+              type="number"
+              min={0}
+              value={form.target_quota}
+              onChange={(e) =>
+                setForm({ ...form, target_quota: Number(e.target.value) || 0 })
+              }
+            />
+          </label>
           <div className="field">
             <span>Assign surveys (required on the phone)</span>
             <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
-              Target = number of surveys you tick. Questions on the phone = questions in those
-              surveys. Collect will not start until at least one is assigned.
+              Collect will not start until at least one survey is assigned. Tick every survey they
+              must fill. Questions on the phone come from these surveys.
             </p>
             <SurveySelect
               value={form.surveys}
-              onChange={(ids) => setForm((f) => ({ ...f, surveys: ids, target_quota: ids.length }))}
+              onChange={(ids) => setForm((f) => ({ ...f, surveys: ids }))}
               all={surveysForAssign(form.surveys)}
             />
-            <p style={{ margin: '8px 0 0', fontSize: 13, fontWeight: 700 }}>
-              Target {form.surveys.length} survey{form.surveys.length === 1 ? '' : 's'} ·{' '}
-              {surveysForAssign(form.surveys)
-                .filter((s) => form.surveys.map(String).includes(String(s.id)))
-                .reduce((n, s) => n + (Number(s.question_count) || 0), 0)}{' '}
-              questions
-            </p>
           </div>
           <label className="field">
             <span>Username * (field app login — stored lowercase)</span>
@@ -1692,7 +1702,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                   <div style={{ marginTop: 10, padding: '10px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #f1f5f9' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, marginBottom: 5 }}>
                       <span style={{ fontWeight: 600, color: '#334155' }}>
-                        Progress: <strong>{done}</strong> / {target > 0 ? `${target} surveys` : 'No survey assigned'}
+                        Progress: <strong>{done}</strong> / {target > 0 ? `${target} target` : 'No quota set'}
                       </span>
                       <span style={{ fontWeight: 700, color: pct >= 100 ? '#16a34a' : '#0284c7' }}>
                         {target > 0 ? `${pct}%` : '—'}
@@ -1718,7 +1728,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                         style={{ fontSize: 12, padding: '5px 14px', display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 700 }}
                         onClick={() => openProfile(u)}
                       >
-                        <Icon name="user" size={13} /> Edit Profile & Surveys
+                        <Icon name="user" size={13} /> Edit Profile & Quota
                       </button>
                       {canVerify && (
                         <button
@@ -2108,10 +2118,17 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       />
                     </label>
                     <label className="field compact" style={{ margin: 0 }}>
-                      <span style={{ fontSize: 11 }}>Target (assigned surveys)</span>
+                      <span style={{ fontSize: 11 }}>Target records quota</span>
                       <input
-                        readOnly
-                        value={`${profileSurveys.length} survey${profileSurveys.length === 1 ? '' : 's'}`}
+                        type="number"
+                        min={0}
+                        value={profileForm.target_quota}
+                        onChange={(e) =>
+                          setProfileForm({
+                            ...profileForm,
+                            target_quota: Number(e.target.value) || 0,
+                          })
+                        }
                       />
                     </label>
                   </div>

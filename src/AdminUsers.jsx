@@ -21,7 +21,6 @@ import {
   setProgressQuota,
   setUserSurveys,
   updateUser,
-  fieldAppUrl,
   apkDownloadUrl,
 } from './api'
 import VerifiedBadge from './VerifiedBadge'
@@ -1556,38 +1555,23 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
           <h3>Just created — app logins</h3>
           <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
             Username is the field-app login (usually lowercase). Copy password now — it is not
-            shown again later. Share the field app link with them.
+            shown again later. Share the Android download link with them.
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
             <button
               type="button"
               className="btn primary"
               onClick={async () => {
-                const link = fieldAppUrl()
-                try {
-                  await navigator.clipboard.writeText(link)
-                  onToast?.('App link copied', 'ok')
-                } catch {
-                  onToast?.(link, 'ok')
-                }
-              }}
-            >
-              Copy app link
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={async () => {
                 const link = apkDownloadUrl()
                 try {
                   await navigator.clipboard.writeText(link)
-                  onToast?.('APK link copied', 'ok')
+                  onToast?.('APK download link copied', 'ok')
                 } catch {
                   onToast?.(link, 'ok')
                 }
               }}
             >
-              Copy APK
+              Copy download link
             </button>
           </div>
           <ul className="user-list">

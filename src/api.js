@@ -572,7 +572,7 @@ const GITHUB_WEB_REPO = 'sravanku018/ground-iq-web'
 const CANONICAL_FIELD_APP = 'https://ground-iq-web-lake.vercel.app/'
 
 export function apkDownloadUrl() {
-  return `https://github.com/${GITHUB_WEB_REPO}/releases/latest/download/ElectionSurvey-release.apk`
+  return `${getApiBase()}/api/app.apk`
 }
 
 /** Shareable field-app URL. Portal-only builds open the collector via ?app=1. */
@@ -589,7 +589,7 @@ export function fieldAppUrl() {
 }
 
 export function fieldAppShareText() {
-  return `Smart Survey X field app\n${fieldAppUrl()}\n\nAndroid APK\n${apkDownloadUrl()}`
+  return `Smart Survey X — Android app\n${apkDownloadUrl()}`
 }
 
 export function getPublicWebSurvey(formKey, token) {

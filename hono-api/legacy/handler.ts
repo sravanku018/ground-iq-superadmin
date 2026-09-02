@@ -718,6 +718,42 @@ function corsPreflight(req: Request): Response {
   return new Response(null, { status: 204, headers });
 }
 
+const GITHUB_RELEASE_APK =
+  "https://github.com/sravanku018/ground-iq-web/releases/latest/download/ElectionSurvey-release.apk";
+
+/** Direct APK file for phones / WhatsApp. GitHub's own URL often fails in in-app browsers. */
+async function serveAppApk(method: string): Promise<Response> {
+  try {
+    const upstream = await fetch(GITHUB_RELEASE_APK, {
+      redirect: "follow",
+      headers: {
+        "User-Agent": "Mozilla/5.0 SmartSurveyX-APK",
+        Accept: "application/vnd.android.package-archive,application/octet-stream,*/*",
+      },
+    });
+    if (!upstream.ok) {
+      return json({ error: "App download is temporarily unavailable" }, 502);
+    }
+    const headers: Record<string, string> = {
+      "content-type": "application/vnd.android.package-archive",
+      "content-disposition": 'attachment; filename="SmartSurveyX.apk"',
+      "cache-control": "public, max-age=600",
+      "x-content-type-options": "nosniff",
+      ...CORS_HEADERS,
+      "access-control-allow-origin": "*",
+    };
+    const len = upstream.headers.get("content-length");
+    if (len) headers["content-length"] = len;
+    if (method === "HEAD") {
+      return new Response(null, { status: 200, headers });
+    }
+    return new Response(upstream.body, { status: 200, headers });
+  } catch (err) {
+    console.error("apk proxy:", err);
+    return json({ error: "App download failed" }, 502);
+  }
+}
+
 function json(
   data: unknown,
   status = 200,
@@ -4283,6 +4319,12 @@ async function rawHandler(req: Request): Promise<Response> {
   const method = req.method;
 
   try {
+    if (
+      (path === "/api/app.apk" || path === "/app.apk") &&
+      (method === "GET" || method === "HEAD")
+    ) {
+      return serveAppApk(method);
+    }
     if (!sql) return json({ error: "DATABASE_URL not set" }, 500);
     // Login / health must not wait for the full schema pass (dozens of ALTERs)
     // on a cold Deno isolate — that is the main "Signing in…" stall.
@@ -4325,7 +4367,7 @@ async function rawHandler(req: Request): Promise<Response> {
           version: "2.0.36",
           versionCode: 20036,
           minSupportedVersionCode: 20000,
-          apkUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-release.apk`,
+          apkUrl: `https://${req.headers.get("x-forwarded-host") || url.hostname}/api/app.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
           releaseUrl: `https://github.com/${repo}/releases/latest`,
           changelog: "In-app APK install, voice only when Super Admin/Client Admin requires it, IST timestamps.",

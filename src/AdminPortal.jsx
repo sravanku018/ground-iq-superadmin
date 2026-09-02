@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useCallback, useEffect, useRef, useState } f
 import Icon from './Icons'
 import {
   clearSession,
-  fieldAppUrl,
+  apkDownloadUrl,
   getStats,
   getStoredUser,
   getToken,
@@ -1076,8 +1076,8 @@ export default function AdminPortal({ superAdminOnly = false }) {
               {user.role === 'super_admin' ? ' · Profile' : ''}
             </span>
           </button>
-          <a className="portal-link" href={fieldAppUrl()} target="_blank" rel="noreferrer">
-            Field app ↗
+          <a className="portal-link" href={apkDownloadUrl()} target="_blank" rel="noreferrer">
+            Download app ↗
           </a>
           <button type="button" className="btn small danger" onClick={handleLogout}>
             Log out

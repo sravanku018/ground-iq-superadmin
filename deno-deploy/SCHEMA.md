@@ -42,7 +42,7 @@ if this doc looks stale)
 | `photo`, `aadhaar_front`, `aadhaar_back` | Verification images (data URL or R2 URL). Returned on `GET /api/users` and `GET /api/auth/me`. **Not** returned on login (login stays slim). Locked after `verified = true` except for portal admins. |
 | `verified` | Identity verified by a Client Admin who has `can_verify_surveyors` (or Super Admin). |
 | `totp_secret`, `totp_enabled` | Super Admin only. 3 seats max. Login is password + RFC 6238 TOTP (SHA-1, 30s, 6 digits, ±1 window). Secret returned only at create/reset/first-enroll — never on `GET /api/users` or `/api/auth/me`. Client Admin and surveyor logins are unchanged. |
-| `can_manage_questions`, `can_edit_surveys`, `can_review_data`, `can_verify_surveyors`, `can_assign_surveyors`, `can_crud_questionnaire`, `can_validate_proof`, `can_web_survey`, `can_record_voice` | Super-Admin-grantable powers. Enforced via `hasPower(me, "...")`. Settable only by `super_admin` (`canSuper` at creation, `POWER_KEYS` loop at edit). Client Admin Photo/Aadhaar columns show only when verify or proof is granted. **Web survey fill** (`can_web_survey`): Client Admin sees the portal Web survey page and `POST /api/web-survey` only if Super Admin granted it (Super Admin always has it). **Voice** (`can_record_voice`): Client Admin may turn a survey **Off vs Required**. **Minute auto-stop (`survey_form.voice_time_limit`) is Super Admin only** — ignored on Client Admin POST/PUT even if the body includes it. **Telugu on questions** (type / auto-translate) rides on question-management (`can_manage_questions` **or** `can_crud_questionnaire`); no separate translate grant. `POST /api/questions/translate` uses **Google Translate** (`GOOGLE_TRANSLATE_API_KEY` / `GOOGLE_API_KEY` if set, else Google's public `te` endpoint). Grok is only a fallback when `XAI_API_KEY` is set and Google fails. Saves strip `label_te` / `options_te` if the caller lacks those powers. |
+| `can_manage_questions`, `can_edit_surveys`, `can_review_data`, `can_verify_surveyors`, `can_assign_surveyors`, `can_crud_questionnaire`, `can_validate_proof`, `can_web_survey`, `can_record_voice` | Super-Admin-grantable powers. Enforced via `hasPower(me, "...")`. Settable only by `super_admin` (`canSuper` at creation, `POWER_KEYS` loop at edit). Client Admin Photo/Aadhaar columns show only when verify or proof is granted. **Web survey fill** (`can_web_survey`): filling from the portal (`POST /api/web-survey`) still needs this grant. **Copying a public one-time link** (`POST /api/web-survey/link`) is allowed to any Client Admin who can already see that survey (`adminFormKeyScope`). Public `GET /api/web-survey` + `POST /api/web-survey/public` require a live unused token (`k=`). **Voice** (`can_record_voice`): Client Admin may turn a survey **Off vs Required**. **Minute auto-stop (`survey_form.voice_time_limit`) is Super Admin only** — ignored on Client Admin POST/PUT even if the body includes it. **Telugu on questions** (type / auto-translate) rides on question-management (`can_manage_questions` **or** `can_crud_questionnaire`); no separate translate grant. `POST /api/questions/translate` uses **Google Translate** (`GOOGLE_TRANSLATE_API_KEY` / `GOOGLE_API_KEY` if set, else Google's public `te` endpoint). Grok is only a fallback when `XAI_API_KEY` is set and Google fails. Saves strip `label_te` / `options_te` if the caller lacks those powers. |
 | `max_questions_per_survey`, `max_surveys`, `max_surveyors`, `max_records` | Super-Admin-set numeric caps, 0 = unlimited. All 4 have real enforcement, not just storage. |
 | `created_by` | Who created this account. Drives per-admin surveyor caps and Client Admin inbox scope. |
 
@@ -64,6 +64,17 @@ inside this blob), `created_at`, `fact_status`, `fact_error`.
 `submissions.survey_id` is querying a phantom column and will silently fail
 via `.catch()`. Known broken instance: the submissions/geo section of
 `GET /api/companies/:id/dashboard` — currently always returns empty.
+
+**`web_survey_links`** — one-time public fill tokens.
+| Column | Notes |
+|---|---|
+| `token` | PK. Random URL-safe id in `?fill=form_key&k=token`. |
+| `form_key` | Survey this invite opens. |
+| `created_by` | Client Admin / Super Admin who clicked Copy. |
+| `used_at` | Set atomically on `POST /api/web-survey/public`. After this the GET/POST return 410 expired. |
+| `submission_id` | The pending web row created by that submit. |
+
+Copying a web link (`POST /api/web-survey/link`) always mints a **new** unused token. Each recipient needs their own copy. Generic `?fill=form_key` without `k=` is expired (410). Logged-in portal fill (`POST /api/web-survey`) is unchanged and is not one-time.
 
 **`survey_admin_access`** — junction: `survey_id → survey_form`,
 `admin_id → app_users`. **This is the access-control source of truth.**

@@ -10,8 +10,9 @@ import {
   listUsers,
   setSurveyAdmins,
   updateSurvey,
-  webFillUrl,
+  mintWebFillUrl,
 } from './api'
+import CopyWebFillLink from './components/CopyWebFillLink'
 import QuestionTelugu, { fillTeluguFromEnglish } from './QuestionTelugu'
 import { canTeluguQuestions, isQuestionVisible, labelPatch, nextQuestionId, teluguFields } from './questionKey'
 
@@ -443,12 +444,16 @@ export default function AdminSurveysScreen({ onToast, user }) {
       onToast?.('Open the survey and save it first — then copy the web link', 'error')
       return
     }
-    const link = webFillUrl(key)
     try {
-      await navigator.clipboard.writeText(link)
-      onToast?.(`Web link copied${title ? ` · ${title}` : ''}`, 'ok')
-    } catch {
-      onToast?.(link, 'ok')
+      const link = await mintWebFillUrl(key)
+      try {
+        await navigator.clipboard.writeText(link)
+        onToast?.(`One-time web link copied${title ? ` · ${title}` : ''}`, 'ok')
+      } catch {
+        onToast?.(link, 'ok')
+      }
+    } catch (e) {
+      onToast?.(e.message || 'Could not create link', 'error')
     }
   }
 
@@ -874,28 +879,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
             {detail.title}
           </h3>
           {detail.form_key && detail.form_key !== 'default' && detail.form_key !== 'legacy' ? (
-            <div style={{ margin: '0 0 12px' }}>
-              <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 700 }}>Web survey link</p>
-              <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
-                Anyone with this link can fill the survey (no login). Records land as pending — no
-                GPS, photo, or voice.
-              </p>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <input
-                  readOnly
-                  value={webFillUrl(detail.form_key)}
-                  style={{ flex: 1, minWidth: 220, fontSize: 13 }}
-                  onFocus={(e) => e.target.select()}
-                />
-                <button
-                  type="button"
-                  className="btn primary"
-                  onClick={() => void copyWebLink(detail.form_key, detail.title)}
-                >
-                  Copy web link
-                </button>
-              </div>
-            </div>
+            <CopyWebFillLink formKey={detail.form_key} title={detail.title} onToast={onToast} />
           ) : null}
           {user?.role === 'super_admin' && (
             <label className="field" style={{ marginTop: 8, maxWidth: 420 }}>
@@ -1273,7 +1257,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
           {isSuper
             ? 'Super Admin creates Projects and maps them to companies & Client Admins.'
-            : 'Client Admin creates Surveys under your company. Copy web link on a survey to share a public fill URL (no login).'}
+            : 'Client Admin creates Surveys under your company. Copy web link creates a one-time fill URL — it expires after that person submits.'}
         </p>
         <button
           type="button"

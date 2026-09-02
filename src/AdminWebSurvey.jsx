@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Icon from './Icons'
-import { createWebSurvey, getSurvey, listSurveys, webFillUrl } from './api'
+import { createWebSurvey, getSurvey, listSurveys } from './api'
+import CopyWebFillLink from './components/CopyWebFillLink'
 import { slugQuestionKey } from './questionKey'
 
 function qid(q) {
@@ -123,7 +124,7 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
         <Icon name="clipboard" size={18} /> Web survey
       </h2>
       <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-        Copy the link for this survey and share it. Anyone with the link can fill it (no login).
+        Copy a one-time link and share it. After the recipient submits, that link expires.
         Records land as pending (no GPS/photo/voice). Filling the form here in the portal needs Super
         Admin to grant <strong>Web survey</strong>.
       </p>
@@ -146,33 +147,7 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
 
       {formKey ? (
         <div className="card" style={{ marginBottom: 16, padding: 14 }}>
-          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>Web survey link</p>
-          <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
-            Share this URL. Opens a public form for <strong>{title || formKey}</strong>.
-          </p>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <input
-              readOnly
-              value={webFillUrl(formKey)}
-              style={{ flex: 1, minWidth: 220, fontSize: 13 }}
-              onFocus={(e) => e.target.select()}
-            />
-            <button
-              type="button"
-              className="btn primary"
-              onClick={async () => {
-                const link = webFillUrl(formKey)
-                try {
-                  await navigator.clipboard.writeText(link)
-                  onToast?.('Link copied', 'ok')
-                } catch {
-                  onToast?.(link, 'ok')
-                }
-              }}
-            >
-              Copy link
-            </button>
-          </div>
+          <CopyWebFillLink formKey={formKey} title={title} onToast={onToast} />
         </div>
       ) : null}
 

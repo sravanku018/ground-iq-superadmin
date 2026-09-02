@@ -27,6 +27,12 @@ function publicFillKey() {
   return String(q || '').trim()
 }
 
+function publicFillToken() {
+  if (typeof window === 'undefined') return ''
+  const q = new URLSearchParams(window.location.search)
+  return String(q.get('k') || q.get('token') || '').trim()
+}
+
 /** Client Admin “Copy link” uses ?app=1 so portal-only Vercel/Pages builds still open the collector. */
 function wantFieldApp() {
   if (typeof window === 'undefined') return false
@@ -83,7 +89,7 @@ export default function App() {
     <>
       {fillKey ? (
         <Suspense fallback={<FieldBoot />}>
-          <PublicWebFill formKey={fillKey} />
+          <PublicWebFill formKey={fillKey} fillToken={publicFillToken()} />
         </Suspense>
       ) : SUPER_ADMIN_CONSOLE ? (
         <AdminPortal superAdminOnly />

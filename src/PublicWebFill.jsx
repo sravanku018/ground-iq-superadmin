@@ -31,7 +31,7 @@ function emptyAnswers(qs) {
   return init
 }
 
-export default function PublicWebFill({ formKey }) {
+export default function PublicWebFill({ formKey, fillToken }) {
   const [title, setTitle] = useState('')
   const [displayLang, setDisplayLang] = useState('en')
   const [questions, setQuestions] = useState([])
@@ -40,6 +40,7 @@ export default function PublicWebFill({ formKey }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
+  const [expired, setExpired] = useState(false)
   const [err, setErr] = useState('')
   const [toast, setToast] = useState('')
 
@@ -47,7 +48,8 @@ export default function PublicWebFill({ formKey }) {
     let dead = false
     setLoading(true)
     setErr('')
-    getPublicWebSurvey(formKey)
+    setExpired(false)
+    getPublicWebSurvey(formKey, fillToken)
       .then((d) => {
         if (dead) return
         setTitle(d.title || 'Survey')
@@ -57,7 +59,13 @@ export default function PublicWebFill({ formKey }) {
         setAnswers(emptyAnswers(qs))
       })
       .catch((e) => {
-        if (!dead) setErr(e.message || 'Survey not found')
+        if (dead) return
+        if (e.status === 410 || e.data?.expired) {
+          setExpired(true)
+          setErr('')
+        } else {
+          setErr(e.message || 'Survey not found')
+        }
       })
       .finally(() => {
         if (!dead) setLoading(false)
@@ -65,7 +73,7 @@ export default function PublicWebFill({ formKey }) {
     return () => {
       dead = true
     }
-  }, [formKey])
+  }, [formKey, fillToken])
 
   function setAns(id, val) {
     setAnswers((a) => ({ ...a, [id]: val }))
@@ -84,12 +92,19 @@ export default function PublicWebFill({ formKey }) {
     try {
       await submitPublicWebSurvey({
         form_key: formKey,
+        token: fillToken,
         submitted_by: name.trim() || 'Web',
         answers,
       })
       setDone(true)
+      setExpired(true)
     } catch (e2) {
-      setToast(e2.message || 'Submit failed')
+      if (e2.status === 410 || e2.data?.expired) {
+        setExpired(true)
+        setDone(false)
+      } else {
+        setToast(e2.message || 'Submit failed')
+      }
     } finally {
       setSaving(false)
     }
@@ -103,7 +118,7 @@ export default function PublicWebFill({ formKey }) {
         <p className="eyebrow">Smart Survey X</p>
         <h1 style={{ fontSize: 22, margin: '0 0 8px' }}>{title || 'Web survey'}</h1>
         <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-          Fill and submit. No login required.
+          Fill and submit. This link works once — it expires after you submit.
         </p>
 
         {toast ? (
@@ -118,22 +133,21 @@ export default function PublicWebFill({ formKey }) {
         {done ? (
           <div className="card success-card">
             <h3 className="success-title">Submitted</h3>
-            <p className="success-sub">Thank you. Your answers were saved.</p>
-            <button
-              type="button"
-              className="btn primary"
-              onClick={() => {
-                setDone(false)
-                setAnswers(emptyAnswers(questions))
-                setName('')
-              }}
-            >
-              Submit another
-            </button>
+            <p className="success-sub">Thank you. Your answers were saved. This link has expired.</p>
           </div>
         ) : null}
 
-        {!loading && !err && !done ? (
+        {!done && expired ? (
+          <div className="card">
+            <h3 style={{ margin: '0 0 6px' }}>This link has expired</h3>
+            <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+              It can only be used once. Ask the sender for a new web survey link if you still need
+              to fill the form.
+            </p>
+          </div>
+        ) : null}
+
+        {!loading && !err && !done && !expired ? (
           <form onSubmit={submit}>
             <label className="field" style={{ marginBottom: 14 }}>
               <span>Your name (optional)</span>

@@ -538,13 +538,32 @@ export function createWebSurvey({ form_key, form_id, submitted_by, answers }) {
   })
 }
 
-export function webFillUrl(formKey) {
-  if (typeof window === 'undefined' || !formKey) return ''
-  const base = String(import.meta.env.BASE_URL || '/')
-  const root = `${window.location.origin}${base.endsWith('/') ? base : `${base}/`}`
+export function webFillUrl(formKey, token) {
+  if (!formKey) return ''
+  const superConsole = (import.meta.env.VITE_SUPER_ADMIN ?? '0') === '1'
+  let root = CANONICAL_FIELD_APP
+  if (!superConsole && typeof window !== 'undefined') {
+    const base = String(import.meta.env.BASE_URL || '/')
+    root = `${window.location.origin}${base.endsWith('/') ? base : `${base}/`}`
+  }
   const u = new URL(root)
   u.searchParams.set('fill', formKey)
+  if (token) u.searchParams.set('k', token)
   return u.toString()
+}
+
+/** Mint a one-time public fill token. Link expires after that recipient submits. */
+export function createWebFillLink(formKey) {
+  return request('/api/web-survey/link', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ form_key: formKey }),
+  })
+}
+
+export async function mintWebFillUrl(formKey) {
+  const d = await createWebFillLink(formKey)
+  return webFillUrl(formKey, d.token)
 }
 
 const GITHUB_WEB_REPO = 'sravanku018/ground-iq-web'
@@ -572,16 +591,20 @@ export function fieldAppShareText() {
   return `Smart Survey X field app\n${fieldAppUrl()}\n\nAndroid APK\n${apkDownloadUrl()}`
 }
 
-export function getPublicWebSurvey(formKey) {
-  return request(`/api/web-survey?form_key=${encodeURIComponent(formKey)}`)
+export function getPublicWebSurvey(formKey, token) {
+  const q = new URLSearchParams()
+  q.set('form_key', formKey)
+  if (token) q.set('k', token)
+  return request(`/api/web-survey?${q.toString()}`)
 }
 
-export function submitPublicWebSurvey({ form_key, submitted_by, answers }) {
+export function submitPublicWebSurvey({ form_key, token, submitted_by, answers }) {
   return request('/api/web-survey/public', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       form_key,
+      token: token || '',
       submitted_by: submitted_by || 'Web',
       answers,
     }),

@@ -21,7 +21,7 @@
 
 import { neon } from "npm:@neondatabase/serverless@0.10.4";
 import postgres from "npm:postgres@3.4.5";
-import { scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
 
 // ── Geo aliases (inlined so the Deno Playground deploys a single file) ──
@@ -413,6 +413,17 @@ function checkRateLimit(ip: string): boolean {
   }
   a.count++;
   return a.count <= cap;
+}
+
+function newWebFillToken(): string {
+  return randomBytes(18).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function webLinkExpired(extra: Record<string, unknown> = {}) {
+  return json(
+    { error: "This link has expired. It can only be used once.", expired: true, ...extra },
+    410,
+  );
 }
 
 // ── Crypto helpers (same idea as Node auth) ───────────────
@@ -1369,6 +1380,18 @@ async function ensureSchema(): Promise<void> {
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_name TEXT`,
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_id INT`,
     () => sql`CREATE INDEX IF NOT EXISTS idx_survey_form_company ON survey_form(company_id)`,
+    // One-time public web-survey links: Copy mints a token; submit sets used_at.
+    () => sql`
+      CREATE TABLE IF NOT EXISTS web_survey_links (
+        token TEXT PRIMARY KEY,
+        form_key TEXT NOT NULL,
+        created_by INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        used_at TIMESTAMPTZ,
+        submission_id INTEGER
+      )
+    `,
+    () => sql`CREATE INDEX IF NOT EXISTS idx_web_survey_links_form ON web_survey_links (form_key)`,
     () => sql`
       ALTER TABLE survey_form
       ADD CONSTRAINT survey_form_company_id_fkey
@@ -8595,11 +8618,48 @@ async function rawHandler(req: Request): Promise<Response> {
     }
 
 
+    if (path === "/api/web-survey/link" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const body = await readBody(req);
+      const formKey = String(body.form_key || body.form_id || "").trim();
+      if (!formKey || formKey === "default" || formKey === "legacy") {
+        return json({ error: "Pick a real survey" }, 400);
+      }
+      if (me.role === "admin") {
+        const writeScope = await adminFormKeyScope(sql, me);
+        if (writeScope && !writeScope.includes(formKey)) {
+          return json({ error: "You can only create links for your own surveys" }, 403);
+        }
+      }
+      const exists = await sql`
+        SELECT form_key FROM survey_form WHERE form_key = ${formKey} LIMIT 1
+      `.catch(() => []);
+      if (!exists.length) return json({ error: "Survey not found" }, 404);
+      const token = newWebFillToken();
+      await sql`
+        INSERT INTO web_survey_links (token, form_key, created_by)
+        VALUES (${token}, ${formKey}, ${me.id})
+      `;
+      return json({ ok: true, token, form_key: formKey }, 201);
+    }
+
     if (path === "/api/web-survey" && method === "GET") {
       const formKey = String(url.searchParams.get("form_key") || "").trim();
+      const token = String(url.searchParams.get("k") || url.searchParams.get("token") || "").trim();
       if (!formKey || formKey === "default" || formKey === "legacy") {
         return json({ error: "Unknown survey" }, 404);
       }
+      if (!token) return webLinkExpired();
+      const linkRows = await sql`
+        SELECT token, form_key, used_at FROM web_survey_links
+        WHERE token = ${token}
+        LIMIT 1
+      `.catch(() => []);
+      if (!linkRows.length) return webLinkExpired();
+      const link = linkRows[0] as { token: string; form_key: string; used_at: string | null };
+      if (link.used_at) return webLinkExpired();
+      if (String(link.form_key) !== formKey) return webLinkExpired();
       const rows = await sql`
         SELECT form_key, title, display_lang, questions
         FROM survey_form
@@ -8619,6 +8679,7 @@ async function rawHandler(req: Request): Promise<Response> {
         title: f.title,
         display_lang: surveyDisplayLang(f.display_lang),
         questions,
+        one_time: true,
       });
     }
 
@@ -8631,9 +8692,18 @@ async function rawHandler(req: Request): Promise<Response> {
       const answers = (body.answers || {}) as Record<string, unknown>;
       const agent = String(body.submitted_by || body.name || "Web").trim().slice(0, 120) || "Web";
       const formKey = String(body.form_key || body.form_id || "").trim();
+      const token = String(body.token || body.k || "").trim();
       if (!formKey || formKey === "default" || formKey === "legacy") {
         return json({ error: "Unknown survey" }, 400);
       }
+      if (!token) return webLinkExpired();
+      const claimed = await sql`
+        UPDATE web_survey_links
+        SET used_at = NOW()
+        WHERE token = ${token} AND form_key = ${formKey} AND used_at IS NULL
+        RETURNING token, form_key
+      `.catch(() => []);
+      if (!claimed.length) return webLinkExpired();
       const exists = await sql`
         SELECT form_key FROM survey_form WHERE form_key = ${formKey} LIMIT 1
       `.catch(() => []);
@@ -8653,14 +8723,19 @@ async function rawHandler(req: Request): Promise<Response> {
         has_audio: false,
         answers: stripPii({ ...answers, data_collector: agent }),
         content_type: "qa",
+        web_link_token: token,
       };
       const rows = await insertSubmissionRow(payload);
       const row = rows[0] as { id: number; created_at: string };
+      await sql`
+        UPDATE web_survey_links SET submission_id = ${row.id} WHERE token = ${token}
+      `.catch(() => []);
       return json({
         ok: true,
         id: row.id,
         status: "pending",
         created_at: row.created_at,
+        expired: true,
       }, 201);
     }
 

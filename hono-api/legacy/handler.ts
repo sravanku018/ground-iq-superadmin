@@ -3367,6 +3367,51 @@ async function countTenantRecords(
   return sqlCountN(row);
 }
 
+async function countFieldRecords(
+  sqlFn: NonNullable<typeof sql>,
+  adminId: number,
+): Promise<number> {
+  const keys = await adminFormKeyScope(sqlFn, { role: "admin", id: adminId });
+  if (!keys || !keys.length) return 0;
+  const [row] = await sqlFn`
+    SELECT COUNT(*)::int AS n
+    FROM submissions
+    WHERE payload->>'form_key' = ANY(${keys})
+      AND COALESCE(payload->>'source', '') NOT IN ('web-survey', 'web')
+      AND COALESCE(payload->>'status', 'pending') <> 'rejected'
+      AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+      AND COALESCE(payload->'answers'->>'_draft', 'false') NOT IN ('true', 't', '1')
+      AND COALESCE(payload->>'content_type', '') <> 'draft'
+  `.catch(() => [{ n: 0 }]);
+  return sqlCountN(row);
+}
+
+async function allocationSnapshot(
+  sqlFn: NonNullable<typeof sql>,
+  adminId: number,
+): Promise<{
+  max_records: number;
+  field_used: number;
+  web_reserved: number;
+  field_remaining: number;
+}> {
+  const [capRow] = await sqlFn`
+    SELECT COALESCE(max_records, 0) AS max_records FROM app_users WHERE id = ${adminId} LIMIT 1
+  `.catch(() => [{ max_records: 0 }]);
+  const maxRecords = Number((capRow as { max_records?: number })?.max_records) || 0;
+  const fieldUsed = await countFieldRecords(sqlFn, adminId);
+  const webReserved = await sumCanonicalWebCaps(sqlFn, adminId);
+  const fieldRemaining = maxRecords > 0
+    ? Math.max(0, maxRecords - fieldUsed - webReserved)
+    : 0;
+  return {
+    max_records: maxRecords,
+    field_used: fieldUsed,
+    web_reserved: webReserved,
+    field_remaining: fieldRemaining,
+  };
+}
+
 /** Sum of each survey's canonical web-link max_uses (reserved from the 5,000 cap). */
 async function sumCanonicalWebCaps(
   sqlFn: NonNullable<typeof sql>,
@@ -4867,7 +4912,8 @@ async function rawHandler(req: Request): Promise<Response> {
         // Peak Q across owned + shared + company projects (not only created_by)
         const questionPeak = await peakQuestionsForAdmin(sql, Number(me.id), meCompany);
         const recUsed = await countTenantRecords(sql, Number(me.id));
-        const webReserved = await sumCanonicalWebCaps(sql, Number(me.id));
+        const snap = await allocationSnapshot(sql, Number(me.id));
+        const webReserved = snap.web_reserved;
         const teamRows = await sql`
           SELECT f.id AS sid, f.title,
                  jsonb_array_length(COALESCE(
@@ -4905,8 +4951,10 @@ async function rawHandler(req: Request): Promise<Response> {
             question_count: questionPeak,
             record_count: recUsed,
             surveyor_record_count: recUsed,
-            web_reserved: webReserved,
-            max_records: Number((me as { max_records?: unknown }).max_records) || 0,
+            web_reserved: snap.web_reserved,
+            field_used: snap.field_used,
+            field_remaining: snap.field_remaining,
+            max_records: snap.max_records || Number((me as { max_records?: unknown }).max_records) || 0,
             survey_team,
             granted_surveys: (granted as { id: number; title: string }[]).map((p) => ({
               id: Number(p.id),
@@ -9119,15 +9167,8 @@ async function rawHandler(req: Request): Promise<Response> {
       const maxUses = clampWebLinkMaxUses(body.max_uses ?? body.maxUses ?? body.limit);
       let link = await ensureCanonicalWebLink(formKey, Number(me.id), maxUses);
       if (!link) return json({ error: "Could not create web link" }, 500);
-      // Same survey keeps one token. Raising max_uses is allowed while the link is open.
-      if (!link.expired && maxUses > link.max_uses) {
-        await sql`
-          UPDATE web_survey_links SET max_uses = ${maxUses}
-          WHERE token = ${link.token}
-        `.catch(() => null);
-        link = { ...link, max_uses: maxUses };
-      }
       if (link.expired) {
+        const snap0 = me.role === "admin" ? await allocationSnapshot(sql, Number(me.id)) : null;
         return json({
           error: "Web target reached — sharing is disabled for this survey",
           expired: true,
@@ -9136,8 +9177,31 @@ async function rawHandler(req: Request): Promise<Response> {
           title: surveyTitle,
           max_uses: link.max_uses,
           use_count: link.use_count,
+          ...(snap0 || {}),
         }, 410);
       }
+      const nextMax = Math.max(link.use_count, maxUses);
+      if (me.role === "admin") {
+        const snap = await allocationSnapshot(sql, Number(me.id));
+        const nextReserved = snap.web_reserved - link.max_uses + nextMax;
+        if (snap.max_records > 0 && snap.field_used + nextReserved > snap.max_records) {
+          const room = Math.max(0, snap.max_records - snap.field_used - (snap.web_reserved - link.max_uses));
+          return json({
+            error: `Not enough allocation. ${room} remaining for this web quota (${snap.max_records} − ${snap.field_used} field − other web reserved).`,
+            code: "max_records",
+            ...snap,
+            room,
+          }, 422);
+        }
+      }
+      if (nextMax !== link.max_uses) {
+        await sql`
+          UPDATE web_survey_links SET max_uses = ${nextMax}
+          WHERE token = ${link.token}
+        `.catch(() => null);
+        link = { ...link, max_uses: nextMax };
+      }
+      const snap = me.role === "admin" ? await allocationSnapshot(sql, Number(me.id)) : null;
       return json({
         ok: true,
         token: link.token,
@@ -9146,6 +9210,7 @@ async function rawHandler(req: Request): Promise<Response> {
         max_uses: link.max_uses,
         use_count: link.use_count,
         reused: true,
+        ...(snap || {}),
       });
     }
 
@@ -9209,6 +9274,7 @@ async function rawHandler(req: Request): Promise<Response> {
       const cap = share ? clampWebLinkMaxUses(share.max_uses) : 100;
       const linkUsed = share ? Number(share.use_count) || 0 : 0;
       const expired = share ? Boolean(share.expired) || linkUsed >= cap || submitted >= cap : false;
+      const snap = me.role === "admin" ? await allocationSnapshot(sql, Number(me.id)) : null;
       return json({
         items,
         live: share,
@@ -9219,6 +9285,7 @@ async function rawHandler(req: Request): Promise<Response> {
         used: submitted,
         expired,
         sharing_disabled: expired,
+        ...(snap || {}),
       });
     }
 

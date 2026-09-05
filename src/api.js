@@ -564,7 +564,7 @@ export function createWebFillLink(formKey, maxUses = 1) {
 
 export async function mintWebFillUrl(formKey, maxUses = 1) {
   const d = await createWebFillLink(formKey, maxUses)
-  return webFillUrl(formKey, d.token)
+  return { url: webFillUrl(formKey, d.token), ...d }
 }
 
 export function listWebFillLinks(formKey) {

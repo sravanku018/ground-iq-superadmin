@@ -8,12 +8,13 @@ function clampMax(n) {
   return x
 }
 
-export default function CopyWebFillLink({ formKey, title, onToast, compact = false }) {
+export default function CopyWebFillLink({ formKey, title, onToast, compact = false, maxRecords = 0 }) {
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [maxUses, setMaxUses] = useState(100)
   const [live, setLive] = useState(null)
   const [quota, setQuota] = useState({ used: 0, cap: 100, submitted: 0, linkUsed: 0 })
+  const [alloc, setAlloc] = useState({ max_records: 0, field_used: 0, web_reserved: 0, field_remaining: 0 })
 
   useEffect(() => {
     const key = String(formKey || '').trim()
@@ -34,6 +35,14 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         setQuota({ used: submitted, cap, submitted, linkUsed })
         if (share?.max_uses) setMaxUses(clampMax(share.max_uses))
         if (share?.token) setUrl(webFillUrl(key, share.token))
+        if (d.max_records != null || d.field_remaining != null) {
+          setAlloc({
+            max_records: Number(d.max_records) || 0,
+            field_used: Number(d.field_used) || 0,
+            web_reserved: Number(d.web_reserved) || 0,
+            field_remaining: Number(d.field_remaining) || 0,
+          })
+        }
       })
       .catch(() => {
         if (!dead) {
@@ -64,16 +73,45 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         onToast?.('Target reached — sharing is disabled for this survey', 'error')
         return
       }
-      const link = url || (await mintWebFillUrl(key, limit))
-      setUrl(link)
+      const d = await mintWebFillUrl(key, limit)
+      const link = d.url || d
+      setUrl(typeof link === 'string' ? link : '')
+      setLive((prev) => ({
+        ...(prev || {}),
+        token: d.token,
+        max_uses: d.max_uses || limit,
+        use_count: d.use_count || 0,
+        expired: false,
+      }))
+      setQuota((q) => ({
+        ...q,
+        cap: Number(d.max_uses) || limit,
+        linkUsed: Number(d.use_count) || 0,
+      }))
+      if (d.max_records != null || d.field_remaining != null) {
+        setAlloc({
+          max_records: Number(d.max_records) || 0,
+          field_used: Number(d.field_used) || 0,
+          web_reserved: Number(d.web_reserved) || 0,
+          field_remaining: Number(d.field_remaining) || 0,
+        })
+      }
       try {
-        await navigator.clipboard.writeText(link)
+        window.dispatchEvent(new CustomEvent('esurvey-quota-changed'))
+      } catch {
+        /* ignore */
+      }
+      const remaining = Number(d.field_remaining)
+      try {
+        await navigator.clipboard.writeText(typeof link === 'string' ? link : String(link || ''))
         onToast?.(
-          `Copied ${title || 'survey'} link${limit ? ` · ${limit} responses` : ''}`,
+          Number.isFinite(remaining)
+            ? `Quota ${limit} reserved · ${remaining.toLocaleString()} remaining for field`
+            : `Copied ${title || 'survey'} link · ${limit} reserved`,
           'ok',
         )
       } catch {
-        onToast?.(link, 'ok')
+        onToast?.(typeof link === 'string' ? link : 'Copied', 'ok')
       }
     } catch (e) {
       onToast?.(e.message || 'Could not copy link', 'error')

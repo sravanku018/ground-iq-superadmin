@@ -1084,8 +1084,10 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
 
   const me = useMemo(() => portalUser || getStoredUser(), [portalUser])
   const allotCap = Number(me?.max_records) || 0
-  const allotUsed = Number(board?.totals?.done ?? me?.record_count ?? me?.surveyor_record_count) || 0
-  const allotLeft = allotCap > 0 ? Math.max(0, allotCap - allotUsed) : null
+  const fieldUsed = Number(me?.field_used ?? board?.totals?.done ?? me?.record_count ?? me?.surveyor_record_count) || 0
+  const webReserved = Number(me?.web_reserved) || 0
+  const allotUsed = fieldUsed + webReserved
+  const allotLeft = allotCap > 0 ? (me?.field_remaining != null ? Number(me.field_remaining) : Math.max(0, allotCap - allotUsed)) : null
   const allotPct = allotCap > 0 ? Math.min(100, Math.round((allotUsed / allotCap) * 100)) : 0
   const admins = useMemo(
     () => users.filter((u) => u.role === 'admin' || u.role === 'super_admin'),
@@ -1626,7 +1628,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
           <label className="field">
             <span>
               Default target per survey
-              {allotCap > 0 ? ` (allotted ${allotUsed}/${allotCap}, ${allotLeft} left)` : ''}
+              {allotCap > 0 ? ` (${allotLeft?.toLocaleString?.()} field remaining of ${allotCap.toLocaleString()})` : ''}
             </span>
             <input
               type="number"

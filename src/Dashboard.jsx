@@ -584,8 +584,10 @@ export default function DashboardScreen({ onToast }) {
 
   const me = useMemo(() => getStoredUser(), [])
   const allotCap = Number(me?.max_records) || 0
-  const allotUsed = Number(data?.totalAll ?? data?.dataFilters?.total ?? me?.record_count ?? me?.surveyor_record_count) || 0
-  const allotLeft = allotCap > 0 ? Math.max(0, allotCap - allotUsed) : null
+  const fieldUsed = Number(me?.field_used ?? data?.totalAll ?? data?.dataFilters?.total ?? me?.record_count ?? me?.surveyor_record_count) || 0
+  const webReserved = Number(me?.web_reserved) || 0
+  const allotUsed = fieldUsed + webReserved
+  const allotLeft = allotCap > 0 ? (me?.field_remaining != null ? Number(me.field_remaining) : Math.max(0, allotCap - allotUsed)) : null
   const allotPct = allotCap > 0 ? Math.min(100, Math.round((allotUsed / allotCap) * 100)) : 0
 
   useEffect(() => {

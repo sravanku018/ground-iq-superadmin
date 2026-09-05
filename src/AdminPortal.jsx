@@ -14,6 +14,7 @@ import {
   me,
 } from './api'
 import ShareAppLink from './components/ShareAppLink'
+import QuotaIndicator from './components/QuotaIndicator'
 import AdminLogin from './AdminLogin'
 import VerifiedBadge from './VerifiedBadge'
 import { PortalEmpty, PortalSkeleton } from './PortalUI'
@@ -184,6 +185,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
   }
 
   const [recentItems, setRecentItems] = useState([])
+  const [surveyBreak, setSurveyBreak] = useState([])
   const [totalAllocations, setTotalAllocations] = useState(null)
   const [loadingRecent, setLoadingRecent] = useState(true)
   const [activityFilter, setActivityFilter] = useState('all')
@@ -199,9 +201,17 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
   const confirmedTotal = Number(stats?.confirmed) || fieldConfirmed + webConfirmed
   const rejectedTotal = Number(stats?.rejected) || (Number(stats?.field_rejected) || 0) + webRejected
   const allSubmitted = Number(stats?.submissions) || fieldPending + fieldConfirmed + rejectedTotal + webSubmitted
-  const allotUsed = Math.max(0, allSubmitted - rejectedTotal)
-  const allotLeft = allotCap > 0 ? Math.max(0, allotCap - allotUsed) : null
-  const allotPct = allotCap > 0 ? Math.min(100, Math.round((allotUsed / allotCap) * 100)) : 0
+  const fieldUsed = fieldPending + fieldConfirmed
+  const webReserved = surveyBreak.reduce(
+    (n, s) => n + (Number(s.web_link?.max_uses) || 0),
+    0,
+  ) || Number(user?.web_reserved) || 0
+  const allotUsed = fieldUsed
+  const fieldLeft = allotCap > 0 ? Math.max(0, allotCap - fieldUsed - webReserved) : null
+  const allotLeft = fieldLeft
+  const allotPct = allotCap > 0
+    ? Math.min(100, Math.round(((fieldUsed + webReserved) / allotCap) * 100))
+    : 0
 
   useEffect(() => {
     let alive = true
@@ -214,6 +224,18 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
       })
       .finally(() => {
         if (alive) setLoadingRecent(false)
+      })
+
+    listSurveys()
+      .then((d) => {
+        if (!alive) return
+        const items = (d.items || []).filter(
+          (s) => s.form_key !== 'default' && s.form_key !== 'legacy',
+        )
+        setSurveyBreak(items)
+      })
+      .catch(() => {
+        if (alive) setSurveyBreak([])
       })
 
     listUsers()
@@ -256,67 +278,6 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
 
       {!isSuper && <ShareAppLink onToast={onToast} />}
 
-      {/* Quota Allocation Banner for Client Admin */}
-      {!isSuper && (
-        <div
-          className="card"
-          style={{
-            marginBottom: 16,
-            padding: '14px 16px',
-            background: 'linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)',
-            border: '1px solid #bbf7d0',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Used / Allocated
-              </div>
-              <strong style={{ fontSize: 18, color: '#0f172a' }}>
-                {allotCap > 0 ? (
-                  <>
-                    <span style={{ color: '#059669' }}>{allotUsed}</span> of {allotCap.toLocaleString()} used
-                    {webSubmitted > 0 ? (
-                      <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginTop: 2 }}>
-                        includes {webSubmitted} web
-                      </span>
-                    ) : null}
-                  </>
-                ) : (
-                  <>
-                    <span style={{ color: '#059669' }}>{allotUsed}</span> used (Unlimited allocated)
-                  </>
-                )}
-              </strong>
-            </div>
-            {allotCap > 0 && (
-              <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: allotLeft === 0 ? '#dc2626' : '#059669' }}>
-                  {allotLeft.toLocaleString()} remaining
-                </span>
-                <div style={{ fontSize: 11, color: '#64748b' }}>
-                  {allotPct}% quota consumed
-                </div>
-              </div>
-            )}
-          </div>
-
-          {allotCap > 0 && (
-            <div style={{ height: 8, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden' }}>
-              <div
-                style={{
-                  width: `${allotPct}%`,
-                  height: '100%',
-                  background: allotPct >= 100 ? '#dc2626' : allotPct >= 80 ? '#f59e0b' : '#059669',
-                  transition: 'width 0.3s ease',
-                }}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
       {/* KPI tiles — Mock 3 style with Total Allocations and Rejected */}
       <div className="portal-kpi-grid">
         <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
@@ -338,12 +299,8 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           <span>{webSubmitted > 0 ? `All submissions · ${webSubmitted} web` : 'All submissions'}</span>
         </button>
         <button type="button" className="portal-kpi" onClick={() => onNav('users')}>
-          <strong>
-            {allotCap > 0
-              ? `${allotUsed} / ${allotCap.toLocaleString()}`
-              : (totalAllocations != null ? totalAllocations.toLocaleString() : (stats?.total_target?.toLocaleString?.() ?? '—'))}
-          </strong>
-          <span>{allotCap > 0 ? 'Used / Allocated' : 'Total Allocations'}</span>
+          <strong>{fieldUsed.toLocaleString()}</strong>
+          <span>Field used</span>
         </button>
         <div className="portal-kpi">
           <strong>{stats?.districts ?? '—'}</strong>
@@ -351,7 +308,62 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         </div>
       </div>
 
-
+      {surveyBreak.length > 0 && (
+        <div className="card" style={{ marginBottom: 20, overflowX: 'auto' }}>
+          <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700 }}>Survey breakdown</h3>
+          <p className="muted" style={{ margin: '0 0 12px', fontSize: 12 }}>
+            Field and web fills for every survey · web share turns off when that survey’s target is reached
+          </p>
+          <table className="mini-table" style={{ width: '100%' }}>
+            <thead>
+              <tr>
+                <th>Survey</th>
+                <th>Field</th>
+                <th>Web</th>
+                <th>Pending</th>
+                <th>Confirmed</th>
+                <th>Total</th>
+                <th>Web remaining</th>
+              </tr>
+            </thead>
+            <tbody>
+              {surveyBreak.map((s) => {
+                const web = Number(s.web_submissions) || 0
+                const field = Number(s.field_submissions) || Math.max(0, (Number(s.submissions) || 0) - web)
+                const link = s.web_link
+                const cap = Number(link?.max_uses) || 0
+                const used = Number(link?.use_count) || 0
+                const closed = !!link?.expired || (cap > 0 && used >= cap)
+                return (
+                  <tr key={s.id || s.form_key}>
+                    <td>
+                      <strong>{s.title || s.form_key}</strong>
+                    </td>
+                    <td>{field}</td>
+                    <td>{web}</td>
+                    <td>{Number(s.pending) || 0}</td>
+                    <td>{Number(s.confirmed) || 0}</td>
+                    <td>
+                      <strong>{Number(s.submissions) || field + web}</strong>
+                    </td>
+                    <td>
+                      {closed ? (
+                        <span style={{ color: '#dc2626', fontWeight: 700, fontSize: 12 }}>Disabled · 0 left</span>
+                      ) : cap > 0 ? (
+                        <span style={{ color: '#059669', fontWeight: 600, fontSize: 12 }}>
+                          {Math.max(0, cap - used)} left of {cap}
+                        </span>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Mixed Live Intake & Activity Stream — Mock 3 doctrine */}
       <div className="card" style={{ marginBottom: 20 }}>
@@ -795,10 +807,22 @@ export default function AdminPortal({ superAdminOnly = false }) {
   }, [notify])
 
   /** Lightweight overview KPIs only — not full submissions */
+  const [quotaSurveys, setQuotaSurveys] = useState([])
   const loadStats = useCallback(async () => {
     if (!getToken()) return
     try {
-      setStats(await getStats())
+      const [st, surveyData] = await Promise.all([
+        getStats(),
+        listSurveys().catch(() => null),
+      ])
+      setStats(st)
+      if (surveyData?.items) {
+        setQuotaSurveys(
+          (surveyData.items || []).filter(
+            (s) => s.form_key !== 'default' && s.form_key !== 'legacy',
+          ),
+        )
+      }
     } catch {
       /* ignore */
     }
@@ -995,7 +1019,10 @@ export default function AdminPortal({ superAdminOnly = false }) {
         </div>
       )}
 
-      <div className="admin-bell-dock" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div className="admin-bell-dock" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        {user?.role === 'admin' ? (
+          <QuotaIndicator user={user} stats={stats} surveys={quotaSurveys} />
+        ) : null}
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 9999, background: '#f0fdf4', border: '1px solid #dcfce7', color: '#16a34a', fontSize: 12, fontWeight: 700 }}>
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#16a34a' }}></span>
           Synced just now

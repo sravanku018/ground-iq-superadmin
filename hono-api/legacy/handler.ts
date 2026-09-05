@@ -443,6 +443,59 @@ function webLinkSpent(link: { used_at?: unknown; use_count?: unknown; max_uses?:
   return used >= max;
 }
 
+/** One canonical public fill token per survey (oldest row). Creates it if missing. */
+async function ensureCanonicalWebLink(
+  formKey: string,
+  createdBy: number,
+  maxUses = 100,
+): Promise<{
+  token: string;
+  form_key: string;
+  max_uses: number;
+  use_count: number;
+  used_at: unknown;
+  created_at: unknown;
+  expired: boolean;
+} | null> {
+  if (!sql || !formKey) return null;
+  const existing = await sql`
+    SELECT token, form_key, max_uses, use_count, used_at, created_at
+    FROM web_survey_links
+    WHERE form_key = ${formKey}
+    ORDER BY created_at ASC
+    LIMIT 1
+  `.catch(() => []);
+  if (existing.length) {
+    const r = existing[0] as Record<string, unknown>;
+    const max = clampWebLinkMaxUses(r.max_uses);
+    const used = Math.max(0, Number(r.use_count) || 0);
+    return {
+      token: String(r.token),
+      form_key: String(r.form_key),
+      max_uses: max,
+      use_count: used,
+      used_at: r.used_at || null,
+      created_at: r.created_at || null,
+      expired: Boolean(r.used_at) || used >= max,
+    };
+  }
+  const token = newWebFillToken();
+  const cap = clampWebLinkMaxUses(maxUses);
+  await sql`
+    INSERT INTO web_survey_links (token, form_key, created_by, max_uses, use_count)
+    VALUES (${token}, ${formKey}, ${createdBy}, ${cap}, 0)
+  `;
+  return {
+    token,
+    form_key: formKey,
+    max_uses: cap,
+    use_count: 0,
+    used_at: null,
+    created_at: new Date().toISOString(),
+    expired: false,
+  };
+}
+
 // ── Crypto helpers (same idea as Node auth) ───────────────
 async function pbkdf2Hash(password: string, saltHex: string, iterations = 600_000): Promise<string> {
   const enc = new TextEncoder();
@@ -3314,6 +3367,26 @@ async function countTenantRecords(
   return sqlCountN(row);
 }
 
+/** Sum of each survey's canonical web-link max_uses (reserved from the 5,000 cap). */
+async function sumCanonicalWebCaps(
+  sqlFn: NonNullable<typeof sql>,
+  adminId: number,
+): Promise<number> {
+  const keys = await adminFormKeyScope(sqlFn, { role: "admin", id: adminId });
+  if (!keys || !keys.length) return 0;
+  const rows = await sqlFn`
+    SELECT DISTINCT ON (form_key) max_uses
+    FROM web_survey_links
+    WHERE form_key = ANY(${keys})
+    ORDER BY form_key, created_at ASC
+  `.catch(() => []);
+  let n = 0;
+  for (const r of rows as { max_uses?: unknown }[]) {
+    n += clampWebLinkMaxUses(r.max_uses);
+  }
+  return n;
+}
+
 // In-memory cache for assembly_constituencies — this table is only ever
 // changed by a manual seed script run outside the app (see REDEPLOY.md,
 // which already says to re-seed after a redeploy, i.e. after a fresh Deno
@@ -4503,8 +4576,8 @@ async function rawHandler(req: Request): Promise<Response> {
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.45",
-          versionCode: 20045,
+          version: "2.0.46",
+          versionCode: 20046,
           minSupportedVersionCode: 20000,
           apkUrl: `https://${req.headers.get("x-forwarded-host") || url.hostname}/api/app.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
@@ -4794,6 +4867,7 @@ async function rawHandler(req: Request): Promise<Response> {
         // Peak Q across owned + shared + company projects (not only created_by)
         const questionPeak = await peakQuestionsForAdmin(sql, Number(me.id), meCompany);
         const recUsed = await countTenantRecords(sql, Number(me.id));
+        const webReserved = await sumCanonicalWebCaps(sql, Number(me.id));
         const teamRows = await sql`
           SELECT f.id AS sid, f.title,
                  jsonb_array_length(COALESCE(
@@ -4831,6 +4905,7 @@ async function rawHandler(req: Request): Promise<Response> {
             question_count: questionPeak,
             record_count: recUsed,
             surveyor_record_count: recUsed,
+            web_reserved: webReserved,
             max_records: Number((me as { max_records?: unknown }).max_records) || 0,
             survey_team,
             granted_surveys: (granted as { id: number; title: string }[]).map((p) => ({
@@ -7809,16 +7884,51 @@ async function rawHandler(req: Request): Promise<Response> {
                  WHERE COALESCE(payload->>'source', '') IN ('web-survey', 'web')
                    AND COALESCE(payload->>'status', 'pending') <> 'rejected'
                    AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
-               )::int AS web_n
+               )::int AS web_n,
+               COUNT(*) FILTER (
+                 WHERE COALESCE(payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
+                   AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+               )::int AS pending,
+               COUNT(*) FILTER (
+                 WHERE COALESCE(payload->>'status', 'pending') = 'confirmed'
+                   AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+               )::int AS confirmed,
+               COUNT(*) FILTER (
+                 WHERE COALESCE(payload->>'status', 'pending') = 'rejected'
+               )::int AS rejected
         FROM submissions
         WHERE payload->>'form_key' IS NOT NULL
         GROUP BY 1
       `.catch(() => []);
+      const linkRows = await sql`
+        SELECT DISTINCT ON (form_key) form_key, token, max_uses, use_count, used_at, created_at
+        FROM web_survey_links
+        ORDER BY form_key, created_at ASC
+      `.catch(() => []);
+      const linkMap = new Map<string, {
+        token: string;
+        max_uses: number;
+        use_count: number;
+        expired: boolean;
+      }>();
+      for (const r of linkRows as Record<string, unknown>[]) {
+        const max = clampWebLinkMaxUses(r.max_uses);
+        const used = Math.max(0, Number(r.use_count) || 0);
+        linkMap.set(String(r.form_key || ""), {
+          token: String(r.token || ""),
+          max_uses: max,
+          use_count: used,
+          expired: Boolean(r.used_at) || used >= max,
+        });
+      }
 
       const asgMap = new Map((asg as any[]).map((r) => [Number(r.survey_id), r]));
       const rspMap = new Map((rsp as any[]).map((r) => [Number(r.survey_id), r]));
       const subByFkMap = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.n)]));
       const webByFkMap = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.web_n)]));
+      const pendingByFk = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.pending) || 0]));
+      const confirmedByFk = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.confirmed) || 0]));
+      const rejectedByFk = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.rejected) || 0]));
 
       const items = (rows as Record<string, unknown>[])
         // Client Admin never sees platform seed forms (Field Survey / Legacy)
@@ -7838,8 +7948,10 @@ async function rawHandler(req: Request): Promise<Response> {
         const admins = (owner && owner.role === 'admin' && !connectedAdmins.some((a) => a.id === ownerId))
           ? [{ id: ownerId, username: '', name: owner.name, company_name: owner.company_name }, ...connectedAdmins]
           : connectedAdmins;
-        const subCount = subByFkMap.get(String(r.form_key)) || 0;
-        const webCount = webByFkMap.get(String(r.form_key)) || 0;
+        const fk = String(r.form_key || "");
+        const subCount = subByFkMap.get(fk) || 0;
+        const webCount = webByFkMap.get(fk) || 0;
+        const webLink = linkMap.get(fk) || null;
         return {
           id: r.id,
           form_key: r.form_key,
@@ -7861,6 +7973,10 @@ async function rawHandler(req: Request): Promise<Response> {
           submissions: subCount + webCount,
           field_submissions: subCount,
           web_submissions: webCount,
+          pending: pendingByFk.get(fk) || 0,
+          confirmed: confirmedByFk.get(fk) || 0,
+          rejected: rejectedByFk.get(fk) || 0,
+          web_link: webLink,
         };
       });
       return json({ items, count: items.length });
@@ -8031,6 +8147,7 @@ async function rawHandler(req: Request): Promise<Response> {
           if (await upsertSurveyAssignment(Number(surveyId), uid)) autoAssigned += 1;
         }
       }
+      const webLink = await ensureCanonicalWebLink(formKey, Number(me.id), 100);
       logAudit(me, "survey_create", "survey", surveyId, {
         title,
         form_key: formKey,
@@ -8043,6 +8160,7 @@ async function rawHandler(req: Request): Promise<Response> {
         ok: true,
         survey: rows[0],
         auto_assigned_surveyors: autoAssigned,
+        web_link: webLink,
       }, 201);
     }
 
@@ -8994,16 +9112,41 @@ async function rawHandler(req: Request): Promise<Response> {
         }
       }
       const exists = await sql`
-        SELECT form_key FROM survey_form WHERE form_key = ${formKey} LIMIT 1
+        SELECT form_key, title FROM survey_form WHERE form_key = ${formKey} LIMIT 1
       `.catch(() => []);
       if (!exists.length) return json({ error: "Survey not found" }, 404);
+      const surveyTitle = String((exists[0] as { title?: string }).title || formKey);
       const maxUses = clampWebLinkMaxUses(body.max_uses ?? body.maxUses ?? body.limit);
-      const token = newWebFillToken();
-      await sql`
-        INSERT INTO web_survey_links (token, form_key, created_by, max_uses, use_count)
-        VALUES (${token}, ${formKey}, ${me.id}, ${maxUses}, 0)
-      `;
-      return json({ ok: true, token, form_key: formKey, max_uses: maxUses, use_count: 0 }, 201);
+      let link = await ensureCanonicalWebLink(formKey, Number(me.id), maxUses);
+      if (!link) return json({ error: "Could not create web link" }, 500);
+      // Same survey keeps one token. Raising max_uses is allowed while the link is open.
+      if (!link.expired && maxUses > link.max_uses) {
+        await sql`
+          UPDATE web_survey_links SET max_uses = ${maxUses}
+          WHERE token = ${link.token}
+        `.catch(() => null);
+        link = { ...link, max_uses: maxUses };
+      }
+      if (link.expired) {
+        return json({
+          error: "Web target reached — sharing is disabled for this survey",
+          expired: true,
+          token: link.token,
+          form_key: formKey,
+          title: surveyTitle,
+          max_uses: link.max_uses,
+          use_count: link.use_count,
+        }, 410);
+      }
+      return json({
+        ok: true,
+        token: link.token,
+        form_key: formKey,
+        title: surveyTitle,
+        max_uses: link.max_uses,
+        use_count: link.use_count,
+        reused: true,
+      });
     }
 
     if (path === "/api/web-survey/links" && method === "GET") {
@@ -9041,7 +9184,17 @@ async function rawHandler(req: Request): Promise<Response> {
           created_at: r.created_at,
         };
       });
-      const live = items.find((x) => !x.expired) || items[0] || null;
+      const titleRows = await sql`
+        SELECT title FROM survey_form WHERE form_key = ${formKey} LIMIT 1
+      `.catch(() => []);
+      const surveyTitle = String((titleRows[0] as { title?: string } | undefined)?.title || formKey);
+      const canonical = items.length
+        ? [...items].sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))[0]
+        : null;
+      let share = canonical;
+      if (!share) {
+        share = await ensureCanonicalWebLink(formKey, Number(me.id), 100);
+      }
       const [subRow] = await sql`
         SELECT COUNT(*)::int AS n FROM submissions
         WHERE payload->>'form_key' = ${formKey}
@@ -9053,15 +9206,19 @@ async function rawHandler(req: Request): Promise<Response> {
           AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
       `.catch(() => [{ n: 0 }]);
       const submitted = sqlCountN(subRow);
-      const cap = live ? clampWebLinkMaxUses(live.max_uses) : 100;
-      const linkUsed = live ? Number(live.use_count) || 0 : 0;
+      const cap = share ? clampWebLinkMaxUses(share.max_uses) : 100;
+      const linkUsed = share ? Number(share.use_count) || 0 : 0;
+      const expired = share ? Boolean(share.expired) || linkUsed >= cap || submitted >= cap : false;
       return json({
         items,
-        live,
+        live: share,
+        title: surveyTitle,
         submitted,
         cap,
         link_used: linkUsed,
         used: submitted,
+        expired,
+        sharing_disabled: expired,
       });
     }
 
@@ -9173,7 +9330,6 @@ async function rawHandler(req: Request): Promise<Response> {
         use_count?: number;
       };
       if (String(link.form_key) !== formKey) return webLinkExpired();
-      if (webLinkSpent(link)) return webLinkExpired();
       const rows = await sql`
         SELECT form_key, title, display_lang, questions
         FROM survey_form
@@ -9187,6 +9343,9 @@ async function rawHandler(req: Request): Promise<Response> {
         display_lang?: string;
         questions: unknown;
       };
+      if (webLinkSpent(link)) {
+        return webLinkExpired({ title: f.title, form_key: f.form_key });
+      }
       const questions = parseQuestionsArray(f.questions);
       return json({
         form_key: f.form_key,

@@ -65,6 +65,7 @@ export default function PublicWebFill({ formKey, fillToken }) {
         if (e.status === 410 || e.data?.expired) {
           setExpired(true)
           setErr('')
+          if (e.data?.title) setTitle(e.data.title)
         } else {
           setErr(e.message || 'Survey not found')
         }
@@ -114,14 +115,29 @@ export default function PublicWebFill({ formKey, fillToken }) {
   }
 
   const te = displayLang === 'te'
+  const heading = title || 'Web survey'
+
+  useEffect(() => {
+    const prev = document.title
+    document.title = heading
+    return () => {
+      document.title = prev
+    }
+  }, [heading])
 
   return (
     <div className="portal-shell" style={{ minHeight: '100vh', padding: 24 }}>
       <div style={{ maxWidth: 640, margin: '0 auto' }}>
-        <p className="eyebrow">Smart Survey X</p>
-        <h1 style={{ fontSize: 22, margin: '0 0 8px' }}>{title || 'Web survey'}</h1>
+        <p className="eyebrow">Smart Survey X · Web survey</p>
+        <h1 style={{ fontSize: 26, margin: '0 0 8px', lineHeight: 1.25, color: '#0f172a' }}>
+          {heading}
+        </h1>
         <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-          Fill and submit. No login required.
+          {expired
+            ? 'This survey is closed.'
+            : done
+              ? 'Your response was saved.'
+              : 'Fill and submit. No login required.'}
         </p>
 
         {toast ? (
@@ -146,10 +162,10 @@ export default function PublicWebFill({ formKey, fillToken }) {
 
         {!done && expired ? (
           <div className="card">
-            <h3 style={{ margin: '0 0 6px' }}>This link has expired</h3>
+            <h3 style={{ margin: '0 0 6px' }}>{heading}</h3>
             <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-              The allowed number of responses has been reached. Ask the sender for a new web survey
-              link if you still need to fill the form.
+              This survey has reached its target. Sharing is disabled and this link can no longer
+              accept responses.
             </p>
           </div>
         ) : null}

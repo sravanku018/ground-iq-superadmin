@@ -1151,9 +1151,14 @@ export default function AdminPortal({ superAdminOnly = false }) {
               {user.role === 'super_admin' ? ' · Profile' : ''}
             </span>
           </button>
-          <a className="portal-link" href={apkDownloadUrl()} target="_blank" rel="noreferrer">
-            Download app ↗
-          </a>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '4px 0 8px' }}>
+            <a className="portal-link" href="/?app=1" style={{ fontSize: 12 }}>
+              📱 Field app ↗
+            </a>
+            <a className="portal-link" href={apkDownloadUrl()} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+              Download APK ↗
+            </a>
+          </div>
           <button type="button" className="btn small danger" onClick={handleLogout}>
             Log out
           </button>

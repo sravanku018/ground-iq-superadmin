@@ -26,12 +26,14 @@ export default function LoginScreen({ onSuccess, onToast }) {
       clearSession()
       const data = await login(username.trim(), password, 'surveyor')
       const role = data.user?.role
+      if (role === 'admin' || role === 'super_admin') {
+        onToast?.(`Welcome ${data.user.name || data.user.username}`, 'ok')
+        window.location.href = '/admin'
+        return
+      }
       if (role !== 'surveyor') {
         clearSession()
-        const msg =
-          role === 'admin'
-            ? 'Client Admin uses the web portal, not this app.'
-            : 'Invalid surveyor login.'
+        const msg = 'Invalid surveyor login.'
         setError(msg)
         throw new Error(msg)
       }
@@ -121,6 +123,17 @@ export default function LoginScreen({ onSuccess, onToast }) {
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+
+        <div style={{ marginTop: 20, textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: 14 }}>
+          <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 8px' }}>Are you a Client Admin?</p>
+          <a
+            href="/admin"
+            className="btn secondary small"
+            style={{ display: 'inline-block', textDecoration: 'none', fontWeight: 600, padding: '8px 16px', background: 'rgba(255,255,255,0.08)', color: '#00e599', border: '1px solid rgba(0,229,153,0.3)', borderRadius: 8 }}
+          >
+            🛡️ Sign in to Client Admin Portal →
+          </a>
+        </div>
 
         <p className="fl-version" aria-label="Build version">
           {versionLabel()}

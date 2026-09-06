@@ -11,6 +11,8 @@
 import { lazy, Suspense, useEffect } from 'react'
 import AdminPortal from './AdminPortal'
 import { reloadOnceIfUpgraded } from './version'
+import { getStoredUser } from './api'
+import AppUpdateModal from './AppUpdateModal'
 
 const SurveyorApp = lazy(() => import('./SurveyorApp'))
 const PublicWebFill = lazy(() => import('./PublicWebFill'))
@@ -18,7 +20,14 @@ const PublicWebFill = lazy(() => import('./PublicWebFill'))
 function isAdminPath() {
   if (typeof window === 'undefined') return false
   const p = window.location.pathname || ''
-  return p === '/admin' || p.startsWith('/admin/') || /\/admin(\/|$)/.test(p)
+  const q = new URLSearchParams(window.location.search)
+  return (
+    p === '/admin' ||
+    p.startsWith('/admin/') ||
+    /\/admin(\/|$)/.test(p) ||
+    q.get('admin') === '1' ||
+    q.get('portal') === '1'
+  )
 }
 
 function publicFillKey() {
@@ -36,7 +45,7 @@ function publicFillToken() {
 /** Client Admin “Copy link” uses ?app=1 so portal-only Vercel/Pages builds still open the collector. */
 function wantFieldApp() {
   if (typeof window === 'undefined') return false
-  const q = new URLSearchParams(window.location.search).get('app')
+  const q = new URLSearchParams(window.location.search).get('app') || new URLSearchParams(window.location.search).get('field')
   return q === '1' || q === 'true'
 }
 
@@ -61,15 +70,17 @@ function FieldBoot() {
   )
 }
 
-import AppUpdateModal from './AppUpdateModal'
-
 export default function App() {
   // Web fill is portal-only. Field APK / field builds never open the public form.
   const fillKey = FIELD_APP_ENABLED ? '' : publicFillKey()
+  const storedUser = typeof window !== 'undefined' ? getStoredUser() : null
+  const isAdminUser = storedUser?.role === 'admin' || storedUser?.role === 'super_admin'
+
   const openFieldApp =
     !SUPER_ADMIN_CONSOLE &&
     !isAdminPath() &&
-    (FIELD_APP_ENABLED || wantFieldApp())
+    (wantFieldApp() || (FIELD_APP_ENABLED && !isAdminUser))
+
   const portalOnly = !fillKey && !openFieldApp
 
   useEffect(() => {

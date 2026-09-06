@@ -147,6 +147,17 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
             {loading ? 'Signing in…' : totpStep ? 'Verify & sign in' : 'Sign in'}
           </button>
         </form>
+
+        <div style={{ marginTop: 20, textAlign: 'center', borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
+          <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 8px' }}>Surveyor collecting field data?</p>
+          <a
+            href="/?app=1"
+            className="btn secondary small"
+            style={{ display: 'inline-block', textDecoration: 'none', fontWeight: 600, padding: '8px 16px' }}
+          >
+            📱 Switch to Surveyor Field App →
+          </a>
+        </div>
       </div>
     </div>
   )

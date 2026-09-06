@@ -4621,8 +4621,8 @@ async function rawHandler(req: Request): Promise<Response> {
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.49",
-          versionCode: 20049,
+          version: "2.0.51",
+          versionCode: 20051,
           minSupportedVersionCode: 20000,
           apkUrl: `https://${req.headers.get("x-forwarded-host") || url.hostname}/api/app.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,

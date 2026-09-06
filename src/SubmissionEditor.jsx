@@ -9,10 +9,11 @@ function issuesToText(v) {
   return String(v)
 }
 
+// Fix 2: Convert string back to an array to match backend expectations
 function textToIssues(s) {
   const t = String(s || '').trim()
-  if (!t) return ''
-  return t
+  if (!t) return []
+  return t.split(',').map(i => i.trim()).filter(Boolean)
 }
 
 /**
@@ -50,6 +51,7 @@ export default function SubmissionEditor({ item, questions: propQuestions, onSav
     item?.submitted_by === 'Web' ||
     item?.submitted_by === 'web'
 
+  // Fix 1: Changed dependency to [item] so form updates when parent passes new object
   useEffect(() => {
     const a = { ...item?.answers }
     if (a.issues != null) a.issues = issuesToText(a.issues)
@@ -62,7 +64,7 @@ export default function SubmissionEditor({ item, questions: propQuestions, onSav
     setHasPhoto(!!item?.has_photo)
     setNote('')
     setForce(false)
-  }, [item?.id])
+  }, [item])
 
   useEffect(() => {
     let dead = false
@@ -171,6 +173,13 @@ export default function SubmissionEditor({ item, questions: propQuestions, onSav
   }, [surveyQs, allKnownQs, answers])
 
   async function save() {
+    // Fix 3: Required field validation
+    const missingRequired = renderedFields.filter(f => f.required && !(answers[f.key] || '').trim())
+    if (missingRequired.length > 0 && !force) {
+      onToast?.(`Missing required fields: ${missingRequired.map(f => f.label).join(', ')}. Or check "Force confirm".`, 'error')
+      return
+    }
+
     setSaving(true)
     try {
       const body = {
@@ -387,4 +396,3 @@ export default function SubmissionEditor({ item, questions: propQuestions, onSav
     </div>
   )
 }
-

@@ -9361,16 +9361,17 @@ async function rawHandler(req: Request): Promise<Response> {
         const submitted = countMap.get(key) || 0;
         const cap = live ? live.max_uses : 100;
         const linkUsed = live ? live.use_count : 0;
-        const expired = live ? live.expired : false;
+        const effectiveUsed = Math.max(submitted, linkUsed);
+        const expired = live ? Boolean(live.expired) || effectiveUsed >= cap : false;
         return {
           id: f.id,
           form_key: key,
           title: f.title || key,
-          submitted,
-          used: submitted,
-          link_used: linkUsed,
+          submitted: effectiveUsed,
+          used: effectiveUsed,
+          link_used: effectiveUsed,
           cap,
-          remaining: Math.max(0, cap - linkUsed),
+          remaining: Math.max(0, cap - effectiveUsed),
           expired,
           created_at: live?.created_at || null,
           ended_at: live?.used_at || null,

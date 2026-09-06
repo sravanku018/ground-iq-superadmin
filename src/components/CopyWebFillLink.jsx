@@ -122,6 +122,9 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
     }
   }
 
+  const cap = Number(quota.cap || maxUses || 100) || 100
+  const submitted = Math.max(0, Number(quota.submitted ?? quota.used) || 0)
+  const linkUsed = Math.max(0, Number(quota.linkUsed) || 0)
   const totalUsed = Math.max(submitted, linkUsed)
   const full = totalUsed >= cap || live?.expired
   const left = Math.max(0, cap - totalUsed)

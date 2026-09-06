@@ -41,65 +41,55 @@ const AdminProfileScreen = lazy(() => import('./AdminProfile'))
 // Matches the sidebar: each group’s `pages` become the subtabs on that screen.
 const NAV = [
   { id: 'overview', label: 'Dashboard', icon: 'grid', pages: ['overview'] },
-  { id: 'analyze', label: 'Analyze & Export', icon: 'chart', pages: ['analyze', 'report', 'upload', 'data'] },
-  { id: 'review', label: 'Review QA', icon: 'check', pages: ['review'] },
-  { id: 'surveyors', label: 'Surveyors', icon: 'user', pages: ['users'] },
-  { id: 'surveys', label: 'Surveys & Forms', icon: 'clipboard', pages: ['surveys', 'questions', 'web', 'bank'] },
-  { id: 'profile', label: 'Organization', icon: 'building', pages: ['profile'] },
+  {
+    id: 'analytics_group',
+    label: 'Monitoring & Data',
+    icon: 'chart',
+    pages: ['analyze', 'report', 'review', 'upload', 'data'],
+  },
+  {
+    id: 'surveys_group',
+    label: 'Surveys & Forms',
+    icon: 'clipboard',
+    pages: ['surveys', 'questions', 'web', 'bank'],
+  },
+  {
+    id: 'team_group',
+    label: 'Team & Settings',
+    icon: 'user',
+    pages: ['users', 'profile'],
+  },
 ]
 
-const PLATFORM_NAV = {
-  id: 'platform',
-  label: 'Seats & Audit',
-  icon: 'star',
-  pages: ['audit', 'seats'],
-}
-
-const CLIENT_ADMINS_NAV = {
-  id: 'admins',
-  label: 'Client Admins',
+const GOVERNANCE_NAV = {
+  id: 'governance',
+  label: 'Governance',
   icon: 'shield',
-  pages: ['admins'],
-}
-
-const COMPANIES_NAV = {
-  id: 'companies',
-  label: 'Companies',
-  icon: 'building',
-  pages: ['companies'],
+  pages: ['companies', 'admins', 'seats', 'audit'],
 }
 
 const PAGE_LABELS = {
   overview: 'Overview',
-  analyze: 'Charts',
+  analyze: 'Charts & Analytics',
   report: 'Live Feed',
-  users: 'Surveyors',
-  surveys: 'Surveys',
-  questions: 'Questions',
-  review: 'Review',
+  review: 'Review QA',
   upload: 'Export',
-  data: 'Raw data',
-  audit: 'Audit Log',
+  data: 'Raw Data',
+  surveys: 'Surveys & Projects',
+  questions: 'Survey Questions',
+  web: 'Web Survey Links',
   bank: 'Question Bank',
-  web: 'Web survey',
-  seats: 'Seat Requests',
-  profile: 'Organization',
-  admins: 'Client Admins',
+  users: 'Surveyors & Quotas',
+  profile: 'Organization Profile',
   companies: 'Companies',
+  admins: 'Client Admins',
+  seats: 'Seat Requests',
+  audit: 'Audit Log',
 }
 
-// Which Super-Admin-granted power unlocks each management page for a Client Admin.
-// Surveys = Client Admin creates field surveys (can_crud_questionnaire).
-// Super Admin uses the same screen for Projects (always allowed).
-// Surveyors is always available to Client Admin (BR-004).
+// Web survey links creation/fill is gated by can_web_survey power grant
 const PAGE_POWER = {
-  surveys: ['can_crud_questionnaire', 'can_edit_surveys'],
-  questions: 'can_edit_surveys',
-  bank: 'can_manage_questions',
   web: 'can_web_survey',
-  review: 'can_review_data',
-  upload: 'can_validate_proof',
-  data: 'can_validate_proof',
 }
 
 
@@ -733,22 +723,21 @@ export default function AdminPortal({ superAdminOnly = false }) {
   const [navOpen, setNavOpen] = useState(false)
   const [deepLink, setDeepLink] = useState(null)
 
-  // Super Admin always has every power; Client Admins only see pages their granted powers unlock.
+  const isSuper = superAdminOnly || user?.role === 'super_admin'
+
   const canPage = useCallback(
     (p) => {
-      if (user?.role === 'super_admin') return true
+      if (isSuper) return true
+      if (['companies', 'admins', 'seats', 'audit'].includes(p)) return false
       const need = PAGE_POWER[p]
       if (!need) return true
       const needs = Array.isArray(need) ? need : [need]
       return needs.some((k) => !!user?.[k])
     },
-    [user]
+    [isSuper, user]
   )
 
-  const isSuper = superAdminOnly || user?.role === 'super_admin'
-  const baseNav = isSuper
-    ? [...NAV, COMPANIES_NAV, CLIENT_ADMINS_NAV, PLATFORM_NAV]
-    : NAV
+  const baseNav = isSuper ? [...NAV, GOVERNANCE_NAV] : NAV
   const nav = baseNav
     .map((n) => ({ ...n, pages: n.pages.filter(canPage) }))
     .filter((n) => n.pages.length > 0)
@@ -1027,42 +1016,6 @@ export default function AdminPortal({ superAdminOnly = false }) {
         </div>
       )}
 
-      <div className="admin-bell-dock" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        {user?.role === 'admin' ? (
-          <QuotaIndicator user={user} stats={stats} surveys={quotaSurveys} />
-        ) : null}
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 9999, background: '#f0fdf4', border: '1px solid #dcfce7', color: '#16a34a', fontSize: 12, fontWeight: 700 }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#16a34a' }}></span>
-          Synced just now
-        </div>
-        <AdminBell user={user} onGoPage={goPage} />
-      </div>
-
-
-      <header className="portal-topbar">
-        <button
-          type="button"
-          className="portal-menu-btn"
-          aria-label={navOpen ? 'Close menu' : 'Open menu'}
-          aria-expanded={navOpen}
-          onClick={() => setNavOpen((o) => !o)}
-        >
-          {navOpen ? <Icon name="cross" size={18} /> : <Icon name="menu" size={18} />}
-        </button>
-        <div className="portal-topbar-brand">
-          <strong>Smart Survey X · Admin</strong>
-          <span>{activeNavLabel}</span>
-        </div>
-        <button
-          type="button"
-          className="btn small"
-          disabled={loadingData}
-          onClick={() => void loadPortal()}
-        >
-          {loadingData ? '…' : '↻'}
-        </button>
-      </header>
-
       {navOpen ? (
         <button
           type="button"
@@ -1079,26 +1032,35 @@ export default function AdminPortal({ superAdminOnly = false }) {
         </div>
         <nav className="portal-nav">
           <div className="side-section-label">MONITORING</div>
-          <button className={`side-sub ${page === 'overview' ? 'active' : ''}`} onClick={() => goPage('overview')}>📊 Dashboard</button>
-          <button className={`side-sub ${['analyze', 'report', 'upload', 'data'].includes(page) ? 'active' : ''}`} onClick={() => goPage('analyze')}>📈 Analyze &amp; Export</button>
+          <button className={`side-sub ${page === 'overview' ? 'active' : ''}`} onClick={() => goPage('overview')}>📊 Overview</button>
+          <button className={`side-sub ${page === 'analyze' ? 'active' : ''}`} onClick={() => goPage('analyze')}>📈 Charts &amp; Analytics</button>
+          <button className={`side-sub ${page === 'report' ? 'active' : ''}`} onClick={() => goPage('report')}>📡 Live Feed</button>
           <button className={`side-sub ${page === 'review' ? 'active' : ''}`} onClick={() => goPage('review')}>✅ Review QA</button>
+          <button className={`side-sub ${page === 'upload' ? 'active' : ''}`} onClick={() => goPage('upload')}>📥 Export Data</button>
+          <button className={`side-sub ${page === 'data' ? 'active' : ''}`} onClick={() => goPage('data')}>🗃️ Raw Data</button>
 
-          <div className="side-section-label" style={{ marginTop: 14 }}>SETUP &amp; TEAM</div>
+          <div className="side-section-label" style={{ marginTop: 14 }}>SURVEYS &amp; FORMS</div>
+          <button className={`side-sub ${page === 'surveys' ? 'active' : ''}`} onClick={() => goPage('surveys')}>📋 Surveys &amp; Projects</button>
+          <button className={`side-sub ${page === 'questions' ? 'active' : ''}`} onClick={() => goPage('questions')}>❓ Survey Questions</button>
+          {(isSuper || !!user?.can_web_survey) && (
+            <button className={`side-sub ${page === 'web' ? 'active' : ''}`} onClick={() => goPage('web')}>🌐 Web Survey Links</button>
+          )}
+          <button className={`side-sub ${page === 'bank' ? 'active' : ''}`} onClick={() => goPage('bank')}>📚 Question Bank</button>
+
+          <div className="side-section-label" style={{ marginTop: 14 }}>TEAM &amp; SETTINGS</div>
           <button className={`side-sub ${page === 'users' ? 'active' : ''}`} onClick={() => goPage('users')}>👥 Surveyors &amp; Quotas</button>
-          <button className={`side-sub ${['surveys', 'questions', 'bank', 'web'].includes(page) ? 'active' : ''}`} onClick={() => goPage('surveys')}>📋 Surveys &amp; Forms</button>
-          <button className={`side-sub ${page === 'profile' ? 'active' : ''}`} onClick={() => goPage('profile')}>🏢 Organization</button>
+          <button className={`side-sub ${page === 'profile' ? 'active' : ''}`} onClick={() => goPage('profile')}>🏢 Organization Profile</button>
 
           {isSuper && (
             <>
-              <div className="side-section-label" style={{ marginTop: 14 }}>GOVERNANCE</div>
+              <div className="side-section-label" style={{ marginTop: 14 }}>SUPER ADMIN GOVERNANCE</div>
               <button className={`side-sub ${page === 'companies' ? 'active' : ''}`} onClick={() => goPage('companies')}>🏢 Companies</button>
               <button className={`side-sub ${page === 'admins' ? 'active' : ''}`} onClick={() => goPage('admins')}>🛡️ Client Admins</button>
-              <button className={`side-sub ${page === 'audit' || page === 'seats' ? 'active' : ''}`} onClick={() => goPage('audit')}>💺 Seats &amp; Audit</button>
+              <button className={`side-sub ${page === 'seats' ? 'active' : ''}`} onClick={() => goPage('seats')}>💺 Seat Requests</button>
+              <button className={`side-sub ${page === 'audit' ? 'active' : ''}`} onClick={() => goPage('audit')}>📜 Audit Log</button>
             </>
           )}
         </nav>
-
-
 
         <div className="portal-sidebar-foot">
           <button
@@ -1164,21 +1126,60 @@ export default function AdminPortal({ superAdminOnly = false }) {
         </div>
       </aside>
 
-      <main className="portal-main">
-        {nav.filter((n) => n.pages.length > 1 && n.pages.includes(page)).map((n) => (
-          <div className="portal-subtabs" key={n.id}>
-            {n.pages.map((p) => (
-              <button
-                key={p}
-                type="button"
-                className={page === p ? 'portal-subtab active' : 'portal-subtab'}
-                onClick={() => goPage(p)}
-              >
-                {PAGE_LABELS[p]}
-              </button>
-            ))}
+      <div className="portal-body">
+        <header className="portal-topbar">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <button
+              type="button"
+              className="portal-menu-btn"
+              aria-label={navOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={navOpen}
+              onClick={() => setNavOpen((o) => !o)}
+            >
+              {navOpen ? <Icon name="cross" size={18} /> : <Icon name="menu" size={18} />}
+            </button>
+            <div className="portal-topbar-brand">
+              <strong>Smart Survey X · {isSuper ? 'Super Admin' : 'Client Admin'}</strong>
+              <span>{PAGE_LABELS[page] || activeNavLabel}</span>
+            </div>
           </div>
-        ))}
+
+          <div className="portal-topbar-actions">
+            {user?.role === 'admin' ? (
+              <QuotaIndicator user={user} stats={stats} surveys={quotaSurveys} />
+            ) : null}
+            <div className="portal-sync-badge">
+              <span className="sync-dot"></span>
+              Synced
+            </div>
+            <button
+              type="button"
+              className="btn small portal-refresh-btn"
+              disabled={loadingData}
+              onClick={() => void loadPortal()}
+              title="Refresh portal data"
+            >
+              {loadingData ? '…' : '↻'}
+            </button>
+            <AdminBell user={user} onGoPage={goPage} />
+          </div>
+        </header>
+
+        <main className="portal-main">
+          {nav.filter((n) => n.pages.length > 1 && n.pages.includes(page)).map((n) => (
+            <div className="portal-subtabs" key={n.id}>
+              {n.pages.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className={page === p ? 'portal-subtab active' : 'portal-subtab'}
+                  onClick={() => goPage(p)}
+                >
+                  {PAGE_LABELS[p]}
+                </button>
+              ))}
+            </div>
+          ))}
         <Suspense fallback={<PortalSkeleton rows={6} label="Loading screen…" />}>
           <ChunkErrorBoundary>
           {(page === 'overview' || !canPage(page) || !PAGE_LABELS[page]) && (
@@ -1251,6 +1252,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           </ChunkErrorBoundary>
         </Suspense>
       </main>
+      </div>
     </div>
   )
 }

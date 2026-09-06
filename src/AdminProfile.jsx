@@ -12,7 +12,7 @@ export default function AdminProfileScreen({ user, onToast, onUserUpdated }) {
     { key: 'can_review_data', label: 'Data Review & QA', desc: 'Confirm or reject field submissions', active: isSuper || !!user?.can_review_data },
     { key: 'can_verify_surveyors', label: 'Verify Surveyor Profiles', desc: 'Approve Aadhaar & phone credentials', active: isSuper || !!user?.can_verify_surveyors },
     { key: 'can_record_voice', label: 'Voice Recording', desc: isSuper ? 'Set field-app voice Off/Required and minute auto-stop on projects' : 'Turn voice Off vs Required when granted. Minute limits are Super Admin only.', active: isSuper || !!user?.can_record_voice },
-    { key: 'can_web_survey', label: 'Web Survey Submissions', desc: 'Direct web link survey collection', active: isSuper || !!user?.can_web_survey },
+    { key: 'can_web_survey', label: 'Web Survey Submissions', desc: 'Create web survey links, fill online & confirm web records', active: isSuper || !!user?.can_web_survey },
     { key: 'can_translate_telugu', label: 'Telugu Translation', desc: 'Auto-translate questions to Telugu', active: isSuper || !!user?.can_translate_telugu },
   ]
 

@@ -132,7 +132,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
 
   function addQ() {
     if (maxQs > 0 && totalQuestionsUsed >= maxQs) {
-      onToast?.(`Total question quota reached: maximum ${maxQs} questions allowed across surveys (${totalQuestionsUsed} currently used)`, 'error')
+      onToast?.(`Total question quota reached: ${totalQuestionsUsed} of ${maxQs} questions allotted across surveys are used`, 'error')
       return
     }
     setQuestions((list) => [
@@ -181,7 +181,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       return
     }
     if (maxQs > 0 && totalQuestionsUsed > maxQs) {
-      onToast?.(`Total question quota exceeded: maximum ${maxQs} questions allowed across surveys (currently ${totalQuestionsUsed})`, 'error')
+      onToast?.(`Total question quota exceeded: ${totalQuestionsUsed} questions used of ${maxQs} allotted across all surveys`, 'error')
       return
     }
     setSaving(true)
@@ -564,6 +564,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
             {maxQs > 0 && (
               <span
                 className="pill"
+                title="No. of questions used by Client Admin / Total questions allotted"
                 style={{
                   background: totalQuestionsUsed >= maxQs ? '#fef2f2' : 'rgba(0, 229, 153, 0.12)',
                   color: totalQuestionsUsed >= maxQs ? '#dc2626' : '#047857',
@@ -571,7 +572,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                   fontSize: 12,
                 }}
               >
-                📝 Questions: {totalQuestionsUsed} / {maxQs} allowed
+                📝 No. of questions used: {totalQuestionsUsed} / {maxQs} allotted
               </span>
             )}
           </div>

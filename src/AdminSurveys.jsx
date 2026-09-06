@@ -82,7 +82,7 @@ function QuestionEditor({
 
   function addQ() {
     if (maxQs > 0 && totalQuestionsUsed >= maxQs) {
-      onToast?.(`Total question quota reached: maximum ${maxQs} questions allowed across surveys (${totalQuestionsUsed} currently used)`, 'error')
+      onToast?.(`Total question quota reached: ${totalQuestionsUsed} of ${maxQs} questions allotted across surveys are used`, 'error')
       return
     }
     onChange([
@@ -321,6 +321,7 @@ function QuestionEditor({
         {maxQs > 0 && (
           <span
             className="pill"
+            title="No. of questions used by Client Admin / Total questions allotted"
             style={{
               background: totalQuestionsUsed >= maxQs ? '#fef2f2' : 'rgba(0, 229, 153, 0.12)',
               color: totalQuestionsUsed >= maxQs ? '#dc2626' : '#047857',
@@ -328,7 +329,7 @@ function QuestionEditor({
               fontSize: 12,
             }}
           >
-            📝 Questions: {totalQuestionsUsed} / {maxQs} allowed
+            📝 No. of questions used: {totalQuestionsUsed} / {maxQs} allotted
           </span>
         )}
       </div>
@@ -570,7 +571,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
       .reduce((sum, s) => sum + (Number(s.question_count) || 0), 0)
     const totalQuestionsUsed = otherSurveysQuestionsCount + (detail.questions || []).length
     if (maxQs > 0 && totalQuestionsUsed > maxQs) {
-      onToast?.(`Total question quota exceeded: maximum ${maxQs} questions allowed across surveys (${totalQuestionsUsed} total questions)`, 'error')
+      onToast?.(`Total question quota exceeded: ${totalQuestionsUsed} questions used of ${maxQs} allotted across all surveys`, 'error')
       return
     }
     setSaving(true)

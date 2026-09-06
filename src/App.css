@@ -795,6 +795,13 @@ h1, h2, h3, h4, .topbar-title, .hero-name, .mission-title, .fl-title, .qa-title,
   min-width: 0;
 }
 
+@media (max-width: 959px) {
+  .dash-split-filters {
+    order: -1;
+    margin-bottom: 8px;
+  }
+}
+
 .dash-split-filters .card,
 .dash-split-filters .filter-panel {
   margin-bottom: 12px;

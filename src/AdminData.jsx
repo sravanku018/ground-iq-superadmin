@@ -29,8 +29,8 @@ function pickFirstSurveyKey(items) {
  * 1) Geography — uploaded districts, mandals, assembly, MP + map
  * 2) Survey upload — CSV/JSON survey responses into Neon
  */
-export default function AdminDataScreen({ onToast }) {
-  const [tab, setTab] = useState('geography') // geography | surveys | export
+export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
+  const [tab, setTab] = useState(initialTab) // export | geography | surveys
   const [geo, setGeo] = useState(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -587,50 +587,6 @@ export default function AdminDataScreen({ onToast }) {
               One row per record — answers + photo/audio links. Open sections below for filters.
             </p>
 
-            <FilterSection
-              title="Time range"
-              badge={exp.period}
-              defaultOpen
-            >
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-                {[
-                  { id: 'total', label: 'Total' },
-                  { id: 'today', label: 'Today' },
-                  { id: 'day', label: 'Day' },
-                  { id: 'month', label: 'Month' },
-                ].map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className={`chip ${exp.period === p.id ? 'selected' : ''}`}
-                    onClick={() => setExp((f) => ({ ...f, period: p.id }))}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-              {exp.period === 'day' && (
-                <label className="field compact">
-                  <span>Day</span>
-                  <input
-                    type="date"
-                    value={exp.day}
-                    onChange={(e) => setExp((f) => ({ ...f, day: e.target.value }))}
-                  />
-                </label>
-              )}
-              {exp.period === 'month' && (
-                <label className="field compact">
-                  <span>Month</span>
-                  <input
-                    type="month"
-                    value={exp.month}
-                    onChange={(e) => setExp((f) => ({ ...f, month: e.target.value }))}
-                  />
-                </label>
-              )}
-            </FilterSection>
-
             <FilterSection title="Survey & surveyor" badge={survey || 'select'} defaultOpen>
               <label className="field compact">
                 <span>Survey</span>
@@ -788,6 +744,50 @@ export default function AdminDataScreen({ onToast }) {
                   </label>
                 )
               })()}
+            </FilterSection>
+
+            <FilterSection
+              title="Time range"
+              badge={exp.period}
+              defaultOpen
+            >
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                {[
+                  { id: 'total', label: 'Total' },
+                  { id: 'today', label: 'Today' },
+                  { id: 'day', label: 'Day' },
+                  { id: 'month', label: 'Month' },
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`chip ${exp.period === p.id ? 'selected' : ''}`}
+                    onClick={() => setExp((f) => ({ ...f, period: p.id }))}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              {exp.period === 'day' && (
+                <label className="field compact">
+                  <span>Day</span>
+                  <input
+                    type="date"
+                    value={exp.day}
+                    onChange={(e) => setExp((f) => ({ ...f, day: e.target.value }))}
+                  />
+                </label>
+              )}
+              {exp.period === 'month' && (
+                <label className="field compact">
+                  <span>Month</span>
+                  <input
+                    type="month"
+                    value={exp.month}
+                    onChange={(e) => setExp((f) => ({ ...f, month: e.target.value }))}
+                  />
+                </label>
+              )}
             </FilterSection>
 
             <FilterSection

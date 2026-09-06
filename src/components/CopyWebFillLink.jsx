@@ -131,14 +131,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
 
   const picker = (
     <label className="field" style={{ margin: 0, minWidth: compact ? 120 : 180 }}>
-      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <span>Responses allowed</span>
-        {isLocked && (
-          <span style={{ color: '#059669', fontSize: 11, fontWeight: 700 }}>
-            🔒 Locked
-          </span>
-        )}
-      </span>
+      <span>Responses allowed</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <button
           type="button"
@@ -156,7 +149,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
           value={maxUses}
           disabled={busy || full || live?.expired || isLocked}
           onChange={(e) => setMaxUses(clampMax(e.target.value))}
-          style={{ width: compact ? 72 : 88, textAlign: 'center', fontWeight: isLocked ? 700 : 400 }}
+          style={{ width: compact ? 72 : 88, textAlign: 'center' }}
         />
         <button
           type="button"

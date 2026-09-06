@@ -214,10 +214,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
     ? Math.min(100, Math.round(((fieldUsed + webReserved) / allotCap) * 100))
     : 0
 
-  const totalQuestionsUsed = surveyBreak.reduce(
-    (sum, s) => sum + (Number(s.question_count) || (Array.isArray(s.questions) ? s.questions.length : 0)),
-    0,
-  )
+  const totalQuestionsUsed = Number(user?.question_count) || 0
 
   useEffect(() => {
     let alive = true
@@ -636,7 +633,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
               Surveyors <strong>{surveyorCount || Number(stats?.surveyors_count) || 0} / {Number(user?.max_surveyors) > 0 ? user.max_surveyors : '∞'}</strong>
             </span>
             <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
-              No. of questions used: <strong>{totalQuestionsUsed} / {Number(user?.max_questions_per_survey) > 0 ? `${user.max_questions_per_survey} allotted` : '∞'}</strong>
+              Questions created <strong>{totalQuestionsUsed} / Limit {Number(user?.max_questions_per_survey) > 0 ? user.max_questions_per_survey : '∞'}</strong>
             </span>
             <span className="chip" style={{ background: '#f0fdf4', border: '1px solid #dcfce7', color: '#16a34a', fontSize: 12, fontWeight: 600 }}>
               Confirmed <strong>{confirmedTotal.toLocaleString()}</strong>

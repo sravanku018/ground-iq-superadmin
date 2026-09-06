@@ -572,7 +572,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                   fontSize: 12,
                 }}
               >
-                📝 No. of questions used: {totalQuestionsUsed} / {maxQs} allotted
+                📝 Questions created: {totalQuestionsUsed} / Limit: {maxQs}
               </span>
             )}
           </div>

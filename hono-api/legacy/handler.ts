@@ -1589,13 +1589,6 @@ async function ensureSchema(): Promise<void> {
     `,
     // Optional self-healing respondent phone drop
     () => sql`ALTER TABLE survey_respondents DROP COLUMN IF EXISTS phone`,
-    // Migration tracking
-    () => sql`
-      CREATE TABLE IF NOT EXISTS schema_migrations (
-        name TEXT PRIMARY KEY,
-        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `,
   ];
 
   for (const step of steps) {
@@ -1605,29 +1598,6 @@ async function ensureSchema(): Promise<void> {
         console.error("schema step:", msg.slice(0, 200));
       }
     });
-  }
-
-  // One-time wipe of all web surveys as requested
-  const wiped = await sql`SELECT 1 FROM schema_migrations WHERE name = 'wipe_all_web_surveys_v1' LIMIT 1`.catch(() => []);
-  if (!wiped.length) {
-    await sql`
-      DELETE FROM record_facts WHERE submission_id IN (
-        SELECT id FROM submissions WHERE payload->>'source' IN ('web-survey', 'web')
-      )
-    `.catch(() => null);
-    await sql`
-      DELETE FROM survey_media WHERE submission_id IN (
-        SELECT id FROM submissions WHERE payload->>'source' IN ('web-survey', 'web')
-      )
-    `.catch(() => null);
-    await sql`
-      DELETE FROM submissions WHERE payload->>'source' IN ('web-survey', 'web')
-    `.catch(() => null);
-    await sql`DELETE FROM web_survey_links`.catch(() => null);
-    await sql`
-      INSERT INTO schema_migrations (name) VALUES ('wipe_all_web_surveys_v1')
-      ON CONFLICT (name) DO NOTHING
-    `.catch(() => null);
   }
 
   // Backfill key_id for existing users
@@ -9243,68 +9213,6 @@ async function rawHandler(req: Request): Promise<Response> {
         use_count: link.use_count,
         reused: true,
         ...(snap || {}),
-      });
-    }
-
-    if ((path === "/api/web-survey/wipe" || path === "/api/web-surveys/wipe") && (method === "POST" || method === "DELETE")) {
-      if (!me) return json({ error: "Login required" }, 401);
-      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      const formKey = String(url.searchParams.get("form_key") || "").trim();
-      if (formKey) {
-        await sql`
-          DELETE FROM record_facts WHERE submission_id IN (
-            SELECT id FROM submissions
-            WHERE payload->>'form_key' = ${formKey}
-              AND (payload->>'source' = 'web-survey' OR payload->>'source' = 'web')
-          )
-        `.catch(() => null);
-        await sql`
-          DELETE FROM survey_media WHERE submission_id IN (
-            SELECT id FROM submissions
-            WHERE payload->>'form_key' = ${formKey}
-              AND (payload->>'source' = 'web-survey' OR payload->>'source' = 'web')
-          )
-        `.catch(() => null);
-        const delSubs = await sql`
-          DELETE FROM submissions
-          WHERE payload->>'form_key' = ${formKey}
-            AND (payload->>'source' = 'web-survey' OR payload->>'source' = 'web')
-        `.catch(() => []);
-        const delLinks = await sql`
-          DELETE FROM web_survey_links
-          WHERE form_key = ${formKey}
-        `.catch(() => []);
-        return json({
-          ok: true,
-          form_key: formKey,
-          deleted_submissions: delSubs.length || 0,
-          deleted_links: delLinks.length || 0,
-        });
-      }
-      // Wipe all web surveys across DB
-      await sql`
-        DELETE FROM record_facts WHERE submission_id IN (
-          SELECT id FROM submissions
-          WHERE payload->>'source' = 'web-survey' OR payload->>'source' = 'web'
-        )
-      `.catch(() => null);
-      await sql`
-        DELETE FROM survey_media WHERE submission_id IN (
-          SELECT id FROM submissions
-          WHERE payload->>'source' = 'web-survey' OR payload->>'source' = 'web'
-        )
-      `.catch(() => null);
-      const delSubs = await sql`
-        DELETE FROM submissions
-        WHERE payload->>'source' = 'web-survey' OR payload->>'source' = 'web'
-      `.catch(() => []);
-      const delLinks = await sql`
-        DELETE FROM web_survey_links
-      `.catch(() => []);
-      return json({
-        ok: true,
-        deleted_submissions: delSubs.length || 0,
-        deleted_links: delLinks.length || 0,
       });
     }
 

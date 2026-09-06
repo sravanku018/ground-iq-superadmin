@@ -96,8 +96,7 @@ const PAGE_POWER = {
   surveys: ['can_crud_questionnaire', 'can_edit_surveys'],
   questions: 'can_edit_surveys',
   bank: 'can_manage_questions',
-  // Copy public fill link is available with Surveys. In-portal fill still checks can_web_survey on the API.
-  web: ['can_web_survey', 'can_crud_questionnaire', 'can_edit_surveys'],
+  web: 'can_web_survey',
   review: 'can_review_data',
   upload: 'can_validate_proof',
   data: 'can_validate_proof',

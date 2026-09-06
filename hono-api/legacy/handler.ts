@@ -9146,6 +9146,9 @@ async function rawHandler(req: Request): Promise<Response> {
     if (path === "/api/web-survey/link" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!hasPower(me, "can_web_survey")) {
+        return json({ error: "Super Admin has not granted Web survey permission" }, 403);
+      }
       const body = await readBody(req);
       const formKey = String(body.form_key || body.form_id || "").trim();
       if (!formKey || formKey === "default" || formKey === "legacy") {
@@ -9215,6 +9218,9 @@ async function rawHandler(req: Request): Promise<Response> {
     if (path === "/api/web-survey/links" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!hasPower(me, "can_web_survey")) {
+        return json({ error: "Super Admin has not granted Web survey permission" }, 403);
+      }
       const formKey = String(url.searchParams.get("form_key") || "").trim();
       if (!formKey || formKey === "default" || formKey === "legacy") {
         return json({ error: "Pick a real survey" }, 400);

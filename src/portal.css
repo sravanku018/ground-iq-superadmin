@@ -6,7 +6,12 @@
  * ══════════════════════════════════════════════════════════
  */
 
+:root {
+  color-scheme: light;
+}
+
 .portal-shell {
+  color-scheme: light;
   min-height: 100svh;
   display: flex;
   background: var(--bg, #f8fafc);

@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light;
   /* ── Typography Pairing (Plus Jakarta Sans Display + Inter Body) ── */
   --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

@@ -130,8 +130,19 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
       return
     }
     for (const q of questions) {
-      if (q.required && !String(answers[qid(q)] || '').trim()) {
-        onToast?.(`Required: ${q.label || q.label_te || qid(q)}`, 'error')
+      const val = String(answers[qid(q)] || '').trim()
+      if (!val) {
+        const qTitle = q.label || q.label_te || `Question ${questions.indexOf(q) + 1}`
+        onToast?.(`Question missed: ${qTitle} — please answer before submitting.`, 'error')
+        if (typeof document !== 'undefined') {
+          try {
+            document
+              .getElementById(`admin-web-q-${qid(q)}`)
+              ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          } catch {
+            /* ignore */
+          }
+        }
         return
       }
     }
@@ -306,7 +317,7 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
             const teOpts = Array.isArray(q.options_te) ? q.options_te : []
             const val = answers[id] ?? ''
             return (
-              <div key={id || i} className="card" style={{ marginBottom: 12 }}>
+              <div key={id || i} id={`admin-web-q-${id}`} className="card" style={{ marginBottom: 12 }}>
                 <p style={{ margin: '0 0 4px', fontWeight: 700 }}>
                   Q{i + 1}. {q.label || 'Question'}
                   {q.required ? ' *' : ''}

@@ -1148,8 +1148,10 @@ export default function FieldCollectScreen({
       return
     }
     for (const q of questions) {
-      if (q.required && !String(answers[q.id] || '').trim()) {
-        onToast?.(`Required: ${q.label}`, 'error')
+      const qVal = String(answers[q.id] || '').trim()
+      if (!qVal) {
+        const qTitle = q.label || q.label_te || `Question ${questions.indexOf(q) + 1}`
+        onToast?.(`Question missed: ${qTitle} — please answer before submitting.`, 'error')
         setStep(2)
         setActiveQ(questions.indexOf(q))
         // In scroll mode activeQ isn't the visible position, so bring the
@@ -1357,6 +1359,25 @@ export default function FieldCollectScreen({
     }
 
     if (!checkpoint) {
+      for (const q of questions) {
+        const qVal = String(answers[q.id] || '').trim()
+        if (!qVal) {
+          const qTitle = q.label || q.label_te || `Question ${questions.indexOf(q) + 1}`
+          onToast?.(`Question missed: ${qTitle} — please answer before submitting.`, 'error')
+          setStep(2)
+          setActiveQ(questions.indexOf(q))
+          if (typeof document !== 'undefined' && q.id) {
+            try {
+              document
+                .getElementById(`qa-q-${q.id}`)
+                ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            } catch {
+              /* ignore */
+            }
+          }
+          return false
+        }
+      }
       if (!geoLocked) {
         onToast?.('Lock GPS first (step 1)', 'error')
         setStep(0)

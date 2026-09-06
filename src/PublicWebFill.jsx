@@ -85,8 +85,19 @@ export default function PublicWebFill({ formKey, fillToken }) {
   async function submit(e) {
     e.preventDefault()
     for (const q of questions) {
-      if (q.required && !String(answers[qid(q)] || '').trim()) {
-        setToast(`Required: ${q.label || q.label_te || qid(q)}`)
+      const val = String(answers[qid(q)] || '').trim()
+      if (!val) {
+        const qTitle = te && q.label_te ? q.label_te : q.label || `Question ${questions.indexOf(q) + 1}`
+        setToast(`Question missed: ${qTitle} — please answer before submitting.`)
+        if (typeof document !== 'undefined') {
+          try {
+            document
+              .getElementById(`web-q-${qid(q)}`)
+              ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          } catch {
+            /* ignore */
+          }
+        }
         return
       }
     }
@@ -184,7 +195,7 @@ export default function PublicWebFill({ formKey, fillToken }) {
               const val = answers[id] ?? ''
               const label = te && q.label_te ? q.label_te : q.label || 'Question'
               return (
-                <div key={id || i} className="card" style={{ marginBottom: 12 }}>
+                <div key={id || i} id={`web-q-${id}`} className="card" style={{ marginBottom: 12 }}>
                   <p style={{ margin: '0 0 10px', fontWeight: 700 }}>
                     Q{i + 1}. {label}
                     {q.required ? ' *' : ''}

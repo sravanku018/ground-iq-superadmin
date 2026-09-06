@@ -1043,17 +1043,21 @@ export default function AdminPortal({ superAdminOnly = false }) {
           {navOpen ? <Icon name="cross" size={18} /> : <Icon name="menu" size={18} />}
         </button>
         <div className="portal-topbar-brand">
-          <strong>Smart Survey X · Admin</strong>
-          <span>{activeNavLabel}</span>
+          <strong>Smart Survey X</strong>
+          <span>{PAGE_LABELS[page] || activeNavLabel}</span>
         </div>
-        <button
-          type="button"
-          className="btn small"
-          disabled={loadingData}
-          onClick={() => void loadPortal()}
-        >
-          {loadingData ? '…' : '↻'}
-        </button>
+        <div className="portal-topbar-actions">
+          <button
+            type="button"
+            className="btn small portal-refresh-pill"
+            disabled={loadingData}
+            onClick={() => void loadPortal()}
+            title="Refresh"
+          >
+            {loadingData ? '…' : '↻'}
+          </button>
+          <AdminBell user={user} onGoPage={goPage} />
+        </div>
       </header>
 
       {navOpen ? (
@@ -1244,6 +1248,70 @@ export default function AdminPortal({ superAdminOnly = false }) {
           </ChunkErrorBoundary>
         </Suspense>
       </main>
+
+      {/* ── Modern Mobile Bottom Navigation Bar (Thumb reachable) ── */}
+      <nav className="portal-bottom-nav" aria-label="Mobile Navigation">
+        <button
+          type="button"
+          className={`portal-tab-btn ${page === 'overview' ? 'active' : ''}`}
+          onClick={() => goPage('overview')}
+        >
+          <span className="portal-tab-icon">📊</span>
+          <span className="portal-tab-label">Overview</span>
+        </button>
+
+        <button
+          type="button"
+          className={`portal-tab-btn ${['surveys', 'questions', 'bank', 'web'].includes(page) ? 'active' : ''}`}
+          onClick={() => goPage('surveys')}
+        >
+          <span className="portal-tab-icon">📋</span>
+          <span className="portal-tab-label">Surveys</span>
+        </button>
+
+        <button
+          type="button"
+          className={`portal-tab-btn ${['analyze', 'report', 'upload', 'data'].includes(page) ? 'active' : ''}`}
+          onClick={() => goPage('analyze')}
+        >
+          <span className="portal-tab-icon">📈</span>
+          <span className="portal-tab-label">Analytics</span>
+        </button>
+
+        <button
+          type="button"
+          className={`portal-tab-btn ${page === 'review' ? 'active' : ''}`}
+          onClick={() => goPage('review')}
+        >
+          <span className="portal-tab-icon" style={{ position: 'relative' }}>
+            ✅
+            {(Number(stats?.pending) || 0) > 0 ? (
+              <span className="portal-tab-badge">
+                {Number(stats.pending) > 99 ? '99+' : stats.pending}
+              </span>
+            ) : null}
+          </span>
+          <span className="portal-tab-label">Review</span>
+        </button>
+
+        <button
+          type="button"
+          className={`portal-tab-btn ${page === 'users' ? 'active' : ''}`}
+          onClick={() => goPage('users')}
+        >
+          <span className="portal-tab-icon">👥</span>
+          <span className="portal-tab-label">Surveyors</span>
+        </button>
+
+        <button
+          type="button"
+          className={`portal-tab-btn ${navOpen ? 'active' : ''}`}
+          onClick={() => setNavOpen((o) => !o)}
+        >
+          <span className="portal-tab-icon">☰</span>
+          <span className="portal-tab-label">Menu</span>
+        </button>
+      </nav>
     </div>
   )
 }

@@ -35,7 +35,14 @@ const defaultOptionsForType = (t) => {
 }
 
 /** Shared question editor with rich question types, interactive options & live app preview */
-function QuestionEditor({ questions, onChange, onToast, canTelugu, displayLang = 'en' }) {
+function QuestionEditor({
+  questions = [],
+  onChange,
+  onToast,
+  canTelugu = false,
+  displayLang = 'en',
+  maxQs = 0,
+}) {
   const [translatingAll, setTranslatingAll] = useState(false)
   function updateQ(i, patch) {
     onChange(questions.map((q, idx) => (idx === i ? { ...q, ...patch } : q)))
@@ -71,6 +78,10 @@ function QuestionEditor({ questions, onChange, onToast, canTelugu, displayLang =
   }
 
   function addQ() {
+    if (maxQs > 0 && questions.length >= maxQs) {
+      onToast?.(`Maximum ${maxQs} questions allowed per survey (limit set by Super Admin)`, 'error')
+      return
+    }
     onChange([
       ...questions,
       { ...EMPTY_Q, id: '', label: '', speak: '', _uid: `n-${Date.now()}` },
@@ -295,14 +306,29 @@ function QuestionEditor({ questions, onChange, onToast, canTelugu, displayLang =
           </div>
         )
       })}
-      <button
-        type="button"
-        className="btn primary"
-        onClick={addQ}
-        style={{ marginBottom: 12 }}
-      >
-        + Add Survey Question
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <button
+          type="button"
+          className="btn primary"
+          onClick={addQ}
+          disabled={maxQs > 0 && questions.length >= maxQs}
+        >
+          + Add Survey Question
+        </button>
+        {maxQs > 0 && (
+          <span
+            className="pill"
+            style={{
+              background: questions.length >= maxQs ? '#fef2f2' : 'rgba(0, 229, 153, 0.12)',
+              color: questions.length >= maxQs ? '#dc2626' : '#047857',
+              fontWeight: 700,
+              fontSize: 12,
+            }}
+          >
+            📝 Questions: {questions.length} / {maxQs} allowed
+          </span>
+        )}
+      </div>
     </>
   )
 }
@@ -535,6 +561,11 @@ export default function AdminSurveysScreen({ onToast, user }) {
 
   async function saveDetailChanges() {
     if (!detail) return
+    const maxQs = !isSuper ? Number(user?.max_questions_per_survey) || 0 : 0
+    if (maxQs > 0 && (detail.questions || []).length > maxQs) {
+      onToast?.(`Survey question cap exceeded: maximum ${maxQs} questions allowed per survey (limit set by Super Admin)`, 'error')
+      return
+    }
     setSaving(true)
     try {
       await updateSurvey(detail.id, {
@@ -1094,6 +1125,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           onToast={onToast}
           canTelugu={canTeluguQuestions(user)}
           displayLang={detail.display_lang === 'te' ? 'te' : 'en'}
+          maxQs={!isSuper ? Number(user?.max_questions_per_survey) || 0 : 0}
         />
 
         <button

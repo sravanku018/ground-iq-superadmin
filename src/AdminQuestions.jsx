@@ -119,7 +119,13 @@ export default function AdminQuestionsScreen({ onToast, user }) {
     })
   }
 
+  const maxQs = !isSuperAdmin ? Number(user?.max_questions_per_survey) || 0 : 0
+
   function addQ() {
+    if (maxQs > 0 && questions.length >= maxQs) {
+      onToast?.(`Maximum ${maxQs} questions allowed per survey (limit set by Super Admin)`, 'error')
+      return
+    }
     setQuestions((list) => [
       ...list,
       {
@@ -163,6 +169,10 @@ export default function AdminQuestionsScreen({ onToast, user }) {
     }
     if (!isSuperAdmin && !surveyId) {
       onToast?.('Create a survey first (Surveys tab), then edit its questions here', 'error')
+      return
+    }
+    if (maxQs > 0 && questions.length > maxQs) {
+      onToast?.(`Survey question cap exceeded: maximum ${maxQs} questions allowed per survey (limit set by Super Admin)`, 'error')
       return
     }
     setSaving(true)
@@ -524,14 +534,27 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       })}
 
       {(isSuperAdmin || surveyId) && (
-        <>
-          <button type="button" className="btn primary" onClick={addQ} disabled={!canEdit} style={{ marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+          <button type="button" className="btn primary" onClick={addQ} disabled={!canEdit || (maxQs > 0 && questions.length >= maxQs)}>
             + Add Question
           </button>
-          <button type="button" className="btn primary" onClick={save} disabled={saving || !canEdit} style={{ marginLeft: 8 }}>
+          <button type="button" className="btn primary" onClick={save} disabled={saving || !canEdit}>
             {saving ? 'Saving & Pushing…' : <><Icon name="check" size={12} /> Save & Push to Mobile App</>}
           </button>
-        </>
+          {maxQs > 0 && (
+            <span
+              className="pill"
+              style={{
+                background: questions.length >= maxQs ? '#fef2f2' : 'rgba(0, 229, 153, 0.12)',
+                color: questions.length >= maxQs ? '#dc2626' : '#047857',
+                fontWeight: 700,
+                fontSize: 12,
+              }}
+            >
+              📝 Questions: {questions.length} / {maxQs} allowed
+            </span>
+          )}
+        </div>
       )}
     </div>
   )

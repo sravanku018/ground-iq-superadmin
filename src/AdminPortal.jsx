@@ -214,7 +214,11 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
     ? Math.min(100, Math.round(((fieldUsed + webReserved) / allotCap) * 100))
     : 0
 
-  const totalQuestionsUsed = Number(user?.question_count) || 0
+  const surveysQuestionsSum = surveyBreak.reduce(
+    (sum, s) => sum + (Number(s.question_count) || (Array.isArray(s.questions) ? s.questions.length : 0)),
+    0,
+  )
+  const totalQuestionsUsed = Math.max(Number(user?.question_count) || 0, surveysQuestionsSum)
 
   useEffect(() => {
     let alive = true

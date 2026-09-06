@@ -633,7 +633,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
               Surveyors <strong>{surveyorCount || Number(stats?.surveyors_count) || 0} / {Number(user?.max_surveyors) > 0 ? user.max_surveyors : '∞'}</strong>
             </span>
             <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
-              Questions created <strong>{totalQuestionsUsed} / Limit {Number(user?.max_questions_per_survey) > 0 ? user.max_questions_per_survey : '∞'}</strong>
+              Total survey questions created <strong>{totalQuestionsUsed} / Allotted {Number(user?.max_questions_per_survey) > 0 ? user.max_questions_per_survey : '∞'}</strong>
             </span>
             <span className="chip" style={{ background: '#f0fdf4', border: '1px solid #dcfce7', color: '#16a34a', fontSize: 12, fontWeight: 600 }}>
               Confirmed <strong>{confirmedTotal.toLocaleString()}</strong>

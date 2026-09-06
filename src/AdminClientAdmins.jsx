@@ -487,7 +487,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                     {u.active !== false && (
                       <span className="meta" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
                         <span className="pill" title="Surveys created / allocated" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="clipboard" size={11} /> surveys {u.survey_count ?? 0} / {u.max_surveys > 0 ? u.max_surveys : '∞'} allocated</span>
-                        <span className="pill" title="Questions created by Client Admin / Limit given by Super Admin">📝 questions created {u.question_count ?? 0} / limit {u.max_questions_per_survey > 0 ? u.max_questions_per_survey : '∞'}</span>
+                        <span className="pill" title="Total survey questions created by Client Admin / No of questions allotted by Super Admin">📝 questions created {u.question_count ?? 0} / allotted {u.max_questions_per_survey > 0 ? u.max_questions_per_survey : '∞'}</span>
                         <span className="pill" title="Surveyors created / allocated" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="users" size={11} /> surveyors {u.surveyor_count ?? 0} / {u.max_surveyors > 0 ? u.max_surveyors : '∞'} allocated</span>
                         <span className="pill" title="Field records submitted / Super Admin record limit">🗃 records {u.surveyor_record_count ?? u.record_count ?? 0} / {u.max_records > 0 ? u.max_records : '∞'} allocated</span>
                       </span>
@@ -689,9 +689,9 @@ export default function AdminClientAdminsScreen({ onToast }) {
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>
-                          Question limit (0 = unlimited) ·{' '}
+                          Questions allotted (0 = unlimited) ·{' '}
                           <strong style={{ color: '#059669' }}>{u.question_count ?? 0}</strong> created /{' '}
-                          limit {u.max_questions_per_survey > 0 ? u.max_questions_per_survey : '∞'}
+                          allotted {u.max_questions_per_survey > 0 ? u.max_questions_per_survey : '∞'}
                         </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input

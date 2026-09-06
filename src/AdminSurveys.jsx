@@ -329,7 +329,7 @@ function QuestionEditor({
               fontSize: 12,
             }}
           >
-            📝 Questions created: {totalQuestionsUsed} / Limit: {maxQs}
+            📝 Total survey questions created: {totalQuestionsUsed} / Allotted by Super Admin: {maxQs}
           </span>
         )}
       </div>

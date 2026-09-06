@@ -7960,9 +7960,11 @@ async function rawHandler(req: Request): Promise<Response> {
         expired: boolean;
       }>();
       for (const r of linkRows as Record<string, unknown>[]) {
+        const fk = String(r.form_key || "");
         const max = clampWebLinkMaxUses(r.max_uses);
-        const used = Math.max(0, Number(r.use_count) || 0);
-        linkMap.set(String(r.form_key || ""), {
+        const webN = webByFkMap.get(fk) || 0;
+        const used = Math.max(webN, Number(r.use_count) || 0);
+        linkMap.set(fk, {
           token: String(r.token || ""),
           max_uses: max,
           use_count: used,

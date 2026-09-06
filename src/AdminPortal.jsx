@@ -332,8 +332,9 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                 const field = Number(s.field_submissions) || Math.max(0, (Number(s.submissions) || 0) - web)
                 const link = s.web_link
                 const cap = Number(link?.max_uses) || 0
-                const used = Number(link?.use_count) || 0
-                const closed = !!link?.expired || (cap > 0 && used >= cap)
+                const used = Math.max(web, Number(link?.use_count) || 0)
+                const left = Math.max(0, cap - used)
+                const closed = !!link?.expired || (cap > 0 && left === 0)
                 return (
                   <tr key={s.id || s.form_key}>
                     <td>
@@ -351,7 +352,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                         <span style={{ color: '#dc2626', fontWeight: 700, fontSize: 12 }}>Disabled · 0 left</span>
                       ) : cap > 0 ? (
                         <span style={{ color: '#059669', fontWeight: 600, fontSize: 12 }}>
-                          {Math.max(0, cap - used)} left of {cap}
+                          {left} left of {cap}
                         </span>
                       ) : (
                         <span className="muted">—</span>

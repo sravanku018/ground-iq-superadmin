@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './Icons'
 import {
   confirmAllPending,
@@ -14,6 +14,7 @@ import {
 import { PortalEmpty, PortalError, PortalSkeleton } from './PortalUI'
 import SubmissionEditor from './SubmissionEditor'
 import FeedCard from './components/FeedCard'
+import { slugQuestionKey } from './questionKey'
 
 
 function partyColor(p) {
@@ -108,6 +109,15 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
       .then((d) => setSurveys(d.items || []))
       .catch(() => {})
   }, [])
+
+  const surveyByFormKey = useMemo(() => {
+    const map = new Map()
+    for (const s of surveys) {
+      if (s.form_key) map.set(String(s.form_key), s)
+      if (s.id) map.set(String(s.id), s)
+    }
+    return map
+  }, [surveys])
 
   // Prefetch media when expanded
   useEffect(() => {
@@ -449,15 +459,30 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
             const a = item.answers || {}
             const open = expanded === item.id
             const focused = focusIdx === idx
+            const isWeb =
+              item.source === 'web-survey' ||
+              item.source === 'web' ||
+              item.submitted_by === 'Web' ||
+              item.submitted_by === 'web'
+
+            const surveyDef = surveyByFormKey.get(String(item.form_key || ''))
+            const surveyQuestions = Array.isArray(surveyDef?.questions) ? surveyDef.questions : []
+
             const qa = item.qa?.length
               ? item.qa
               : Object.entries(a)
-                  .filter(([, v]) => v != null && v !== '')
-                  .slice(0, 12)
-                  .map(([k, v]) => ({
-                    q: k,
-                    a: Array.isArray(v) ? v.join(', ') : String(v),
-                  }))
+                  .filter(([k, v]) => v != null && v !== '' && !k.startsWith('_') && k !== 'data_collector')
+                  .slice(0, 30)
+                  .map(([k, v]) => {
+                    const match = surveyQuestions.find(
+                      (q) => q.id === k || slugQuestionKey(q.label) === k || q.key === k,
+                    )
+                    const qText = match?.label || match?.label_te || k.replace(/_/g, ' ')
+                    return {
+                      q: qText,
+                      a: Array.isArray(v) ? v.join(', ') : String(v),
+                    }
+                  })
             const photo =
               (mediaById[item.id] || []).find((m) => m.kind === 'photo') || null
             const audio =
@@ -473,7 +498,6 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
               a.respondent_name ? { label: a.respondent_name } : null,
             ].filter(Boolean)
 
-            const isWeb = item.source === 'web-survey' || item.source === 'web'
             const signals = isWeb
               ? [
                   { label: 'Web', status: 'ok' },
@@ -561,16 +585,16 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
 
             const detail = (
               <div>
-                {/* Always-visible mini media strip when open */}
+                {/* Always-visible mini media strip when open (only for non-web field surveys) */}
                 {editingId !== item.id && (
                   <div className="qa-block" style={{ marginTop: 10 }}>
-                    {(item.status === 'confirmed' || item.fact_status === 'confirmed' || item.fact_status === 'materialized') ? (
+                    {!isWeb && (item.status === 'confirmed' || item.fact_status === 'confirmed' || item.fact_status === 'materialized') ? (
                       <div className="card" style={{ marginBottom: 10, padding: '8px 12px', background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
                         <span style={{ fontSize: 12, color: '#047857', fontWeight: 600 }}>
                           ✅ Confirmed Record — Photo & Audio hidden post-verification (Details verified)
                         </span>
                       </div>
-                    ) : (
+                    ) : !isWeb ? (
                       <div className="card" style={{ marginBottom: 10, padding: 10 }}>
                         <strong style={{ fontSize: 13 }}>Media</strong>
                         <div
@@ -663,7 +687,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                           )}
                         </div>
                       </div>
-                    )}
+                    ) : null}
                     {item.proof_validated && (
                       <div
                         className="card"
@@ -697,6 +721,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                 {editingId === item.id && (
                   <SubmissionEditor
                     item={item}
+                    questions={surveyQuestions}
                     onToast={onToast}
                     onCancel={() => setEditingId(null)}
                     onSaved={async () => {

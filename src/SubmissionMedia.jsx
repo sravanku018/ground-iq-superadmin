@@ -65,6 +65,16 @@ export default function SubmissionMedia({ item, compact }) {
     item?.fact_status === 'confirmed' ||
     item?.fact_status === 'materialized'
 
+  const isWeb =
+    item?.source === 'web-survey' ||
+    item?.source === 'web' ||
+    item?.payload?.source === 'web-survey' ||
+    item?.payload?.source === 'web' ||
+    item?.submitted_by === 'Web' ||
+    item?.submitted_by === 'web'
+
+  if (isWeb) return null
+
   if (isConfirmed) {
     return (
       <div

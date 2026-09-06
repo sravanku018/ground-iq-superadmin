@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { deleteSubmission, getStoredUser, updateSubmission } from './api'
+import { deleteSubmission, getStoredUser, getSurvey, updateSubmission } from './api'
 import SubmissionMedia from './SubmissionMedia'
+import { slugQuestionKey } from './questionKey'
 
-
-/** Core fields Client Admin can always edit */
+/** Core standard fields */
 const CORE_FIELDS = [
   { key: 'respondent_name', label: 'Respondent name' },
   { key: 'district', label: 'District' },
@@ -36,15 +36,16 @@ function textToIssues(s) {
 }
 
 /**
- * Client Admin full edit form for one survey submission.
+ * Client Admin full edit form for one survey submission with full question titles and web survey support.
  */
-export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, onToast }) {
+export default function SubmissionEditor({ item, questions: propQuestions, onSaved, onDeleted, onCancel, onToast }) {
   const initialAnswers = item?.answers || {}
   const [answers, setAnswers] = useState(() => {
     const a = { ...initialAnswers }
     if (a.issues != null) a.issues = issuesToText(a.issues)
     return a
   })
+  const [surveyQs, setSurveyQs] = useState(() => propQuestions || item?.questions || [])
   const [submittedBy, setSubmittedBy] = useState(item?.submitted_by || '')
   const [status, setStatus] = useState(item?.status || 'pending')
   const [lat, setLat] = useState(
@@ -60,6 +61,14 @@ export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, o
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  const isWeb =
+    item?.source === 'web-survey' ||
+    item?.source === 'web' ||
+    item?.payload?.source === 'web-survey' ||
+    item?.payload?.source === 'web' ||
+    item?.submitted_by === 'Web' ||
+    item?.submitted_by === 'web'
+
   useEffect(() => {
     const a = { ...item?.answers }
     if (a.issues != null) a.issues = issuesToText(a.issues)
@@ -74,14 +83,101 @@ export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, o
     setForce(false)
   }, [item?.id])
 
-  const extraKeys = useMemo(() => {
-    const core = new Set(CORE_FIELDS.map((f) => f.key))
-    return Object.keys(answers || {}).filter((k) => !core.has(k) && k !== 'data_collector')
-  }, [answers])
+  useEffect(() => {
+    if (propQuestions?.length) {
+      setSurveyQs(propQuestions)
+      return
+    }
+    const fk = item?.form_key || item?.payload?.form_key || item?.form_id
+    if (!fk || fk === 'default' || fk === 'legacy') return
+    let dead = false
+    getSurvey(fk)
+      .then((d) => {
+        if (dead) return
+        const qs = Array.isArray(d?.survey?.questions) ? d.survey.questions : []
+        if (qs.length) setSurveyQs(qs)
+      })
+      .catch(() => {})
+    return () => {
+      dead = true
+    }
+  }, [item?.form_key, item?.payload?.form_key, item?.form_id, propQuestions])
 
   function setField(key, value) {
     setAnswers((prev) => ({ ...prev, [key]: value }))
   }
+
+  // Build the list of fields to render with proper question labels
+  const renderedFields = useMemo(() => {
+    const fields = []
+    const renderedKeys = new Set()
+
+    // 1. Survey defined questions
+    if (surveyQs && surveyQs.length > 0) {
+      for (const q of surveyQs) {
+        const id = String(q.id || slugQuestionKey(q.label) || '').trim()
+        if (!id) continue
+        renderedKeys.add(id)
+        if (q.id) renderedKeys.add(q.id)
+        if (q.label) renderedKeys.add(slugQuestionKey(q.label))
+
+        const val =
+          answers[id] ??
+          (q.id ? answers[q.id] : undefined) ??
+          (q.label ? answers[slugQuestionKey(q.label)] : undefined) ??
+          ''
+
+        fields.push({
+          key: id,
+          label: q.label || q.label_te || id,
+          label_te: q.label_te && q.label_te !== q.label ? q.label_te : null,
+          required: Boolean(q.required),
+          type: q.type === 'textarea' || (typeof val === 'string' && val.length > 60) ? 'textarea' : 'text',
+          value: Array.isArray(val) ? val.join(', ') : String(val ?? ''),
+          isSurveyQ: true,
+        })
+      }
+    }
+
+    // 2. Answered core fields or unmapped answers
+    const coreMap = new Map(CORE_FIELDS.map((f) => [f.key, f.label]))
+    for (const [k, v] of Object.entries(answers || {})) {
+      if (k.startsWith('_') || k === 'data_collector') continue
+      if (renderedKeys.has(k)) continue
+
+      const isCore = coreMap.has(k)
+      const label = isCore
+        ? coreMap.get(k)
+        : (surveyQs.find((q) => q.id === k || slugQuestionKey(q.label) === k)?.label ||
+          k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()))
+
+      renderedKeys.add(k)
+      fields.push({
+        key: k,
+        label,
+        label_te: null,
+        required: false,
+        type: k === 'notes' || k === 'issues' || (typeof v === 'string' && v.length > 60) ? 'textarea' : 'text',
+        value: Array.isArray(v) ? v.join(', ') : String(v ?? ''),
+        isSurveyQ: false,
+      })
+    }
+
+    // 3. Fallback for completely empty records
+    if (fields.length === 0) {
+      return CORE_FIELDS.slice(0, 6).map((f) => ({
+        key: f.key,
+        label: f.label,
+        label_te: null,
+        required: false,
+        type: 'text',
+        value: answers[f.key] ?? '',
+        isSurveyQ: false,
+      }))
+    }
+
+    return fields
+  }, [surveyQs, answers])
 
   async function save() {
     setSaving(true)
@@ -92,10 +188,9 @@ export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, o
         status,
         note: note.trim() || undefined,
         force: force || undefined,
-        has_audio: hasAudio,
-        has_photo: hasPhoto,
+        has_audio: isWeb ? false : hasAudio,
+        has_photo: isWeb ? false : hasPhoto,
       }
-      // Normalize issues to string (server accepts string)
       if (body.answers.issues != null) {
         body.answers.issues = textToIssues(body.answers.issues)
       }
@@ -149,7 +244,9 @@ export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, o
           marginBottom: 10,
         }}
       >
-        <h4 style={{ margin: 0 }}>Edit survey #{item.id}</h4>
+        <h4 style={{ margin: 0 }}>
+          Edit {isWeb ? 'web survey' : 'survey'} #{item.id}
+        </h4>
         {onCancel && (
           <button type="button" className="btn small" onClick={onCancel}>
             Close
@@ -160,7 +257,7 @@ export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, o
         Client Admin can correct answers, surveyor, geo, and status. Changes are logged.
       </p>
 
-      {item?.id ? <SubmissionMedia item={item} /> : null}
+      {!isWeb && item?.id ? <SubmissionMedia item={item} /> : null}
 
       <label className="field compact">
         <span>Surveyor (submitted_by)</span>
@@ -203,67 +300,66 @@ export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, o
         </label>
       </div>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, margin: '8px 0 12px' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-          <input
-            type="checkbox"
-            checked={hasAudio}
-            onChange={(e) => setHasAudio(e.target.checked)}
-          />
-          Has voice
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-          <input
-            type="checkbox"
-            checked={hasPhoto}
-            onChange={(e) => setHasPhoto(e.target.checked)}
-          />
-          Has photo
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-          <input
-            type="checkbox"
-            checked={force}
-            onChange={(e) => setForce(e.target.checked)}
-          />
-          Force confirm if incomplete
-        </label>
-      </div>
+      {!isWeb && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, margin: '8px 0 12px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={hasAudio}
+              onChange={(e) => setHasAudio(e.target.checked)}
+            />
+            Has voice
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={hasPhoto}
+              onChange={(e) => setHasPhoto(e.target.checked)}
+            />
+            Has photo
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={force}
+              onChange={(e) => setForce(e.target.checked)}
+            />
+            Force confirm if incomplete
+          </label>
+        </div>
+      )}
 
-      <h4 style={{ margin: '8px 0 6px', fontSize: 13 }}>Answers</h4>
-      {CORE_FIELDS.map((f) => (
-        <label key={f.key} className="field compact">
-          <span>{f.label}</span>
-          {f.key === 'notes' || f.key === 'issues' ? (
+      <h4 style={{ margin: '12px 0 8px', fontSize: 14, fontWeight: 700, color: '#0f172a' }}>
+        Survey Questions &amp; Answers
+      </h4>
+
+      {renderedFields.map((f) => (
+        <label key={f.key} className="field compact" style={{ marginBottom: 8 }}>
+          <span style={{ fontWeight: 600, color: '#1e293b' }}>
+            {f.label}
+            {f.required ? <span style={{ color: '#ef4444' }}> *</span> : ''}
+          </span>
+          {f.label_te && (
+            <span className="muted" style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+              {f.label_te}
+            </span>
+          )}
+          {f.type === 'textarea' ? (
             <textarea
               rows={2}
-              value={answers[f.key] ?? ''}
+              value={answers[f.key] ?? f.value ?? ''}
               onChange={(e) => setField(f.key, e.target.value)}
             />
           ) : (
             <input
-              value={answers[f.key] ?? ''}
+              value={answers[f.key] ?? f.value ?? ''}
               onChange={(e) => setField(f.key, e.target.value)}
             />
           )}
         </label>
       ))}
 
-      {extraKeys.map((k) => (
-        <label key={k} className="field compact">
-          <span>{k}</span>
-          <input
-            value={
-              Array.isArray(answers[k])
-                ? answers[k].join(', ')
-                : (answers[k] ?? '')
-            }
-            onChange={(e) => setField(k, e.target.value)}
-          />
-        </label>
-      ))}
-
-      <label className="field compact">
+      <label className="field compact" style={{ marginTop: 10 }}>
         <span>Edit note (optional)</span>
         <input
           value={note}
@@ -297,7 +393,7 @@ export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, o
           </button>
         )}
       </div>
-
     </div>
   )
 }
+

@@ -12,6 +12,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [maxUses, setMaxUses] = useState(100)
+  const [editingLimit, setEditingLimit] = useState(false)
   const [live, setLive] = useState(null)
   const [quota, setQuota] = useState({ used: 0, cap: 100, submitted: 0, linkUsed: 0 })
   const [alloc, setAlloc] = useState({ max_records: 0, field_used: 0, web_reserved: 0, field_remaining: 0 })
@@ -88,6 +89,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         cap: Number(d.max_uses) || limit,
         linkUsed: Number(d.use_count) || 0,
       }))
+      setEditingLimit(false)
       if (d.max_records != null || d.field_remaining != null) {
         setAlloc({
           max_records: Number(d.max_records) || 0,
@@ -125,12 +127,25 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
   const linkUsed = Math.max(0, Number(quota.linkUsed) || 0)
   const pct = Math.min(100, Math.round((linkUsed / cap) * 100))
   const full = linkUsed >= cap || live?.expired
+  const isLocked = Boolean(url || live?.token) && !editingLimit
 
   const picker = (
     <label className="field" style={{ margin: 0, minWidth: compact ? 120 : 180 }}>
-      <span>Responses allowed</span>
+      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <span>Responses allowed</span>
+        {isLocked && (
+          <span style={{ color: '#059669', fontSize: 11, fontWeight: 700 }}>
+            🔒 Locked
+          </span>
+        )}
+      </span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <button type="button" className="btn small" disabled={busy || full || live?.expired || maxUses <= 1} onClick={() => bump(-1)}>
+        <button
+          type="button"
+          className="btn small"
+          disabled={busy || full || live?.expired || isLocked || maxUses <= 1}
+          onClick={() => bump(-1)}
+        >
           −
         </button>
         <input
@@ -139,13 +154,29 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
           max={9999}
           step={1}
           value={maxUses}
-          disabled={busy || full || live?.expired}
+          disabled={busy || full || live?.expired || isLocked}
           onChange={(e) => setMaxUses(clampMax(e.target.value))}
-          style={{ width: compact ? 72 : 88, textAlign: 'center' }}
+          style={{ width: compact ? 72 : 88, textAlign: 'center', fontWeight: isLocked ? 700 : 400 }}
         />
-        <button type="button" className="btn small" disabled={busy || full || live?.expired || maxUses >= 9999} onClick={() => bump(1)}>
+        <button
+          type="button"
+          className="btn small"
+          disabled={busy || full || live?.expired || isLocked || maxUses >= 9999}
+          onClick={() => bump(1)}
+        >
           +
         </button>
+        {Boolean(url || live?.token) && (
+          <button
+            type="button"
+            className="btn small"
+            style={{ fontSize: 11, padding: '3px 8px' }}
+            title={editingLimit ? 'Cancel edit' : 'Unlock to change quota'}
+            onClick={() => setEditingLimit((prev) => !prev)}
+          >
+            {editingLimit ? 'Cancel' : '✏️ Edit'}
+          </button>
+        )}
       </div>
     </label>
   )

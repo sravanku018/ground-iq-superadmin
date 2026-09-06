@@ -468,8 +468,21 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
             const surveyDef = surveyByFormKey.get(String(item.form_key || ''))
             const surveyQuestions = Array.isArray(surveyDef?.questions) ? surveyDef.questions : []
 
-            const qa = item.qa?.length
-              ? item.qa
+            const qa = surveyQuestions.length > 0
+              ? surveyQuestions
+                  .map((q) => {
+                    const id = String(q.id || slugQuestionKey(q.label) || '').trim()
+                    const v =
+                      a[id] ??
+                      (q.id ? a[q.id] : undefined) ??
+                      (q.label ? a[slugQuestionKey(q.label)] : undefined) ??
+                      ''
+                    return {
+                      q: q.label || q.label_te || id,
+                      a: Array.isArray(v) ? v.join(', ') : String(v ?? ''),
+                    }
+                  })
+                  .filter((x) => x.a !== '')
               : Object.entries(a)
                   .filter(([k, v]) => v != null && v !== '' && !k.startsWith('_') && k !== 'data_collector')
                   .slice(0, 30)
@@ -490,13 +503,27 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
             const photoSrc = photo?.playUrl || photo?.url || item.photo_url
             const audioSrc = audio?.playUrl || audio?.url || item.audio_url
 
-            const pills = [
-              a.party ? { label: a.party, dot: partyColor(a.party) } : null,
-              a.gender ? { label: a.gender } : null,
-              a.age ? { label: `${a.age} yrs` } : null,
-              a.caste ? { label: a.caste } : null,
-              a.respondent_name ? { label: a.respondent_name } : null,
-            ].filter(Boolean)
+            const pills = surveyQuestions.length > 0
+              ? surveyQuestions.slice(0, 4).map((q) => {
+                  const id = String(q.id || slugQuestionKey(q.label) || '').trim()
+                  const v =
+                    a[id] ??
+                    (q.id ? a[q.id] : undefined) ??
+                    (q.label ? a[slugQuestionKey(q.label)] : undefined)
+                  if (v == null || v === '') return null
+                  const str = Array.isArray(v) ? v.join(', ') : String(v)
+                  return {
+                    label: `${q.label || id}: ${str}`,
+                    dot: partyColor(str),
+                  }
+                }).filter(Boolean)
+              : [
+                  a.party ? { label: a.party, dot: partyColor(a.party) } : null,
+                  a.gender ? { label: a.gender } : null,
+                  a.age ? { label: `${a.age} yrs` } : null,
+                  a.caste ? { label: a.caste } : null,
+                  a.respondent_name ? { label: a.respondent_name } : null,
+                ].filter(Boolean)
 
             const signals = isWeb
               ? [

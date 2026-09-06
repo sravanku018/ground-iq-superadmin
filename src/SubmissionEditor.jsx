@@ -3,26 +3,6 @@ import { deleteSubmission, getStoredUser, getSurvey, updateSubmission } from './
 import SubmissionMedia from './SubmissionMedia'
 import { slugQuestionKey } from './questionKey'
 
-/** Core standard fields */
-const CORE_FIELDS = [
-  { key: 'respondent_name', label: 'Respondent name' },
-  { key: 'district', label: 'District' },
-  { key: 'constituency', label: 'Assembly constituency' },
-  { key: 'mp_constituency', label: 'MP constituency' },
-  { key: 'mandal', label: 'Mandal' },
-  { key: 'ward', label: 'Ward / booth' },
-  { key: 'gender', label: 'Gender' },
-  { key: 'caste', label: 'Caste' },
-  { key: 'age', label: 'Age group' },
-  { key: 'employment', label: 'Occupation' },
-  { key: 'education', label: 'Education' },
-  { key: 'winning_party', label: 'Winning party' },
-  { key: 'pm_preference', label: 'PM preference' },
-  { key: 'performance', label: 'Govt performance' },
-  { key: 'issues', label: 'Issues' },
-  { key: 'notes', label: 'Notes' },
-]
-
 function issuesToText(v) {
   if (Array.isArray(v)) return v.join(', ')
   if (v == null) return ''
@@ -112,7 +92,7 @@ export default function SubmissionEditor({ item, questions: propQuestions, onSav
     const fields = []
     const renderedKeys = new Set()
 
-    // 1. Survey defined questions
+    // 1. Survey defined questions: show ONLY questions created at time of survey creation
     if (surveyQs && surveyQs.length > 0) {
       for (const q of surveyQs) {
         const id = String(q.id || slugQuestionKey(q.label) || '').trim()
@@ -137,43 +117,22 @@ export default function SubmissionEditor({ item, questions: propQuestions, onSav
           isSurveyQ: true,
         })
       }
+      return fields
     }
 
-    // 2. Answered core fields or unmapped answers
-    const coreMap = new Map(CORE_FIELDS.map((f) => [f.key, f.label]))
+    // 2. Fallback only when survey has no questions defined: show populated answers
     for (const [k, v] of Object.entries(answers || {})) {
-      if (k.startsWith('_') || k === 'data_collector') continue
-      if (renderedKeys.has(k)) continue
-
-      const isCore = coreMap.has(k)
-      const label = isCore
-        ? coreMap.get(k)
-        : (surveyQs.find((q) => q.id === k || slugQuestionKey(q.label) === k)?.label ||
-          k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()))
-
+      if (k.startsWith('_') || k === 'data_collector' || v == null || v === '') continue
       renderedKeys.add(k)
       fields.push({
         key: k,
-        label,
+        label: k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
         label_te: null,
         required: false,
-        type: k === 'notes' || k === 'issues' || (typeof v === 'string' && v.length > 60) ? 'textarea' : 'text',
+        type: typeof v === 'string' && v.length > 60 ? 'textarea' : 'text',
         value: Array.isArray(v) ? v.join(', ') : String(v ?? ''),
         isSurveyQ: false,
       })
-    }
-
-    // 3. Fallback for completely empty records
-    if (fields.length === 0) {
-      return CORE_FIELDS.slice(0, 6).map((f) => ({
-        key: f.key,
-        label: f.label,
-        label_te: null,
-        required: false,
-        type: 'text',
-        value: answers[f.key] ?? '',
-        isSurveyQ: false,
-      }))
     }
 
     return fields

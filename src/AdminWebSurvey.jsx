@@ -330,16 +330,52 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
                   <div style={{ height: 8 }} />
                 )}
                 {type === 'meter' ? (
-                  <label className="field">
-                    <input
-                      type="range"
-                      min="1"
-                      max="100"
-                      value={meterNum(val)}
-                      onChange={(e) => setAns(id, meterStored(e.target.value))}
-                    />
-                    <span className="muted">{meterStored(val)}</span>
-                  </label>
+                  <div className="qa-meter" style={{ marginTop: 8 }}>
+                    <div className="qa-meter-track">
+                      <input
+                        type="range"
+                        min="1"
+                        max="100"
+                        value={meterNum(val)}
+                        onChange={(e) => setAns(id, meterStored(e.target.value))}
+                        aria-label={q.label || 'Meter 1-100'}
+                      />
+                    </div>
+                    <div className="qa-meter-scale">
+                      <span>{opts[0] || 'Negative'}</span>
+                      <span>{opts[1] || 'Neutral'}</span>
+                      <span>{opts[2] || 'Positive'}</span>
+                    </div>
+                    <div className="qa-meter-value">
+                      <strong>{val || `${meterNum(val)}%`}</strong>
+                      <span
+                        className="pill"
+                        style={{
+                          background:
+                            meterNum(val) <= 33
+                              ? 'rgba(239, 68, 68, 0.12)'
+                              : meterNum(val) <= 66
+                              ? 'rgba(234, 179, 8, 0.12)'
+                              : 'rgba(34, 197, 94, 0.12)',
+                          color:
+                            meterNum(val) <= 33
+                              ? '#dc2626'
+                              : meterNum(val) <= 66
+                              ? '#ca8a04'
+                              : '#16a34a',
+                          fontWeight: 700,
+                          fontSize: 12,
+                          padding: '4px 10px',
+                        }}
+                      >
+                        {meterNum(val) <= 33
+                          ? opts[0] || 'Negative'
+                          : meterNum(val) <= 66
+                          ? opts[1] || 'Neutral'
+                          : opts[2] || 'Positive'}
+                      </span>
+                    </div>
+                  </div>
                 ) : opts.length > 0 ? (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {opts.map((opt, oi) => (

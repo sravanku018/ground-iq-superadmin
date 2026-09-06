@@ -119,6 +119,22 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
     return map
   }, [surveys])
 
+  const allKnownQuestionsMap = useMemo(() => {
+    const map = new Map()
+    for (const s of surveys) {
+      if (Array.isArray(s.questions)) {
+        for (const q of s.questions) {
+          if (q.id) map.set(String(q.id).toLowerCase(), q)
+          if (q.label) {
+            map.set(slugQuestionKey(q.label), q)
+            map.set(String(q.label).toLowerCase(), q)
+          }
+        }
+      }
+    }
+    return map
+  }, [surveys])
+
   // Prefetch media when expanded
   useEffect(() => {
     if (!expanded) return
@@ -467,8 +483,18 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
               item.submitted_by === 'Web' ||
               item.submitted_by === 'web'
 
-            const surveyDef = surveyByFormKey.get(String(item.form_key || ''))
-            const surveyQuestions = Array.isArray(surveyDef?.questions) ? surveyDef.questions : []
+            const surveyDef =
+              surveyByFormKey.get(String(item.form_key || '')) ||
+              surveyByFormKey.get(String(item.form_id || '')) ||
+              surveyByFormKey.get(String(item.payload?.form_key || '')) ||
+              surveyByFormKey.get(String(item.payload?.form_id || ''))
+            let surveyQuestions = Array.isArray(surveyDef?.questions) ? surveyDef.questions : []
+            if (!surveyQuestions.length && Array.isArray(item.questions)) {
+              surveyQuestions = item.questions
+            }
+            if (!surveyQuestions.length && Array.isArray(item.payload?.questions)) {
+              surveyQuestions = item.payload.questions
+            }
 
             const qa = surveyQuestions.length > 0
               ? surveyQuestions
@@ -489,10 +515,16 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
                   .filter(([k, v]) => v != null && v !== '' && !k.startsWith('_') && k !== 'data_collector')
                   .slice(0, 30)
                   .map(([k, v]) => {
-                    const match = surveyQuestions.find(
-                      (q) => q.id === k || slugQuestionKey(q.label) === k || q.key === k,
-                    )
-                    const qText = match?.label || match?.label_te || k.replace(/_/g, ' ')
+                    const match =
+                      surveyQuestions.find(
+                        (q) => q.id === k || slugQuestionKey(q.label) === k || q.key === k,
+                      ) ||
+                      allKnownQuestionsMap.get(String(k).toLowerCase()) ||
+                      allKnownQuestionsMap.get(slugQuestionKey(k))
+                    const qText =
+                      match?.label ||
+                      match?.label_te ||
+                      k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
                     return {
                       q: qText,
                       a: Array.isArray(v) ? v.join(', ') : String(v),

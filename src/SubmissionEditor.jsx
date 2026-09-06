@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { deleteSubmission, getStoredUser, getSurvey, updateSubmission } from './api'
+import { deleteSubmission, getStoredUser, getSurvey, listSurveys, updateSubmission } from './api'
 import SubmissionMedia from './SubmissionMedia'
 import { slugQuestionKey } from './questionKey'
 
@@ -26,6 +26,7 @@ export default function SubmissionEditor({ item, questions: propQuestions, onSav
     return a
   })
   const [surveyQs, setSurveyQs] = useState(() => propQuestions || item?.questions || [])
+  const [allKnownQs, setAllKnownQs] = useState([])
   const [submittedBy, setSubmittedBy] = useState(item?.submitted_by || '')
   const [status, setStatus] = useState(item?.status || 'pending')
   const [lat, setLat] = useState(
@@ -64,12 +65,29 @@ export default function SubmissionEditor({ item, questions: propQuestions, onSav
   }, [item?.id])
 
   useEffect(() => {
+    let dead = false
+    listSurveys()
+      .then((d) => {
+        if (dead) return
+        const list = []
+        for (const s of d.items || []) {
+          if (Array.isArray(s.questions)) list.push(...s.questions)
+        }
+        setAllKnownQs(list)
+      })
+      .catch(() => {})
+    return () => {
+      dead = true
+    }
+  }, [])
+
+  useEffect(() => {
     if (propQuestions?.length) {
       setSurveyQs(propQuestions)
       return
     }
     const fk = item?.form_key || item?.payload?.form_key || item?.form_id
-    if (!fk || fk === 'default' || fk === 'legacy') return
+    if (!fk) return
     let dead = false
     getSurvey(fk)
       .then((d) => {
@@ -92,7 +110,16 @@ export default function SubmissionEditor({ item, questions: propQuestions, onSav
     const fields = []
     const renderedKeys = new Set()
 
-    // 1. Survey defined questions: show ONLY questions created at time of survey creation
+    const qLookup = new Map()
+    for (const q of [...allKnownQs, ...(surveyQs || [])]) {
+      if (q.id) qLookup.set(String(q.id).toLowerCase(), q)
+      if (q.label) {
+        qLookup.set(slugQuestionKey(q.label), q)
+        qLookup.set(String(q.label).toLowerCase(), q)
+      }
+    }
+
+    // 1. Survey defined questions
     if (surveyQs && surveyQs.length > 0) {
       for (const q of surveyQs) {
         const id = String(q.id || slugQuestionKey(q.label) || '').trim()
@@ -117,17 +144,18 @@ export default function SubmissionEditor({ item, questions: propQuestions, onSav
           isSurveyQ: true,
         })
       }
-      return fields
     }
 
-    // 2. Fallback only when survey has no questions defined: show populated answers
+    // 2. Any additional answered fields
     for (const [k, v] of Object.entries(answers || {})) {
       if (k.startsWith('_') || k === 'data_collector' || v == null || v === '') continue
+      if (renderedKeys.has(k) || renderedKeys.has(slugQuestionKey(k))) continue
+      const matched = qLookup.get(String(k).toLowerCase()) || qLookup.get(slugQuestionKey(k))
       renderedKeys.add(k)
       fields.push({
         key: k,
-        label: k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
-        label_te: null,
+        label: matched?.label || matched?.label_te || k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        label_te: matched?.label_te || null,
         required: false,
         type: typeof v === 'string' && v.length > 60 ? 'textarea' : 'text',
         value: Array.isArray(v) ? v.join(', ') : String(v ?? ''),
@@ -136,7 +164,7 @@ export default function SubmissionEditor({ item, questions: propQuestions, onSav
     }
 
     return fields
-  }, [surveyQs, answers])
+  }, [surveyQs, allKnownQs, answers])
 
   async function save() {
     setSaving(true)

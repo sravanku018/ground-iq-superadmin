@@ -201,16 +201,52 @@ export default function PublicWebFill({ formKey, fillToken }) {
                     {q.required ? ' *' : ''}
                   </p>
                   {type === 'meter' ? (
-                    <label className="field">
-                      <input
-                        type="range"
-                        min="1"
-                        max="100"
-                        value={meterNum(val)}
-                        onChange={(ev) => setAns(id, meterStored(ev.target.value))}
-                      />
-                      <span className="muted">{meterStored(val)}</span>
-                    </label>
+                    <div className="qa-meter" style={{ marginTop: 8 }}>
+                      <div className="qa-meter-track">
+                        <input
+                          type="range"
+                          min="1"
+                          max="100"
+                          value={meterNum(val)}
+                          onChange={(ev) => setAns(id, meterStored(ev.target.value))}
+                          aria-label={label}
+                        />
+                      </div>
+                      <div className="qa-meter-scale">
+                        <span>{opts[0] || (te ? 'ప్రతికూల' : 'Negative')}</span>
+                        <span>{opts[1] || (te ? 'తటస్థ' : 'Neutral')}</span>
+                        <span>{opts[2] || (te ? 'సానుకూల' : 'Positive')}</span>
+                      </div>
+                      <div className="qa-meter-value">
+                        <strong>{val || `${meterNum(val)}%`}</strong>
+                        <span
+                          className="pill"
+                          style={{
+                            background:
+                              meterNum(val) <= 33
+                                ? 'rgba(239, 68, 68, 0.12)'
+                                : meterNum(val) <= 66
+                                ? 'rgba(234, 179, 8, 0.12)'
+                                : 'rgba(34, 197, 94, 0.12)',
+                            color:
+                              meterNum(val) <= 33
+                                ? '#dc2626'
+                                : meterNum(val) <= 66
+                                ? '#ca8a04'
+                                : '#16a34a',
+                            fontWeight: 700,
+                            fontSize: 12,
+                            padding: '4px 10px',
+                          }}
+                        >
+                          {meterNum(val) <= 33
+                            ? opts[0] || (te ? 'ప్రతికూల' : 'Negative')
+                            : meterNum(val) <= 66
+                            ? opts[1] || (te ? 'తటస్థ' : 'Neutral')
+                            : opts[2] || (te ? 'సానుకూల' : 'Positive')}
+                        </span>
+                      </div>
+                    </div>
                   ) : opts.length > 0 ? (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       {opts.map((opt, oi) => {

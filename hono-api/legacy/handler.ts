@@ -8197,7 +8197,6 @@ async function rawHandler(req: Request): Promise<Response> {
           if (await upsertSurveyAssignment(Number(surveyId), uid)) autoAssigned += 1;
         }
       }
-      const webLink = await ensureCanonicalWebLink(formKey, Number(me.id), 100);
       logAudit(me, "survey_create", "survey", surveyId, {
         title,
         form_key: formKey,
@@ -8210,7 +8209,7 @@ async function rawHandler(req: Request): Promise<Response> {
         ok: true,
         survey: rows[0],
         auto_assigned_surveyors: autoAssigned,
-        web_link: webLink,
+        web_link: null,
       }, 201);
     }
 
@@ -9258,10 +9257,7 @@ async function rawHandler(req: Request): Promise<Response> {
       const canonical = items.length
         ? [...items].sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))[0]
         : null;
-      let share = canonical;
-      if (!share) {
-        share = await ensureCanonicalWebLink(formKey, Number(me.id), 100);
-      }
+      const share = canonical;
       const [subRow] = await sql`
         SELECT COUNT(*)::int AS n FROM submissions
         WHERE payload->>'form_key' = ${formKey}

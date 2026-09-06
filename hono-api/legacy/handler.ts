@@ -9272,17 +9272,18 @@ async function rawHandler(req: Request): Promise<Response> {
       `.catch(() => [{ n: 0 }]);
       const submitted = sqlCountN(subRow);
       const cap = share ? clampWebLinkMaxUses(share.max_uses) : 100;
-      const linkUsed = share ? Number(share.use_count) || 0 : 0;
-      const expired = share ? Boolean(share.expired) || linkUsed >= cap || submitted >= cap : false;
+      const rawUsed = share ? Number(share.use_count) || 0 : 0;
+      const effectiveUsed = Math.max(submitted, rawUsed);
+      const expired = share ? Boolean(share.expired) || effectiveUsed >= cap : false;
       const snap = me.role === "admin" ? await allocationSnapshot(sql, Number(me.id)) : null;
       return json({
         items,
-        live: share,
+        live: share ? { ...share, use_count: effectiveUsed, expired } : null,
         title: surveyTitle,
-        submitted,
+        submitted: effectiveUsed,
         cap,
-        link_used: linkUsed,
-        used: submitted,
+        link_used: effectiveUsed,
+        used: effectiveUsed,
         expired,
         sharing_disabled: expired,
         ...(snap || {}),
@@ -9557,6 +9558,13 @@ async function rawHandler(req: Request): Promise<Response> {
       };
       const rows = await insertSubmissionRow(payload);
       const row = rows[0] as { id: number; created_at: string };
+      await sql`
+        UPDATE web_survey_links
+        SET
+          use_count = use_count + 1,
+          used_at = CASE WHEN use_count + 1 >= max_uses THEN NOW() ELSE used_at END
+        WHERE form_key = ${formKey}
+      `.catch(() => null);
       logAudit(me, "submission_create", "submission", row.id, {
         form_key: formKey,
         source: "web-survey",

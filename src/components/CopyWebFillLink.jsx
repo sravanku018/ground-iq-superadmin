@@ -122,11 +122,10 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
     }
   }
 
-  const cap = Number(quota.cap || maxUses || 100) || 100
-  const submitted = Math.max(0, Number(quota.submitted ?? quota.used) || 0)
-  const linkUsed = Math.max(0, Number(quota.linkUsed) || 0)
-  const pct = Math.min(100, Math.round((linkUsed / cap) * 100))
-  const full = linkUsed >= cap || live?.expired
+  const totalUsed = Math.max(submitted, linkUsed)
+  const full = totalUsed >= cap || live?.expired
+  const left = Math.max(0, cap - totalUsed)
+  const pct = Math.min(100, Math.round((totalUsed / cap) * 100))
   const isLocked = Boolean(url || live?.token) && !editingLimit
 
   const picker = (
@@ -191,16 +190,19 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         background: full ? '#fef2f2' : '#f0fdf4',
       }}
     >
-      <div style={{ fontSize: 11, fontWeight: 700, color: full ? '#b91c1c' : '#15803d', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-        {title || 'Web survey'}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: full ? '#b91c1c' : '#15803d', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+          {title || 'Web survey'}
+        </div>
+        <span style={{ fontSize: 11, fontWeight: 700, color: full ? '#dc2626' : '#059669' }}>
+          {full ? 'Target reached' : `${left.toLocaleString()} remaining`}
+        </span>
       </div>
-      <div style={{ fontSize: compact ? 16 : 20, fontWeight: 800, color: '#0f172a', marginTop: 2 }}>
-        <span style={{ color: '#059669' }}>{submitted}</span>
-        <span style={{ fontWeight: 600, color: '#64748b' }}> submitted</span>
-      </div>
-      <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', marginTop: 4 }}>
-        This link: <span style={{ color: full ? '#dc2626' : '#0f172a' }}>{linkUsed}</span>
-        <span style={{ fontWeight: 500, color: '#64748b' }}> used of {cap}</span>
+      <div style={{ fontSize: compact ? 16 : 20, fontWeight: 800, color: '#0f172a', marginTop: 4 }}>
+        <span style={{ color: full ? '#dc2626' : '#059669' }}>{totalUsed.toLocaleString()}</span>
+        <span style={{ fontWeight: 600, color: '#64748b', fontSize: compact ? 13 : 15 }}>
+          {' '}of {cap.toLocaleString()} responses used
+        </span>
       </div>
       <div style={{ height: 8, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden', marginTop: 8 }}>
         <div
@@ -211,13 +213,13 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
           }}
         />
       </div>
-      {live?.expired || full ? (
-        <p className="muted" style={{ margin: '6px 0 0', fontSize: 12 }}>
-          Target reached — sharing is disabled for {title || 'this survey'}.
+      {full ? (
+        <p style={{ margin: '6px 0 0', fontSize: 12, color: '#dc2626', fontWeight: 600 }}>
+          Target reached ({totalUsed.toLocaleString()}/{cap.toLocaleString()}) — sharing is disabled for {title || 'this survey'}.
         </p>
       ) : (
         <p className="muted" style={{ margin: '6px 0 0', fontSize: 12 }}>
-          {Math.max(0, cap - linkUsed)} remaining · one unique link for {title || 'this survey'}
+          {left.toLocaleString()} remaining · one unique link for {title || 'this survey'}
         </p>
       )}
     </div>

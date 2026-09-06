@@ -7844,17 +7844,17 @@ async function rawHandler(req: Request): Promise<Response> {
       try {
         rows = (me.role === "super_admin"
           ? (q
-              ? await sql`SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form WHERE LOWER(title) LIKE ${'%' + q + '%'} ORDER BY title`
-              : await sql`SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form ORDER BY title`)
+              ? await sql`SELECT id, form_key, title, display_lang, questions, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form WHERE LOWER(title) LIKE ${'%' + q + '%'} ORDER BY title`
+              : await sql`SELECT id, form_key, title, display_lang, questions, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form ORDER BY title`)
           : (q
                 ? await sql`
-                    SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form
+                    SELECT id, form_key, title, display_lang, questions, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form
                     WHERE (created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
                       AND LOWER(title) LIKE ${'%' + q + '%'}
                     ORDER BY title
                   `
                 : await sql`
-                    SELECT id, form_key, title, display_lang, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form
+                    SELECT id, form_key, title, display_lang, questions, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form
                     WHERE created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
                     ORDER BY title
                   `)) as Record<string, unknown>[];
@@ -7978,7 +7978,7 @@ async function rawHandler(req: Request): Promise<Response> {
           return fk !== "default" && fk !== "legacy";
         })
         .map((r) => {
-        const qCount = Number(r.question_count || 0);
+        const qCount = Number(r.question_count || 0) || parseQuestionsArray((r as { questions?: unknown }).questions).length;
         const asgData = asgMap.get(Number(r.id)) as { n?: number; names?: string[] } | undefined;
         const names = Array.isArray(asgData?.names) ? asgData.names.filter(Boolean) : [];
         const connectedAdmins = adminAccessMap.get(Number(r.id)) || [];

@@ -31,14 +31,14 @@ export function canTeluguQuestions(user) {
   return user?.role === 'super_admin' || !!user?.can_translate_telugu
 }
 
-/** Question text stays exactly as typed. Field ID is created once, internally. */
+/** Question text stays exactly as typed. Field ID is synced cleanly to the slug. */
 export function labelPatch(q, label) {
   const next = String(label || '')
   const patch = { label: next }
   const existingId = String(q?.id || '').trim()
-  if (!existingId) {
-    const auto = slugQuestionKey(next)
-    if (auto) patch.id = auto
+  const slug = slugQuestionKey(next)
+  if (!existingId || existingId.startsWith('q_') || existingId.length <= 2 || (slug && slug.startsWith(existingId))) {
+    if (slug) patch.id = slug
   }
   if (!q?.speak || q.speak === q.label) patch.speak = next
   return patch
@@ -47,7 +47,11 @@ export function labelPatch(q, label) {
 export function nextQuestionId(label, existingId, used) {
   const set = used || new Set()
   let id = String(existingId || '').trim()
-  if (!id) id = slugQuestionKey(label) || `q_${Date.now().toString(36)}`
+  const slug = slugQuestionKey(label)
+  if (!id || id.startsWith('q_') || id.length <= 2) {
+    if (slug) id = slug
+  }
+  if (!id) id = slug || `q_${Date.now().toString(36)}`
   const base = id
   let n = 2
   while (set.has(id)) id = `${base}_${n++}`

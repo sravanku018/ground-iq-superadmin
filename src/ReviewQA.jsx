@@ -5,6 +5,7 @@ import {
   deleteSubmission,
   downloadMediaFile,
   fetchMediaBlobUrl,
+  getQuestions,
   listSubmissionMedia,
   listSubmissions,
   listSurveys,
@@ -105,9 +106,21 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
   }, [focusSubmissionId, loading, items, status, onFocusConsumed, onToast])
 
   useEffect(() => {
-    listSurveys()
-      .then((d) => setSurveys(d.items || []))
-      .catch(() => {})
+    Promise.all([
+      listSurveys().catch(() => ({ items: [] })),
+      getQuestions().catch(() => ({ questions: [] })),
+    ]).then(([d, gq]) => {
+      const items = [...(d.items || [])]
+      if (Array.isArray(gq?.questions) && gq.questions.length > 0) {
+        items.push({
+          id: 'default',
+          form_key: 'default',
+          title: gq.title || 'Field Survey',
+          questions: gq.questions,
+        })
+      }
+      setSurveys(items)
+    }).catch(() => {})
   }, [])
 
   const surveyByFormKey = useMemo(() => {

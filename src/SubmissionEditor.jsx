@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { deleteSubmission, getStoredUser, getSurvey, listSurveys, updateSubmission } from './api'
+import { deleteSubmission, getQuestions, getStoredUser, getSurvey, listSurveys, updateSubmission } from './api'
 import SubmissionMedia from './SubmissionMedia'
 import { slugQuestionKey } from './questionKey'
 
@@ -66,16 +66,18 @@ export default function SubmissionEditor({ item, questions: propQuestions, onSav
 
   useEffect(() => {
     let dead = false
-    listSurveys()
-      .then((d) => {
-        if (dead) return
-        const list = []
-        for (const s of d.items || []) {
-          if (Array.isArray(s.questions)) list.push(...s.questions)
-        }
-        setAllKnownQs(list)
-      })
-      .catch(() => {})
+    Promise.all([
+      listSurveys().catch(() => ({ items: [] })),
+      getQuestions().catch(() => ({ questions: [] })),
+    ]).then(([d, gq]) => {
+      if (dead) return
+      const list = []
+      if (Array.isArray(gq?.questions)) list.push(...gq.questions)
+      for (const s of d?.items || []) {
+        if (Array.isArray(s.questions)) list.push(...s.questions)
+      }
+      setAllKnownQs(list)
+    })
     return () => {
       dead = true
     }
@@ -87,13 +89,15 @@ export default function SubmissionEditor({ item, questions: propQuestions, onSav
       return
     }
     const fk = item?.form_key || item?.payload?.form_key || item?.form_id
-    if (!fk) return
     let dead = false
-    getSurvey(fk)
-      .then((d) => {
+    const fetcher =
+      !fk || fk === 'default' || fk === 'legacy'
+        ? getQuestions().then((d) => d?.questions || [])
+        : getSurvey(fk).then((d) => (Array.isArray(d?.survey?.questions) ? d.survey.questions : []))
+    fetcher
+      .then((qs) => {
         if (dead) return
-        const qs = Array.isArray(d?.survey?.questions) ? d.survey.questions : []
-        if (qs.length) setSurveyQs(qs)
+        if (qs && qs.length) setSurveyQs(qs)
       })
       .catch(() => {})
     return () => {

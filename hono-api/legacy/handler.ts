@@ -9355,19 +9355,21 @@ async function rawHandler(req: Request): Promise<Response> {
         const key = String(f.form_key);
         const live = liveMap.get(key);
         const submitted = countMap.get(key) || 0;
-        const cap = live ? live.max_uses : 100;
+        const hasLink = Boolean(live);
+        const cap = live ? live.max_uses : null;
         const linkUsed = live ? live.use_count : 0;
         const effectiveUsed = Math.max(submitted, linkUsed);
-        const expired = live ? Boolean(live.expired) || effectiveUsed >= cap : false;
+        const expired = live ? Boolean(live.expired) || (cap != null && effectiveUsed >= cap) : false;
         return {
           id: f.id,
           form_key: key,
           title: f.title || key,
-          submitted: effectiveUsed,
+          has_link: hasLink,
+          submitted,
           used: effectiveUsed,
-          link_used: effectiveUsed,
+          link_used: hasLink ? effectiveUsed : 0,
           cap,
-          remaining: Math.max(0, cap - effectiveUsed),
+          remaining: cap != null ? Math.max(0, cap - effectiveUsed) : null,
           expired,
           created_at: live?.created_at || null,
           ended_at: live?.used_at || null,

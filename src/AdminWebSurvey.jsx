@@ -200,48 +200,65 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {stats.map((s) => (
-                    <tr key={s.form_key}>
-                      <td>
-                        <strong>{s.title || s.form_key}</strong>
-                      </td>
-                      <td>
-                        <strong style={{ color: '#059669' }}>
-                          {Number(s.submitted ?? s.used) || 0}
-                        </strong>
-                        <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
-                          web fills
-                        </span>
-                      </td>
-                      <td>
-                        <strong style={{ color: s.expired || (Number(s.link_used) || 0) >= (Number(s.cap) || 0) ? '#dc2626' : '#0f172a' }}>
-                          {Number(s.link_used) || 0} / {Number(s.cap) || 100}
-                        </strong>
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
-                        {formatIstStamp(s.created_at)}
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
-                        {s.ended_at
-                          ? formatIstStamp(s.ended_at)
-                          : s.expired || s.used >= s.cap
-                            ? 'Expired'
-                            : 'Open'}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="btn small"
-                          onClick={() => {
-                            setSurveyId(String(s.id))
-                            setTab('link')
-                          }}
-                        >
-                          Open link
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {stats.map((s) => {
+                    const hasLink = Boolean(s.has_link || (s.cap != null && s.created_at))
+                    const subCount = Number(s.submitted ?? s.used) || 0
+                    const linkUsed = Number(s.link_used) || 0
+                    const cap = Number(s.cap) || 0
+                    const isExpired = Boolean(s.expired || (cap > 0 && linkUsed >= cap))
+                    return (
+                      <tr key={s.form_key}>
+                        <td>
+                          <strong>{s.title || s.form_key}</strong>
+                        </td>
+                        <td>
+                          <strong style={{ color: subCount > 0 ? '#059669' : '#64748b' }}>
+                            {subCount}
+                          </strong>
+                          <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+                            web fills
+                          </span>
+                        </td>
+                        <td>
+                          {hasLink ? (
+                            <strong style={{ color: isExpired ? '#dc2626' : '#0f172a' }}>
+                              {linkUsed} / {cap}
+                            </strong>
+                          ) : (
+                            <span className="muted" style={{ fontSize: 12 }}>
+                              No link yet
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
+                          {formatIstStamp(s.created_at)}
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
+                          {!hasLink ? (
+                            <span className="muted">—</span>
+                          ) : s.ended_at ? (
+                            formatIstStamp(s.ended_at)
+                          ) : isExpired ? (
+                            <span style={{ color: '#dc2626', fontWeight: 600 }}>Target reached</span>
+                          ) : (
+                            <span style={{ color: '#059669', fontWeight: 600 }}>Active</span>
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn small"
+                            onClick={() => {
+                              setSurveyId(String(s.id))
+                              setTab('link')
+                            }}
+                          >
+                            {hasLink ? 'View link' : 'Create link'}
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

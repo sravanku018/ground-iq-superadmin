@@ -186,6 +186,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
 
   const [recentItems, setRecentItems] = useState([])
   const [surveyBreak, setSurveyBreak] = useState([])
+  const [surveyorCount, setSurveyorCount] = useState(0)
   const [totalAllocations, setTotalAllocations] = useState(null)
   const [loadingRecent, setLoadingRecent] = useState(true)
   const [activityFilter, setActivityFilter] = useState('all')
@@ -212,6 +213,11 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
   const allotPct = allotCap > 0
     ? Math.min(100, Math.round(((fieldUsed + webReserved) / allotCap) * 100))
     : 0
+
+  const totalQuestionsUsed = surveyBreak.reduce(
+    (sum, s) => sum + (Number(s.question_count) || (Array.isArray(s.questions) ? s.questions.length : 0)),
+    0,
+  )
 
   useEffect(() => {
     let alive = true
@@ -241,7 +247,8 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
     listUsers()
       .then((d) => {
         if (!alive) return
-        const surveyors = d.users || d.surveyors || d || []
+        const surveyors = d.users || d.surveyors || (Array.isArray(d) ? d : [])
+        setSurveyorCount(surveyors.length)
         const total = surveyors.reduce((sum, u) => sum + (Number(u.target) || 0), 0)
         setTotalAllocations(total)
       })
@@ -623,22 +630,22 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
-              Surveys <strong>{stats?.surveys_count || 3} / ∞</strong>
+              Surveys <strong>{surveyBreak.length || Number(stats?.surveys_count) || 0} / {Number(user?.max_surveys) > 0 ? user.max_surveys : '∞'}</strong>
             </span>
             <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
-              Surveyors <strong>{stats?.surveyors_count || 24} / 30</strong>
+              Surveyors <strong>{surveyorCount || Number(stats?.surveyors_count) || 0} / {Number(user?.max_surveyors) > 0 ? user.max_surveyors : '∞'}</strong>
             </span>
             <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
-              Questions/survey <strong>12 / 20</strong>
+              No. of questions used: <strong>{totalQuestionsUsed} / {Number(user?.max_questions_per_survey) > 0 ? `${user.max_questions_per_survey} allotted` : '∞'}</strong>
             </span>
             <span className="chip" style={{ background: '#f0fdf4', border: '1px solid #dcfce7', color: '#16a34a', fontSize: 12, fontWeight: 600 }}>
-              Confirmed <strong>{stats?.confirmed?.toLocaleString?.() ?? '0'}</strong>
+              Confirmed <strong>{confirmedTotal.toLocaleString()}</strong>
             </span>
             <span className="chip" style={{ background: '#fef2f2', border: '1px solid #fee2e2', color: '#ef4444', fontSize: 12, fontWeight: 600 }}>
-              Rejected <strong>{((stats?.rejected != null ? stats.rejected : stats?.submissions != null && stats?.confirmed != null && stats?.pending != null ? Math.max(0, stats.submissions - stats.confirmed - stats.pending) : 0)).toLocaleString()}</strong>
+              Rejected <strong>{rejectedTotal.toLocaleString()}</strong>
             </span>
             <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
-              Records <strong>{stats?.submissions?.toLocaleString?.() || '4,089'} / {(totalAllocations || 6000).toLocaleString()}</strong>
+              Records <strong>{allSubmitted.toLocaleString()} / {allotCap > 0 ? allotCap.toLocaleString() : '∞'}</strong>
             </span>
           </div>
         </div>

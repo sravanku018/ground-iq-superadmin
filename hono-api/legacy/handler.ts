@@ -7948,6 +7948,14 @@ async function rawHandler(req: Request): Promise<Response> {
         WHERE payload->>'form_key' IS NOT NULL
         GROUP BY 1
       `.catch(() => []);
+      const asgMap = new Map((asg as any[]).map((r) => [Number(r.survey_id), r]));
+      const rspMap = new Map((rsp as any[]).map((r) => [Number(r.survey_id), r]));
+      const subByFkMap = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.n)]));
+      const webByFkMap = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.web_n)]));
+      const pendingByFk = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.pending) || 0]));
+      const confirmedByFk = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.confirmed) || 0]));
+      const rejectedByFk = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.rejected) || 0]));
+
       const linkRows = await sql`
         SELECT DISTINCT ON (form_key) form_key, token, max_uses, use_count, used_at, created_at
         FROM web_survey_links
@@ -7971,14 +7979,6 @@ async function rawHandler(req: Request): Promise<Response> {
           expired: Boolean(r.used_at) || used >= max,
         });
       }
-
-      const asgMap = new Map((asg as any[]).map((r) => [Number(r.survey_id), r]));
-      const rspMap = new Map((rsp as any[]).map((r) => [Number(r.survey_id), r]));
-      const subByFkMap = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.n)]));
-      const webByFkMap = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.web_n)]));
-      const pendingByFk = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.pending) || 0]));
-      const confirmedByFk = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.confirmed) || 0]));
-      const rejectedByFk = new Map((subByFk as any[]).map((r) => [String(r.fk), Number(r.rejected) || 0]));
 
       const items = (rows as Record<string, unknown>[])
         // Client Admin never sees platform seed forms (Field Survey / Legacy)

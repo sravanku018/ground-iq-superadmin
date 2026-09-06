@@ -158,12 +158,12 @@ export default function SubmissionEditor({ item, questions: propQuestions, onSav
       renderedKeys.add(k)
       fields.push({
         key: k,
-        label: matched?.label || matched?.label_te || k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        label: matched?.label || matched?.label_te || `[Unmatched Field: ${k}]`,
         label_te: matched?.label_te || null,
         required: false,
         type: typeof v === 'string' && v.length > 60 ? 'textarea' : 'text',
         value: Array.isArray(v) ? v.join(', ') : String(v ?? ''),
-        isSurveyQ: false,
+        isSurveyQ: Boolean(matched),
       })
     }
 

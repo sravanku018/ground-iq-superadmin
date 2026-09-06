@@ -31,15 +31,10 @@ export function canTeluguQuestions(user) {
   return user?.role === 'super_admin' || !!user?.can_translate_telugu
 }
 
-/** Question text stays exactly as typed. Field ID is synced cleanly to the slug. */
+/** Question text stays exactly as typed. Question ID is never rewritten on label edits. */
 export function labelPatch(q, label) {
   const next = String(label || '')
   const patch = { label: next }
-  const existingId = String(q?.id || '').trim()
-  const slug = slugQuestionKey(next)
-  if (!existingId || existingId.startsWith('q_') || existingId.length <= 2 || (slug && slug.startsWith(existingId))) {
-    if (slug) patch.id = slug
-  }
   if (!q?.speak || q.speak === q.label) patch.speak = next
   return patch
 }

@@ -39,11 +39,13 @@ export default function AdminQuestionsScreen({ onToast, user }) {
   const [surveysReady, setSurveysReady] = useState(false)
   const [displayLang, setDisplayLang] = useState('en')
   const [translatingAll, setTranslatingAll] = useState(false)
+  const [currentSurvey, setCurrentSurvey] = useState(null)
 
   const load = useCallback(async () => {
     if (!surveysReady) return
     // Client Admin must never load the platform Field Survey (form_key=default)
     if (!isSuperAdmin && !surveyId) {
+      setCurrentSurvey(null)
       setTitle('')
       setQuestions([])
       setLoading(false)
@@ -53,14 +55,17 @@ export default function AdminQuestionsScreen({ onToast, user }) {
     try {
       if (surveyId) {
         const d = await getSurvey(surveyId)
+        setCurrentSurvey(d.survey || null)
         setTitle(d.survey?.title || '')
         setQuestions(Array.isArray(d.survey?.questions) ? d.survey.questions : [])
         setDisplayLang(d.survey?.display_lang === 'te' ? 'te' : 'en')
       } else if (isSuperAdmin) {
         const data = await getQuestions()
+        setCurrentSurvey({ isApp: true, surveyors: ['default'] })
         setTitle(data.title || 'Field Survey')
         setQuestions(Array.isArray(data.questions) ? data.questions : [])
       } else {
+        setCurrentSurvey(null)
         setTitle('')
         setQuestions([])
       }
@@ -219,7 +224,12 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       } else {
         throw new Error('No survey selected')
       }
-      onToast?.('Questions saved — field app loads them automatically', 'ok')
+      const isAppSurvey = Boolean(
+        (currentSurvey?.surveyors || []).length > 0 ||
+        (isSuperAdmin && !surveyId) ||
+        currentSurvey?.isApp
+      )
+      onToast?.(isAppSurvey ? 'Questions saved — field app loads them automatically' : 'Questions saved', 'ok')
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -533,29 +543,36 @@ export default function AdminQuestionsScreen({ onToast, user }) {
         )
       })}
 
-      {(isSuperAdmin || surveyId) && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-          <button type="button" className="btn primary" onClick={addQ} disabled={!canEdit || (maxQs > 0 && questions.length >= maxQs)}>
-            + Add Question
-          </button>
-          <button type="button" className="btn primary" onClick={save} disabled={saving || !canEdit}>
-            {saving ? 'Saving & Pushing…' : <><Icon name="check" size={12} /> Save & Push to Mobile App</>}
-          </button>
-          {maxQs > 0 && (
-            <span
-              className="pill"
-              style={{
-                background: questions.length >= maxQs ? '#fef2f2' : 'rgba(0, 229, 153, 0.12)',
-                color: questions.length >= maxQs ? '#dc2626' : '#047857',
-                fontWeight: 700,
-                fontSize: 12,
-              }}
-            >
-              📝 Questions: {questions.length} / {maxQs} allowed
-            </span>
-          )}
-        </div>
-      )}
+      {(isSuperAdmin || surveyId) && (() => {
+        const isAppSurvey = Boolean(
+          (currentSurvey?.surveyors || []).length > 0 ||
+          (isSuperAdmin && !surveyId) ||
+          currentSurvey?.isApp
+        )
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+            <button type="button" className="btn primary" onClick={addQ} disabled={!canEdit || (maxQs > 0 && questions.length >= maxQs)}>
+              + Add Question
+            </button>
+            <button type="button" className="btn primary" onClick={save} disabled={saving || !canEdit}>
+              {saving ? (isAppSurvey ? 'Saving & Pushing…' : 'Saving…') : <><Icon name="check" size={12} /> {isAppSurvey ? 'Save & push to app' : 'Save questions'}</>}
+            </button>
+            {maxQs > 0 && (
+              <span
+                className="pill"
+                style={{
+                  background: questions.length >= maxQs ? '#fef2f2' : 'rgba(0, 229, 153, 0.12)',
+                  color: questions.length >= maxQs ? '#dc2626' : '#047857',
+                  fontWeight: 700,
+                  fontSize: 12,
+                }}
+              >
+                📝 Questions: {questions.length} / {maxQs} allowed
+              </span>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }

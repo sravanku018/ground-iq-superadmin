@@ -577,7 +577,13 @@ export default function AdminSurveysScreen({ onToast, user }) {
         ...(user?.role === 'super_admin' ? { company_name: detail.company_name || '' } : {}),
       })
 
-      onToast?.(`${Unit} name + questions saved`, 'ok')
+      const hasAppTeam = (detail?.surveyors || []).length > 0
+      onToast?.(
+        hasAppTeam
+          ? `${Unit} saved · pushed to mobile app`
+          : `${Unit} questions saved`,
+        'ok',
+      )
       await openDetail(detail.id)
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -1134,7 +1140,11 @@ export default function AdminSurveysScreen({ onToast, user }) {
           onClick={saveDetailChanges}
           disabled={saving || busy}
         >
-          {saving ? 'Saving…' : isSuper ? 'Save project (name + questions + voice)' : 'Save survey'}
+          {saving
+            ? ((detail.surveyors || []).length > 0 ? 'Saving & Pushing…' : 'Saving…')
+            : (detail.surveyors || []).length > 0
+              ? (isSuper ? 'Save project & push to app' : 'Save & push to app')
+              : 'Save questions'}
         </button>
         <button
           type="button"

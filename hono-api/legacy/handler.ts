@@ -5620,34 +5620,6 @@ async function rawHandler(req: Request): Promise<Response> {
           }
         }
 
-        // Auto-provision a starter project for every new Client Admin, in the
-        // same request that creates their account (Super Admin does both in
-        // one step from the Client Admin profile screen). This gives them a
-        // real owned form_key immediately via adminFormKeyScope's
-        // `created_by = me.id` clause — no dependency on the shared
-        // 'legacy'/'default' fallback bucket.
-        let starterFormKey: string | null = null;
-        if (role === "admin" && sql) {
-          const base = (finalCompanyName || name || username)
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-+|-+$/g, "") || "project";
-          let formKey = base;
-          let n = 1;
-          for (;;) {
-            const clash = await sql`SELECT id FROM survey_form WHERE form_key = ${formKey} LIMIT 1`;
-            if (!clash.length) break;
-            n += 1;
-            formKey = `${base}-${n}`;
-          }
-          const starterTitle = `${finalCompanyName || name} — Default Project`;
-          await sql`
-            INSERT INTO survey_form (form_key, title, questions, updated_at, created_by, company_name, company_id)
-            VALUES (${formKey}, ${starterTitle}, '[]'::jsonb, NOW(), ${u.id}, ${finalCompanyName}, ${companyId})
-          `.catch(() => null);
-          starterFormKey = formKey;
-        }
-
         logAudit(me, "user_create", "user", u.id, {
           username: u.username,
           role,
@@ -5666,7 +5638,6 @@ async function rawHandler(req: Request): Promise<Response> {
           max_surveys: maxSurveysCreate,
           max_surveyors: maxSurveyorsCreate,
           max_records: maxRecordsCreate,
-          starter_form_key: starterFormKey,
         });
         return json({
           user: {

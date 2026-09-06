@@ -1035,28 +1035,47 @@ async function listAssignedSurveys(
 }
 
 /**
- * Peak questions in any one survey a Client Admin can use (owned + shared + company projects).
- * Used for "Questions / survey (peak)" vs max_questions_per_survey.
+ * Total questions across all surveys a Client Admin owns or accesses.
+ * Used for total question quota usage vs max_questions_per_survey.
  */
+async function totalQuestionsForAdmin(
+  sqlFn: NonNullable<typeof sql>,
+  adminId: number,
+  companyName?: string | null,
+  excludeSurveyId?: number,
+): Promise<number> {
+  void companyName;
+  const rows = excludeSurveyId
+    ? await sqlFn`
+        SELECT questions FROM survey_form
+        WHERE form_key NOT IN ('default', 'legacy')
+          AND id <> ${excludeSurveyId}
+          AND (
+            created_by = ${adminId}
+            OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${adminId})
+          )
+      `.catch(() => [])
+    : await sqlFn`
+        SELECT questions FROM survey_form
+        WHERE form_key NOT IN ('default', 'legacy')
+          AND (
+            created_by = ${adminId}
+            OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${adminId})
+          )
+      `.catch(() => []);
+  let total = 0;
+  for (const r of rows as { questions?: unknown }[]) {
+    total += parseQuestionsArray(r.questions).length;
+  }
+  return total;
+}
+
 async function peakQuestionsForAdmin(
   sqlFn: NonNullable<typeof sql>,
   adminId: number,
   companyName?: string | null,
 ): Promise<number> {
-  void companyName;
-  const rows = await sqlFn`
-      SELECT questions FROM survey_form
-      WHERE form_key NOT IN ('default', 'legacy')
-        AND (
-          created_by = ${adminId}
-          OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${adminId})
-        )
-    `.catch(() => []);
-  let peak = 0;
-  for (const r of rows as { questions?: unknown }[]) {
-    peak = Math.max(peak, parseQuestionsArray(r.questions).length);
-  }
-  return peak;
+  return totalQuestionsForAdmin(sqlFn, adminId, companyName);
 }
 
 /** Grant-based power check — Super Admin always has every power; Client Admins need the grant. */
@@ -8079,12 +8098,15 @@ async function rawHandler(req: Request): Promise<Response> {
           }
         }
       }
-      // Super-Admin-set per-survey question cap for this Client Admin (0 = unlimited)
+      // Super-Admin-set total question quota across surveys for this Client Admin (0 = unlimited)
       const maxQsCreate = Number((me as Record<string, unknown>).max_questions_per_survey) || 0;
-      if (maxQsCreate > 0 && questions.length > maxQsCreate) {
-        return json({
-          error: `Survey question cap exceeded — maximum ${maxQsCreate} questions per survey (set by Super Admin)`,
-        }, 422);
+      if (maxQsCreate > 0 && me.role === "admin" && sql) {
+        const existingQs = await totalQuestionsForAdmin(sql, Number(me.id));
+        if (existingQs + questions.length > maxQsCreate) {
+          return json({
+            error: `Total question quota exceeded — maximum ${maxQsCreate} questions allowed across surveys (${existingQs} already used)`,
+          }, 422);
+        }
       }
       const dup = await sql`
         SELECT id, form_key FROM survey_form WHERE LOWER(title) = LOWER(${title}) LIMIT 1
@@ -8634,12 +8656,16 @@ async function rawHandler(req: Request): Promise<Response> {
               OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
           `;
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
-      // Super-Admin-set per-survey question cap for this Client Admin (0 = unlimited)
+      // Super-Admin-set total question quota across surveys for this Client Admin (0 = unlimited)
       const maxQsPut = Number((me as Record<string, unknown>).max_questions_per_survey) || 0;
-      if (maxQsPut > 0 && Array.isArray(body.questions) && body.questions.length > maxQsPut) {
-        return json({
-          error: `Survey question cap exceeded — maximum ${maxQsPut} questions per survey (set by Super Admin)`,
-        }, 422);
+      if (maxQsPut > 0 && me.role === "admin" && Array.isArray(body.questions) && sql) {
+        const otherQs = await totalQuestionsForAdmin(sql, Number(me.id), null, id);
+        const newTotal = otherQs + body.questions.length;
+        if (newTotal > maxQsPut) {
+          return json({
+            error: `Total question quota exceeded — maximum ${maxQsPut} questions allowed across surveys (${otherQs} used in other surveys, saving ${body.questions.length} would reach ${newTotal})`,
+          }, 422);
+        }
       }
       const title = String(body.title || "").trim();
       if (title) {

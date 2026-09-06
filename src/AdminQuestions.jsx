@@ -125,10 +125,14 @@ export default function AdminQuestionsScreen({ onToast, user }) {
   }
 
   const maxQs = !isSuperAdmin ? Number(user?.max_questions_per_survey) || 0 : 0
+  const otherSurveysQuestionsCount = surveys
+    .filter((s) => String(s.id) !== String(surveyId))
+    .reduce((sum, s) => sum + (Number(s.question_count) || 0), 0)
+  const totalQuestionsUsed = otherSurveysQuestionsCount + questions.length
 
   function addQ() {
-    if (maxQs > 0 && questions.length >= maxQs) {
-      onToast?.(`Maximum ${maxQs} questions allowed per survey (limit set by Super Admin)`, 'error')
+    if (maxQs > 0 && totalQuestionsUsed >= maxQs) {
+      onToast?.(`Total question quota reached: maximum ${maxQs} questions allowed across surveys (${totalQuestionsUsed} currently used)`, 'error')
       return
     }
     setQuestions((list) => [
@@ -176,8 +180,8 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       onToast?.('Create a survey first (Surveys tab), then edit its questions here', 'error')
       return
     }
-    if (maxQs > 0 && questions.length > maxQs) {
-      onToast?.(`Survey question cap exceeded: maximum ${maxQs} questions allowed per survey (limit set by Super Admin)`, 'error')
+    if (maxQs > 0 && totalQuestionsUsed > maxQs) {
+      onToast?.(`Total question quota exceeded: maximum ${maxQs} questions allowed across surveys (currently ${totalQuestionsUsed})`, 'error')
       return
     }
     setSaving(true)
@@ -551,7 +555,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
         )
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-            <button type="button" className="btn primary" onClick={addQ} disabled={!canEdit || (maxQs > 0 && questions.length >= maxQs)}>
+            <button type="button" className="btn primary" onClick={addQ} disabled={!canEdit || (maxQs > 0 && totalQuestionsUsed >= maxQs)}>
               + Add Question
             </button>
             <button type="button" className="btn primary" onClick={save} disabled={saving || !canEdit}>
@@ -561,13 +565,13 @@ export default function AdminQuestionsScreen({ onToast, user }) {
               <span
                 className="pill"
                 style={{
-                  background: questions.length >= maxQs ? '#fef2f2' : 'rgba(0, 229, 153, 0.12)',
-                  color: questions.length >= maxQs ? '#dc2626' : '#047857',
+                  background: totalQuestionsUsed >= maxQs ? '#fef2f2' : 'rgba(0, 229, 153, 0.12)',
+                  color: totalQuestionsUsed >= maxQs ? '#dc2626' : '#047857',
                   fontWeight: 700,
                   fontSize: 12,
                 }}
               >
-                📝 Questions: {questions.length} / {maxQs} allowed
+                📝 Questions: {totalQuestionsUsed} / {maxQs} allowed
               </span>
             )}
           </div>

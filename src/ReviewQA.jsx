@@ -373,22 +373,24 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
             </button>
           ))}
         </div>
-        <div className="chip-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-          {[
-            { id: 'field', label: 'Field app' },
-            { id: 'web', label: 'Web survey' },
-            { id: 'all', label: 'All sources' },
-          ].map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className={`chip ${source === s.id ? 'selected' : ''}`}
-              onClick={() => setSource(s.id)}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
+        {(isSuper || !!user?.can_web_survey) && (
+          <div className="chip-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+            {[
+              { id: 'field', label: 'Field app' },
+              { id: 'web', label: 'Web survey' },
+              { id: 'all', label: 'All sources' },
+            ].map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={`chip ${source === s.id ? 'selected' : ''}`}
+                onClick={() => setSource(s.id)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
         <label className="field compact" style={{ marginTop: 10 }}>
           <span>By survey</span>
           <select value={survey} onChange={(e) => setSurvey(e.target.value)}>

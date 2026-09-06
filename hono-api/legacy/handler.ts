@@ -7678,6 +7678,12 @@ async function rawHandler(req: Request): Promise<Response> {
         : await sql`SELECT id, payload FROM submissions WHERE id = ${id}`;
       if (!rows.length) return json({ error: "Not found" }, 404);
       let payload = parsePayload(rows[0].payload);
+      const isWeb = payload.source === "web-survey" || payload.source === "web";
+      if (isWeb && !hasPower(me, "can_web_survey")) {
+        return json({
+          error: "Super Admin has not granted Web survey permissions for this account",
+        }, 403);
+      }
       const mediaKinds = (
         await sql`SELECT kind FROM survey_media WHERE submission_id = ${id}`.catch(() => [])
       ).map((m) => String((m as { kind?: string }).kind || "").toLowerCase());
@@ -7779,6 +7785,8 @@ async function rawHandler(req: Request): Promise<Response> {
           }
         }
         if (payloadStatus(payload) !== "pending") continue;
+        const isWeb = payload.source === "web-survey" || payload.source === "web";
+        if (isWeb && !hasPower(me, "can_web_survey")) continue;
         payload = translateGeoEnglish(payload);
 
         // FIX: Strip draft flags before confirming, mirroring single-confirm logic

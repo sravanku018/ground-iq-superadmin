@@ -12,7 +12,6 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [maxUses, setMaxUses] = useState(100)
-  const [editingLimit, setEditingLimit] = useState(false)
   const [live, setLive] = useState(null)
   const [quota, setQuota] = useState({ used: 0, cap: 100, submitted: 0, linkUsed: 0 })
   const [alloc, setAlloc] = useState({ max_records: 0, field_used: 0, web_reserved: 0, field_remaining: 0 })
@@ -89,7 +88,6 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         cap: Number(d.max_uses) || limit,
         linkUsed: Number(d.use_count) || 0,
       }))
-      setEditingLimit(false)
       if (d.max_records != null || d.field_remaining != null) {
         setAlloc({
           max_records: Number(d.max_records) || 0,
@@ -129,7 +127,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
   const full = totalUsed >= cap || live?.expired
   const left = Math.max(0, cap - totalUsed)
   const pct = Math.min(100, Math.round((totalUsed / cap) * 100))
-  const isLocked = Boolean(url || live?.token) && !editingLimit
+  const isLocked = Boolean(url || live?.token)
 
   const picker = (
     <label className="field" style={{ margin: 0, minWidth: compact ? 120 : 180 }}>
@@ -168,17 +166,6 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         >
           +
         </button>
-        {Boolean(url || live?.token) && (
-          <button
-            type="button"
-            className="btn small"
-            style={{ fontSize: 11, padding: '3px 8px' }}
-            title={editingLimit ? 'Cancel edit' : 'Unlock to change quota'}
-            onClick={() => setEditingLimit((prev) => !prev)}
-          >
-            {editingLimit ? 'Cancel' : '✏️ Edit'}
-          </button>
-        )}
       </div>
     </label>
   )

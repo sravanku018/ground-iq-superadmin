@@ -534,13 +534,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
             ? { company_name: String(user.company_name).trim() }
             : {}),
       })
-      const autoN = Number(d?.auto_assigned_surveyors || 0)
-      onToast?.(
-        autoN > 0
-          ? `${Unit} "${title}" created · assigned to ${autoN} surveyor(s) — pull-to-refresh on field app`
-          : `${Unit} "${title}" created`,
-        'ok',
-      )
+      onToast?.(`${Unit} "${title}" created`, 'ok')
       setMode('list')
       setNewTitle('')
       setNewVoiceLimit(0)

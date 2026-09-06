@@ -5626,18 +5626,7 @@ async function rawHandler(req: Request): Promise<Response> {
         `;
         const u = inserted[0] as Record<string, unknown>;
 
-        // New surveyor with no explicit assignment still needs surveys in the
-        // field app (/api/my-surveys). Attach them to every survey this admin owns.
-        if (role === "surveyor" && me.role === "admin" && u.id != null) {
-          const mySurveys = await sql`
-            SELECT id FROM survey_form
-            WHERE created_by = ${me.id}
-              AND form_key NOT IN ('default', 'legacy')
-          `.catch(() => []);
-          for (const s of mySurveys as { id: number }[]) {
-            await upsertSurveyAssignment(Number(s.id), Number(u.id));
-          }
-        }
+        // Surveyors are explicitly assigned to surveys by Client Admin via Assign Surveyors tool
 
         logAudit(me, "user_create", "user", u.id, {
           username: u.username,
@@ -8184,20 +8173,8 @@ async function rawHandler(req: Request): Promise<Response> {
         }
         connectedAdminIds = [...grantIds];
       }
-      // Client Admin: auto-assign all of their surveyors to the new survey so it
-      // appears immediately in the field app (surveyors load via /api/my-surveys).
-      let autoAssigned = 0;
-      if (me.role === "admin" && surveyId != null) {
-        const team = await sql`
-          SELECT id FROM app_users
-          WHERE role = 'surveyor' AND created_by = ${me.id} AND COALESCE(active, TRUE) = TRUE
-        `.catch(() => []);
-        for (const t of team as { id: number }[]) {
-          const uid = Number(t.id);
-          if (!Number.isFinite(uid)) continue;
-          if (await upsertSurveyAssignment(Number(surveyId), uid)) autoAssigned += 1;
-        }
-      }
+      // Surveyors are explicitly mapped to surveys by Client Admin (no auto-assignment to surveyors)
+      const autoAssigned = 0;
       logAudit(me, "survey_create", "survey", surveyId, {
         title,
         form_key: formKey,

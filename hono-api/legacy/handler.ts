@@ -1608,6 +1608,27 @@ async function ensureSchema(): Promise<void> {
     `,
     // Optional self-healing respondent phone drop
     () => sql`ALTER TABLE survey_respondents DROP COLUMN IF EXISTS phone`,
+    // Migrate legacy answer keys to current active question slugs
+    () => sql`
+      UPDATE submissions
+      SET payload = jsonb_set(
+        payload,
+        '{answers}',
+        (payload->'answers' - 'id') || jsonb_build_object('which_you_prefer_to_watch', payload->'answers'->'id')
+      )
+      WHERE payload->'answers' ? 'id'
+        AND NOT (payload->'answers' ? 'which_you_prefer_to_watch')
+    `,
+    () => sql`
+      UPDATE submissions
+      SET payload = jsonb_set(
+        payload,
+        '{answers}',
+        (payload->'answers' - '2_whats_on' - 'q_mtpkyf2o') || jsonb_build_object('are_you_eligible_for_any_present_state_govt_schemes', COALESCE(payload->'answers'->'2_whats_on', payload->'answers'->'q_mtpkyf2o'))
+      )
+      WHERE (payload->'answers' ? '2_whats_on' OR payload->'answers' ? 'q_mtpkyf2o')
+        AND NOT (payload->'answers' ? 'are_you_eligible_for_any_present_state_govt_schemes')
+    `,
   ];
 
   for (const step of steps) {

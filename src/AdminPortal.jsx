@@ -88,18 +88,10 @@ const PAGE_LABELS = {
   companies: 'Companies',
 }
 
-// Which Super-Admin-granted power unlocks each management page for a Client Admin.
-// Surveys = Client Admin creates field surveys (can_crud_questionnaire).
-// Super Admin uses the same screen for Projects (always allowed).
-// Surveyors is always available to Client Admin (BR-004).
+// Only web survey links creation/fill is gated by can_web_survey power grant.
+// All standard survey management, analytics, export, and review screens are visible to Client Admin.
 const PAGE_POWER = {
-  surveys: ['can_crud_questionnaire', 'can_edit_surveys'],
-  questions: 'can_edit_surveys',
-  bank: 'can_manage_questions',
   web: 'can_web_survey',
-  review: 'can_review_data',
-  upload: 'can_validate_proof',
-  data: 'can_validate_proof',
 }
 
 
@@ -733,19 +725,20 @@ export default function AdminPortal({ superAdminOnly = false }) {
   const [navOpen, setNavOpen] = useState(false)
   const [deepLink, setDeepLink] = useState(null)
 
-  // Super Admin always has every power; Client Admins only see pages their granted powers unlock.
+  const isSuper = superAdminOnly || user?.role === 'super_admin'
+
   const canPage = useCallback(
     (p) => {
-      if (user?.role === 'super_admin') return true
+      if (isSuper) return true
+      if (['companies', 'admins', 'seats', 'audit'].includes(p)) return false
       const need = PAGE_POWER[p]
       if (!need) return true
       const needs = Array.isArray(need) ? need : [need]
       return needs.some((k) => !!user?.[k])
     },
-    [user]
+    [isSuper, user]
   )
 
-  const isSuper = superAdminOnly || user?.role === 'super_admin'
   const baseNav = isSuper
     ? [...NAV, COMPANIES_NAV, CLIENT_ADMINS_NAV, PLATFORM_NAV]
     : NAV

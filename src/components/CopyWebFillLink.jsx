@@ -8,13 +8,12 @@ function clampMax(n) {
   return x
 }
 
-export default function CopyWebFillLink({ formKey, title, onToast, compact = false, maxRecords = 0 }) {
+export default function CopyWebFillLink({ formKey, title, onToast, compact = false }) {
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [maxUses, setMaxUses] = useState(100)
   const [live, setLive] = useState(null)
   const [quota, setQuota] = useState({ used: 0, cap: 100, submitted: 0, linkUsed: 0 })
-  const [alloc, setAlloc] = useState({ max_records: 0, field_used: 0, web_reserved: 0, field_remaining: 0 })
 
   useEffect(() => {
     const key = String(formKey || '').trim()
@@ -35,14 +34,6 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         setQuota({ used: submitted, cap, submitted, linkUsed })
         if (share?.max_uses) setMaxUses(clampMax(share.max_uses))
         if (share?.token) setUrl(webFillUrl(key, share.token))
-        if (d.max_records != null || d.field_remaining != null) {
-          setAlloc({
-            max_records: Number(d.max_records) || 0,
-            field_used: Number(d.field_used) || 0,
-            web_reserved: Number(d.web_reserved) || 0,
-            field_remaining: Number(d.field_remaining) || 0,
-          })
-        }
       })
       .catch(() => {
         if (!dead) {
@@ -77,7 +68,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
       const link = d.url || d
       setUrl(typeof link === 'string' ? link : '')
       setLive((prev) => ({
-        ...(prev || {}),
+        ...prev,
         token: d.token,
         max_uses: d.max_uses || limit,
         use_count: d.use_count || 0,
@@ -88,14 +79,6 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         cap: Number(d.max_uses) || limit,
         linkUsed: Number(d.use_count) || 0,
       }))
-      if (d.max_records != null || d.field_remaining != null) {
-        setAlloc({
-          max_records: Number(d.max_records) || 0,
-          field_used: Number(d.field_used) || 0,
-          web_reserved: Number(d.web_reserved) || 0,
-          field_remaining: Number(d.field_remaining) || 0,
-        })
-      }
       try {
         window.dispatchEvent(new CustomEvent('esurvey-quota-changed'))
       } catch {
@@ -128,6 +111,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
   const left = Math.max(0, cap - totalUsed)
   const pct = Math.min(100, Math.round((totalUsed / cap) * 100))
   const isLocked = Boolean(url || live?.token)
+  const hasActiveLink = Boolean(url || live?.token)
 
   const picker = (
     <label className="field" style={{ margin: 0, minWidth: compact ? 120 : 180 }}>
@@ -163,7 +147,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
     </label>
   )
 
-  const usage = (
+  const usage = hasActiveLink ? (
     <div
       style={{
         margin: compact ? '0 0 6px' : '0 0 12px',
@@ -206,23 +190,47 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         </p>
       )}
     </div>
+  ) : (
+    <div
+      style={{
+        margin: compact ? '0 0 6px' : '0 0 12px',
+        padding: compact ? '6px 10px' : '10px 12px',
+        borderRadius: 8,
+        border: '1px dashed #cbd5e1',
+        background: '#f8fafc',
+      }}
+    >
+      <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>
+        No web link generated yet. Pick responses allowed and click <strong>Create &amp; copy link</strong>.
+      </p>
+    </div>
   )
+
+  const buttonLabel = full || live?.expired
+    ? 'Sharing disabled'
+    : busy
+      ? hasActiveLink
+        ? 'Copying…'
+        : 'Creating…'
+      : hasActiveLink
+        ? 'Copy web link'
+        : 'Create & copy link'
 
   if (compact) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {usage}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        {picker}
-        <button
-          type="button"
-          className="btn small"
-          disabled={busy || !formKey || full || live?.expired}
-          onClick={() => void mintAndCopy()}
-        >
-          {full || live?.expired ? 'Sharing disabled' : busy ? 'Copying…' : 'Copy web link'}
-        </button>
-      </div>
+        {usage}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          {picker}
+          <button
+            type="button"
+            className="btn small"
+            disabled={busy || !formKey || full || live?.expired}
+            onClick={() => void mintAndCopy()}
+          >
+            {buttonLabel}
+          </button>
+        </div>
       </div>
     )
   }
@@ -233,28 +241,27 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         {title ? `${title} — web link` : 'Web survey link'}
       </p>
       {usage}
-      <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
-        One unique link for this survey. Sharing turns off when the target is reached.
-      </p>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 10 }}>
         {picker}
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input
-          readOnly
-          value={url}
-          placeholder="Unique survey link"
-          disabled={full || live?.expired}
-          style={{ flex: 1, minWidth: 220, fontSize: 13, opacity: full || live?.expired ? 0.6 : 1 }}
-          onFocus={(e) => e.target.select()}
-        />
+        {hasActiveLink && (
+          <input
+            readOnly
+            value={url}
+            placeholder="Unique survey link"
+            disabled={full || live?.expired}
+            style={{ flex: 1, minWidth: 220, fontSize: 13, opacity: full || live?.expired ? 0.6 : 1 }}
+            onFocus={(e) => e.target.select()}
+          />
+        )}
         <button
           type="button"
           className="btn primary"
           disabled={busy || !formKey || full || live?.expired}
           onClick={() => void mintAndCopy()}
         >
-          {full || live?.expired ? 'Sharing disabled' : busy ? 'Copying…' : 'Copy web link'}
+          {buttonLabel}
         </button>
       </div>
     </div>

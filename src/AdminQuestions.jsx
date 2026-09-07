@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Icon from './Icons'
 import { getQuestions, getSurvey, listSurveys, saveQuestions, updateSurvey } from './api'
 import OptionPills from './OptionPills'
@@ -40,6 +40,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
   const [displayLang, setDisplayLang] = useState('en')
   const [translatingAll, setTranslatingAll] = useState(false)
   const [currentSurvey, setCurrentSurvey] = useState(null)
+  const originalLabelsRef = useRef(new Map())
 
   const load = useCallback(async () => {
     if (!surveysReady) return
@@ -48,6 +49,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       setCurrentSurvey(null)
       setTitle('')
       setQuestions([])
+      originalLabelsRef.current = new Map()
       setLoading(false)
       return
     }
@@ -57,17 +59,26 @@ export default function AdminQuestionsScreen({ onToast, user }) {
         const d = await getSurvey(surveyId)
         setCurrentSurvey(d.survey || null)
         setTitle(d.survey?.title || '')
-        setQuestions(Array.isArray(d.survey?.questions) ? d.survey.questions : [])
+        const loaded = Array.isArray(d.survey?.questions) ? d.survey.questions : []
+        setQuestions(loaded)
+        const snapshot = new Map()
+        loaded.forEach((q, idx) => snapshot.set(String(q.id || idx), q.label || ''))
+        originalLabelsRef.current = snapshot
         setDisplayLang(d.survey?.display_lang === 'te' ? 'te' : 'en')
       } else if (isSuperAdmin) {
         const data = await getQuestions()
         setCurrentSurvey({ isApp: true, surveyors: ['default'] })
         setTitle(data.title || 'Field Survey')
-        setQuestions(Array.isArray(data.questions) ? data.questions : [])
+        const loaded = Array.isArray(data.questions) ? data.questions : []
+        setQuestions(loaded)
+        const snapshot = new Map()
+        loaded.forEach((q, idx) => snapshot.set(String(q.id || idx), q.label || ''))
+        originalLabelsRef.current = snapshot
       } else {
         setCurrentSurvey(null)
         setTitle('')
         setQuestions([])
+        originalLabelsRef.current = new Map()
       }
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -75,6 +86,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       setLoading(false)
     }
   }, [surveyId, onToast, surveysReady, isSuperAdmin])
+
 
   useEffect(() => {
     let cancelled = false
@@ -184,7 +196,21 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       onToast?.(`Total question quota exceeded: ${totalQuestionsUsed} questions used of ${maxQs} allotted across all surveys`, 'error')
       return
     }
+    const surveySubmissions = surveys.find((s) => String(s.id) === String(surveyId))?.submissions || 0
+    if (surveySubmissions > 0) {
+      const changed = questions.some((q, idx) => {
+        const key = String(q.id || idx)
+        const original = originalLabelsRef.current.get(key)
+        return original !== undefined && original !== (q.label || '')
+      })
+      if (changed && !window.confirm(
+        `This survey has ${surveySubmissions} submitted response${surveySubmissions === 1 ? '' : 's'}. Changing question wording won't relabel existing answers — they'll still show the old text. Save anyway?`
+      )) {
+        return
+      }
+    }
     setSaving(true)
+
     try {
       const used = new Set()
       const cleaned = questions.map((q, idx) => {

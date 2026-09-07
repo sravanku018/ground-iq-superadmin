@@ -3536,7 +3536,7 @@ async function getMandalLookup(sqlFn: NonNullable<typeof sql>): Promise<Map<stri
 
 async function loadAnalyticsRows(
   sqlFn: NonNullable<typeof sql>,
-  limit = 10000,
+  limit = 50000,
   scopeKeys: string[] | null = null,
 ): Promise<Row[]> {
   const acList = await getAcList(sqlFn);
@@ -3851,7 +3851,7 @@ async function buildAnalytics(
   }
   // period=total → leave dateFrom/dateTo as provided (or empty = all time)
 
-  const allRows = await loadAnalyticsRows(sqlFn, 10000, scopeKeys);
+  const allRows = await loadAnalyticsRows(sqlFn, 50000, scopeKeys);
 
   const statusCounts = {
     pending: allRows.filter((r) => r.status === "pending").length,
@@ -7784,8 +7784,10 @@ async function rawHandler(req: Request): Promise<Response> {
             SELECT id, payload FROM submissions ORDER BY created_at DESC LIMIT ${max}
           `;
       let n = 0;
+      let skipped = 0;
       const who = me.name || me.username;
       const when = new Date().toISOString();
+      const mediaMap = await loadMediaKindsMap(sql);
       for (const r of rows as { id: number; payload: Record<string, unknown> }[]) {
         let payload = r.payload;
         if (typeof payload === "string") {
@@ -7798,6 +7800,14 @@ async function rawHandler(req: Request): Promise<Response> {
         if (payloadStatus(payload) !== "pending") continue;
         const isWeb = payload.source === "web-survey" || payload.source === "web";
         if (isWeb && !hasPower(me, "can_web_survey")) continue;
+
+        // Completeness gate — skip incomplete records (matches single-confirm)
+        const verify = verifyWithMedia(payload, mediaMap, r.id);
+        if (verify.completeness !== "complete") {
+          skipped += 1;
+          continue;
+        }
+
         payload = translateGeoEnglish(payload);
 
         // FIX: Strip draft flags before confirming, mirroring single-confirm logic
@@ -7824,7 +7834,7 @@ async function rawHandler(req: Request): Promise<Response> {
         }
         n += 1;
       }
-      return json({ ok: true, confirmed: n });
+      return json({ ok: true, confirmed: n, skipped });
     }
 
     // Client Admin: retry fact materialization for a failed record (FR-PRC-04)
@@ -10293,6 +10303,7 @@ async function rawHandler(req: Request): Promise<Response> {
     // Dashboard + filters — full super-set / sub-set analytics (and consolidated kpi / geo groups)
     if (m === "GET" && url.pathname === "/api/analytics") {
       if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const groupBy = (url.searchParams.get("group_by") || "").trim().toLowerCase();
       const envScope = await adminFormKeyScope(sql, me);
 
@@ -10668,7 +10679,7 @@ async function rawHandler(req: Request): Promise<Response> {
           .toLowerCase();
         const asTe = langQ === "te" || langQ === "telugu" || langQ === "te-in";
 
-        const allRows = await loadAnalyticsRows(sql, 20000, await adminFormKeyScope(sql, me));
+        const allRows = await loadAnalyticsRows(sql, 50000, await adminFormKeyScope(sql, me));
         let rows = allRows;
         if (statusQ !== "all") rows = rows.filter((r) => r.status === statusQ);
         if (dateFrom) rows = rows.filter((r) => dayKey(r.created_at) >= dateFrom);

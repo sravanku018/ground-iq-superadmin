@@ -35,6 +35,7 @@ export default function OptionPills({
   addValue,
   accent = '#059669',
   fontSize = 12,
+  disabled = false,
 }) {
   const [editingIdx, setEditingIdx] = useState(null)
   const [draft, setDraft] = useState('')
@@ -119,12 +120,12 @@ export default function OptionPills({
         return (
           <span
             key={pillIds[idx]}
-            draggable
-            onDragStart={(e) => onDragStart(e, idx)}
-            onDragOver={(e) => onDragOver(e, idx)}
-            onDragLeave={() => overIdx === idx && setOverIdx(null)}
-            onDrop={(e) => onDrop(e, idx)}
-            onDragEnd={() => {
+            draggable={!disabled}
+            onDragStart={disabled ? undefined : (e) => onDragStart(e, idx)}
+            onDragOver={disabled ? undefined : (e) => onDragOver(e, idx)}
+            onDragLeave={disabled ? undefined : () => overIdx === idx && setOverIdx(null)}
+            onDrop={disabled ? undefined : (e) => onDrop(e, idx)}
+            onDragEnd={disabled ? undefined : () => {
               setDragIdx(null)
               setOverIdx(null)
             }}
@@ -133,20 +134,20 @@ export default function OptionPills({
               border: `1px solid ${accent}`,
               color: '#0f172a',
               borderRadius: 16,
-              padding: '4px 10px',
+              padding: disabled ? '4px 12px' : '4px 10px',
               fontSize,
               fontWeight: 'bold',
               display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
-              cursor: dragging ? 'grabbing' : 'grab',
+              cursor: disabled ? 'default' : dragging ? 'grabbing' : 'grab',
               opacity: dragging ? 0.5 : 1,
               boxShadow: hovered ? `0 0 0 2px ${accent}` : 'none',
               userSelect: 'none',
             }}
-            title="Drag to reorder · click text to edit"
+            title={disabled ? undefined : 'Drag to reorder · click text to edit'}
           >
-            {editing ? (
+            {editing && !disabled ? (
               <input
                 ref={inputRef}
                 value={draft}
@@ -173,44 +174,48 @@ export default function OptionPills({
               />
             ) : (
               <span
-                onDoubleClick={() => startEdit(idx, opt)}
-                onClick={() => startEdit(idx, opt)}
-                style={{ cursor: 'text' }}
+                onDoubleClick={disabled ? undefined : () => startEdit(idx, opt)}
+                onClick={disabled ? undefined : () => startEdit(idx, opt)}
+                style={{ cursor: disabled ? 'default' : 'text' }}
               >
                 {opt}
               </span>
             )}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                remove(idx)
-              }}
-              style={{
-                background: 'none',
-                border: 0,
-                color: '#ff6b6b',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                fontSize: 13,
-                padding: 0,
-                lineHeight: 1,
-              }}
-              title="Remove option"
-            >
-              ✕
-            </button>
+            {!disabled && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  remove(idx)
+                }}
+                style={{
+                  background: 'none',
+                  border: 0,
+                  color: '#ff6b6b',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: 13,
+                  padding: 0,
+                  lineHeight: 1,
+                }}
+                title="Remove option"
+              >
+                ✕
+              </button>
+            )}
           </span>
         )
       })}
-      <button
-        type="button"
-        className="btn small primary"
-        style={{ padding: '3px 10px', fontSize: 11 }}
-        onClick={add}
-      >
-        {addLabel}
-      </button>
+      {!disabled && (
+        <button
+          type="button"
+          className="btn small primary"
+          style={{ padding: '3px 10px', fontSize: 11 }}
+          onClick={add}
+        >
+          {addLabel}
+        </button>
+      )}
     </div>
   )
 }

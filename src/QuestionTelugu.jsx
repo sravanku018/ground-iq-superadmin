@@ -15,7 +15,7 @@ export async function fillTeluguFromEnglish(q) {
   }
 }
 
-export default function QuestionTelugu({ q, onChange, onToast }) {
+export default function QuestionTelugu({ q, onChange, onToast, disabled = false }) {
   const [busy, setBusy] = useState(false)
   const options = Array.isArray(q.options) ? q.options : []
   const teOpts = Array.isArray(q.options_te) ? q.options_te : []
@@ -23,6 +23,7 @@ export default function QuestionTelugu({ q, onChange, onToast }) {
     q.options_te_text != null ? q.options_te_text : teOpts.join(', ')
 
   async function autoTranslate() {
+    if (disabled) return
     setBusy(true)
     try {
       onChange(await fillTeluguFromEnglish(q))
@@ -46,7 +47,7 @@ export default function QuestionTelugu({ q, onChange, onToast }) {
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 8 }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: '#047857' }}>తెలుగు · Telugu</span>
-        <button type="button" className="btn small" disabled={busy} onClick={() => void autoTranslate()}>
+        <button type="button" className="btn small" disabled={busy || disabled} onClick={() => void autoTranslate()}>
           {busy ? 'Translating…' : 'Auto-translate'}
         </button>
       </div>
@@ -56,6 +57,7 @@ export default function QuestionTelugu({ q, onChange, onToast }) {
           value={q.label_te || ''}
           onChange={(e) => onChange({ label_te: e.target.value })}
           placeholder="ప్రశ్నను ఇక్కడ టైప్ చేయండి"
+          disabled={disabled}
         />
       </label>
       {options.length > 0 && (
@@ -71,6 +73,7 @@ export default function QuestionTelugu({ q, onChange, onToast }) {
               })
             }}
             placeholder="అవును, కాదు"
+            disabled={disabled}
           />
         </label>
       )}

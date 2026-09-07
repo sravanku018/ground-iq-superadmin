@@ -9345,6 +9345,7 @@ async function rawHandler(req: Request): Promise<Response> {
     // Dashboard + filters — full super-set / sub-set analytics
     if (path === "/api/analytics" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const envScope = await adminFormKeyScope(sql, me);
       const result = await buildAnalytics(sql, url, envScope);
       // Envelope: data_as_of watermark + fact health (09-ANALYTICS-SPEC §5/§8, ADR-014/016)

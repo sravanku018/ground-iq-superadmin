@@ -142,7 +142,14 @@ export default function AdminQuestionsScreen({ onToast, user }) {
     .reduce((sum, s) => sum + (Number(s.question_count) || 0), 0)
   const totalQuestionsUsed = otherSurveysQuestionsCount + questions.length
 
+  const surveySubmissions = surveys.find((s) => String(s.id) === String(surveyId))?.submissions || 0
+  const isFrozen = surveySubmissions > 0
+
   function addQ() {
+    if (isFrozen) {
+      onToast?.('Cannot add questions: Questionnaire is locked after survey start.', 'error')
+      return
+    }
     if (maxQs > 0 && totalQuestionsUsed >= maxQs) {
       onToast?.(`Total question quota reached: ${totalQuestionsUsed} of ${maxQs} questions allotted across surveys are used`, 'error')
       return
@@ -160,10 +167,15 @@ export default function AdminQuestionsScreen({ onToast, user }) {
   }
 
   function removeQ(i) {
+    if (isFrozen) {
+      onToast?.('Cannot delete questions: Questionnaire is locked after survey start.', 'error')
+      return
+    }
     setQuestions((list) => list.filter((_, idx) => idx !== i))
   }
 
   async function translateAll() {
+    if (isFrozen) return
     setTranslatingAll(true)
     try {
       const next = []
@@ -188,6 +200,10 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       onToast?.('Super Admin has not granted your account survey-editing rights', 'error')
       return
     }
+    if (isFrozen) {
+      onToast?.(`Cannot save or push: This survey has ${surveySubmissions} active response${surveySubmissions === 1 ? '' : 's'}. Questions are frozen.`, 'error')
+      return
+    }
     if (!isSuperAdmin && !surveyId) {
       onToast?.('Create a survey first (Surveys tab), then edit its questions here', 'error')
       return
@@ -195,19 +211,6 @@ export default function AdminQuestionsScreen({ onToast, user }) {
     if (maxQs > 0 && totalQuestionsUsed > maxQs) {
       onToast?.(`Total question quota exceeded: ${totalQuestionsUsed} questions used of ${maxQs} allotted across all surveys`, 'error')
       return
-    }
-    const surveySubmissions = surveys.find((s) => String(s.id) === String(surveyId))?.submissions || 0
-    if (surveySubmissions > 0) {
-      const changed = questions.some((q, idx) => {
-        const key = String(q.id || idx)
-        const original = originalLabelsRef.current.get(key)
-        return original !== undefined && original !== (q.label || '')
-      })
-      if (changed && !window.confirm(
-        `This survey has ${surveySubmissions} submitted response${surveySubmissions === 1 ? '' : 's'}. Changing question wording won't relabel existing answers — they'll still show the old text. Save anyway?`
-      )) {
-        return
-      }
     }
     setSaving(true)
 
@@ -285,6 +288,31 @@ export default function AdminQuestionsScreen({ onToast, user }) {
         <p>Pick a {isSuperAdmin ? 'project' : 'survey'} · edit here · surveyor app loads automatically after unlock</p>
       </header>
 
+      {isFrozen && (
+        <div
+          className="card"
+          style={{
+            marginBottom: 12,
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            background: 'rgba(239, 68, 68, 0.08)',
+            padding: '12px 14px',
+            fontSize: 13,
+            color: '#991b1b',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <Icon name="lock" size={15} />
+          <div>
+            <strong>Questionnaire is frozen ({surveySubmissions} submitted response{surveySubmissions === 1 ? '' : 's'}).</strong>
+            <div style={{ fontSize: 12, marginTop: 2, color: '#b91c1c' }}>
+              Editing, adding, deleting, and saving questions is disabled to preserve the integrity of existing survey responses.
+            </div>
+          </div>
+        </div>
+      )}
+
       {!canEdit && (
         <div
           className="card"
@@ -331,7 +359,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                 if (p.id === 'te' && !canTelugu) return
                 setDisplayLang(p.id)
               }}
-              disabled={!canEdit || (p.id === 'te' && !canTelugu)}
+              disabled={isFrozen || !canEdit || (p.id === 'te' && !canTelugu)}
               title={p.id === 'te' && !canTelugu ? 'Telugu translation is locked — Super Admin must grant it' : undefined}
             >
               {p.label}
@@ -352,7 +380,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
         </label>
         <label className="field">
           <span>Form title</span>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={isFrozen || !canEdit} />
         </label>
         <p className="muted" style={{ fontSize: 12 }}>
           Surveyor flow: <strong>GPS → Photo → Q/A + audio</strong>. Audio and answers upload
@@ -363,7 +391,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
 
       {canTelugu && questions.length > 0 && (
         <div style={{ marginBottom: 12 }}>
-          <button type="button" className="btn small" disabled={translatingAll || !canEdit} onClick={() => void translateAll()}>
+          <button type="button" className="btn small" disabled={isFrozen || translatingAll || !canEdit} onClick={() => void translateAll()}>
             {translatingAll ? 'Translating all…' : 'Auto-translate all questions + options'}
           </button>
         </div>
@@ -381,7 +409,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
               <span className="pill ok" style={{ fontSize: 11, fontWeight: 'bold' }}>
                 Q{i + 1} · {type.toUpperCase().replace('_', ' ')}
               </span>
-              <button type="button" className="btn small danger" onClick={() => removeQ(i)} disabled={!canEdit}>
+              <button type="button" className="btn small danger" onClick={() => removeQ(i)} disabled={isFrozen || !canEdit}>
                 Delete Q{i + 1}
               </button>
             </div>
@@ -392,10 +420,11 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                 value={q.label}
                 onChange={(e) => updateQ(i, labelPatch(q, e.target.value))}
                 placeholder="Type the question"
+                disabled={isFrozen || !canEdit}
               />
             </label>
             {canTelugu ? (
-              <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} onToast={onToast} />
+              <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} onToast={onToast} disabled={isFrozen || !canEdit} />
             ) : null}
 
             <label className="field">
@@ -404,6 +433,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                 value={q.speak || ''}
                 onChange={(e) => updateQ(i, { speak: e.target.value })}
                 placeholder="Ask respondent their age bracket"
+                disabled={isFrozen || !canEdit}
               />
             </label>
 
@@ -413,6 +443,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                 value={type}
                 onChange={(e) => handleTypeChange(i, e.target.value)}
                 style={{ fontWeight: 'bold' }}
+                disabled={isFrozen || !canEdit}
               >
                 <option value="range">🔢 Numeric Range Buttons (e.g. 10-20, 21-30, 31-40, 50+)</option>
                 <option value="yesno">✓ Yes / ✕ No Buttons (Green & Red)</option>
@@ -442,6 +473,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                       updateQ(i, { optionsText: val, options: parsed })
                     }}
                     placeholder="Satisfied, Neutral, Unsatisfied, Don't Know"
+                    disabled={isFrozen || !canEdit}
                   />
                 </label>
 
@@ -452,6 +484,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                     onChange={(list) => updateQ(i, { options: list, optionsText: list.join(', ') })}
                     addLabel="+ Add Option"
                     addValue={(n) => `Option ${n + 1}`}
+                    disabled={isFrozen || !canEdit}
                   />
                 </div>
               </div>
@@ -467,7 +500,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                   border: isQuestionVisible(q) ? '1px solid #059669' : '1px solid #e2e8f0',
                   borderRadius: 8,
                   padding: '10px 14px',
-                  cursor: 'pointer',
+                  cursor: isFrozen || !canEdit ? 'not-allowed' : 'pointer',
                   width: 'fit-content',
                 }}
               >
@@ -475,6 +508,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                   type="checkbox"
                   checked={isQuestionVisible(q)}
                   onChange={(e) => updateQ(i, { visible: e.target.checked })}
+                  disabled={isFrozen || !canEdit}
                 />
                 <span style={{ fontSize: 13, fontWeight: 'bold', color: isQuestionVisible(q) ? '#059669' : '#64748b' }}>
                   {isQuestionVisible(q) ? '✓ Visible on dashboard' : 'Hidden on dashboard'}
@@ -489,7 +523,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                   border: q.required ? '1px solid #059669' : '1px solid #e2e8f0',
                   borderRadius: 8,
                   padding: '10px 14px',
-                  cursor: 'pointer',
+                  cursor: isFrozen || !canEdit ? 'not-allowed' : 'pointer',
                   width: 'fit-content',
                 }}
               >
@@ -497,7 +531,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                   type="checkbox"
                   checked={!!q.required}
                   onChange={(e) => updateQ(i, { required: e.target.checked })}
-                  disabled={!canEdit}
+                  disabled={isFrozen || !canEdit}
                 />
                 <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#00e599' : '#e2e8f0' }}>
                   {q.required ? <><Icon name="check" size={12} /> Required (surveyor must answer)</> : 'Optional'}
@@ -583,11 +617,17 @@ export default function AdminQuestionsScreen({ onToast, user }) {
         )
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-            <button type="button" className="btn primary" onClick={addQ} disabled={!canEdit || (maxQs > 0 && totalQuestionsUsed >= maxQs)}>
+            <button type="button" className="btn primary" onClick={addQ} disabled={isFrozen || !canEdit || (maxQs > 0 && totalQuestionsUsed >= maxQs)}>
               + Add Question
             </button>
-            <button type="button" className="btn primary" onClick={save} disabled={saving || !canEdit}>
-              {saving ? (isAppSurvey ? 'Saving & Pushing…' : 'Saving…') : <><Icon name="check" size={12} /> {isAppSurvey ? 'Save & push to app' : 'Save questions'}</>}
+            <button type="button" className="btn primary" onClick={save} disabled={isFrozen || saving || !canEdit} title={isFrozen ? 'Questionnaire is locked because this survey has active submissions' : undefined}>
+              {isFrozen ? (
+                <><Icon name="lock" size={12} /> {isAppSurvey ? 'Save & push to app (Locked)' : 'Save questions (Locked)'}</>
+              ) : saving ? (
+                isAppSurvey ? 'Saving & Pushing…' : 'Saving…'
+              ) : (
+                <><Icon name="check" size={12} /> {isAppSurvey ? 'Save & push to app' : 'Save questions'}</>
+              )}
             </button>
             {maxQs > 0 && (
               <span

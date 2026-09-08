@@ -7,7 +7,7 @@ function fmt(v) {
   const d = v instanceof Date ? v : new Date(v)
   if (Number.isNaN(d.getTime())) return '—'
   return new Intl.DateTimeFormat('en-IN', {
-    timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short',
+    timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric',
     hour: 'numeric', minute: '2-digit', hour12: true,
   }).format(d)
 }
@@ -85,13 +85,25 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle }) {
   const isLive = !!link?.token && !full
   const url = link?.token ? webFillUrl(fk, link.token) : ''
 
+  const startTime = link?.starts_at || link?.created_at || survey.web_link?.starts_at || survey.web_link?.created_at
+  const endTime = link?.ended_at || link?.used_at || survey.web_link?.ended_at || survey.web_link?.used_at
+
   async function handleMint() {
     if (!fk) return
     setBusy(true)
     try {
       const d = await mintWebFillUrl(fk, maxUses)
       const newUrl = d.url || ''
-      setLink({ token: d.token, max_uses: d.max_uses || maxUses, use_count: d.use_count || 0, expired: false })
+      setLink({
+        token: d.token,
+        max_uses: d.max_uses || maxUses,
+        use_count: d.use_count || 0,
+        expired: false,
+        created_at: d.created_at || new Date().toISOString(),
+        starts_at: d.starts_at || d.created_at || new Date().toISOString(),
+        used_at: d.used_at || null,
+        ended_at: d.ended_at || null,
+      })
       try { await navigator.clipboard.writeText(newUrl) } catch { /* ignore */ }
       onToast?.(`Link created & copied · ${maxUses} responses allowed`, 'ok')
     } catch (e) {
@@ -146,16 +158,28 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle }) {
               <Pill label="No link yet" color="#64748b" bg="#f1f5f9" />
             )}
           </div>
-          {/* progress bar */}
+          {/* progress bar & timing */}
           {link?.token && !loading && (
             <div>
-              <div style={{ height: 5, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden', marginBottom: 3 }}>
+              <div style={{ height: 5, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden', marginBottom: 4 }}>
                 <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: 99 }} />
               </div>
-              <span style={{ fontSize: 11, color: full ? '#dc2626' : '#64748b' }}>
-                {used.toLocaleString()} / {cap.toLocaleString()} responses
-                {!full && ` · ${left.toLocaleString()} left`}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, color: full ? '#dc2626' : '#64748b' }}>
+                  {used.toLocaleString()} / {cap.toLocaleString()} responses
+                  {!full && ` · ${left.toLocaleString()} left`}
+                </span>
+                {startTime && (
+                  <span style={{ fontSize: 11, color: '#475569', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span>🕒 <strong>Started:</strong> {fmt(startTime)}</span>
+                    {endTime ? (
+                      <span>· 🏁 <strong>Ended:</strong> {fmt(endTime)}</span>
+                    ) : isLive ? (
+                      <span style={{ color: '#15803d', fontWeight: 600 }}>· 🟢 Active</span>
+                    ) : null}
+                  </span>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -212,6 +236,38 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle }) {
               </div>
             )}
           </div>
+
+          {/* survey start / end timing block */}
+          {startTime && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+              padding: '10px 14px', background: isLive ? '#f0fdf4' : full ? '#fef2f2' : '#f8fafc',
+              border: `1px solid ${isLive ? '#bbf7d0' : full ? '#fecaca' : '#e2e8f0'}`,
+              borderRadius: 10, marginBottom: 12, fontSize: 12,
+            }}>
+              <div>
+                <span style={{ fontSize: 10, color: '#64748b', display: 'block', fontWeight: 700, letterSpacing: '0.04em' }}>
+                  STARTING TIME
+                </span>
+                <strong style={{ color: '#0f172a', fontSize: 13 }}>🕒 {fmt(startTime)}</strong>
+              </div>
+              <div style={{ width: 1, height: 26, background: '#cbd5e1' }} />
+              <div>
+                <span style={{ fontSize: 10, color: '#64748b', display: 'block', fontWeight: 700, letterSpacing: '0.04em' }}>
+                  ENDING TIME
+                </span>
+                {endTime ? (
+                  <strong style={{ color: '#0f172a', fontSize: 13 }}>🏁 {fmt(endTime)}</strong>
+                ) : isLive ? (
+                  <span style={{ color: '#15803d', fontWeight: 700, fontSize: 13 }}>🟢 Live &amp; Ongoing (Active)</span>
+                ) : full ? (
+                  <span style={{ color: '#b91c1c', fontWeight: 700, fontSize: 13 }}>🛑 Closed (Target reached)</span>
+                ) : (
+                  <span className="muted">Pending</span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* link row (when live) */}
           {isLive && url && (

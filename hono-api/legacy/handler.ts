@@ -8218,6 +8218,10 @@ async function rawHandler(req: Request): Promise<Response> {
           max_uses: max,
           use_count: used,
           expired: Boolean(r.used_at) || used >= max,
+          starts_at: r.created_at || null,
+          created_at: r.created_at || null,
+          ended_at: r.used_at || null,
+          used_at: r.used_at || null,
         });
       }
 
@@ -9459,6 +9463,10 @@ async function rawHandler(req: Request): Promise<Response> {
         title: surveyTitle,
         max_uses: link.max_uses,
         use_count: link.use_count,
+        starts_at: link.created_at || null,
+        created_at: link.created_at || null,
+        ended_at: link.used_at || null,
+        used_at: link.used_at || null,
         reused: true,
         ...(snap || {}),
       });
@@ -9513,8 +9521,10 @@ async function rawHandler(req: Request): Promise<Response> {
           use_count: used,
           remaining: Math.max(0, max - used),
           expired,
+          starts_at: r.created_at || null,
+          created_at: r.created_at || null,
+          ended_at: r.used_at || null,
           used_at: r.used_at || null,
-          created_at: r.created_at,
         };
       });
       const titleRows = await sql`
@@ -9543,7 +9553,15 @@ async function rawHandler(req: Request): Promise<Response> {
       const snap = me.role === "admin" ? await allocationSnapshot(sql, Number(me.id)) : null;
       return json({
         items,
-        live: share ? { ...share, use_count: effectiveUsed, expired } : null,
+        live: share ? {
+          ...share,
+          use_count: effectiveUsed,
+          expired,
+          starts_at: share.created_at || null,
+          created_at: share.created_at || null,
+          ended_at: share.used_at || null,
+          used_at: share.used_at || null,
+        } : null,
         title: surveyTitle,
         submitted: effectiveUsed,
         cap,

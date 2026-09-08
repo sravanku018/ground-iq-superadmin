@@ -19,6 +19,7 @@ const PublicWebFill = lazy(() => import('./PublicWebFill'))
 
 function isSuperAdminPath() {
   if (typeof window === 'undefined') return false
+  if (publicFillKey()) return false
   const p = window.location.pathname || ''
   const q = new URLSearchParams(window.location.search)
   return (
@@ -33,6 +34,7 @@ function isSuperAdminPath() {
 
 function isAdminPath() {
   if (typeof window === 'undefined') return false
+  if (publicFillKey()) return false
   const p = window.location.pathname || ''
   const q = new URLSearchParams(window.location.search)
   return (
@@ -86,12 +88,13 @@ function FieldBoot() {
 }
 
 export default function App() {
-  // Web fill is portal-only. Field APK / field builds never open the public form.
-  const fillKey = FIELD_APP_ENABLED ? '' : publicFillKey()
+  // Web fill is activated whenever ?fill=<formKey> is present in the URL
+  const fillKey = publicFillKey()
   const storedUser = typeof window !== 'undefined' ? getStoredUser() : null
   const isAdminUser = storedUser?.role === 'admin' || storedUser?.role === 'super_admin'
 
   const openFieldApp =
+    !fillKey &&
     !SUPER_ADMIN_CONSOLE &&
     !isAdminPath() &&
     (wantFieldApp() || (FIELD_APP_ENABLED && !isAdminUser))
@@ -101,16 +104,18 @@ export default function App() {
   useEffect(() => {
     const info = reloadOnceIfUpgraded()
     if (typeof document !== 'undefined') {
-      document.title = SUPER_ADMIN_CONSOLE
-        ? 'Smart Survey X — Super Admin'
-        : portalOnly
-          ? 'Smart Survey X — Client Admin'
-          : 'Smart Survey X'
+      document.title = fillKey
+        ? 'Ground IQ — Web Survey'
+        : SUPER_ADMIN_CONSOLE
+          ? 'Smart Survey X — Super Admin'
+          : portalOnly
+            ? 'Smart Survey X — Client Admin'
+            : 'Smart Survey X'
     }
     if (info.upgraded) {
       console.info(`[Smart Survey X] upgraded ${info.prev} → ${info.current}`)
     }
-  }, [portalOnly])
+  }, [portalOnly, fillKey])
 
   const isSuper = SUPER_ADMIN_CONSOLE || isSuperAdminPath()
 

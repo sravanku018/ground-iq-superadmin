@@ -358,6 +358,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                   <th style={{ textAlign: 'right' }}>Allocated for Web</th>
                   <th style={{ textAlign: 'right' }}>Used (Web)</th>
                   <th style={{ textAlign: 'right' }}>Used (Field)</th>
+                  <th style={{ textAlign: 'right' }}>Rejected</th>
                   <th style={{ textAlign: 'right' }}>Total Used</th>
                   <th style={{ textAlign: 'right' }}>Remaining for Field</th>
                   <th style={{ textAlign: 'center' }}>Surveys</th>
@@ -398,6 +399,11 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                           </strong>
                         </td>
                         <td style={{ textAlign: 'right' }}>
+                          <span style={{ color: Number(ca.rejected || 0) > 0 ? '#dc2626' : '#64748b', fontWeight: Number(ca.rejected || 0) > 0 ? 700 : 400 }}>
+                            {Number(ca.rejected || 0).toLocaleString()}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
                           <strong>{Number(ca.total_used).toLocaleString()}</strong>
                         </td>
                         <td style={{ textAlign: 'right' }}>
@@ -431,7 +437,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                       {/* Nested survey list for this client admin */}
                       {isExp && hasSurveys && (
                         <tr>
-                          <td colSpan={9} style={{ background: '#f8fafc', padding: '10px 16px 14px' }}>
+                          <td colSpan={10} style={{ background: '#f8fafc', padding: '10px 16px 14px' }}>
                             <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 6 }}>
                               Surveys under {ca.name || ca.username} ({ca.company_name || 'No company'}):
                             </div>
@@ -445,6 +451,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                                   <th style={{ textAlign: 'right' }}>Used (Field)</th>
                                   <th style={{ textAlign: 'right' }}>Pending</th>
                                   <th style={{ textAlign: 'right' }}>Confirmed</th>
+                                  <th style={{ textAlign: 'right' }}>Rejected</th>
                                   <th style={{ textAlign: 'right' }}>Total</th>
                                 </tr>
                               </thead>
@@ -497,6 +504,9 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                                     <td style={{ textAlign: 'right' }}>
                                       {Number(sv.confirmed || 0).toLocaleString()}
                                     </td>
+                                    <td style={{ textAlign: 'right', color: Number(sv.rejected || 0) > 0 ? '#dc2626' : '#64748b', fontWeight: Number(sv.rejected || 0) > 0 ? 700 : 400 }}>
+                                      {Number(sv.rejected || 0).toLocaleString()}
+                                    </td>
                                     <td style={{ textAlign: 'right' }}>
                                       <strong>{Number(sv.total_used || (Number(sv.field_used || 0) + Number(sv.web_used || 0))).toLocaleString()}</strong>
                                     </td>
@@ -528,6 +538,9 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                   <td style={{ textAlign: 'right' }}>
                     {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.field_used) || 0), 0).toLocaleString()}
                   </td>
+                  <td style={{ textAlign: 'right', color: '#dc2626' }}>
+                    {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.rejected) || 0), 0).toLocaleString()}
+                  </td>
                   <td style={{ textAlign: 'right' }}>
                     {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.total_used) || 0), 0).toLocaleString()}
                   </td>
@@ -543,7 +556,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           )}
         </div>
       ) : (
-        /* Client Admin: Survey breakdown with allocated, allocated for web, remaining for field */
+        /* Client Admin: Survey breakdown with allocated, allocated for web, remaining for field, rejected */
         surveyBreak.length > 0 && (
           <div className="card" style={{ marginBottom: 20, overflowX: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
@@ -566,6 +579,10 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                   <span style={{ fontSize: 11, color: '#15803d', display: 'block', fontWeight: 600 }}>Remaining for Field</span>
                   <strong style={{ fontSize: 14, color: '#16a34a' }}>{fieldLeft != null ? fieldLeft.toLocaleString() : '∞'}</strong>
                 </div>
+                <div style={{ padding: '6px 12px', borderRadius: 8, background: rejectedTotal > 0 ? '#fef2f2' : '#f8fafc', border: `1px solid ${rejectedTotal > 0 ? '#fecaca' : '#e2e8f0'}`, textAlign: 'center' }}>
+                  <span style={{ fontSize: 11, color: rejectedTotal > 0 ? '#b91c1c' : '#64748b', display: 'block', fontWeight: 600 }}>Rejected</span>
+                  <strong style={{ fontSize: 14, color: rejectedTotal > 0 ? '#dc2626' : '#0f172a' }}>{rejectedTotal.toLocaleString()}</strong>
+                </div>
               </div>
             </div>
 
@@ -579,6 +596,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                   <th style={{ textAlign: 'right' }}>Used (Field)</th>
                   <th style={{ textAlign: 'right' }}>Pending</th>
                   <th style={{ textAlign: 'right' }}>Confirmed</th>
+                  <th style={{ textAlign: 'right' }}>Rejected</th>
                   <th style={{ textAlign: 'right' }}>Total</th>
                 </tr>
               </thead>
@@ -642,6 +660,9 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                       </td>
                       <td style={{ textAlign: 'right' }}>{Number(s.pending) || 0}</td>
                       <td style={{ textAlign: 'right' }}>{Number(s.confirmed) || 0}</td>
+                      <td style={{ textAlign: 'right', color: Number(s.rejected || 0) > 0 ? '#dc2626' : '#64748b', fontWeight: Number(s.rejected || 0) > 0 ? 700 : 400 }}>
+                        {Number(s.rejected) || 0}
+                      </td>
                       <td style={{ textAlign: 'right' }}>
                         <strong>{Number(s.submissions) || field + web}</strong>
                       </td>
@@ -672,6 +693,9 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                   <td style={{ textAlign: 'right' }}>
                     {confirmedTotal.toLocaleString()}
                   </td>
+                  <td style={{ textAlign: 'right', color: rejectedTotal > 0 ? '#dc2626' : '#64748b' }}>
+                    {rejectedTotal.toLocaleString()}
+                  </td>
                   <td style={{ textAlign: 'right' }}>
                     <strong>{allSubmitted.toLocaleString()}</strong>
                   </td>
@@ -681,7 +705,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
 
             <div style={{ marginTop: 10, padding: '8px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: 12 }}>
               <span className="muted">
-                Total Allocated: <strong>{allotCap > 0 ? allotCap.toLocaleString() : '∞'}</strong> · Allocated for Web: <strong>{webReserved.toLocaleString()}</strong> · Field Used: <strong>{fieldUsed.toLocaleString()}</strong>
+                Total Allocated: <strong>{allotCap > 0 ? allotCap.toLocaleString() : '∞'}</strong> · Web Reserved: <strong>{webReserved.toLocaleString()}</strong> · Field Used: <strong>{fieldUsed.toLocaleString()}</strong> · Rejected: <strong style={{ color: rejectedTotal > 0 ? '#dc2626' : undefined }}>{rejectedTotal.toLocaleString()}</strong>
               </span>
               <span style={{ color: '#15803d', fontWeight: 700 }}>
                 Remaining for Field: {fieldLeft != null ? fieldLeft.toLocaleString() : '∞'} records

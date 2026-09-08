@@ -1398,6 +1398,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
                   <th style={{ textAlign: 'right' }}>Allocated for Web</th>
                   <th style={{ textAlign: 'right' }}>Used (Web)</th>
                   <th style={{ textAlign: 'right' }}>Used (Field)</th>
+                  <th style={{ textAlign: 'right' }}>Rejected</th>
                   <th style={{ textAlign: 'right' }}>Total Used</th>
                   <th style={{ textAlign: 'right' }}>Remaining for Field</th>
                   <th style={{ textAlign: 'center' }}>Surveys</th>
@@ -1406,7 +1407,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
               <tbody>
                 {clientBreakdown.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="muted" style={{ textAlign: 'center', padding: 12 }}>
+                    <td colSpan={10} className="muted" style={{ textAlign: 'center', padding: 12 }}>
                       Loading Client Admin allocations…
                     </td>
                   </tr>
@@ -1439,6 +1440,11 @@ export default function AdminSurveysScreen({ onToast, user }) {
                         <strong style={{ color: Number(ca.field_used) > 0 ? '#0f172a' : '#64748b' }}>
                           {Number(ca.field_used).toLocaleString()}
                         </strong>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span style={{ color: Number(ca.rejected || 0) > 0 ? '#dc2626' : '#64748b', fontWeight: Number(ca.rejected || 0) > 0 ? 700 : 400 }}>
+                          {Number(ca.rejected || 0).toLocaleString()}
+                        </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <strong>{Number(ca.total_used).toLocaleString()}</strong>
@@ -1481,6 +1487,9 @@ export default function AdminSurveysScreen({ onToast, user }) {
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.field_used) || 0), 0).toLocaleString()}
+                    </td>
+                    <td style={{ textAlign: 'right', color: '#dc2626' }}>
+                      {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.rejected) || 0), 0).toLocaleString()}
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.total_used) || 0), 0).toLocaleString()}

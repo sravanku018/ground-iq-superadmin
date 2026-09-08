@@ -331,10 +331,30 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                 const used = Math.max(web, Number(link?.use_count) || 0)
                 const left = Math.max(0, cap - used)
                 const closed = !!link?.expired || (cap > 0 && left === 0)
+                const isLive = !!link?.token && !closed
                 return (
                   <tr key={s.id || s.form_key}>
                     <td>
-                      <strong>{s.title || s.form_key}</strong>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <strong>{s.title || s.form_key}</strong>
+                        {isLive && (
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            background: '#dcfce7', color: '#15803d',
+                            fontSize: 10, fontWeight: 700, letterSpacing: '0.05em',
+                            padding: '2px 7px', borderRadius: 99,
+                            border: '1px solid #86efac',
+                          }}>
+                            <span style={{
+                              width: 6, height: 6, borderRadius: '50%',
+                              background: '#16a34a',
+                              animation: 'live-pulse 1.4s ease-in-out infinite',
+                              display: 'inline-block',
+                            }} />
+                            LIVE
+                          </span>
+                        )}
+                      </span>
                     </td>
                     <td>{field}</td>
                     <td>{web}</td>

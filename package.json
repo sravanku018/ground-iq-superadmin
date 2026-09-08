@@ -1,8 +1,8 @@
 {
   "name": "neondbapp",
   "private": true,
-  "version": "2.0.54",
-  "versionCode": 20054,
+  "version": "2.0.59",
+  "versionCode": 20059,
   "type": "module",
   "scripts": {
     "dev": "concurrently -n api,web -c green,cyan \"npm run server\" \"npm run client\"",
@@ -11,8 +11,6 @@
     "version:sync": "node scripts/sync-version.mjs",
     "version:bump": "node scripts/sync-version.mjs --bump",
     "version:minor": "node scripts/sync-version.mjs --minor",
-    "version:ui": "python3 bump_version.py",
-    "version:web": "python3 bump_version.py --web",
     "prebuild": "node scripts/sync-version.mjs",
     "build": "vite build",
     "build:apk": "npm run version:sync && vite build && npx cap sync android && cd android && ./gradlew assembleDebug && cp app/build/outputs/apk/debug/app-debug.apk ../ElectionSurvey-debug.apk && cp app/build/outputs/apk/debug/app-debug.apk ~/Downloads/ElectionSurvey-debug.apk",
@@ -20,18 +18,11 @@
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
     "lint": "oxlint",
-    "preview": "vite preview",
-    "test:api": "deno test -A --no-check --quiet deno-deploy/api_test.ts",
-    "test:api:helpers": "deno test -A --no-check --quiet deno-deploy/helpers_test.ts",
-    "test:api:field": "deno test -A --no-check --quiet deno-deploy/field_test.ts",
-    "test:api:integration": "deno test -A --no-check deno-deploy/integration_test.ts",
-    "test:api:stress": "deno test -A --no-check deno-deploy/stress_test.ts",
-    "test:api:all": "deno test -A --no-check deno-deploy/api_test.ts deno-deploy/helpers_test.ts deno-deploy/field_test.ts deno-deploy/integration_test.ts deno-deploy/stress_test.ts"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
     "@capacitor/app": "^8.1.1",
-    "@capacitor/camera": "^8.2.3",
     "@capacitor/cli": "^7.6.8",
     "@capacitor/core": "^8.5.0",
     "@capacitor/splash-screen": "^8.0.2",

@@ -571,6 +571,12 @@ export function listWebFillLinks(formKey) {
   return request(`/api/web-survey/links?form_key=${encodeURIComponent(formKey)}`)
 }
 
+export function deleteWebFillLink(formKey) {
+  return request(`/api/web-survey/link?form_key=${encodeURIComponent(formKey)}`, {
+    method: 'DELETE',
+  })
+}
+
 export function listWebSurveyStats() {
   return request('/api/web-survey/stats')
 }

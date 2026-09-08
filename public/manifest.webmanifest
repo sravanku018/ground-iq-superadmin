@@ -1,6 +1,6 @@
 {
-  "name": "Smart Survey X",
-  "short_name": "Smart Survey X",
+  "name": "Election Survey Field App",
+  "short_name": "ESurvey",
   "description": "Mobile field survey for Telangana election data collection",
   "start_url": "/",
   "display": "standalone",

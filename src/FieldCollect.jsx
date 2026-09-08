@@ -1630,7 +1630,78 @@ export default function FieldCollectScreen({
 
   // Answer inputs for one question — identical markup in every nav mode.
   function renderAnswerBody(qq) {
-    return qq.type === 'yesno' ? (
+    return (qq.type === 'multi_select' || qq.type === 'multi') ? (
+      <div style={{ marginTop: 6 }}>
+        {(() => {
+          const max = Math.max(1, Number(qq.max_choices) || 2)
+          const raw = answers[qq.id]
+          const currentList = Array.isArray(raw)
+            ? raw
+            : typeof raw === 'string' && raw.trim() !== ''
+              ? raw.split(',').map((s) => s.trim()).filter(Boolean)
+              : []
+          const opts = Array.isArray(qq.options) && qq.options.length > 0
+            ? qq.options
+            : ['Option 1', 'Option 2', 'Option 3', 'Option 4']
+
+          const toggleOpt = (opt) => {
+            let next
+            if (currentList.includes(opt)) {
+              next = currentList.filter((o) => o !== opt)
+            } else {
+              if (max > 0 && currentList.length >= max) {
+                next = [...currentList.slice(currentList.length - (max - 1)), opt]
+              } else {
+                next = [...currentList, opt]
+              }
+            }
+            chooseAnswer(qq.id, next)
+          }
+
+          return (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '4px 0 10px' }}>
+                <span style={{ fontSize: 13, fontWeight: 'bold', color: '#00e599' }}>
+                  ☑️ {displayLang === 'te' ? `గరిష్టంగా ${max} ఎంపికలు ఎంచుకోండి` : `Select up to ${max} answers`}:
+                </span>
+                <span className="pill ok" style={{ fontSize: 11, padding: '2px 8px' }}>
+                  {currentList.length} / {max} {displayLang === 'te' ? 'ఎంపికైంది' : 'selected'}
+                </span>
+              </div>
+              <div className={`qa-options${opts.length === 1 ? ' cols-1' : ''}`}>
+                {opts.map((opt, oi) => {
+                  const sel = currentList.includes(opt)
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      className={`qa-opt opt-btn${sel ? ' selected' : ''}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        fontWeight: 'bold',
+                        padding: '12px 18px',
+                        fontSize: 15,
+                        borderRadius: 16,
+                        border: sel ? '2px solid #00e599' : '1px solid rgba(255,255,255,0.15)',
+                        background: sel ? 'rgba(0, 229, 153, 0.22)' : 'rgba(255,255,255,0.06)',
+                        color: sel ? '#00e599' : '#f8fafc',
+                      }}
+                      onClick={() => toggleOpt(opt)}
+                    >
+                      <span style={{ fontSize: 16 }}>{sel ? '☑' : '☐'}</span>
+                      <span>{displayOption(opt, qq, oi, displayLang)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
+      </div>
+    ) : qq.type === 'yesno' ? (
       <div className="qa-options">
         <button
           type="button"

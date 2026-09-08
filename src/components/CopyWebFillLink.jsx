@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { listWebFillLinks, mintWebFillUrl, webFillUrl } from '../api'
+import { deleteWebFillLink, listWebFillLinks, mintWebFillUrl, webFillUrl } from '../api'
 
 function clampMax(n) {
   const x = Math.floor(Number(n) || 0)
@@ -8,9 +8,10 @@ function clampMax(n) {
   return x
 }
 
-export default function CopyWebFillLink({ formKey, title, onToast, compact = false }) {
+export default function CopyWebFillLink({ formKey, title, onToast, onStatusChange, compact = false }) {
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
+  const [fetching, setFetching] = useState(true)
   const [maxUses, setMaxUses] = useState(100)
   const [live, setLive] = useState(null)
   const [quota, setQuota] = useState({ used: 0, cap: 100, submitted: 0, linkUsed: 0 })
@@ -19,10 +20,16 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
     const key = String(formKey || '').trim()
     if (!key || key === 'default' || key === 'legacy') {
       setLive(null)
+      setUrl('')
+      setFetching(false)
       setQuota({ used: 0, cap: 100, submitted: 0, linkUsed: 0 })
+      onStatusChange?.({ hasLink: false, expired: false, cap: 100, totalUsed: 0, url: '' })
       return undefined
     }
     let dead = false
+    setFetching(true)
+    setUrl('')
+    setLive(null)
     listWebFillLinks(key)
       .then((d) => {
         if (dead) return
@@ -31,15 +38,25 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         const cap = Number(share?.max_uses || d.cap || 100) || 100
         const submitted = Number(d.submitted ?? d.used ?? 0) || 0
         const linkUsed = Number(d.link_used ?? share?.use_count ?? 0) || 0
+        const totalUsed = Math.max(submitted, linkUsed)
+        const isExp = Boolean(share?.expired || (cap > 0 && totalUsed >= cap))
+        const hasActive = Boolean(share?.token)
+        const mintedUrl = share?.token ? webFillUrl(key, share.token) : ''
         setQuota({ used: submitted, cap, submitted, linkUsed })
         if (share?.max_uses) setMaxUses(clampMax(share.max_uses))
-        if (share?.token) setUrl(webFillUrl(key, share.token))
+        if (share?.token) setUrl(mintedUrl)
+        onStatusChange?.({ hasLink: hasActive, expired: isExp, cap, totalUsed, url: mintedUrl })
       })
       .catch(() => {
         if (!dead) {
           setLive(null)
+          setUrl('')
           setQuota({ used: 0, cap: 100, submitted: 0, linkUsed: 0 })
+          onStatusChange?.({ hasLink: false, expired: false, cap: 100, totalUsed: 0, url: '' })
         }
+      })
+      .finally(() => {
+        if (!dead) setFetching(false)
       })
     return () => {
       dead = true
@@ -79,6 +96,13 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         cap: Number(d.max_uses) || limit,
         linkUsed: Number(d.use_count) || 0,
       }))
+      onStatusChange?.({
+        hasLink: true,
+        expired: false,
+        cap: Number(d.max_uses) || limit,
+        totalUsed: Number(d.use_count) || 0,
+        url: typeof link === 'string' ? link : '',
+      })
       try {
         window.dispatchEvent(new CustomEvent('esurvey-quota-changed'))
       } catch {
@@ -110,8 +134,8 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
   const full = totalUsed >= cap || live?.expired
   const left = Math.max(0, cap - totalUsed)
   const pct = Math.min(100, Math.round((totalUsed / cap) * 100))
-  const isLocked = Boolean(url || live?.token)
   const hasActiveLink = Boolean(url || live?.token)
+  const quotaChanged = hasActiveLink && maxUses !== cap
 
   const picker = (
     <label className="field" style={{ margin: 0, minWidth: compact ? 120 : 180 }}>
@@ -120,7 +144,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         <button
           type="button"
           className="btn small"
-          disabled={busy || full || live?.expired || isLocked || maxUses <= 1}
+          disabled={busy || (full && !quotaChanged) || live?.expired || maxUses <= 1}
           onClick={() => bump(-1)}
         >
           −
@@ -131,14 +155,14 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
           max={9999}
           step={1}
           value={maxUses}
-          disabled={busy || full || live?.expired || isLocked}
+          disabled={busy}
           onChange={(e) => setMaxUses(clampMax(e.target.value))}
           style={{ width: compact ? 72 : 88, textAlign: 'center' }}
         />
         <button
           type="button"
           className="btn small"
-          disabled={busy || full || live?.expired || isLocked || maxUses >= 9999}
+          disabled={busy || (full && !quotaChanged) || live?.expired || maxUses >= 9999}
           onClick={() => bump(1)}
         >
           +
@@ -147,7 +171,19 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
     </label>
   )
 
-  const usage = hasActiveLink ? (
+  const usage = fetching ? (
+    <div
+      style={{
+        margin: compact ? '0 0 6px' : '0 0 12px',
+        padding: compact ? '8px 10px' : '12px 14px',
+        borderRadius: 8,
+        border: '1px solid #e2e8f0',
+        background: '#f8fafc',
+      }}
+    >
+      <p className="muted" style={{ margin: 0, fontSize: 12 }}>Checking web survey link status…</p>
+    </div>
+  ) : hasActiveLink ? (
     <div
       style={{
         margin: compact ? '0 0 6px' : '0 0 12px',
@@ -170,6 +206,11 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         <span style={{ fontWeight: 600, color: '#64748b', fontSize: compact ? 13 : 15 }}>
           {' '}of {cap.toLocaleString()} responses used
         </span>
+        {quotaChanged ? (
+          <span className="pill" style={{ marginLeft: 8, fontSize: 11, background: '#fef3c7', color: '#92400e', fontWeight: 600 }}>
+            Pending update to {maxUses}
+          </span>
+        ) : null}
       </div>
       <div style={{ height: 8, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden', marginTop: 8 }}>
         <div
@@ -206,15 +247,19 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
     </div>
   )
 
-  const buttonLabel = full || live?.expired
-    ? 'Sharing disabled'
-    : busy
-      ? hasActiveLink
-        ? 'Copying…'
-        : 'Creating…'
-      : hasActiveLink
-        ? 'Copy web link'
-        : 'Create & copy link'
+  const buttonLabel = fetching
+    ? 'Checking…'
+    : full && !quotaChanged
+      ? 'Sharing disabled'
+      : busy
+        ? hasActiveLink
+          ? 'Updating…'
+          : 'Creating…'
+        : quotaChanged
+          ? `Update quota to ${maxUses} & copy`
+          : hasActiveLink
+            ? 'Copy web link'
+            : 'Create & copy link'
 
   if (compact) {
     return (
@@ -225,7 +270,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
           <button
             type="button"
             className="btn small"
-            disabled={busy || !formKey || full || live?.expired}
+            disabled={fetching || busy || !formKey || (full && !quotaChanged)}
             onClick={() => void mintAndCopy()}
           >
             {buttonLabel}
@@ -245,20 +290,20 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         {picker}
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        {hasActiveLink && (
+        {hasActiveLink && !fetching && (
           <input
             readOnly
             value={url}
             placeholder="Unique survey link"
-            disabled={full || live?.expired}
-            style={{ flex: 1, minWidth: 220, fontSize: 13, opacity: full || live?.expired ? 0.6 : 1 }}
+            disabled={full && !quotaChanged}
+            style={{ flex: 1, minWidth: 220, fontSize: 13, opacity: full && !quotaChanged ? 0.6 : 1 }}
             onFocus={(e) => e.target.select()}
           />
         )}
         <button
           type="button"
           className="btn primary"
-          disabled={busy || !formKey || full || live?.expired}
+          disabled={fetching || busy || !formKey || (full && !quotaChanged)}
           onClick={() => void mintAndCopy()}
         >
           {buttonLabel}

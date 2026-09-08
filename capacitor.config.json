@@ -1,6 +1,6 @@
 {
   "appId": "com.groundiq.electionsurvey",
-  "appName": "Smart Survey X",
+  "appName": "Election Survey",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",

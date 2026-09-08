@@ -21,6 +21,7 @@ const defaultOptionsForType = (t) => {
   if (t === 'sentiment' || t === 'sentiment_text') return ['Positive', 'Neutral', 'Negative']
   if (t === 'range' || t === 'numeric_range' || t === 'age') return ['10-20', '21-30', '31-40', '41-50', '50+']
   if (t === 'choice') return ['Option 1', 'Option 2', 'Option 3']
+  if (t === 'multi_select' || t === 'multi') return ['Option 1', 'Option 2', 'Option 3', 'Option 4']
   return []
 }
 
@@ -237,14 +238,17 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                   : q.type === 'sentiment' || q.type === 'sentiment_text'
                     ? ['Positive', 'Neutral', 'Negative']
                     : q.type === 'choice'
-                      ? ['Option 1', 'Option 2']
-                      : undefined
+                      ? ['Option 1', 'Option 2', 'Option 3']
+                      : q.type === 'multi_select' || q.type === 'multi'
+                        ? ['Option 1', 'Option 2', 'Option 3', 'Option 4']
+                        : undefined
 
         return {
           id: nextQuestionId(q.label, q.id, used, qIndex),
           label: String(q.label || '').trim() || `Question ${qIndex}`,
           type: String(q.type || 'text'),
           options: finalOptions,
+          max_choices: (q.type === 'multi_select' || q.type === 'multi') ? (q.max_choices !== undefined ? Number(q.max_choices) : 2) : undefined,
           required: !!q.required,
           visible: q.visible !== false,
           speak: String(q.speak || q.label || '').trim(),
@@ -398,7 +402,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       )}
       {questions.map((q, i) => {
         const type = q.type || 'text'
-        const hasOptions = ['choice', 'yesno', 'abc', 'sentiment', 'sentiment_text', 'range', 'numeric_range', 'age'].includes(type)
+        const hasOptions = ['choice', 'multi_select', 'multi', 'yesno', 'abc', 'sentiment', 'sentiment_text', 'range', 'numeric_range', 'age'].includes(type)
         const currentOpts = Array.isArray(q.options) && q.options.length > 0
           ? q.options
           : (q.optionsText || '').split(',').map((s) => s.trim()).filter(Boolean)
@@ -445,10 +449,11 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                 style={{ fontWeight: 'bold' }}
                 disabled={isFrozen || !canEdit}
               >
+                <option value="multi_select">☑️ Multiple Select (Choose up to 2 answers / Multi-Pick)</option>
+                <option value="choice">🔘 Single Choice (One-Answer Pill)</option>
                 <option value="range">🔢 Numeric Range Buttons (e.g. 10-20, 21-30, 31-40, 50+)</option>
                 <option value="yesno">✓ Yes / ✕ No Buttons (Green & Red)</option>
                 <option value="sentiment_text">📝 Text + Sentiment Fillers (Positive/Neutral/Negative)</option>
-                <option value="choice">🔘 Choice / Custom Options (Multi-Pill)</option>
                 <option value="abc">🔤 A · B · C · D Choice Buttons</option>
                 <option value="sentiment">⭐ Sentiment Rating Scale (Positive/Neutral/Negative)</option>
                 <option value="meter">🎚️ Sentiment Meter (tap-o-meter 1–100%)</option>
@@ -456,6 +461,24 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                 <option value="age">🔢 Age / Numeric Field</option>
               </select>
             </label>
+
+            {(type === 'multi_select' || type === 'multi') && (
+              <label className="field" style={{ marginTop: 8 }}>
+                <span>Max allowed selections (Default: 2 answers)</span>
+                <select
+                  value={q.max_choices || 2}
+                  onChange={(e) => updateQ(i, { max_choices: Number(e.target.value) || 2 })}
+                  disabled={isFrozen || !canEdit}
+                  style={{ fontWeight: 'bold' }}
+                >
+                  <option value={2}>Pick up to 2 answers (Standard)</option>
+                  <option value={3}>Pick up to 3 answers</option>
+                  <option value={4}>Pick up to 4 answers</option>
+                  <option value={5}>Pick up to 5 answers</option>
+                  <option value={0}>Any number of answers (Unlimited)</option>
+                </select>
+              </label>
+            )}
 
             {hasOptions && (
               <div style={{ marginTop: 10, background: 'rgba(15,23,42,0.05)', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 }}>
@@ -472,7 +495,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                       const parsed = val.split(',').map((s) => s.trim()).filter(Boolean)
                       updateQ(i, { optionsText: val, options: parsed })
                     }}
-                    placeholder="Satisfied, Neutral, Unsatisfied, Don't Know"
+                    placeholder="Option 1, Option 2, Option 3, Option 4"
                     disabled={isFrozen || !canEdit}
                   />
                 </label>
@@ -544,7 +567,38 @@ export default function AdminQuestionsScreen({ onToast, user }) {
               <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 'bold', color: '#38bdf8' }}>
                 <Icon name="smartphone" size={12} /> Mobile App Preview for Surveyors:
               </p>
-              {type === 'yesno' ? (
+              {type === 'multi_select' || type === 'multi' ? (
+                <div>
+                  <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 'bold', color: '#059669' }}>
+                    ☑️ Select up to {q.max_choices || 2} answers (Multiple Choice):
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {(currentOpts.length > 0 ? currentOpts : ['Option 1', 'Option 2', 'Option 3', 'Option 4']).map((opt, idx) => {
+                      const sampleSelected = idx === 0 || idx === 1
+                      return (
+                        <span
+                          key={opt}
+                          style={{
+                            background: sampleSelected ? '#059669' : 'rgba(15,23,42,0.08)',
+                            color: sampleSelected ? '#ffffff' : '#0f172a',
+                            border: sampleSelected ? '2px solid #059669' : '1px solid #cbd5e1',
+                            padding: '6px 14px',
+                            borderRadius: 16,
+                            fontSize: 12,
+                            fontWeight: 'bold',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                          }}
+                        >
+                          <span style={{ fontSize: 13 }}>{sampleSelected ? '☑' : '☐'}</span>
+                          {opt}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : type === 'yesno' ? (
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button type="button" className="btn" style={{ background: '#059669', color: '#fff', fontWeight: 'bold', padding: '8px 20px', border: 0 }}>
                     <Icon name="check" size={13} /> YES

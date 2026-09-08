@@ -285,6 +285,107 @@
     padding: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.04);
   }
 
+  /* ── Interactive Web Survey Live Console in Landing ── */
+  .web-survey-section {
+    padding: 72px 24px;
+    background: #ffffff;
+    border-top: 1px solid var(--surface-hover, #e2e8f0);
+    border-bottom: 1px solid var(--surface-hover, #e2e8f0);
+  }
+  .ws-wrap { max-width: 1200px; margin: 0 auto; }
+  .ws-grid {
+    display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 36px; align-items: start;
+  }
+  @media (max-width: 960px) { .ws-grid { grid-template-columns: 1fr; } }
+  
+  .ws-card {
+    background: #ffffff; border: 1.5px solid #86efac; border-radius: 18px;
+    box-shadow: 0 12px 36px -6px rgba(22, 163, 74, 0.08), 0 2px 8px rgba(0,0,0,0.04);
+    overflow: hidden;
+  }
+  .ws-card-header {
+    padding: 16px 20px; background: #f0fdf4; border-bottom: 1px solid #bbf7d0;
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+  .ws-card-body { padding: 22px; }
+  
+  .ws-feature-badges {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;
+  }
+  .ws-fbadge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px; background: #f8fafc;
+    border: 1px solid #e2e8f0; font-size: 11px; font-weight: 700; color: #475569;
+  }
+
+  .ws-counter-box {
+    background: #ffffff; border: 1px solid #bbf7d0; border-radius: 14px;
+    padding: 16px; margin-bottom: 16px;
+  }
+  .ws-counter-title {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #15803d;
+  }
+  .ws-counter-main {
+    font-size: 24px; font-weight: 800; color: #0f172a; margin-top: 6px;
+  }
+  .ws-counter-main span.accent-green { color: #16a34a; }
+  .ws-bar {
+    height: 8px; background: #e2e8f0; border-radius: 99px; overflow: hidden; margin-top: 10px;
+  }
+  .ws-bar-fill {
+    height: 100%; background: #16a34a; border-radius: 99px; transition: width 300ms ease;
+  }
+
+  .ws-timing-strip {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    padding: 12px 14px; background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: 10px; margin-bottom: 16px; font-size: 12px;
+  }
+  .ws-timing-item .t-lbl { font-size: 10px; font-weight: 800; color: #64748b; letter-spacing: 0.04em; }
+  .ws-timing-item .t-val { font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; }
+
+  .ws-url-box {
+    display: flex; gap: 8px; align-items: center; margin-bottom: 14px;
+  }
+  .ws-url-input {
+    flex: 1; height: 42px; border: 1.5px solid #e2e8f0; border-radius: 10px;
+    padding: 0 12px; font-size: 12px; font-family: monospace; background: #f8fafc;
+    color: #334155;
+  }
+
+  .ws-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn-whatsapp {
+    background: #25D366; color: #ffffff; border: none; font-weight: 700;
+  }
+  .btn-whatsapp:hover { background: #1eb857; color: #ffffff; }
+
+  .ws-live-feed {
+    border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc;
+    padding: 14px; margin-top: 16px;
+  }
+  .ws-live-feed-head {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 12px; font-weight: 700; color: #0f172a; margin-bottom: 10px;
+  }
+  .ws-feed-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 10px; background: #ffffff; border: 1px solid #e2e8f0;
+    border-radius: 8px; margin-bottom: 6px; font-size: 12px;
+  }
+
+  /* ── Dedicated Interactive Public Web Survey Modal ── */
+  .web-modal-box {
+    background: #ffffff; border-radius: 20px;
+    max-width: 520px; width: 100%;
+    box-shadow: 0 24px 56px rgba(0,0,0,0.25);
+    overflow: hidden; position: relative;
+    max-height: 90vh; display: flex; flex-direction: column;
+  }
+  .web-modal-body {
+    padding: 24px; overflow-y: auto;
+  }
+
   /* ── Dedicated Login Modal Overlay ── */
   .modal-overlay {
     position: fixed; inset: 0; z-index: 200;
@@ -354,14 +455,15 @@
       </a>
       <ul class="nav-links">
         <li><a href="#overview">Overview</a></li>
+        <li><a href="#web-survey-hub">Web Survey (Live)</a></li>
         <li><a href="#field-ops">Field Ops</a></li>
-        <li><a href="#web-intake">Web Intake</a></li>
         <li><a href="#client-admin">Client Admin</a></li>
         <li><a href="#security">Security</a></li>
       </ul>
     </div>
     <div class="nav-actions">
       <span class="badge-live"><span class="dot"></span> Platform Live</span>
+      <button type="button" class="btn btn-outline" onclick="openWebSurveyDemo()">🌐 Try Web Survey</button>
       <button type="button" class="btn btn-outline" onclick="openLoginModal()">Field APK</button>
       <button type="button" class="btn btn-primary" onclick="openLoginModal()">
         Client Admin Sign In →
@@ -436,13 +538,14 @@
           </div>
 
           <!-- Mini survey cards -->
-          <div class="preview-row">
+          <div class="preview-row" style="cursor: pointer; transition: background 140ms;" onclick="openWebSurveyDemo()" title="Click to test Web Survey">
             <div>
               <div class="title">
                 Genral Survey <span class="tag-live">LIVE</span>
+                <span style="font-size: 10px; color: #16a34a; font-weight: 700; background: #dcfce7; padding: 1px 6px; border-radius: 4px; margin-left: 4px;">Test Fill ↗</span>
               </div>
               <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
-                Web quota: 200 · 181 left
+                Web quota: 200 · 181 left · WhatsApp ready
               </div>
             </div>
             <div class="stats">
@@ -539,18 +642,31 @@
       </div>
 
       <!-- Card 2 -->
-      <div class="feature-card" id="web-intake">
+      <div class="feature-card" id="web-intake" style="border-color: #86efac; box-shadow: 0 4px 14px rgba(22, 163, 74, 0.08);">
         <div class="feature-icon green">🌐</div>
-        <h3>Public Web Surveys &amp; WhatsApp</h3>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+          <h3 style="margin: 0;">Public Web Surveys &amp; WhatsApp</h3>
+          <span class="badge-live" style="font-size: 10px; padding: 2px 8px;"><span class="dot"></span> Active</span>
+        </div>
         <p>
-          Instantly mint shareable survey links with hard caps, real-time response counters, and 1-click WhatsApp distribution.
+          Generate tokenized web survey links with strict response limits, real-time counters, starting/ending schedules, and instant 1-click WhatsApp distribution.
         </p>
-        <ul class="feature-list">
-          <li>Live status tracking (Started &amp; Ended timestamps)</li>
-          <li>Auto-shutdown when quota is reached</li>
-          <li>Bot and duplicate submission protection</li>
-          <li>Instant respondent mobile optimization</li>
+        <ul class="feature-list" style="margin-bottom: 16px;">
+          <li><strong>Responses Allowed Cap:</strong> Stepper controls (1–9,999) with real-time field reservation deduction</li>
+          <li><strong>Live Campaign Timers:</strong> Precise Started &amp; Ended timestamps in Indian Standard Time (IST)</li>
+          <li><strong>Automated Quota Cutoff:</strong> Link immediately shuts down upon reaching target cap</li>
+          <li><strong>1-Click WhatsApp &amp; Copy:</strong> Pre-formatted WhatsApp broadcast text with survey title</li>
+          <li><strong>Mobile-Responsive Form:</strong> Instant respondent fill without needing app installation</li>
+          <li><strong>Direct QA Pipeline:</strong> All web records flow into Client Admin with <code>#web</code> audit badge</li>
         </ul>
+        <div style="margin-top: auto; display: flex; gap: 8px;">
+          <button type="button" class="btn btn-primary" style="flex: 1; min-height: 38px; font-size: 12px; background: #16a34a;" onclick="openWebSurveyDemo()">
+            Launch Interactive Web Demo ↗
+          </button>
+          <a href="#web-survey-hub" class="btn btn-outline" style="min-height: 38px; font-size: 12px;">
+            View Hub ↓
+          </a>
+        </div>
       </div>
 
       <!-- Card 3 -->
@@ -570,6 +686,188 @@
     </div>
   </section>
 
+  <!-- ═══ Dedicated Interactive Web Survey Section ═══ -->
+  <section class="web-survey-section" id="web-survey-hub">
+    <div class="ws-wrap">
+      <div class="section-head">
+        <div class="section-eyebrow" style="color: #16a34a;">Self-Service Web Distribution</div>
+        <h2 class="section-title">End-to-End Web Survey &amp; WhatsApp Campaigns</h2>
+        <p class="section-sub">
+          Generate secure public survey links on-the-fly, calibrate responses allowed, broadcast instantly to WhatsApp groups, and monitor intake in real time with auto-cutoff.
+        </p>
+      </div>
+
+      <div class="ws-grid">
+        <!-- Interactive Web Survey Control Console -->
+        <div class="ws-card">
+          <div class="ws-card-header">
+            <div>
+              <span style="font-size: 11px; font-weight: 800; color: #15803d; letter-spacing: .04em; text-transform: uppercase;">
+                Interactive Console · Live Simulation
+              </span>
+              <h3 style="font-size: 17px; font-weight: 800; color: #0f172a; margin-top: 2px;">
+                Genral Survey — Web Distribution Link
+              </h3>
+            </div>
+            <span class="badge-live"><span class="dot"></span> 1 LIVE</span>
+          </div>
+
+          <div class="ws-card-body">
+            <div class="ws-feature-badges">
+              <span class="ws-fbadge">🔒 Quota Protected</span>
+              <span class="ws-fbadge">💬 1-Click WhatsApp</span>
+              <span class="ws-fbadge">🕒 IST Timers</span>
+              <span class="ws-fbadge">🛑 Auto-Cutoff</span>
+            </div>
+
+            <!-- Responses Counter & Progress Bar -->
+            <div class="ws-counter-box">
+              <div class="ws-counter-title">
+                <span>Web Quota Intake Progress</span>
+                <span id="ws-status-badge" style="color: #16a34a; font-weight: 800;">181 Left</span>
+              </div>
+              <div class="ws-counter-main tnum">
+                <span id="ws-used-count" class="accent-green">19</span>
+                <span style="font-size: 15px; color: #64748b; font-weight: 600;">of <span id="ws-cap-val">200</span> responses used</span>
+              </div>
+              <div class="ws-bar">
+                <div class="ws-bar-fill" id="ws-progress-fill" style="width: 9.5%;"></div>
+              </div>
+              <div style="font-size: 12px; color: #64748b; margin-top: 8px;">
+                ✓ <strong>181</strong> remaining · Reserved against Client Admin quota (deducted from field headroom).
+              </div>
+            </div>
+
+            <!-- Started & Ended Timestamps -->
+            <div class="ws-timing-strip">
+              <div class="ws-timing-item">
+                <div class="t-lbl">🕒 STARTING TIME (IST)</div>
+                <div class="t-val" id="ws-start-time">08 Sep 2026, 02:30 PM</div>
+              </div>
+              <div class="ws-timing-item">
+                <div class="t-lbl">🏁 ENDING TIME (IST)</div>
+                <div class="t-val" id="ws-end-time" style="color: #16a34a;">🟢 Live &amp; Ongoing (Active)</div>
+              </div>
+            </div>
+
+            <!-- Responses Allowed Stepper Controls -->
+            <div style="display: flex; gap: 12px; align-items: flex-end; margin-bottom: 16px; flex-wrap: wrap;">
+              <div style="flex: 0 0 auto;">
+                <label style="font-size: 11px; font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">
+                  Responses Allowed (Cap)
+                </label>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <button type="button" class="btn btn-outline" style="min-height: 38px; padding: 0 12px; font-weight: 800;" onclick="adjustWsCap(-10)">−</button>
+                  <input type="number" id="ws-cap-input" value="200" min="1" max="9999" style="width: 80px; height: 38px; text-align: center; border: 1.5px solid #e2e8f0; border-radius: 8px; font-weight: 700; font-size: 14px;" onchange="onCapInputChange(this.value)" />
+                  <button type="button" class="btn btn-outline" style="min-height: 38px; padding: 0 12px; font-weight: 800;" onclick="adjustWsCap(10)">+</button>
+                </div>
+              </div>
+              <div style="flex: 1; min-width: 200px;">
+                <button type="button" class="btn btn-primary" style="width: 100%; min-height: 38px; font-size: 13px;" onclick="copyWebSurveyLink()">
+                  📋 Copy Survey Link
+                </button>
+              </div>
+            </div>
+
+            <!-- Link URL & WhatsApp Trigger -->
+            <div class="ws-url-box">
+              <input type="text" id="ws-link-url" readonly value="https://ground-iq-web-lake.vercel.app/?fill=genral-survey&k=Z6ksbfQvkMzb_7m8N5nd3cXl" class="ws-url-input" onclick="this.select()" />
+            </div>
+
+            <div class="ws-actions">
+              <button type="button" class="btn btn-whatsapp" style="flex: 1; min-height: 42px;" onclick="shareOnWhatsApp()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                Share via WhatsApp
+              </button>
+              <button type="button" class="btn btn-outline" style="min-height: 42px;" onclick="openWebSurveyDemo()">
+                ⚡ Open Respondent Form
+              </button>
+            </div>
+
+            <!-- Recent Web Submissions Stream -->
+            <div class="ws-live-feed">
+              <div class="ws-live-feed-head">
+                <span>Recent Web Responses (Live Intake)</span>
+                <span style="font-size: 11px; color: #16a34a; font-weight: 700;">● Auto-Refreshed</span>
+              </div>
+              <div class="ws-feed-item">
+                <span><strong>Suresh K.</strong> · Nizamabad Urban</span>
+                <span style="font-size: 11px; color: #64748b;">Just now</span>
+                <span style="color: #16a34a; font-weight: 700; background: #dcfce7; padding: 2px 8px; border-radius: 99px; font-size: 10px;">Confirmed</span>
+              </div>
+              <div class="ws-feed-item">
+                <span><strong>Anitha Reddy</strong> · Warangal West</span>
+                <span style="font-size: 11px; color: #64748b;">12m ago</span>
+                <span style="color: #16a34a; font-weight: 700; background: #dcfce7; padding: 2px 8px; border-radius: 99px; font-size: 10px;">Confirmed</span>
+              </div>
+              <div class="ws-feed-item">
+                <span><strong>Anonymous Respondent</strong> · Secunderabad</span>
+                <span style="font-size: 11px; color: #64748b;">48m ago</span>
+                <span style="color: #d97706; font-weight: 700; background: #fef3c7; padding: 2px 8px; border-radius: 99px; font-size: 10px;">Pending QA</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Web Survey Architecture & Feature Highlights -->
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px;">
+            <div style="font-size: 12px; font-weight: 800; color: #1d6fe0; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px;">
+              Enterprise Architecture
+            </div>
+            <h3 style="font-size: 18px; font-weight: 800; color: #0f172a; margin-bottom: 12px;">
+              How Web Surveys Integrate Seamlessly
+            </h3>
+            <p style="font-size: 13px; color: #475569; line-height: 1.6; margin-bottom: 16px;">
+              Web surveys are designed to complement ground field enumeration without creating quota confusion or unvetted data clutter.
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+              <div style="display: flex; gap: 12px; align-items: flex-start;">
+                <div style="width: 28px; height: 28px; border-radius: 8px; background: #dcfce7; color: #15803d; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; flex-shrink: 0;">1</div>
+                <div>
+                  <strong style="font-size: 13px; color: #0f172a;">Strict Tenant Headroom Lock:</strong>
+                  <p style="font-size: 12px; color: #64748b; margin-top: 2px;">When you reserve 200 web responses, remaining field quota instantly reconciles to (5,000 − 200 − used).</p>
+                </div>
+              </div>
+              <div style="display: flex; gap: 12px; align-items: flex-start;">
+                <div style="width: 28px; height: 28px; border-radius: 8px; background: #eff6ff; color: #1d6fe0; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; flex-shrink: 0;">2</div>
+                <div>
+                  <strong style="font-size: 13px; color: #0f172a;">Live Start &amp; End Timers:</strong>
+                  <p style="font-size: 12px; color: #64748b; margin-top: 2px;">Timers activate the moment a link is minted and record the conclusion timestamp when targets are reached.</p>
+                </div>
+              </div>
+              <div style="display: flex; gap: 12px; align-items: flex-start;">
+                <div style="width: 28px; height: 28px; border-radius: 8px; background: #fef3c7; color: #b45309; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; flex-shrink: 0;">3</div>
+                <div>
+                  <strong style="font-size: 13px; color: #0f172a;">Instant Public Fill Experience:</strong>
+                  <p style="font-size: 12px; color: #64748b; margin-top: 2px;">Voters and citizens can respond directly on any mobile browser (Safari, Chrome) without downloading an app.</p>
+                </div>
+              </div>
+              <div style="display: flex; gap: 12px; align-items: flex-start;">
+                <div style="width: 28px; height: 28px; border-radius: 8px; background: #ede9fe; color: #6d28d9; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; flex-shrink: 0;">4</div>
+                <div>
+                  <strong style="font-size: 13px; color: #0f172a;">Unified Client Admin Review:</strong>
+                  <p style="font-size: 12px; color: #64748b; margin-top: 2px;">Web intakes land alongside field records, separated by source pills with bulk QA confirmation actions.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="padding: 20px; background: #f0fdf4; border: 1.5px dashed #86efac; border-radius: 14px; text-align: center;">
+            <div style="font-size: 28px; margin-bottom: 6px;">💬</div>
+            <h4 style="font-size: 15px; font-weight: 800; color: #15803d; margin-bottom: 4px;">WhatsApp Viral Distribution Ready</h4>
+            <p style="font-size: 12px; color: #475569; margin-bottom: 12px;">
+              Prepares high-conversion WhatsApp invitation message with official survey credentials.
+            </p>
+            <button type="button" class="btn btn-primary" style="background: #16a34a; font-size: 13px;" onclick="openWebSurveyDemo()">
+              Open Interactive Public Survey Modal →
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ═══ Workflow Demonstration ═══ -->
   <section class="workflow-section" id="security">
     <div class="workflow-box">
@@ -585,6 +883,7 @@
         <button type="button" class="wf-tab active" onclick="setWfTab(0)">1. Quota &amp; Allocation</button>
         <button type="button" class="wf-tab" onclick="setWfTab(1)">2. Live Review QA</button>
         <button type="button" class="wf-tab" onclick="setWfTab(2)">3. Security &amp; 2FA</button>
+        <button type="button" class="wf-tab" onclick="setWfTab(3)">4. Web Surveys &amp; WhatsApp</button>
       </div>
 
       <div class="wf-content" id="wf-panel">
@@ -673,6 +972,101 @@
     </div>
   </div>
 
+  <!-- ═══ Dedicated Interactive Public Web Survey Respondent Modal ═══ -->
+  <div class="modal-overlay" id="webSurveyModal">
+    <div class="web-modal-box">
+      <div class="modal-head" style="background: #f0fdf4; border-bottom: 1px solid #bbf7d0;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="color: #16a34a; font-size: 18px;">🌐</span>
+            <span style="font-size: 12px; font-weight: 800; color: #15803d; text-transform: uppercase; letter-spacing: .05em;">
+              Public Web Survey · Live Preview
+            </span>
+          </div>
+          <h2 style="font-size: 18px; font-weight: 800; color: #0f172a; margin-top: 4px;">
+            Genral Survey (Telangana State)
+          </h2>
+          <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
+            Token: <span class="mono" style="color: #0f172a; font-weight: 600;">Z6ksbfQvkMzb_7m8N5nd3cXl</span> · Quota: <span id="modal-ws-quota">200 max uses</span>
+          </div>
+        </div>
+        <button type="button" class="modal-close" onclick="closeWebSurveyDemo()">✕</button>
+      </div>
+
+      <div class="web-modal-body">
+        <div style="padding: 10px 14px; background: #eff6ff; border-radius: 10px; border: 1px solid #bfdbfe; font-size: 12px; color: #1e40af; margin-bottom: 16px;">
+          💡 <strong>Simulating Citizen/Respondent Mobile Web Fill:</strong> Submitting this response increments web intake, deducts quota, and creates a real-time audit record in the Client Admin queue.
+        </div>
+
+        <form onsubmit="handleWebSurveySubmit(event)">
+          <div class="field">
+            <label>1. Respondent Full Name / పేరు</label>
+            <input type="text" id="ws-resp-name" placeholder="e.g. Ramesh Kumar" value="Ramesh Kumar" required />
+          </div>
+
+          <div class="field">
+            <label>2. District / జిల్లా</label>
+            <select id="ws-resp-district" style="height: 40px; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0 10px; font-size: 13px; background: #fff;">
+              <option value="Hyderabad">Hyderabad</option>
+              <option value="Karimnagar">Karimnagar</option>
+              <option value="Nizamabad" selected>Nizamabad</option>
+              <option value="Warangal">Warangal</option>
+              <option value="Khammam">Khammam</option>
+              <option value="Rangareddy">Rangareddy</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>3. Assembly Constituency / నియోజకవర్గం</label>
+            <select id="ws-resp-ac" style="height: 40px; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 0 10px; font-size: 13px; background: #fff;">
+              <option value="Nizamabad Urban" selected>Nizamabad Urban</option>
+              <option value="Nizamabad Rural">Nizamabad Rural</option>
+              <option value="Bodhan">Bodhan</option>
+              <option value="Armur">Armur</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>4. Key Priority / మీ ప్రాధాన్యత ఏమిటి?</label>
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px; font-size: 13px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="radio" name="ws_priority" value="Employment" checked /> Employment &amp; Youth Jobs / ఉపాధి
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="radio" name="ws_priority" value="Agriculture" /> Agriculture &amp; Water Supply / సాగునీరు
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="radio" name="ws_priority" value="Healthcare" /> Healthcare &amp; Welfare Schemes / ఆరోగ్యం
+              </label>
+            </div>
+          </div>
+
+          <div class="field" style="margin-top: 14px;">
+            <label>5. Overall Satisfaction / ప్రస్తుత పాలనపై మీ అభిప్రాయం</label>
+            <div style="display: flex; gap: 8px; margin-top: 4px;">
+              <label style="flex: 1; text-align: center; padding: 8px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px; cursor: pointer; background: #f8fafc;">
+                <input type="radio" name="ws_satisfaction" value="Good" checked /> Good 👍
+              </label>
+              <label style="flex: 1; text-align: center; padding: 8px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px; cursor: pointer; background: #f8fafc;">
+                <input type="radio" name="ws_satisfaction" value="Neutral" /> Neutral 😐
+              </label>
+              <label style="flex: 1; text-align: center; padding: 8px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px; cursor: pointer; background: #f8fafc;">
+                <input type="radio" name="ws_satisfaction" value="Poor" /> Critical 👎
+              </label>
+            </div>
+          </div>
+
+          <div style="margin-top: 20px; display: flex; gap: 10px;">
+            <button type="button" class="btn btn-outline" style="flex: 1;" onclick="closeWebSurveyDemo()">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="ws-submit-btn" style="flex: 2; background: #16a34a; font-weight: 700;">
+              Submit Web Response →
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══ Toast ═══ -->
   <div class="toast" id="toastMsg">
     <span id="toastText">Welcome Harish Rao · Client Admin</span>
@@ -751,6 +1145,106 @@
       }, 700);
     }
 
+    /* ── Web Survey Interactive Simulation Functions ── */
+    let currentWsCap = 200;
+    let currentWsUsed = 19;
+    const wsSurveyTitle = "Genral Survey (Telangana State)";
+    const wsSurveyUrl = "https://ground-iq-web-lake.vercel.app/?fill=genral-survey&k=Z6ksbfQvkMzb_7m8N5nd3cXl";
+
+    function updateWsUi() {
+      const left = Math.max(0, currentWsCap - currentWsUsed);
+      const pct = Math.min(100, Math.round((currentWsUsed / currentWsCap) * 100));
+      const full = currentWsUsed >= currentWsCap;
+
+      document.getElementById('ws-cap-val').innerText = currentWsCap.toLocaleString();
+      document.getElementById('ws-used-count').innerText = currentWsUsed.toLocaleString();
+      document.getElementById('ws-cap-input').value = currentWsCap;
+      document.getElementById('modal-ws-quota').innerText = currentWsCap.toLocaleString() + ' max uses';
+
+      const statusBadge = document.getElementById('ws-status-badge');
+      const progressFill = document.getElementById('ws-progress-fill');
+      const endTime = document.getElementById('ws-end-time');
+
+      if (full) {
+        statusBadge.innerText = 'Target Reached (Closed)';
+        statusBadge.style.color = '#dc2626';
+        progressFill.style.width = '100%';
+        progressFill.style.background = '#dc2626';
+        endTime.innerHTML = '🛑 <strong>Ended:</strong> Target Reached (' + currentWsCap + '/' + currentWsCap + ')';
+        endTime.style.color = '#dc2626';
+      } else {
+        statusBadge.innerText = left.toLocaleString() + ' Left';
+        statusBadge.style.color = '#16a34a';
+        progressFill.style.width = pct + '%';
+        progressFill.style.background = pct >= 80 ? '#f59e0b' : '#16a34a';
+        endTime.innerHTML = '🟢 Live &amp; Ongoing (Active)';
+        endTime.style.color = '#16a34a';
+      }
+    }
+
+    function adjustWsCap(delta) {
+      currentWsCap = Math.max(1, Math.min(9999, currentWsCap + delta));
+      updateWsUi();
+      showToast('Responses allowed updated to ' + currentWsCap + ' · Field headroom adjusted');
+    }
+
+    function onCapInputChange(val) {
+      const num = parseInt(val, 10);
+      if (!isNaN(num)) {
+        currentWsCap = Math.max(1, Math.min(9999, num));
+        updateWsUi();
+        showToast('Quota cap updated to ' + currentWsCap);
+      }
+    }
+
+    function copyWebSurveyLink() {
+      const input = document.getElementById('ws-link-url');
+      input.select();
+      navigator.clipboard.writeText(wsSurveyUrl).then(() => {
+        showToast('Copied Web Survey link to clipboard ✓ (' + currentWsCap + ' cap)');
+      }).catch(() => {
+        showToast('Survey URL: ' + wsSurveyUrl);
+      });
+    }
+
+    function shareOnWhatsApp() {
+      const text = encodeURIComponent('Please fill this official survey: ' + wsSurveyTitle + '\n' + wsSurveyUrl);
+      window.open('https://wa.me/?text=' + text, '_blank');
+      showToast('Opening WhatsApp with survey link…');
+    }
+
+    function openWebSurveyDemo() {
+      document.getElementById('webSurveyModal').classList.add('open');
+    }
+
+    function closeWebSurveyDemo() {
+      document.getElementById('webSurveyModal').classList.remove('open');
+    }
+
+    // Modal backdrop clicks for Web Survey Modal
+    document.getElementById('webSurveyModal').addEventListener('click', function(e) {
+      if (e.target === this) closeWebSurveyDemo();
+    });
+
+    function handleWebSurveySubmit(e) {
+      e.preventDefault();
+      const name = document.getElementById('ws-resp-name').value || 'Anonymous';
+      const ac = document.getElementById('ws-resp-ac').value || 'Nizamabad Urban';
+      const btn = document.getElementById('ws-submit-btn');
+      
+      btn.innerText = 'Submitting encrypted response…';
+      btn.disabled = true;
+
+      setTimeout(() => {
+        currentWsUsed += 1;
+        updateWsUi();
+        btn.innerText = 'Submit Web Response →';
+        btn.disabled = false;
+        closeWebSurveyDemo();
+        showToast('Response submitted from ' + name + ' (' + ac + ') ✓ Added to Client Admin queue');
+      }, 700);
+    }
+
     const wfData = [
       {
         title: "Strict Tenant Quota Governance",
@@ -797,6 +1291,22 @@
             <div>🔐 <strong>PII Redaction:</strong> Phone &amp; Aadhaar masked</div>
             <div>📑 <strong>KYC Locks:</strong> Surveyor media locked upon review</div>
             <div>⚡ <strong>Rate Limiting:</strong> 60s cooldown on failed auth</div>
+          </div>
+        `
+      },
+      {
+        title: "Public Web Surveys & WhatsApp Distribution",
+        desc: "Mint secure, tokenized survey links with hard quota caps, real-time IST start/end timestamps, auto-cutoff protection, and 1-click WhatsApp viral sharing directly from the Client Admin console.",
+        screen: `
+          <div style="font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 8px;">WEB SURVEY ENGINE</div>
+          <div style="padding: 12px; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0; font-size: 12px; line-height: 1.7;">
+            <div>🌐 <strong>Live Quota:</strong> 19 / 200 responses used (181 left)</div>
+            <div>🕒 <strong>Timers:</strong> Started 08 Sep 2026, 02:30 PM (IST)</div>
+            <div>💬 <strong>WhatsApp:</strong> 1-click broadcast link pre-formatted</div>
+            <div>🛑 <strong>Auto-Shutdown:</strong> Cut off automatically upon reaching 200</div>
+          </div>
+          <div style="margin-top: 10px; display: flex; gap: 8px;">
+            <button type="button" class="btn btn-primary" style="flex: 1; padding: 6px; font-size: 11px; background: #16a34a;" onclick="openWebSurveyDemo()">Test Web Survey Fill ↗</button>
           </div>
         `
       }

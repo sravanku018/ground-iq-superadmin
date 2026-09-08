@@ -55,7 +55,7 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
   const [questions, setQuestions] = useState([])
   const [answers, setAnswers] = useState({})
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const [mockDone, setMockDone] = useState(false)
   const [tab, setTab] = useState('link')
   const [stats, setStats] = useState([])
   const [statsLoading, setStatsLoading] = useState(false)
@@ -97,6 +97,7 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
   }, [tab, loadStats])
 
   useEffect(() => {
+    setMockDone(false)
     if (!surveyId) {
       setQuestions([])
       setTitle('')
@@ -123,15 +124,16 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
     setAnswers((a) => ({ ...a, [id]: val }))
   }
 
-  async function submit(e) {
+  function submit(e) {
     e.preventDefault()
     if (!formKey) {
       onToast?.('Pick a survey', 'error')
       return
     }
     for (const q of questions) {
-      const val = String(answers[qid(q)] || '').trim()
-      if (!val) {
+      const val = answers[qid(q)]
+      const hasVal = Array.isArray(val) ? val.length > 0 : String(val || '').trim() !== ''
+      if (!hasVal) {
         const qTitle = q.label || q.label_te || `Question ${questions.indexOf(q) + 1}`
         onToast?.(`Question missed: ${qTitle} — please answer before submitting.`, 'error')
         if (typeof document !== 'undefined') {
@@ -146,21 +148,8 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
         return
       }
     }
-    setSaving(true)
-    try {
-      const res = await createWebSurvey({
-        form_key: formKey,
-        form_id: formKey,
-        submitted_by: user?.name || user?.username,
-        answers,
-      })
-      onToast?.(`Web survey saved · #${res.id} · ${res.status || 'pending'}`, 'ok')
-      setAnswers(emptyAnswers(questions))
-    } catch (err) {
-      onToast?.(err.message || 'Submit failed', 'error')
-    } finally {
-      setSaving(false)
-    }
+    setMockDone(true)
+    onToast?.(`Mock preview submitted successfully for "${title || 'Survey'}"`, 'ok')
   }
 
   return (
@@ -301,114 +290,215 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
 
       {title ? <h3 style={{ margin: '0 0 12px' }}>{title}</h3> : null}
 
-      {!canFillHere ? (
-        <p className="muted" style={{ fontSize: 13 }}>
-          Copy the link above to share. Filling from this page needs Super Admin to grant Web
-          survey.
-        </p>
+      {mockDone ? (
+        <div className="card" style={{ textAlign: 'center', padding: '36px 20px', background: 'rgba(5, 150, 105, 0.08)', border: '1.5px solid #059669', borderRadius: 12, marginBottom: 16 }}>
+          <div style={{ fontSize: 44, marginBottom: 10 }}>🎉</div>
+          <h3 style={{ margin: '0 0 8px', color: '#059669', fontSize: 22 }}>
+            Thank you for participating in {title || 'the survey'}!
+          </h3>
+          <p className="muted" style={{ margin: '0 0 20px', fontSize: 14 }}>
+            Your feedback was recorded in this interactive preview. Respondents who use your copied link will experience this exact confirmation.
+          </p>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() => {
+              setMockDone(false)
+              setAnswers(emptyAnswers(questions))
+            }}
+          >
+            ↺ Test Again / Reset Preview
+          </button>
+        </div>
       ) : questions.length === 0 && !loading ? (
         <p className="muted">This survey has no questions yet.</p>
-      ) : canFillHere ? (
-        <form onSubmit={submit}>
-          {questions.map((q, i) => {
-            const id = qid(q)
-            const type = q.type || 'text'
-            const opts = Array.isArray(q.options) ? q.options : []
-            const teOpts = Array.isArray(q.options_te) ? q.options_te : []
-            const val = answers[id] ?? ''
-            return (
-              <div key={id || i} id={`admin-web-q-${id}`} className="card" style={{ marginBottom: 12 }}>
-                <p style={{ margin: '0 0 4px', fontWeight: 700 }}>
-                  Q{i + 1}. {q.label || 'Question'}
-                  {q.required ? ' *' : ''}
-                </p>
-                {q.label_te ? (
-                  <p className="muted" style={{ margin: '0 0 10px', fontSize: 13 }}>
-                    {q.label_te}
+      ) : (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Icon name="smartphone" size={16} /> Live Questionnaire Preview (Mock Mode)
+              </h3>
+              <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
+                Preview how respondents experience your survey. Submitting here is in safe mock mode (does not save to database).
+              </p>
+            </div>
+            <span className="pill ok" style={{ fontSize: 11, fontWeight: 'bold' }}>
+              Preview Mode
+            </span>
+          </div>
+
+          <form onSubmit={submit}>
+            {questions.map((q, i) => {
+              const id = qid(q)
+              const type = q.type || 'text'
+              const opts = Array.isArray(q.options) ? q.options : []
+              const teOpts = Array.isArray(q.options_te) ? q.options_te : []
+              const val = answers[id] ?? ''
+              const max = Math.max(1, Number(q.max_choices) || 2)
+
+              return (
+                <div key={id || i} id={`admin-web-q-${id}`} className="card" style={{ marginBottom: 12 }}>
+                  <p style={{ margin: '0 0 4px', fontWeight: 700, fontSize: 14 }}>
+                    Q{i + 1}. {q.label || 'Question'}
+                    {q.required ? ' *' : ''}
                   </p>
-                ) : (
-                  <div style={{ height: 8 }} />
-                )}
-                {type === 'meter' ? (
-                  <div className="qa-meter" style={{ marginTop: 8 }}>
-                    <div className="qa-meter-track">
-                      <input
-                        type="range"
-                        min="1"
-                        max="100"
-                        value={meterNum(val)}
-                        onChange={(e) => setAns(id, meterStored(e.target.value))}
-                        aria-label={q.label || 'Meter 1-100'}
-                      />
+                  {q.label_te ? (
+                    <p className="muted" style={{ margin: '0 0 10px', fontSize: 13 }}>
+                      {q.label_te}
+                    </p>
+                  ) : (
+                    <div style={{ height: 6 }} />
+                  )}
+
+                  {(type === 'multi_select' || type === 'multi') ? (
+                    <div>
+                      {(() => {
+                        const currentList = Array.isArray(val)
+                          ? val
+                          : typeof val === 'string' && val.trim() !== ''
+                            ? val.split(',').map((s) => s.trim()).filter(Boolean)
+                            : []
+                        const multiOpts = opts.length > 0 ? opts : ['Option 1', 'Option 2', 'Option 3', 'Option 4']
+
+                        const toggle = (opt) => {
+                          let next
+                          if (currentList.includes(opt)) {
+                            next = currentList.filter((o) => o !== opt)
+                          } else {
+                            if (max > 0 && currentList.length >= max) {
+                              next = [...currentList.slice(currentList.length - (max - 1)), opt]
+                            } else {
+                              next = [...currentList, opt]
+                            }
+                          }
+                          setAns(id, next)
+                        }
+
+                        return (
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>
+                                ☑️ Select up to {max} answers:
+                              </span>
+                              <span className="pill ok" style={{ fontSize: 11, padding: '2px 8px' }}>
+                                {currentList.length} / {max} selected
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                              {multiOpts.map((opt, oi) => {
+                                const sel = currentList.includes(opt)
+                                return (
+                                  <button
+                                    key={`${opt}-${oi}`}
+                                    type="button"
+                                    className={`chip ${sel ? 'selected' : ''}`}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 6,
+                                      fontWeight: 'bold',
+                                      padding: '6px 14px',
+                                      borderRadius: 16,
+                                    }}
+                                    onClick={() => toggle(opt)}
+                                  >
+                                    <span>{sel ? '☑' : '☐'}</span>
+                                    <span>{opt}</span>
+                                    {teOpts[oi] ? (
+                                      <span className="muted" style={{ marginLeft: 4, fontWeight: 500 }}>
+                                        {teOpts[oi]}
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </div>
-                    <div className="qa-meter-scale">
-                      <span>{opts[0] || 'Negative'}</span>
-                      <span>{opts[1] || 'Neutral'}</span>
-                      <span>{opts[2] || 'Positive'}</span>
+                  ) : type === 'meter' ? (
+                    <div className="qa-meter" style={{ marginTop: 8 }}>
+                      <div className="qa-meter-track">
+                        <input
+                          type="range"
+                          min="1"
+                          max="100"
+                          value={meterNum(val)}
+                          onChange={(e) => setAns(id, meterStored(e.target.value))}
+                          aria-label={q.label || 'Meter 1-100'}
+                        />
+                      </div>
+                      <div className="qa-meter-scale">
+                        <span>{opts[0] || 'Negative'}</span>
+                        <span>{opts[1] || 'Neutral'}</span>
+                        <span>{opts[2] || 'Positive'}</span>
+                      </div>
+                      <div className="qa-meter-value">
+                        <strong>{val || `${meterNum(val)}%`}</strong>
+                        <span
+                          className="pill"
+                          style={{
+                            background:
+                              meterNum(val) <= 33
+                                ? 'rgba(239, 68, 68, 0.12)'
+                                : meterNum(val) <= 66
+                                ? 'rgba(234, 179, 8, 0.12)'
+                                : 'rgba(34, 197, 94, 0.12)',
+                            color:
+                              meterNum(val) <= 33
+                                ? '#dc2626'
+                                : meterNum(val) <= 66
+                                ? '#ca8a04'
+                                : '#16a34a',
+                            fontWeight: 700,
+                            fontSize: 12,
+                            padding: '4px 10px',
+                          }}
+                        >
+                          {meterNum(val) <= 33
+                            ? opts[0] || 'Negative'
+                            : meterNum(val) <= 66
+                            ? opts[1] || 'Neutral'
+                            : opts[2] || 'Positive'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="qa-meter-value">
-                      <strong>{val || `${meterNum(val)}%`}</strong>
-                      <span
-                        className="pill"
-                        style={{
-                          background:
-                            meterNum(val) <= 33
-                              ? 'rgba(239, 68, 68, 0.12)'
-                              : meterNum(val) <= 66
-                              ? 'rgba(234, 179, 8, 0.12)'
-                              : 'rgba(34, 197, 94, 0.12)',
-                          color:
-                            meterNum(val) <= 33
-                              ? '#dc2626'
-                              : meterNum(val) <= 66
-                              ? '#ca8a04'
-                              : '#16a34a',
-                          fontWeight: 700,
-                          fontSize: 12,
-                          padding: '4px 10px',
-                        }}
-                      >
-                        {meterNum(val) <= 33
-                          ? opts[0] || 'Negative'
-                          : meterNum(val) <= 66
-                          ? opts[1] || 'Neutral'
-                          : opts[2] || 'Positive'}
-                      </span>
+                  ) : opts.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {opts.map((opt, oi) => (
+                        <button
+                          key={`${opt}-${oi}`}
+                          type="button"
+                          className={`chip ${val === opt ? 'selected' : ''}`}
+                          onClick={() => setAns(id, val === opt ? '' : opt)}
+                        >
+                          {opt}
+                          {teOpts[oi] ? (
+                            <span className="muted" style={{ marginLeft: 6, fontWeight: 500 }}>
+                              {teOpts[oi]}
+                            </span>
+                          ) : null}
+                        </button>
+                      ))}
                     </div>
-                  </div>
-                ) : opts.length > 0 ? (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {opts.map((opt, oi) => (
-                      <button
-                        key={`${opt}-${oi}`}
-                        type="button"
-                        className={`chip ${val === opt ? 'selected' : ''}`}
-                        onClick={() => setAns(id, val === opt ? '' : opt)}
-                      >
-                        {opt}
-                        {teOpts[oi] ? (
-                          <span className="muted" style={{ marginLeft: 6, fontWeight: 500 }}>
-                            {teOpts[oi]}
-                          </span>
-                        ) : null}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <input
-                    value={val}
-                    onChange={(e) => setAns(id, e.target.value)}
-                    placeholder="Answer"
-                  />
-                )}
-              </div>
-            )
-          })}
-          <button type="submit" className="btn primary" disabled={saving || !questions.length}>
-            {saving ? 'Saving…' : 'Submit web survey'}
-          </button>
-        </form>
-      ) : null}
+                  ) : (
+                    <input
+                      value={val}
+                      onChange={(e) => setAns(id, e.target.value)}
+                      placeholder="Type answer…"
+                    />
+                  )}
+                </div>
+              )
+            })}
+            <button type="submit" className="btn primary" disabled={!questions.length} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Icon name="check" size={13} /> Test Submit (Mock Preview)
+            </button>
+          </form>
+        </div>
+      )}
       </>
       )}
     </div>

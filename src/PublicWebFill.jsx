@@ -85,8 +85,9 @@ export default function PublicWebFill({ formKey, fillToken }) {
   async function submit(e) {
     e.preventDefault()
     for (const q of questions) {
-      const val = String(answers[qid(q)] || '').trim()
-      if (!val) {
+      const val = answers[qid(q)]
+      const hasVal = Array.isArray(val) ? val.length > 0 : String(val ?? '').trim() !== ''
+      if (!hasVal) {
         const qTitle = te && q.label_te ? q.label_te : q.label || `Question ${questions.indexOf(q) + 1}`
         setToast(`Question missed: ${qTitle} — please answer before submitting.`)
         if (typeof document !== 'undefined') {
@@ -161,12 +162,15 @@ export default function PublicWebFill({ formKey, fillToken }) {
         {err ? <p style={{ color: '#b91c1c' }}>{err}</p> : null}
 
         {done ? (
-          <div className="card success-card">
-            <h3 className="success-title">Submitted</h3>
-            <p className="success-sub">
+          <div className="card success-card" style={{ textAlign: 'center', padding: '36px 20px', background: 'rgba(5, 150, 105, 0.08)', border: '1.5px solid #059669', borderRadius: 12 }}>
+            <div style={{ fontSize: 44, marginBottom: 10 }}>🎉</div>
+            <h3 style={{ margin: '0 0 8px', color: '#059669', fontSize: 22 }}>
+              {te ? `${heading} సర్వేలో పాల్గొన్నందుకు ధన్యవాదాలు!` : `Thank you for participating in ${heading}!`}
+            </h3>
+            <p className="success-sub" style={{ margin: 0, fontSize: 14 }}>
               {closed
-                ? 'Thank you. Your answers were saved. This link has now expired.'
-                : 'Thank you. Your answers were saved.'}
+                ? (te ? 'మీ సమాధానాలు భద్రపరచబడ్డాయి. ఈ లింక్ గడువు ముగిసింది.' : 'Thank you. Your answers were saved. This link has now reached its response quota.')
+                : (te ? 'మీ సమాధానాలు విజయవంతంగా భద్రపరచబడ్డాయి.' : 'Thank you. Your answers were saved successfully.')}
             </p>
           </div>
         ) : null}
@@ -194,13 +198,79 @@ export default function PublicWebFill({ formKey, fillToken }) {
               const teOpts = Array.isArray(q.options_te) ? q.options_te : []
               const val = answers[id] ?? ''
               const label = te && q.label_te ? q.label_te : q.label || 'Question'
+              const max = Math.max(1, Number(q.max_choices) || 2)
+
               return (
                 <div key={id || i} id={`web-q-${id}`} className="card" style={{ marginBottom: 12 }}>
                   <p style={{ margin: '0 0 10px', fontWeight: 700 }}>
                     Q{i + 1}. {label}
                     {q.required ? ' *' : ''}
                   </p>
-                  {type === 'meter' ? (
+
+                  {(type === 'multi_select' || type === 'multi') ? (
+                    <div>
+                      {(() => {
+                        const currentList = Array.isArray(val)
+                          ? val
+                          : typeof val === 'string' && val.trim() !== ''
+                            ? val.split(',').map((s) => s.trim()).filter(Boolean)
+                            : []
+                        const multiOpts = opts.length > 0 ? opts : ['Option 1', 'Option 2', 'Option 3', 'Option 4']
+
+                        const toggle = (opt) => {
+                          let next
+                          if (currentList.includes(opt)) {
+                            next = currentList.filter((o) => o !== opt)
+                          } else {
+                            if (max > 0 && currentList.length >= max) {
+                              next = [...currentList.slice(currentList.length - (max - 1)), opt]
+                            } else {
+                              next = [...currentList, opt]
+                            }
+                          }
+                          setAns(id, next)
+                        }
+
+                        return (
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>
+                                {te ? `☑️ గరిష్టంగా ${max} ఎంపికలను ఎంచుకోండి:` : `☑️ Select up to ${max} answers:`}
+                              </span>
+                              <span className="pill ok" style={{ fontSize: 11, padding: '2px 8px' }}>
+                                {currentList.length} / {max} {te ? 'ఎంపికయ్యాయి' : 'selected'}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                              {multiOpts.map((opt, oi) => {
+                                const show = te && teOpts[oi] ? teOpts[oi] : opt
+                                const sel = currentList.includes(opt)
+                                return (
+                                  <button
+                                    key={`${opt}-${oi}`}
+                                    type="button"
+                                    className={`chip ${sel ? 'selected' : ''}`}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 6,
+                                      fontWeight: 'bold',
+                                      padding: '6px 14px',
+                                      borderRadius: 16,
+                                    }}
+                                    onClick={() => toggle(opt)}
+                                  >
+                                    <span>{sel ? '☑' : '☐'}</span>
+                                    <span>{show}</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </div>
+                  ) : type === 'meter' ? (
                     <div className="qa-meter" style={{ marginTop: 8 }}>
                       <div className="qa-meter-track">
                         <input

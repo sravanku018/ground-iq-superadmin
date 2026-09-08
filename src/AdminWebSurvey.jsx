@@ -72,19 +72,28 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
   }, [tab, loadStats])
 
   useEffect(() => {
-    setLinkStatus({ hasLink: false, expired: false, loading: true })
     if (!surveyId) {
       setQuestions([])
       setTitle('')
       setFormKey('')
+      setLinkStatus({ hasLink: false, expired: false, loading: false })
       return undefined
     }
+    const found = surveys.find((s) => String(s.id) === String(surveyId))
+    if (found) {
+      setTitle(found.title || found.form_key || '')
+      setFormKey(found.form_key || '')
+    } else {
+      setFormKey('')
+      setTitle('')
+    }
+    setLinkStatus({ hasLink: false, expired: false, loading: true })
     let dead = false
     getSurvey(surveyId)
       .then((d) => {
         if (dead) return
-        setTitle(d.survey?.title || '')
-        setFormKey(d.survey?.form_key || '')
+        setTitle(d.survey?.title || found?.title || '')
+        setFormKey(d.survey?.form_key || found?.form_key || '')
         const qs = Array.isArray(d.survey?.questions) ? d.survey.questions : []
         setQuestions(qs)
       })
@@ -92,7 +101,7 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
     return () => {
       dead = true
     }
-  }, [surveyId, onToast])
+  }, [surveyId, surveys, onToast])
 
   return (
     <div>
@@ -227,6 +236,7 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
       {formKey ? (
         <div className="card" style={{ marginBottom: 16, padding: 14 }}>
           <CopyWebFillLink
+            key={formKey}
             formKey={formKey}
             title={title}
             onToast={onToast}

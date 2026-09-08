@@ -11,6 +11,7 @@ function clampMax(n) {
 export default function CopyWebFillLink({ formKey, title, onToast, onStatusChange, compact = false }) {
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
+  const [fetching, setFetching] = useState(true)
   const [maxUses, setMaxUses] = useState(100)
   const [live, setLive] = useState(null)
   const [quota, setQuota] = useState({ used: 0, cap: 100, submitted: 0, linkUsed: 0 })
@@ -19,11 +20,16 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
     const key = String(formKey || '').trim()
     if (!key || key === 'default' || key === 'legacy') {
       setLive(null)
+      setUrl('')
+      setFetching(false)
       setQuota({ used: 0, cap: 100, submitted: 0, linkUsed: 0 })
       onStatusChange?.({ hasLink: false, expired: false, cap: 100, totalUsed: 0, url: '' })
       return undefined
     }
     let dead = false
+    setFetching(true)
+    setUrl('')
+    setLive(null)
     listWebFillLinks(key)
       .then((d) => {
         if (dead) return
@@ -44,9 +50,13 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
       .catch(() => {
         if (!dead) {
           setLive(null)
+          setUrl('')
           setQuota({ used: 0, cap: 100, submitted: 0, linkUsed: 0 })
           onStatusChange?.({ hasLink: false, expired: false, cap: 100, totalUsed: 0, url: '' })
         }
+      })
+      .finally(() => {
+        if (!dead) setFetching(false)
       })
     return () => {
       dead = true
@@ -161,7 +171,19 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
     </label>
   )
 
-  const usage = hasActiveLink ? (
+  const usage = fetching ? (
+    <div
+      style={{
+        margin: compact ? '0 0 6px' : '0 0 12px',
+        padding: compact ? '8px 10px' : '12px 14px',
+        borderRadius: 8,
+        border: '1px solid #e2e8f0',
+        background: '#f8fafc',
+      }}
+    >
+      <p className="muted" style={{ margin: 0, fontSize: 12 }}>Checking web survey link status…</p>
+    </div>
+  ) : hasActiveLink ? (
     <div
       style={{
         margin: compact ? '0 0 6px' : '0 0 12px',
@@ -225,17 +247,19 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
     </div>
   )
 
-  const buttonLabel = full && !quotaChanged
-    ? 'Sharing disabled'
-    : busy
-      ? hasActiveLink
-        ? 'Updating…'
-        : 'Creating…'
-      : quotaChanged
-        ? `Update quota to ${maxUses} & copy`
-        : hasActiveLink
-          ? 'Copy web link'
-          : 'Create & copy link'
+  const buttonLabel = fetching
+    ? 'Checking…'
+    : full && !quotaChanged
+      ? 'Sharing disabled'
+      : busy
+        ? hasActiveLink
+          ? 'Updating…'
+          : 'Creating…'
+        : quotaChanged
+          ? `Update quota to ${maxUses} & copy`
+          : hasActiveLink
+            ? 'Copy web link'
+            : 'Create & copy link'
 
   if (compact) {
     return (
@@ -246,7 +270,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
           <button
             type="button"
             className="btn small"
-            disabled={busy || !formKey || (full && !quotaChanged)}
+            disabled={fetching || busy || !formKey || (full && !quotaChanged)}
             onClick={() => void mintAndCopy()}
           >
             {buttonLabel}
@@ -266,7 +290,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
         {picker}
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        {hasActiveLink && (
+        {hasActiveLink && !fetching && (
           <input
             readOnly
             value={url}
@@ -279,7 +303,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
         <button
           type="button"
           className="btn primary"
-          disabled={busy || !formKey || (full && !quotaChanged)}
+          disabled={fetching || busy || !formKey || (full && !quotaChanged)}
           onClick={() => void mintAndCopy()}
         >
           {buttonLabel}

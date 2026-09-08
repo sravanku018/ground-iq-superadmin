@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Capacitor } from '@capacitor/core'
 import Icon from './Icons'
 import { getMyProgress, getSurveyForm } from './api'
@@ -916,15 +915,18 @@ export default function FieldCollectScreen({
     setCameraBusy(true)
     try {
       if (Capacitor.isNativePlatform()) {
-        const shot = await Camera.getPhoto({
-          quality: 85,
-          resultType: CameraResultType.DataUrl,
-          source: CameraSource.Camera,
-          saveToGallery: false,
-          correctOrientation: true,
-        })
-        if (shot?.dataUrl) lockPhotoFromDataUrl(shot.dataUrl)
-        return
+        const NativeCamera = window?.Capacitor?.Plugins?.Camera
+        if (NativeCamera && typeof NativeCamera.getPhoto === 'function') {
+          const shot = await NativeCamera.getPhoto({
+            quality: 85,
+            resultType: 'dataUrl',
+            source: 'CAMERA',
+            saveToGallery: false,
+            correctOrientation: true,
+          })
+          if (shot?.dataUrl) lockPhotoFromDataUrl(shot.dataUrl)
+          return
+        }
       }
       await startLiveCamera()
     } catch (err) {

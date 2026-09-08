@@ -734,7 +734,10 @@ export default function AdminPortal({ superAdminOnly = false }) {
       const need = PAGE_POWER[p]
       if (!need) return true
       const needs = Array.isArray(need) ? need : [need]
-      return needs.some((k) => !!user?.[k])
+      return needs.some((k) => {
+        const val = user?.[k]
+        return val === true || val === 'true' || val === 't' || val === 1
+      })
     },
     [isSuper, user]
   )
@@ -950,6 +953,27 @@ export default function AdminPortal({ superAdminOnly = false }) {
     }
   }, [user, authReady, page, loadStats])
 
+  // Real-time synchronization of user powers & quotas (e.g., when Super Admin grants Web survey)
+  useEffect(() => {
+    if (!user || !authReady) return
+    const refreshUser = () => {
+      if (!getToken() || document.visibilityState !== 'visible') return
+      me()
+        .then((data) => {
+          if (data?.user) {
+            setUser((prev) => ({ ...prev, ...data.user }))
+          }
+        })
+        .catch(() => {})
+    }
+    window.addEventListener('focus', refreshUser)
+    const interval = setInterval(refreshUser, 15_000)
+    return () => {
+      window.removeEventListener('focus', refreshUser)
+      clearInterval(interval)
+    }
+  }, [user?.id, authReady])
+
   // Data tab: submissions only when open
   useEffect(() => {
     if (user && authReady && page === 'data') {
@@ -1082,7 +1106,10 @@ export default function AdminPortal({ superAdminOnly = false }) {
 
           <div className="side-section-label" style={{ marginTop: 14 }}>SETUP &amp; TEAM</div>
           <button className={`side-sub ${page === 'users' ? 'active' : ''}`} onClick={() => goPage('users')}>👥 Surveyors &amp; Quotas</button>
-          <button className={`side-sub ${['surveys', 'questions', 'bank', 'web'].includes(page) ? 'active' : ''}`} onClick={() => goPage('surveys')}>📋 Surveys &amp; Forms</button>
+          <button className={`side-sub ${['surveys', 'questions', 'bank'].includes(page) ? 'active' : ''}`} onClick={() => goPage('surveys')}>📋 Surveys &amp; Forms</button>
+          {(isSuper || canPage('web')) && (
+            <button className={`side-sub ${page === 'web' ? 'active' : ''}`} onClick={() => goPage('web')}>🌐 Web survey</button>
+          )}
           <button className={`side-sub ${page === 'profile' ? 'active' : ''}`} onClick={() => goPage('profile')}>🏢 Organization</button>
 
           {isSuper && (

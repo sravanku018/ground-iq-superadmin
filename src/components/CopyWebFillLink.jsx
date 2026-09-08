@@ -8,7 +8,7 @@ function clampMax(n) {
   return x
 }
 
-export default function CopyWebFillLink({ formKey, title, onToast, compact = false }) {
+export default function CopyWebFillLink({ formKey, title, onToast, onStatusChange, compact = false }) {
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [maxUses, setMaxUses] = useState(100)
@@ -20,6 +20,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
     if (!key || key === 'default' || key === 'legacy') {
       setLive(null)
       setQuota({ used: 0, cap: 100, submitted: 0, linkUsed: 0 })
+      onStatusChange?.({ hasLink: false, expired: false, cap: 100, totalUsed: 0, url: '' })
       return undefined
     }
     let dead = false
@@ -31,14 +32,20 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         const cap = Number(share?.max_uses || d.cap || 100) || 100
         const submitted = Number(d.submitted ?? d.used ?? 0) || 0
         const linkUsed = Number(d.link_used ?? share?.use_count ?? 0) || 0
+        const totalUsed = Math.max(submitted, linkUsed)
+        const isExp = Boolean(share?.expired || (cap > 0 && totalUsed >= cap))
+        const hasActive = Boolean(share?.token)
+        const mintedUrl = share?.token ? webFillUrl(key, share.token) : ''
         setQuota({ used: submitted, cap, submitted, linkUsed })
         if (share?.max_uses) setMaxUses(clampMax(share.max_uses))
-        if (share?.token) setUrl(webFillUrl(key, share.token))
+        if (share?.token) setUrl(mintedUrl)
+        onStatusChange?.({ hasLink: hasActive, expired: isExp, cap, totalUsed, url: mintedUrl })
       })
       .catch(() => {
         if (!dead) {
           setLive(null)
           setQuota({ used: 0, cap: 100, submitted: 0, linkUsed: 0 })
+          onStatusChange?.({ hasLink: false, expired: false, cap: 100, totalUsed: 0, url: '' })
         }
       })
     return () => {
@@ -79,6 +86,13 @@ export default function CopyWebFillLink({ formKey, title, onToast, compact = fal
         cap: Number(d.max_uses) || limit,
         linkUsed: Number(d.use_count) || 0,
       }))
+      onStatusChange?.({
+        hasLink: true,
+        expired: false,
+        cap: Number(d.max_uses) || limit,
+        totalUsed: Number(d.use_count) || 0,
+        url: typeof link === 'string' ? link : '',
+      })
       try {
         window.dispatchEvent(new CustomEvent('esurvey-quota-changed'))
       } catch {

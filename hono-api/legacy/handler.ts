@@ -4662,8 +4662,8 @@ async function rawHandler(req: Request): Promise<Response> {
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.56",
-          versionCode: 20056,
+          version: "2.0.57",
+          versionCode: 20057,
           minSupportedVersionCode: 20000,
           apkUrl: `https://${req.headers.get("x-forwarded-host") || url.hostname}/api/app.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
@@ -9539,68 +9539,9 @@ async function rawHandler(req: Request): Promise<Response> {
     }
 
     if (path === "/api/web-survey" && method === "POST") {
-      if (!me) return json({ error: "Login required" }, 401);
-      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
-      if (!hasPower(me, "can_web_survey")) {
-        return json({
-          error: "Super Admin has not granted web survey fill",
-        }, 403);
-      }
-      const body = await readBody(req);
-      const answers = (body.answers || {}) as Record<string, unknown>;
-      const agent =
-        String(body.submitted_by || "").trim() || me.name || me.username;
-      const formKey = String(body.form_key || body.form_id || "").trim();
-      if (!formKey || formKey === "default" || formKey === "legacy") {
-        return json({ error: "Pick a real survey" }, 400);
-      }
-      if (me.role === "admin") {
-        const writeScope = await adminFormKeyScope(sql, me);
-        if (writeScope && !writeScope.includes(formKey)) {
-          return json({
-            error: `You can only submit to your own surveys (${writeScope.length ? writeScope.join(", ") : "none"})`,
-          }, 403);
-        }
-      }
-      const payload = {
-        form_key: formKey,
-        form_id: body.form_id || formKey,
-        source: "web-survey",
-        submitted_by: agent,
-        user_id: me.id,
-        user_role: me.role,
-        status: "pending",
-        geo: null,
-        location_details: null,
-        locks: { geo: false, web: true },
-        has_photo: false,
-        has_audio: false,
-        answers: stripPii({ ...answers, data_collector: agent }),
-        content_type: "qa",
-        app_version: body.app_version ? String(body.app_version) : null,
-      };
-      const rows = await insertSubmissionRow(payload);
-      const row = rows[0] as { id: number; created_at: string };
-      await sql`
-        UPDATE web_survey_links
-        SET
-          use_count = use_count + 1,
-          used_at = CASE WHEN use_count + 1 >= max_uses THEN NOW() ELSE used_at END
-        WHERE form_key = ${formKey}
-      `.catch(() => null);
-      logAudit(me, "submission_create", "submission", row.id, {
-        form_key: formKey,
-        source: "web-survey",
-      });
       return json({
-        ok: true,
-        id: row.id,
-        form_id: payload.form_id,
-        source: "web-survey",
-        submitted_by: agent,
-        status: "pending",
-        created_at: row.created_at,
-      }, 201);
+        error: "Submitting web surveys from inside the Admin portal is disabled. Web surveys must be submitted by respondents via public survey links.",
+      }, 403);
     }
 
     if (path === "/api/submissions" && method === "POST") {
@@ -9611,11 +9552,9 @@ async function rawHandler(req: Request): Promise<Response> {
       const body = await readBody(req);
       const incomingSource = String(body.source || "");
       if (incomingSource === "web-survey" || incomingSource === "web") {
-        if (!hasPower(me, "can_web_survey")) {
-          return json({
-            error: "Super Admin has not granted web survey fill",
-          }, 403);
-        }
+        return json({
+          error: "Web surveys can only be submitted by respondents via public survey links, not from inside the app/portal.",
+        }, 403);
       }
       // Q/A only — media uploaded separately to /api/submissions/:id/media
       const answers = (body.answers || body) as Record<string, unknown>;

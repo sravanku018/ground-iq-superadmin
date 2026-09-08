@@ -367,6 +367,11 @@ export function listSubmissions(limit = 100, status = '', extra = {}) {
   return request(`/api/submissions?${params}`)
 }
 
+/** Client Admin & Quota Breakdown: per client admin allocation, web reserved, field vs web intake */
+export function getClientAdminBreakdown() {
+  return request('/api/admin/client-breakdown')
+}
+
 /** Client Admin: analyze by date + user + complete/incomplete */
 export function getAdminAnalyze(filters = {}) {
   const params = new URLSearchParams()

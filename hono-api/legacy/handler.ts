@@ -7132,6 +7132,199 @@ async function rawHandler(req: Request): Promise<Response> {
       });
     }
 
+    // ── Client Admin & Quota Breakdown (Super Admin view all / Client Admin self) ──
+    if (path === "/api/admin/client-breakdown" && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+
+      try {
+        const isSuper = me.role === "super_admin";
+        const rows = isSuper
+          ? await sql`
+              WITH sub_counts AS (
+                SELECT 
+                  payload->>'form_key' AS form_key,
+                  COUNT(*) FILTER (WHERE COALESCE(payload->>'source','') NOT IN ('web-survey','web') AND COALESCE(payload->>'status','pending') <> 'rejected' AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS field_used,
+                  COUNT(*) FILTER (WHERE COALESCE(payload->>'source','') IN ('web-survey','web') AND COALESCE(payload->>'status','pending') <> 'rejected' AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS web_used,
+                  COUNT(*) FILTER (WHERE COALESCE(payload->>'status','pending') NOT IN ('confirmed', 'rejected') AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS pending,
+                  COUNT(*) FILTER (WHERE COALESCE(payload->>'status','pending') = 'confirmed' AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS confirmed
+                FROM submissions
+                WHERE payload->>'form_key' IS NOT NULL
+                GROUP BY 1
+              ),
+              web_caps AS (
+                SELECT 
+                  form_key, 
+                  MAX(COALESCE(max_uses, 0))::int AS max_uses,
+                  BOOL_OR(token IS NOT NULL AND used_at IS NULL AND (max_uses = 0 OR use_count < max_uses)) AS is_live
+                FROM web_survey_links
+                GROUP BY form_key
+              ),
+              admin_surveys AS (
+                SELECT 
+                  u.id AS admin_id,
+                  f.id AS survey_id,
+                  f.title,
+                  f.form_key,
+                  COALESCE(c.max_uses, 0)::int AS web_allocated,
+                  COALESCE(s.field_used, 0)::int AS field_used,
+                  COALESCE(s.web_used, 0)::int AS web_used,
+                  (COALESCE(s.field_used, 0) + COALESCE(s.web_used, 0))::int AS total_used,
+                  COALESCE(s.pending, 0)::int AS pending,
+                  COALESCE(s.confirmed, 0)::int AS confirmed,
+                  COALESCE(c.is_live, false) AS is_live,
+                  CASE 
+                    WHEN COALESCE(c.max_uses, 0) > 0 THEN GREATEST(0, c.max_uses - COALESCE(s.web_used, 0)) 
+                    ELSE NULL 
+                  END AS web_remaining
+                FROM app_users u
+                JOIN survey_form f ON (
+                  f.created_by = u.id 
+                  OR f.id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = u.id)
+                  OR (f.company_name IS NOT NULL AND f.company_name <> '' AND LOWER(TRIM(f.company_name)) = LOWER(TRIM(u.company_name)))
+                  OR (f.company_id IS NOT NULL AND f.company_id = u.company_id)
+                ) AND f.form_key NOT IN ('default', 'legacy')
+                LEFT JOIN sub_counts s ON s.form_key = f.form_key
+                LEFT JOIN web_caps c ON c.form_key = f.form_key
+                WHERE u.role = 'admin'
+              )
+              SELECT 
+                u.id, 
+                u.username, 
+                COALESCE(u.display_name, u.username) AS name,
+                u.company_name, 
+                COALESCE(u.max_records, 0)::int AS allocated,
+                COALESCE(SUM(asv.web_allocated), 0)::int AS web_allocated,
+                COALESCE(SUM(asv.field_used), 0)::int AS field_used,
+                COALESCE(SUM(asv.web_used), 0)::int AS web_used,
+                (COALESCE(SUM(asv.field_used), 0) + COALESCE(SUM(asv.web_used), 0))::int AS total_used,
+                CASE 
+                  WHEN COALESCE(u.max_records, 0) > 0 
+                  THEN GREATEST(0, u.max_records - COALESCE(SUM(asv.field_used), 0) - COALESCE(SUM(asv.web_allocated), 0))::int
+                  ELSE NULL 
+                END AS field_remaining,
+                COUNT(asv.survey_id)::int AS survey_count,
+                COALESCE(
+                  jsonb_agg(
+                    jsonb_build_object(
+                      'id', asv.survey_id,
+                      'title', asv.title,
+                      'form_key', asv.form_key,
+                      'web_allocated', asv.web_allocated,
+                      'field_used', asv.field_used,
+                      'web_used', asv.web_used,
+                      'total_used', asv.total_used,
+                      'pending', asv.pending,
+                      'confirmed', asv.confirmed,
+                      'is_live', asv.is_live,
+                      'web_remaining', asv.web_remaining
+                    )
+                  ) FILTER (WHERE asv.survey_id IS NOT NULL),
+                  '[]'::jsonb
+                ) AS surveys
+              FROM app_users u
+              LEFT JOIN admin_surveys asv ON asv.admin_id = u.id
+              WHERE u.role = 'admin'
+              GROUP BY u.id, u.username, u.display_name, u.company_name, u.max_records
+              ORDER BY u.id
+            `
+          : await sql`
+              WITH sub_counts AS (
+                SELECT 
+                  payload->>'form_key' AS form_key,
+                  COUNT(*) FILTER (WHERE COALESCE(payload->>'source','') NOT IN ('web-survey','web') AND COALESCE(payload->>'status','pending') <> 'rejected' AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS field_used,
+                  COUNT(*) FILTER (WHERE COALESCE(payload->>'source','') IN ('web-survey','web') AND COALESCE(payload->>'status','pending') <> 'rejected' AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS web_used,
+                  COUNT(*) FILTER (WHERE COALESCE(payload->>'status','pending') NOT IN ('confirmed', 'rejected') AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS pending,
+                  COUNT(*) FILTER (WHERE COALESCE(payload->>'status','pending') = 'confirmed' AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS confirmed
+                FROM submissions
+                WHERE payload->>'form_key' IS NOT NULL
+                GROUP BY 1
+              ),
+              web_caps AS (
+                SELECT 
+                  form_key, 
+                  MAX(COALESCE(max_uses, 0))::int AS max_uses,
+                  BOOL_OR(token IS NOT NULL AND used_at IS NULL AND (max_uses = 0 OR use_count < max_uses)) AS is_live
+                FROM web_survey_links
+                GROUP BY form_key
+              ),
+              admin_surveys AS (
+                SELECT 
+                  u.id AS admin_id,
+                  f.id AS survey_id,
+                  f.title,
+                  f.form_key,
+                  COALESCE(c.max_uses, 0)::int AS web_allocated,
+                  COALESCE(s.field_used, 0)::int AS field_used,
+                  COALESCE(s.web_used, 0)::int AS web_used,
+                  (COALESCE(s.field_used, 0) + COALESCE(s.web_used, 0))::int AS total_used,
+                  COALESCE(s.pending, 0)::int AS pending,
+                  COALESCE(s.confirmed, 0)::int AS confirmed,
+                  COALESCE(c.is_live, false) AS is_live,
+                  CASE 
+                    WHEN COALESCE(c.max_uses, 0) > 0 THEN GREATEST(0, c.max_uses - COALESCE(s.web_used, 0)) 
+                    ELSE NULL 
+                  END AS web_remaining
+                FROM app_users u
+                JOIN survey_form f ON (
+                  f.created_by = u.id 
+                  OR f.id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = u.id)
+                  OR (f.company_name IS NOT NULL AND f.company_name <> '' AND LOWER(TRIM(f.company_name)) = LOWER(TRIM(u.company_name)))
+                  OR (f.company_id IS NOT NULL AND f.company_id = u.company_id)
+                ) AND f.form_key NOT IN ('default', 'legacy')
+                LEFT JOIN sub_counts s ON s.form_key = f.form_key
+                LEFT JOIN web_caps c ON c.form_key = f.form_key
+                WHERE u.id = ${me.id}
+              )
+              SELECT 
+                u.id, 
+                u.username, 
+                COALESCE(u.display_name, u.username) AS name,
+                u.company_name, 
+                COALESCE(u.max_records, 0)::int AS allocated,
+                COALESCE(SUM(asv.web_allocated), 0)::int AS web_allocated,
+                COALESCE(SUM(asv.field_used), 0)::int AS field_used,
+                COALESCE(SUM(asv.web_used), 0)::int AS web_used,
+                (COALESCE(SUM(asv.field_used), 0) + COALESCE(SUM(asv.web_used), 0))::int AS total_used,
+                CASE 
+                  WHEN COALESCE(u.max_records, 0) > 0 
+                  THEN GREATEST(0, u.max_records - COALESCE(SUM(asv.field_used), 0) - COALESCE(SUM(asv.web_allocated), 0))::int
+                  ELSE NULL 
+                END AS field_remaining,
+                COUNT(asv.survey_id)::int AS survey_count,
+                COALESCE(
+                  jsonb_agg(
+                    jsonb_build_object(
+                      'id', asv.survey_id,
+                      'title', asv.title,
+                      'form_key', asv.form_key,
+                      'web_allocated', asv.web_allocated,
+                      'field_used', asv.field_used,
+                      'web_used', asv.web_used,
+                      'total_used', asv.total_used,
+                      'pending', asv.pending,
+                      'confirmed', asv.confirmed,
+                      'is_live', asv.is_live,
+                      'web_remaining', asv.web_remaining
+                    )
+                  ) FILTER (WHERE asv.survey_id IS NOT NULL),
+                  '[]'::jsonb
+                ) AS surveys
+              FROM app_users u
+              LEFT JOIN admin_surveys asv ON asv.admin_id = u.id
+              WHERE u.id = ${me.id}
+              GROUP BY u.id, u.username, u.display_name, u.company_name, u.max_records
+            `;
+
+        return json({
+          items: rows as Record<string, unknown>[],
+          count: (rows as Record<string, unknown>[]).length,
+        });
+      } catch (err) {
+        return json({ error: String((err as Error)?.message || err) }, 500);
+      }
+    }
+
     // Client Admin analyze board: by date + user
     if (path === "/api/admin/analyze" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);

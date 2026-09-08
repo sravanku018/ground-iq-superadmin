@@ -1,8 +1,9 @@
-import { Component, lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Component, Fragment, lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import Icon from './Icons'
 import {
   clearSession,
   apkDownloadUrl,
+  getClientAdminBreakdown,
   getStats,
   getStoredUser,
   getToken,
@@ -178,6 +179,13 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
   const [totalAllocations, setTotalAllocations] = useState(null)
   const [loadingRecent, setLoadingRecent] = useState(true)
   const [activityFilter, setActivityFilter] = useState('all')
+  const [clientBreakdown, setClientBreakdown] = useState([])
+  const [loadingBreakdown, setLoadingBreakdown] = useState(false)
+  const [expandedAdmins, setExpandedAdmins] = useState({})
+
+  const toggleAdmin = (id) => {
+    setExpandedAdmins((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
 
   const allotCap = Number(user?.max_records) || 0
   const webPending = Number(stats?.web_pending) || 0
@@ -243,10 +251,22 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
       })
       .catch(() => {})
 
+    if (isSuper) {
+      setLoadingBreakdown(true)
+      getClientAdminBreakdown()
+        .then((d) => {
+          if (alive) setClientBreakdown(d.items || [])
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (alive) setLoadingBreakdown(false)
+        })
+    }
+
     return () => {
       alive = false
     }
-  }, [stats?.submissions])
+  }, [stats?.submissions, isSuper])
 
   const pendingCount = reviewPending
   const confirmedCount = confirmedTotal
@@ -304,82 +324,371 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         </div>
       </div>
 
-      {surveyBreak.length > 0 && (
+      {/* Super Admin: Breakdown by Client Admin (Allocated, Web Reserved, Web Used, Field Used, Remaining) */}
+      {isSuper ? (
         <div className="card" style={{ marginBottom: 20, overflowX: 'auto' }}>
-          <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700 }}>Survey breakdown</h3>
-          <p className="muted" style={{ margin: '0 0 12px', fontSize: 12 }}>
-            Field and web fills for every survey · web share turns off when that survey’s target is reached
-          </p>
-          <table className="mini-table" style={{ width: '100%' }}>
-            <thead>
-              <tr>
-                <th>Survey</th>
-                <th>Field</th>
-                <th>Web</th>
-                <th>Pending</th>
-                <th>Confirmed</th>
-                <th>Total</th>
-                <th>Web remaining</th>
-              </tr>
-            </thead>
-            <tbody>
-              {surveyBreak.map((s) => {
-                const web = Number(s.web_submissions) || 0
-                const field = Number(s.field_submissions) || Math.max(0, (Number(s.submissions) || 0) - web)
-                const link = s.web_link
-                const cap = Number(link?.max_uses) || 0
-                const used = Math.max(web, Number(link?.use_count) || 0)
-                const left = Math.max(0, cap - used)
-                const closed = !!link?.expired || (cap > 0 && left === 0)
-                const isLive = !!link?.token && !closed
-                return (
-                  <tr key={s.id || s.form_key}>
-                    <td>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <strong>{s.title || s.form_key}</strong>
-                        {isLive && (
-                          <span style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            background: '#dcfce7', color: '#15803d',
-                            fontSize: 10, fontWeight: 700, letterSpacing: '0.05em',
-                            padding: '2px 7px', borderRadius: 99,
-                            border: '1px solid #86efac',
-                          }}>
-                            <span style={{
-                              width: 6, height: 6, borderRadius: '50%',
-                              background: '#16a34a',
-                              animation: 'live-pulse 1.4s ease-in-out infinite',
-                              display: 'inline-block',
-                            }} />
-                            LIVE
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Client Admin Survey &amp; Quota Breakdown</h3>
+              <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
+                Record allocation, web quota reserved, and field vs. web intake for every registered Client Admin
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => onNav('admins')}
+              style={{ fontSize: 12, padding: '4px 12px' }}
+            >
+              Manage Client Admins →
+            </button>
+          </div>
+
+          {loadingBreakdown ? (
+            <p className="muted" style={{ fontSize: 13, padding: '12px 0' }}>Loading Client Admin breakdown…</p>
+          ) : clientBreakdown.length === 0 ? (
+            <p className="muted" style={{ fontSize: 13, padding: '12px 0' }}>No Client Admins registered yet.</p>
+          ) : (
+            <table className="mini-table" style={{ width: '100%', marginTop: 8 }}>
+              <thead>
+                <tr>
+                  <th>Client Admin</th>
+                  <th>Company</th>
+                  <th style={{ textAlign: 'right' }}>Allocated</th>
+                  <th style={{ textAlign: 'right' }}>Allocated for Web</th>
+                  <th style={{ textAlign: 'right' }}>Used (Web)</th>
+                  <th style={{ textAlign: 'right' }}>Used (Field)</th>
+                  <th style={{ textAlign: 'right' }}>Total Used</th>
+                  <th style={{ textAlign: 'right' }}>Remaining for Field</th>
+                  <th style={{ textAlign: 'center' }}>Surveys</th>
+                </tr>
+              </thead>
+              <tbody>
+                {clientBreakdown.map((ca) => {
+                  const isExp = !!expandedAdmins[ca.id]
+                  const hasSurveys = Array.isArray(ca.surveys) && ca.surveys.length > 0
+                  return (
+                    <Fragment key={ca.id}>
+                      <tr style={{ background: isExp ? '#f8fafc' : undefined }}>
+                        <td>
+                          <strong>{ca.name || ca.username}</strong>
+                          <span className="muted" style={{ fontSize: 11, display: 'block' }}>@{ca.username}</span>
+                        </td>
+                        <td>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>
+                            {ca.company_name || '—'}
                           </span>
-                        )}
-                      </span>
-                    </td>
-                    <td>{field}</td>
-                    <td>{web}</td>
-                    <td>{Number(s.pending) || 0}</td>
-                    <td>{Number(s.confirmed) || 0}</td>
-                    <td>
-                      <strong>{Number(s.submissions) || field + web}</strong>
-                    </td>
-                    <td>
-                      {closed ? (
-                        <span style={{ color: '#dc2626', fontWeight: 700, fontSize: 12 }}>Disabled · 0 left</span>
-                      ) : cap > 0 ? (
-                        <span style={{ color: '#059669', fontWeight: 600, fontSize: 12 }}>
-                          {left} left of {cap}
-                        </span>
-                      ) : (
-                        <span className="muted">—</span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <strong>{Number(ca.allocated) > 0 ? Number(ca.allocated).toLocaleString() : '∞'}</strong>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <span style={{ color: Number(ca.web_allocated) > 0 ? '#1d4ed8' : '#64748b', fontWeight: 600 }}>
+                            {Number(ca.web_allocated) > 0 ? Number(ca.web_allocated).toLocaleString() : '0'}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <span style={{ color: Number(ca.web_used) > 0 ? '#059669' : '#64748b', fontWeight: 600 }}>
+                            {Number(ca.web_used).toLocaleString()}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <strong style={{ color: Number(ca.field_used) > 0 ? '#0f172a' : '#64748b' }}>
+                            {Number(ca.field_used).toLocaleString()}
+                          </strong>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <strong>{Number(ca.total_used).toLocaleString()}</strong>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {ca.field_remaining != null ? (
+                            <span style={{
+                              color: Number(ca.field_remaining) === 0 ? '#dc2626' : '#15803d',
+                              fontWeight: 700,
+                            }}>
+                              {Number(ca.field_remaining).toLocaleString()}
+                            </span>
+                          ) : (
+                            <span className="muted">∞</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          {hasSurveys ? (
+                            <button
+                              type="button"
+                              className="btn small"
+                              onClick={() => toggleAdmin(ca.id)}
+                              style={{ fontSize: 11, padding: '2px 8px' }}
+                            >
+                              {ca.surveys.length} {isExp ? '▲ Hide' : '▼ View'}
+                            </button>
+                          ) : (
+                            <span className="muted" style={{ fontSize: 12 }}>0</span>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Nested survey list for this client admin */}
+                      {isExp && hasSurveys && (
+                        <tr>
+                          <td colSpan={9} style={{ background: '#f8fafc', padding: '10px 16px 14px' }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 6 }}>
+                              Surveys under {ca.name || ca.username} ({ca.company_name || 'No company'}):
+                            </div>
+                            <table className="mini-table" style={{ width: '100%', background: '#ffffff', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                              <thead>
+                                <tr style={{ background: '#f1f5f9' }}>
+                                  <th>Survey</th>
+                                  <th style={{ textAlign: 'right' }}>Allocated for Web</th>
+                                  <th style={{ textAlign: 'right' }}>Used (Web)</th>
+                                  <th style={{ textAlign: 'right' }}>Web Remaining</th>
+                                  <th style={{ textAlign: 'right' }}>Used (Field)</th>
+                                  <th style={{ textAlign: 'right' }}>Pending</th>
+                                  <th style={{ textAlign: 'right' }}>Confirmed</th>
+                                  <th style={{ textAlign: 'right' }}>Total</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {ca.surveys.map((sv) => (
+                                  <tr key={sv.id || sv.form_key}>
+                                    <td>
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                        <strong>{sv.title || sv.form_key}</strong>
+                                        {sv.is_live && (
+                                          <span style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                                            background: '#dcfce7', color: '#15803d',
+                                            fontSize: 10, fontWeight: 700,
+                                            padding: '1px 6px', borderRadius: 99,
+                                            border: '1px solid #86efac',
+                                          }}>
+                                            <span style={{
+                                              width: 5, height: 5, borderRadius: '50%',
+                                              background: '#16a34a',
+                                              animation: 'live-pulse 1.4s ease-in-out infinite',
+                                              display: 'inline-block',
+                                            }} />
+                                            LIVE
+                                          </span>
+                                        )}
+                                      </span>
+                                    </td>
+                                    <td style={{ textAlign: 'right' }}>
+                                      {Number(sv.web_allocated) > 0 ? Number(sv.web_allocated).toLocaleString() : '—'}
+                                    </td>
+                                    <td style={{ textAlign: 'right' }}>
+                                      {Number(sv.web_used).toLocaleString()}
+                                    </td>
+                                    <td style={{ textAlign: 'right' }}>
+                                      {sv.web_remaining != null ? (
+                                        <span style={{ color: Number(sv.web_remaining) === 0 ? '#dc2626' : '#059669', fontWeight: 600 }}>
+                                          {Number(sv.web_remaining).toLocaleString()} left
+                                        </span>
+                                      ) : (
+                                        <span className="muted">—</span>
+                                      )}
+                                    </td>
+                                    <td style={{ textAlign: 'right' }}>
+                                      {Number(sv.field_used).toLocaleString()}
+                                    </td>
+                                    <td style={{ textAlign: 'right' }}>
+                                      {Number(sv.pending || 0).toLocaleString()}
+                                    </td>
+                                    <td style={{ textAlign: 'right' }}>
+                                      {Number(sv.confirmed || 0).toLocaleString()}
+                                    </td>
+                                    <td style={{ textAlign: 'right' }}>
+                                      <strong>{Number(sv.total_used || (Number(sv.field_used || 0) + Number(sv.web_used || 0))).toLocaleString()}</strong>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                    </Fragment>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: '#f1f5f9', fontWeight: 700 }}>
+                  <td colSpan={2}>
+                    <strong>Total across Client Admins</strong>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.allocated) || 0), 0).toLocaleString()}
+                  </td>
+                  <td style={{ textAlign: 'right', color: '#1d4ed8' }}>
+                    {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.web_allocated) || 0), 0).toLocaleString()}
+                  </td>
+                  <td style={{ textAlign: 'right', color: '#059669' }}>
+                    {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.web_used) || 0), 0).toLocaleString()}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.field_used) || 0), 0).toLocaleString()}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.total_used) || 0), 0).toLocaleString()}
+                  </td>
+                  <td style={{ textAlign: 'right', color: '#15803d' }}>
+                    {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.field_remaining) || 0), 0).toLocaleString()}
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.survey_count) || 0), 0)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
         </div>
+      ) : (
+        /* Client Admin: Survey breakdown with allocated, allocated for web, remaining for field */
+        surveyBreak.length > 0 && (
+          <div className="card" style={{ marginBottom: 20, overflowX: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Survey Breakdown &amp; Quotas</h3>
+                <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
+                  Field and web fills per survey · web share turns off when that survey’s target is reached
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ padding: '6px 12px', borderRadius: 8, background: '#f8fafc', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                  <span style={{ fontSize: 11, color: '#64748b', display: 'block', fontWeight: 600 }}>Allocated</span>
+                  <strong style={{ fontSize: 14, color: '#0f172a' }}>{allotCap > 0 ? allotCap.toLocaleString() : '∞'}</strong>
+                </div>
+                <div style={{ padding: '6px 12px', borderRadius: 8, background: '#eff6ff', border: '1px solid #bfdbfe', textAlign: 'center' }}>
+                  <span style={{ fontSize: 11, color: '#1d4ed8', display: 'block', fontWeight: 600 }}>Allocated for Web</span>
+                  <strong style={{ fontSize: 14, color: '#1e40af' }}>{webReserved.toLocaleString()}</strong>
+                </div>
+                <div style={{ padding: '6px 12px', borderRadius: 8, background: '#f0fdf4', border: '1px solid #bbf7d0', textAlign: 'center' }}>
+                  <span style={{ fontSize: 11, color: '#15803d', display: 'block', fontWeight: 600 }}>Remaining for Field</span>
+                  <strong style={{ fontSize: 14, color: '#16a34a' }}>{fieldLeft != null ? fieldLeft.toLocaleString() : '∞'}</strong>
+                </div>
+              </div>
+            </div>
+
+            <table className="mini-table" style={{ width: '100%' }}>
+              <thead>
+                <tr>
+                  <th>Survey</th>
+                  <th style={{ textAlign: 'right' }}>Allocated for Web</th>
+                  <th style={{ textAlign: 'right' }}>Used (Web)</th>
+                  <th style={{ textAlign: 'right' }}>Web Remaining</th>
+                  <th style={{ textAlign: 'right' }}>Used (Field)</th>
+                  <th style={{ textAlign: 'right' }}>Pending</th>
+                  <th style={{ textAlign: 'right' }}>Confirmed</th>
+                  <th style={{ textAlign: 'right' }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {surveyBreak.map((s) => {
+                  const web = Number(s.web_submissions) || 0
+                  const field = Number(s.field_submissions) || Math.max(0, (Number(s.submissions) || 0) - web)
+                  const link = s.web_link
+                  const cap = Number(link?.max_uses) || 0
+                  const used = Math.max(web, Number(link?.use_count) || 0)
+                  const left = Math.max(0, cap - used)
+                  const closed = !!link?.expired || (cap > 0 && left === 0)
+                  const isLive = !!link?.token && !closed
+                  return (
+                    <tr key={s.id || s.form_key}>
+                      <td>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <strong>{s.title || s.form_key}</strong>
+                          {isLive && (
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              background: '#dcfce7', color: '#15803d',
+                              fontSize: 10, fontWeight: 700, letterSpacing: '0.05em',
+                              padding: '2px 7px', borderRadius: 99,
+                              border: '1px solid #86efac',
+                            }}>
+                              <span style={{
+                                width: 6, height: 6, borderRadius: '50%',
+                                background: '#16a34a',
+                                animation: 'live-pulse 1.4s ease-in-out infinite',
+                                display: 'inline-block',
+                              }} />
+                              LIVE
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {cap > 0 ? (
+                          <span style={{ fontWeight: 600, color: '#1d4ed8' }}>{cap.toLocaleString()}</span>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span style={{ color: web > 0 ? '#059669' : '#64748b', fontWeight: 600 }}>{web.toLocaleString()}</span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {closed ? (
+                          <span style={{ color: '#dc2626', fontWeight: 700, fontSize: 12 }}>Disabled · 0 left</span>
+                        ) : cap > 0 ? (
+                          <span style={{ color: '#059669', fontWeight: 600, fontSize: 12 }}>
+                            {left.toLocaleString()} left
+                          </span>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <strong>{field.toLocaleString()}</strong>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>{Number(s.pending) || 0}</td>
+                      <td style={{ textAlign: 'right' }}>{Number(s.confirmed) || 0}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <strong>{Number(s.submissions) || field + web}</strong>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: '#f1f5f9', fontWeight: 700 }}>
+                  <td>
+                    <strong>Total (All Surveys)</strong>
+                  </td>
+                  <td style={{ textAlign: 'right', color: '#1d4ed8' }}>
+                    {webReserved.toLocaleString()}
+                  </td>
+                  <td style={{ textAlign: 'right', color: '#059669' }}>
+                    {webConfirmed.toLocaleString()}
+                  </td>
+                  <td style={{ textAlign: 'right', color: '#059669' }}>
+                    {Math.max(0, webReserved - webConfirmed).toLocaleString()} left
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {fieldUsed.toLocaleString()}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {reviewPending.toLocaleString()}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {confirmedTotal.toLocaleString()}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <strong>{allSubmitted.toLocaleString()}</strong>
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+
+            <div style={{ marginTop: 10, padding: '8px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: 12 }}>
+              <span className="muted">
+                Total Allocated: <strong>{allotCap > 0 ? allotCap.toLocaleString() : '∞'}</strong> · Allocated for Web: <strong>{webReserved.toLocaleString()}</strong> · Field Used: <strong>{fieldUsed.toLocaleString()}</strong>
+              </span>
+              <span style={{ color: '#15803d', fontWeight: 700 }}>
+                Remaining for Field: {fieldLeft != null ? fieldLeft.toLocaleString() : '∞'} records
+              </span>
+            </div>
+          </div>
+        )
       )}
 
       {/* Mixed Live Intake & Activity Stream — Mock 3 doctrine */}

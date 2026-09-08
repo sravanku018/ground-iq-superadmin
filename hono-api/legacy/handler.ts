@@ -4662,8 +4662,8 @@ async function rawHandler(req: Request): Promise<Response> {
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.57",
-          versionCode: 20057,
+          version: "2.0.58",
+          versionCode: 20058,
           minSupportedVersionCode: 20000,
           apkUrl: `https://${req.headers.get("x-forwarded-host") || url.hostname}/api/app.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
@@ -9232,6 +9232,21 @@ async function rawHandler(req: Request): Promise<Response> {
         reused: true,
         ...(snap || {}),
       });
+    }
+
+    if (path === "/api/web-survey/link" && method === "DELETE") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const formKey = String(url.searchParams.get("form_key") || "").trim();
+      if (!formKey) return json({ error: "form_key required" }, 400);
+      if (me.role === "admin") {
+        const writeScope = await adminFormKeyScope(sql, me);
+        if (writeScope && !writeScope.includes(formKey)) {
+          return json({ error: "You can only delete links for your own surveys" }, 403);
+        }
+      }
+      await sql`DELETE FROM web_survey_links WHERE form_key = ${formKey}`.catch(() => null);
+      return json({ ok: true, message: "Web link deleted" });
     }
 
     if (path === "/api/web-survey/links" && method === "GET") {

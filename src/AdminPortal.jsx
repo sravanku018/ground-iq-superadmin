@@ -88,11 +88,8 @@ const PAGE_LABELS = {
   companies: 'Companies',
 }
 
-// Only web survey links creation/fill is gated by can_web_survey power grant.
-// All standard survey management, analytics, export, and review screens are visible to Client Admin.
-const PAGE_POWER = {
-  web: 'can_web_survey',
-}
+// All standard survey management, analytics, export, review, and web survey screens are visible to Client Admin.
+const PAGE_POWER = {}
 
 
 /**

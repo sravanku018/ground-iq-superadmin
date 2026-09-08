@@ -898,7 +898,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           <h3 style={{ margin: '4px 0 8px', fontSize: 20, color: '#0f172a', fontWeight: 'bold' }}>
             {detail.title}
           </h3>
-          {(isSuper || !!user?.can_web_survey) && detail.form_key && detail.form_key !== 'default' && detail.form_key !== 'legacy' ? (
+          {(isSuper || user?.role === 'admin' || !!user?.can_web_survey) && detail.form_key && detail.form_key !== 'default' && detail.form_key !== 'legacy' ? (
             <CopyWebFillLink formKey={detail.form_key} title={detail.title} onToast={onToast} />
           ) : null}
           {user?.role === 'super_admin' && (
@@ -1189,7 +1189,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         >
           Open
         </button>
-        {(isSuper || !!user?.can_web_survey) && (
+        {(isSuper || user?.role === 'admin' || !!user?.can_web_survey) && (
           <CopyWebFillLink compact formKey={s.form_key} title={s.title} onToast={onToast} />
         )}
         <div style={{ flex: 1, minWidth: 0 }}>

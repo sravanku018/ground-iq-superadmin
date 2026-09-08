@@ -456,7 +456,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
             </button>
           ))}
         </div>
-        {(isSuper || !!user?.can_web_survey) && (
+        {(isSuper || user?.role === 'admin' || !!user?.can_web_survey) && (
           <div className="chip-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
             {[
               { id: 'field', label: 'Field app' },

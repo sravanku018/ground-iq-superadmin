@@ -916,6 +916,9 @@ async function getUser(token: string | null): Promise<PortalUser | null> {
     phone: u.phone || null,
   };
   for (const f of BOOL_FIELDS) me[f] = sqlBool(u[f]);
+  if (u.role === "admin" || u.role === "super_admin") {
+    me.can_web_survey = true;
+  }
   for (const f of NUM_FIELDS) me[f] = Number(u[f]) || 0;
   return me as PortalUser;
 }
@@ -1083,7 +1086,10 @@ function hasPower(
   me: { role: unknown } & Record<string, unknown> | null,
   key: string,
 ): boolean {
-  return !!me && (me.role === "super_admin" || sqlBool(me[key]));
+  if (!me) return false;
+  if (me.role === "super_admin") return true;
+  if (key === "can_web_survey" && me.role === "admin") return true;
+  return sqlBool(me[key]);
 }
 
 /** Per-survey quotas from PUT /api/users/:id/surveys (`quotas` map or `survey_quotas` array). */
@@ -1542,7 +1548,8 @@ async function ensureSchema(): Promise<void> {
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_assign_surveyors BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_crud_questionnaire BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_validate_proof BOOLEAN NOT NULL DEFAULT FALSE`,
-    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_web_survey BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_web_survey BOOLEAN NOT NULL DEFAULT TRUE`,
+    () => sql`UPDATE app_users SET can_web_survey = TRUE WHERE role = 'admin' AND (can_web_survey IS NOT TRUE)`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_record_voice BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_translate_telugu BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_questions_per_survey INTEGER NOT NULL DEFAULT 0`,

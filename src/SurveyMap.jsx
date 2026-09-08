@@ -44,6 +44,18 @@ const COLOR_MODES = [
   { id: 'party', label: 'Lead party' },
 ]
 
+const PARTY_TE = {
+  Congress: 'కాంగ్రెస్',
+  BJP: 'బీజేపీ',
+  BRS: 'బీఆర్ఎస్',
+  Others: 'ఇతరులు',
+  Undecided: 'నిర్ణయం కాలేదు',
+  Unknown: 'తెలియదు',
+  Low: 'తక్కువ',
+  Mid: 'మధ్యస్థం',
+  High: 'ఎక్కువ',
+}
+
 // Telangana-ish center
 const DEFAULT_VIEW = [17.9, 79.5]
 const DEFAULT_ZOOM = 7
@@ -58,6 +70,7 @@ export default function SurveyMap({
   filters,
   onSelectDistrict,
   onSelectConstituency,
+  lang = 'en',
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
@@ -153,7 +166,11 @@ export default function SurveyMap({
     mapRef.current = map
 
     return () => {
-      map.remove()
+      try {
+        map.remove()
+      } catch {
+        /* unmount during tile load */
+      }
       mapRef.current = null
       geoLayerRef.current = null
     }
@@ -172,7 +189,6 @@ export default function SurveyMap({
     const nameProp = layerCfg.nameProp
     const isDistrict = layerId === 'district'
     const isAssembly = layerId === 'assembly'
-    const isPc = layerId === 'parliament'
 
     const counts = isDistrict
       ? dataMaps.districtCounts
@@ -248,7 +264,7 @@ export default function SurveyMap({
             pct,
             party: lead?.party,
           })
-          lyr.setStyle({ weight: 2, color: '#00e599' })
+          lyr.setStyle({ weight: 2, color: '#059669' })
         })
         lyr.on('mouseout', () => {
           setHover(null)
@@ -348,9 +364,18 @@ export default function SurveyMap({
 
       <footer className="map-legend">
         {legend.map((item) => (
-          <span key={item.name} className="legend-item">
-            <i style={{ background: item.color }} />
-            {item.name}
+          <span
+            key={item.name}
+            className="legend-item"
+            style={{ color: item.color, fontWeight: 500 }}
+          >
+            <i
+              style={{
+                background: item.color,
+                boxShadow: `0 0 0 1px rgba(255,255,255,0.25)`,
+              }}
+            />
+            {lang === 'te' ? PARTY_TE[item.name] || item.name : item.name}
           </span>
         ))}
         <span className="legend-hint">

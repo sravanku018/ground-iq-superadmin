@@ -1347,7 +1347,7 @@ function qaFromAnswers(a: Record<string, unknown>) {
 /** Load + resolve all submissions into analytics rows (AC → district resolution, mandal fallback, party/gender/caste normalisation). Shared by analytics + export. */
 async function loadAnalyticsRows(
   sqlFn: NonNullable<typeof sql>,
-  limit = 10000,
+  limit = 500000,
 ): Promise<Row[]> {
   // AC name → first covering district (excel often puts AC in respondent_name)
   const acRows = await sqlFn`
@@ -4760,7 +4760,7 @@ Deno.serve(async (req) => {
         const constituencyQ = (url.searchParams.get("constituency") || "").trim().toLowerCase();
         const statusQ = (url.searchParams.get("status") || "confirmed").trim().toLowerCase();
 
-        const allRows = await loadAnalyticsRows(sql, 20000);
+        const allRows = await loadAnalyticsRows(sql, 500000);
         let rows = allRows;
         if (statusQ !== "all") rows = rows.filter((r) => r.status === statusQ);
         if (dateFrom) rows = rows.filter((r) => dayKey(r.created_at) >= dateFrom);

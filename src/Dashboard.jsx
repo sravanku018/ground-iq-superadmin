@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ResponsiveContainer,
   PieChart,
@@ -16,8 +16,10 @@ import {
   RadialBarChart,
   RadialBar,
 } from 'recharts'
-import { getAnalytics } from './api'
+import { getAnalytics, getStoredUser } from './api'
 import SurveyMap from './SurveyMap'
+import { getDisplayLang, setDisplayLang } from './prefs'
+import PeriodTable from './components/PeriodTable'
 
 const PARTY_COLORS = {
   Congress: '#16a34a',
@@ -46,8 +48,146 @@ const PALETTE = [
   '#e879f9',
 ]
 
+const CLEAR_AC = { constituency: '' }
+
+function pickFirstSurveyKey(items) {
+  const list = Array.isArray(items) ? items : []
+  const real = list.filter((s) => {
+    const k = String(s?.form_key || '')
+    return k && k !== 'default' && k !== 'legacy'
+  })
+  return String((real[0] || list[0])?.form_key || '')
+}
+
 function colorFor(name, i = 0) {
   return PARTY_COLORS[name] || PALETTE[i % PALETTE.length]
+}
+
+/** `name` is English (filters/maps). `label` is Telugu. Never mix in one list. */
+function shown(d, fallback = '', lang = 'en') {
+  if (d && typeof d === 'object') {
+    if (lang === 'te') return d.label || d.name || fallback
+    return d.name || fallback
+  }
+  return fallback
+}
+
+
+
+function questionFilterTitle(q, lang) {
+  const typed = String(q.label_en || q.label || '').trim()
+  const te = String(q.label_te || '').trim()
+  if (lang === 'te') return te || typed || 'Question'
+  return typed || 'Question'
+}
+
+function optionFilterText(name, q, countRow, lang) {
+  if (lang !== 'te') return name
+  if (countRow?.label && countRow.label !== name) return countRow.label
+  const i = (q.options || []).findIndex((o) => o === name)
+  if (i >= 0 && q.options_te?.[i]) return q.options_te[i]
+  return name
+}
+
+function FilterLangToggle({ value, onChange }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+      {[
+        { id: 'en', label: 'English' },
+        { id: 'te', label: 'తెలుగు' },
+      ].map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          className={`chip ${value === p.id ? 'selected' : ''}`}
+          onClick={() => onChange(p.id)}
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function tickShown(data, lang = 'en') {
+  return (v) => {
+    const row = (data || []).find((d) => d.name === v)
+    if (!row) return v
+    return lang === 'te' ? row.label || v : row.name || v
+  }
+}
+
+/** Options as created on the survey, in that order — never drop a choice because it has 0 answers. */
+function createdOptions(q) {
+  if (q?.authored?.length) return q.authored.map(String)
+  if (q?.options?.length) return q.options.map(String)
+  const t = String(q?.type || '')
+  if (t === 'yesno') return ['Yes', 'No']
+  if (t === 'abc') return ['A', 'B', 'C', 'D']
+  if (t === 'sentiment' || t === 'sentiment_text' || t === 'meter' || t === 'tapometer') {
+    return ['Negative', 'Neutral', 'Positive']
+  }
+  if (t === 'range' || t === 'numeric_range' || t === 'age') {
+    return ['10-20', '21-30', '31-40', '41-50', '50+']
+  }
+  return []
+}
+
+function rowsFromSurveyQuestion(q) {
+  const countMap = new Map((q?.counts || []).map((c) => [String(c.name), c]))
+  const seen = new Set()
+  const rows = []
+  for (const name of createdOptions(q)) {
+    const key = String(name)
+    const low = key.toLowerCase()
+    if (!key || seen.has(low)) continue
+    seen.add(low)
+    const c =
+      countMap.get(key) ||
+      [...countMap.values()].find((x) => String(x.name).toLowerCase() === low)
+    rows.push({
+      name: key,
+      value: Number(c?.value || 0),
+      pct: Number(c?.pct || 0),
+      label: c?.label || key,
+    })
+  }
+  for (const c of q?.counts || []) {
+    const low = String(c.name).toLowerCase()
+    if (seen.has(low) || Number(c.value) <= 0) continue
+    seen.add(low)
+    rows.push({ ...c, value: Number(c.value || 0) })
+  }
+  return rows
+}
+
+/**
+ * Pie only when every option stays readable. Otherwise bars.
+ * Not tied to question type — a 4-way crop list or a 99%/1% Yes-No both use bars.
+ */
+function chartShouldUsePie(rows) {
+  if (!rows?.length) return false
+  const total = rows.reduce((s, c) => s + Number(c.value || 0), 0)
+  if (total <= 0) return false
+  if (rows.some((c) => Number(c.value) <= 0)) return false
+  if (rows.length < 2 || rows.length > 3) return false
+  const minShare = Math.min(...rows.map((c) => Number(c.value) / total))
+  return minShare >= 0.08
+}
+
+/** Relative freshness — 09-ANALYTICS-SPEC §7: "Data as of {relative time}" */
+function timeAgo(iso) {
+  const t = new Date(iso).getTime()
+  if (!(t > 0)) return ''
+  const diff = Date.now() - t
+  if (diff < 60 * 1000) return 'just now'
+  const m = Math.floor(diff / 60000)
+  if (m < 60) return `${m} min ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h} hr${h > 1 ? 's' : ''} ago`
+  const d = Math.floor(h / 24)
+  if (d === 1) return 'yesterday'
+  return `${d} days ago`
 }
 
 function ChartCard({ title, subtitle, children, tall }) {
@@ -62,19 +202,19 @@ function ChartCard({ title, subtitle, children, tall }) {
   )
 }
 
-function EmptyChart({ label = 'No data for current filters' }) {
+const EmptyChart = memo(function EmptyChart({ label = 'No data for current filters' }) {
   return <div className="chart-empty">{label}</div>
-}
+})
 
 /** Super-set / Sub-set dual bars */
-function ContrastBars({ data }) {
+const ContrastBars = memo(function ContrastBars({ data }) {
   if (!data?.length) return <EmptyChart label="Apply a filter to see Subset vs Rest" />
   return (
     <div className="contrast-list">
       {data.slice(0, 10).map((d) => (
         <div key={d.name} className="contrast-row">
           <div className="contrast-head">
-            <span className="contrast-name">{d.name}</span>
+            <span className="contrast-name">{shown(d)}</span>
             <span
               className={`contrast-delta ${d.delta > 0 ? 'up' : d.delta < 0 ? 'down' : ''}`}
             >
@@ -107,7 +247,7 @@ function ContrastBars({ data }) {
       ))}
     </div>
   )
-}
+})
 
 const tipStyle = {
   background: '#0f1720',
@@ -116,15 +256,16 @@ const tipStyle = {
   fontSize: 12,
 }
 
-function PctTooltip({ active, payload, label }) {
+function PctTooltip({ active, payload, label, lang = 'en' }) {
   if (!active || !payload?.length) return null
   const p = payload[0]?.payload
+  const title = lang === 'te' ? p?.label || label || p?.name : p?.name || label
   return (
     <div className="recharts-custom-tip" style={{ ...tipStyle, padding: '8px 10px' }}>
-      <div style={{ color: '#e2e8f0', fontWeight: 700 }}>{label || p?.name}</div>
+      <div style={{ color: '#e2e8f0', fontWeight: 700 }}>{title}</div>
       {payload.map((item) => (
         <div key={item.dataKey} style={{ color: item.color || '#94a3b8' }}>
-          {item.name}: {item.value}
+          {lang === 'te' && item.payload?.label ? item.payload.label : item.name}: {item.value}
           {p?.pct != null && item.dataKey === 'value' ? ` (${p.pct}%)` : ''}
         </div>
       ))}
@@ -132,7 +273,7 @@ function PctTooltip({ active, payload, label }) {
   )
 }
 
-function InteractivePie({ data, onSliceClick, activeName }) {
+const InteractivePie = memo(function InteractivePie({ data, onSelect, selectKey, extra, activeName, lang = 'en' }) {
   if (!data?.length) return <EmptyChart />
   return (
     <ResponsiveContainer width="100%" height={240}>
@@ -146,8 +287,8 @@ function InteractivePie({ data, onSliceClick, activeName }) {
           innerRadius={52}
           outerRadius={86}
           paddingAngle={2}
-          onClick={(entry) => onSliceClick?.(entry?.name)}
-          style={{ cursor: onSliceClick ? 'pointer' : 'default' }}
+          onClick={(entry) => onSelect?.(selectKey, entry?.name, extra)}
+          style={{ cursor: onSelect ? 'pointer' : 'default' }}
         >
           {data.map((d, i) => (
             <Cell
@@ -159,39 +300,55 @@ function InteractivePie({ data, onSliceClick, activeName }) {
             />
           ))}
         </Pie>
-        <Tooltip content={<PctTooltip />} />
+        <Tooltip content={(props) => <PctTooltip {...props} lang={lang} />} />
         <Legend
           verticalAlign="bottom"
-          height={36}
-          formatter={(v) => <span style={{ color: '#94a3b8', fontSize: 11 }}>{v}</span>}
+          height={48}
+          formatter={(v, entry) => {
+            const row = entry?.payload
+            const text = lang === 'te' ? row?.label || v : row?.name || v
+            const n = row?.value
+            return (
+            <span style={{ color: '#94a3b8', fontSize: 11 }}>
+              {n != null ? `${text} (${n})` : text}
+            </span>
+            )
+          }}
         />
       </PieChart>
     </ResponsiveContainer>
   )
-}
+})
 
-function HBar({ data, onBarClick, activeName, colorKey }) {
+const HBar = memo(function HBar({ data, onSelect, selectKey, extra, activeName, colorKey, lang = 'en' }) {
   if (!data?.length) return <EmptyChart />
   const height = Math.max(200, data.length * 28 + 40)
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16, top: 8, bottom: 8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#243041" horizontal={false} />
-        <XAxis type="number" stroke="#64748b" fontSize={11} />
+        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+        <XAxis
+          type="number"
+          stroke="#64748b"
+          fontSize={11}
+          allowDecimals={false}
+          domain={[0, (max) => (Number(max) > 0 ? max : 1)]}
+        />
         <YAxis
           type="category"
           dataKey="name"
-          width={92}
+          width={lang === 'te' ? 120 : 108}
           stroke="#94a3b8"
           fontSize={11}
           tickLine={false}
+          tickFormatter={tickShown(data, lang)}
         />
-        <Tooltip content={<PctTooltip />} />
+        <Tooltip content={(props) => <PctTooltip {...props} lang={lang} />} />
         <Bar
           dataKey="value"
           radius={[0, 6, 6, 0]}
-          onClick={(entry) => onBarClick?.(entry?.name || entry?.payload?.name)}
-          cursor={onBarClick ? 'pointer' : 'default'}
+          onClick={(entry) => onSelect?.(selectKey, entry?.name || entry?.payload?.name, extra)}
+          cursor={onSelect ? 'pointer' : 'default'}
         >
           {data.map((d, i) => (
             <Cell
@@ -204,17 +361,20 @@ function HBar({ data, onBarClick, activeName, colorKey }) {
       </BarChart>
     </ResponsiveContainer>
   )
-}
+})
 
-function StackedParty({ matrix, onRowClick, activeName }) {
+const StackedParty = memo(function StackedParty({ matrix, onSelect, selectKey, extra }) {
   if (!matrix?.rows?.length) return <EmptyChart />
-  const cols = (matrix.columns || []).filter((c) => c)
   const data = matrix.rows.slice(0, 10)
+  const cols = (matrix.columns || []).filter(
+    (c) => c && data.some((row) => Number(row[c]) > 0),
+  )
+  if (!cols.length) return <EmptyChart label="No party breakdown in this survey" />
   const height = Math.max(220, data.length * 32 + 50)
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} layout="vertical" margin={{ left: 4, right: 12, top: 8, bottom: 8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#243041" horizontal={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
         <XAxis type="number" stroke="#64748b" fontSize={11} />
         <YAxis
           type="category"
@@ -223,14 +383,24 @@ function StackedParty({ matrix, onRowClick, activeName }) {
           stroke="#94a3b8"
           fontSize={11}
           tickLine={false}
+          tickFormatter={tickShown(data, 'en')}
         />
         <Tooltip
           contentStyle={tipStyle}
           labelStyle={{ color: '#e2e8f0' }}
           itemStyle={{ fontSize: 12 }}
+          formatter={(value, name) => [value, matrix.column_labels?.[name] || name]}
+          labelFormatter={(v) => {
+            const row = data.find((d) => d.name === v)
+            return row?.label || v
+          }}
         />
         <Legend
-          formatter={(v) => <span style={{ color: '#94a3b8', fontSize: 11 }}>{v}</span>}
+          formatter={(v) => (
+            <span style={{ color: '#94a3b8', fontSize: 11 }}>
+              {matrix.column_labels?.[v] || v}
+            </span>
+          )}
         />
         {cols.map((col) => (
           <Bar
@@ -238,16 +408,16 @@ function StackedParty({ matrix, onRowClick, activeName }) {
             dataKey={col}
             stackId="p"
             fill={colorFor(col)}
-            onClick={(entry) => onRowClick?.(entry?.payload?.name)}
-            cursor={onRowClick ? 'pointer' : 'default'}
+            onClick={(entry) => onSelect?.(selectKey, entry?.payload?.name, extra)}
+            cursor={onSelect ? 'pointer' : 'default'}
           />
         ))}
       </BarChart>
     </ResponsiveContainer>
   )
-}
+})
 
-function Timeline({ data }) {
+const Timeline = memo(function Timeline({ data }) {
   if (!data?.length) return <EmptyChart label="No timeline data yet" />
   return (
     <ResponsiveContainer width="100%" height={220}>
@@ -258,7 +428,7 @@ function Timeline({ data }) {
             <stop offset="100%" stopColor="#00e599" stopOpacity={0.02} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="#243041" />
+        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
         <XAxis
           dataKey="date"
           stroke="#64748b"
@@ -279,9 +449,63 @@ function Timeline({ data }) {
       </AreaChart>
     </ResponsiveContainer>
   )
-}
+})
 
-function RadialIssues({ data, onClick, activeName }) {
+const MeterChart = memo(function MeterChart({ q, rows, lang = 'en', onSelect, selectKey, activeName }) {
+  const bandRows = rowsFromSurveyQuestion({
+    ...q,
+    type: 'meter',
+    authored: ['Negative', 'Neutral', 'Positive'],
+    options: ['Negative', 'Neutral', 'Positive'],
+    counts: rows,
+  })
+  const answered = bandRows.reduce((s, r) => s + Number(r.value || 0), 0)
+  const avgDirect = Number(q?.meter?.avg)
+  const weighted =
+    answered > 0
+      ? bandRows.reduce((s, r) => {
+          const mid = r.name === 'Negative' ? 17 : r.name === 'Positive' ? 83 : 50
+          return s + mid * Number(r.value || 0)
+        }, 0) / answered
+      : 50
+  const val = Number.isFinite(avgDirect) && avgDirect > 0 ? avgDirect : weighted
+  const shownVal = Math.round(val)
+  const mood = shownVal <= 33 ? 'Negative' : shownVal <= 66 ? 'Neutral' : 'Positive'
+  const moodClass = shownVal <= 33 ? 'neg' : shownVal <= 66 ? 'neu' : 'pos'
+  return (
+    <div>
+      <div className="qa-meter" style={{ marginBottom: 12 }}>
+        <div className="qa-meter-track">
+          <input type="range" min="1" max="100" step="1" value={shownVal} readOnly aria-label="Tapometer average" />
+        </div>
+        <div className="qa-meter-scale">
+          <span>Negative</span>
+          <span>Neutral</span>
+          <span>Positive</span>
+        </div>
+        <div className="qa-meter-value">
+          <strong>{answered ? `${shownVal}%` : '—'}</strong>
+          {answered ? (
+            <span className={`qa-opt selected ${moodClass}`} style={{ minHeight: 32, padding: '4px 12px' }}>
+              {mood} · {answered} answer{answered === 1 ? '' : 's'}
+            </span>
+          ) : (
+            <span className="muted">No tapometer answers yet</span>
+          )}
+        </div>
+      </div>
+      <HBar
+        data={bandRows}
+        lang={lang}
+        onSelect={onSelect}
+        selectKey={selectKey}
+        activeName={activeName}
+      />
+    </div>
+  )
+})
+
+const RadialIssues = memo(function RadialIssues({ data, onClick, lang = 'en' }) {
   if (!data?.length) return <EmptyChart />
   const chartData = data.slice(0, 7).map((d, i) => ({
     ...d,
@@ -311,13 +535,17 @@ function RadialIssues({ data, onClick, activeName }) {
           layout="vertical"
           verticalAlign="middle"
           align="right"
-          formatter={(v) => <span style={{ color: '#94a3b8', fontSize: 10 }}>{v}</span>}
+          formatter={(v, entry) => (
+            <span style={{ color: '#94a3b8', fontSize: 10 }}>
+              {lang === 'te' ? entry?.payload?.label || v : entry?.payload?.name || v}
+            </span>
+          )}
         />
-        <Tooltip content={<PctTooltip />} />
+        <Tooltip content={(props) => <PctTooltip {...props} lang={lang} />} />
       </RadialBarChart>
     </ResponsiveContainer>
   )
-}
+})
 
 export default function DashboardScreen({ onToast }) {
   // Report is LOCKED to Client Admin confirmed data only — never pending/raw
@@ -335,21 +563,49 @@ export default function DashboardScreen({ onToast }) {
   })
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(null)
   const [surveys, setSurveys] = useState([])
   const [boardTab, setBoardTab] = useState('day') // day | month | surveyor | geo
+  const [filterLang, setFilterLang] = useState(getDisplayLang)
+  const setFilterLangPersist = useCallback((lang) => {
+    setFilterLang(setDisplayLang(lang))
+  }, [])
+  useEffect(() => {
+    const onLang = () => setFilterLang(getDisplayLang())
+    window.addEventListener('esurvey-display-lang', onLang)
+    return () => window.removeEventListener('esurvey-display-lang', onLang)
+  }, [])
+  useEffect(() => {
+    const s = surveys.find((x) => x.form_key === filters.survey)
+    if (s?.display_lang === 'te' || s?.display_lang === 'en') {
+      setFilterLangPersist(s.display_lang)
+    }
+  }, [filters.survey, surveys, setFilterLangPersist])
+
+  const me = useMemo(() => getStoredUser(), [])
+  const allotCap = Number(me?.max_records) || 0
+  const fieldUsed = Number(me?.field_used ?? data?.totalAll ?? data?.dataFilters?.total ?? me?.record_count ?? me?.surveyor_record_count) || 0
+  const webReserved = Number(me?.web_reserved) || 0
+  const allotUsed = fieldUsed + webReserved
+  const allotLeft = allotCap > 0 ? (me?.field_remaining != null ? Number(me.field_remaining) : Math.max(0, allotCap - allotUsed)) : null
+  const allotPct = allotCap > 0 ? Math.min(100, Math.round((allotUsed / allotCap) * 100)) : 0
 
   useEffect(() => {
     import('./api').then(({ listSurveys }) =>
       listSurveys()
-        .then((d) => setSurveys(d.items || []))
+        .then((d) => {
+          const items = d.items || []
+          setSurveys(items)
+          const key = pickFirstSurveyKey(items)
+          if (key) setFilters((f) => (f.survey ? f : { ...f, survey: key }))
+        })
         .catch(() => {}),
     )
   }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
-    setError('')
+    setError(null)
     try {
       const params = {
         district: filters.district,
@@ -385,20 +641,110 @@ export default function DashboardScreen({ onToast }) {
   }, [filters, onToast])
 
   useEffect(() => {
+    if (!filters.survey) return undefined
     const t = setTimeout(load, 180)
     return () => clearTimeout(t)
-  }, [load])
+  }, [load, filters.survey])
 
-  const clearFilters = () =>
-    setFilters({
-      district: '',
-      constituency: '',
-      user: '',
-      survey: '',
-      period: 'total',
-      day: new Date().toISOString().slice(0, 10),
-      month: new Date().toISOString().slice(0, 7),
+  const onToggleFilter = useCallback((key, name, extra) => {
+    setFilters((f) => ({
+      ...f,
+      [key]: f[key] === name ? '' : name,
+      ...extra,
+    }))
+  }, [])
+
+  const onSelectDistrict = useCallback(
+    (name) => onToggleFilter('district', name, CLEAR_AC),
+    [onToggleFilter],
+  )
+
+  const onSelectConstituency = useCallback(
+    (name) => onToggleFilter('constituency', name),
+    [onToggleFilter],
+  )
+
+  const clearFilters = useCallback(
+    () =>
+      setFilters((f) => ({
+        district: '',
+        party: '',
+        gender: '',
+        caste: '',
+        constituency: '',
+        user: '',
+        survey: f.survey || pickFirstSurveyKey(surveys),
+        period: 'total',
+        day: new Date().toISOString().slice(0, 10),
+        month: new Date().toISOString().slice(0, 7),
+      })),
+    [surveys],
+  )
+
+  // Active-filter chips (08-UXUI-SPEC §4.1: filter bar chips, accent-tinted when active)
+  const filterChipLabels = {
+    district: 'District',
+    party: 'Party',
+    gender: 'Gender',
+    caste: 'Caste',
+    constituency: 'Assembly',
+    user: 'Surveyor',
+    survey: 'Survey',
+  }
+  const activeFilterChips = useMemo(() => {
+    const chips = []
+    for (const [k, v] of Object.entries(filters)) {
+      if (!v) continue
+      if (k === 'day' || k === 'month') continue
+      if (k === 'period' && v === 'total') continue
+      if (k === 'period') {
+        chips.push({
+          key: 'period',
+          label: 'Period',
+          value: { today: 'Today', day: 'Day', month: 'Month' }[v] || v,
+        })
+        continue
+      }
+      if (k.startsWith('q_')) {
+        const q = data?.dataFilters?.questions?.find((x) => `q_${x.id}` === k)
+        const countRow = (q?.counts || []).find((c) => c.name === v)
+        chips.push({
+          key: k,
+          label: q ? questionFilterTitle(q, filterLang) : 'Question',
+          value: q ? optionFilterText(v, q, countRow, filterLang) : v,
+        })
+        continue
+      }
+      const teChip = {
+        district: 'జిల్లా',
+        party: 'పార్టీ',
+        gender: 'లింగం',
+        caste: 'కులం',
+        constituency: 'నియోజకవర్గం',
+        user: 'సర్వేయర్',
+        survey: 'సర్వే',
+      }
+      const teVal =
+        filterLang === 'te'
+          ? data?.filterLabels?.[
+              { district: 'districts', party: 'parties', gender: 'genders', caste: 'castes', constituency: 'constituencies' }[k]
+            ]?.[v]
+          : null
+      chips.push({
+        key: k,
+        label: filterLang === 'te' ? teChip[k] || filterChipLabels[k] || k : filterChipLabels[k] || k,
+        value: teVal || v,
+      })
+    }
+    return chips
+  }, [filters, data, filterLang])
+  const removeFilter = useCallback((key) => {
+    setFilters((f) => {
+      const next = { ...f, [key]: '' }
+      if (key === 'district') next.constituency = ''
+      return next
     })
+  }, [])
 
   const activeCount = useMemo(
     () =>
@@ -421,18 +767,23 @@ export default function DashboardScreen({ onToast }) {
     !data.isFiltered &&
     !(opts?.districts?.length > 0)
 
+  // Freshness (09-ANALYTICS-SPEC §8): stale when no new confirmation in 2+ days
+  const stale =
+    !!data?.data_as_of &&
+    Date.now() - new Date(data.data_as_of).getTime() > 2 * 24 * 60 * 60 * 1000
+
   return (
     <div className="screen dashboard-screen">
       <header className="screen-head row">
         <div>
-          <h2>Report analytics</h2>
+          <h2>Analyze</h2>
           <p>
             {loading && !data
               ? 'Loading…'
               : reportLocked
                 ? 'Locked until Client Admin confirms'
                 : data
-                  ? `${data.filtered.toLocaleString()} confirmed · daily / monthly / surveyor boards`
+                  ? `${data.filtered.toLocaleString()} confirmed · charts & maps`
                   : 'Confirmed data only'}
           </p>
         </div>
@@ -444,7 +795,7 @@ export default function DashboardScreen({ onToast }) {
       <div className="card" style={{ marginBottom: 12 }}>
         <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
           <strong>Dashboard does not form</strong> until Client Admin confirms records
-          (strict complete: geo + voice + photo + Q/A). Pending data stays out of charts.
+          (GPS + photo + Q/A; voice only if required). Pending data stays out of charts.
         </p>
         {data?.statusCounts && (
           <p style={{ margin: '0 0 8px', fontSize: 13 }}>
@@ -453,6 +804,35 @@ export default function DashboardScreen({ onToast }) {
             Confirmed <strong>{data.statusCounts.confirmed}</strong>
             {' · '}
             In this report <strong>{data.totalAll ?? 0}</strong>
+          </p>
+        )}
+        {(data?.data_as_of || data?.degraded) && (
+          <p
+            style={{
+              margin: '6px 0 0',
+              fontSize: 12,
+              display: 'flex',
+              gap: 8,
+              flexWrap: 'wrap',
+            }}
+          >
+            {data.data_as_of && (
+              <span
+                className={stale ? 'pill bad' : 'pill ok'}
+                style={{ margin: 0 }}
+                title={new Date(data.data_as_of).toLocaleString()}
+              >
+                <span className="dot" />
+                Data as of {timeAgo(data.data_as_of)}
+                {stale ? ' · stale (no new confirmations in 2+ days)' : ''}
+              </span>
+            )}
+            {data.degraded && (
+              <span className="pill bad" style={{ margin: 0 }} title={data.degraded_reason || ''}>
+                <span className="dot" />
+                Degraded — facts pending retry
+              </span>
+            )}
           </p>
         )}
       </div>
@@ -467,8 +847,7 @@ export default function DashboardScreen({ onToast }) {
           <h3 style={{ margin: '0 0 8px' }}>No confirmed data yet</h3>
           <p className="muted" style={{ fontSize: 13, margin: '0 0 12px' }}>
             Charts, maps and KPIs stay empty until Client Admin opens{' '}
-            <strong>Analyze / Review</strong>, verifies geo + voice, and taps{' '}
-            <strong>Confirm complete</strong>.
+            <strong>Review QA</strong> and taps <strong>Confirm</strong>.
           </p>
           <p style={{ fontSize: 13, margin: 0 }}>
             Pending in queue / review:{' '}
@@ -478,178 +857,9 @@ export default function DashboardScreen({ onToast }) {
         </div>
       )}
 
-      {reportReady && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
-            Step by step: pick a <strong>survey</strong> → <strong>surveyor</strong> →{' '}
-            <strong>day / month</strong>. Question filters load from the survey.
-          </p>
+      <div className="dash-split">
+        <div className="dash-split-main">
 
-          {/* Step 1 · Survey name */}
-          <div
-            style={{
-              border: '1px solid #243041',
-              borderRadius: 10,
-              padding: 10,
-              marginBottom: 10,
-            }}
-          >
-            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
-              1 · Survey name
-            </p>
-            <label className="field compact">
-              <span>By survey</span>
-              <select
-                value={filters.survey}
-                onChange={(e) => {
-                  const survey = e.target.value
-                  // Changing survey clears old per-question + surveyor filters
-                  const drop = Object.fromEntries(
-                    Object.entries(filters).filter(
-                      ([k]) => !k.startsWith('q_') && k !== 'user',
-                    ),
-                  )
-                  setFilters((f) => ({ ...drop, ...f, survey }))
-                }}
-              >
-                <option value="">All surveys</option>
-                {surveys.map((s) => (
-                  <option key={s.id} value={s.form_key}>
-                    {s.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          {/* Step 2 · Surveyor — options load per survey */}
-          <div
-            style={{
-              border: '1px solid #243041',
-              borderRadius: 10,
-              padding: 10,
-              marginBottom: 10,
-            }}
-          >
-            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
-              2 · Surveyor name
-            </p>
-            <label className="field compact">
-              <span>By surveyor</span>
-              <select
-                value={filters.user}
-                onChange={(e) => setFilters((f) => ({ ...f, user: e.target.value }))}
-              >
-                <option value="">
-                  {data?.dataFilters?.by_user?.length ? 'All surveyors' : 'No surveyors yet'}
-                </option>
-                {(data?.dataFilters?.by_user || []).map((u) => (
-                  <option key={u.name} value={u.name}>
-                    {u.name} ({u.value})
-                  </option>
-                ))}
-              </select>
-            </label>
-            {!filters.survey && (
-              <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
-                Pick a survey first to load its surveyors.
-              </p>
-            )}
-          </div>
-
-          {/* Step 3 · Day / Month */}
-          <div
-            style={{
-              border: '1px solid #243041',
-              borderRadius: 10,
-              padding: 10,
-              marginBottom: 10,
-            }}
-          >
-            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>3 · Day / Month</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-              {[
-                { id: 'total', label: 'Total data' },
-                { id: 'today', label: 'Today' },
-                { id: 'day', label: 'Day' },
-                { id: 'month', label: 'Month' },
-              ].map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={`chip ${filters.period === p.id ? 'selected' : ''}`}
-                  onClick={() => setFilters((f) => ({ ...f, period: p.id }))}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            {filters.period === 'day' && (
-              <label className="field compact">
-                <span>Day</span>
-                <input
-                  type="date"
-                  value={filters.day}
-                  onChange={(e) => setFilters((f) => ({ ...f, day: e.target.value }))}
-                />
-              </label>
-            )}
-            {filters.period === 'month' && (
-              <label className="field compact">
-                <span>Month</span>
-                <input
-                  type="month"
-                  value={filters.month}
-                  onChange={(e) => setFilters((f) => ({ ...f, month: e.target.value }))}
-                />
-              </label>
-            )}
-          </div>
-
-          {/* Question filters — load per survey */}
-          <div
-            style={{
-              border: '1px solid #243041',
-              borderRadius: 10,
-              padding: 10,
-              marginBottom: 10,
-            }}
-          >
-            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
-              Question filters (auto from survey)
-            </p>
-            {data?.dataFilters?.questions?.map((q) => (
-              <label className="field compact" key={q.id}>
-                <span>{q.label}</span>
-                <select
-                  value={filters[`q_${q.id}`] || ''}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, [`q_${q.id}`]: e.target.value }))
-                  }
-                >
-                  <option value="">All {q.label}</option>
-                  {(q.counts || []).map((c) => (
-                    <option key={c.name} value={c.name}>
-                      {c.name} ({c.value})
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
-            {!data?.dataFilters?.questions?.length && (
-              <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-                No question filters for this survey yet.
-              </p>
-            )}
-          </div>
-
-          {activeCount > 0 && (
-            <button type="button" className="btn small" onClick={clearFilters}>
-              Clear filters
-            </button>
-          )}
-        </div>
-      )}
 
       {/* After confirmed data: Daily · Monthly · Surveyor daily · Surveyor monthly */}
       {reportReady && data?.dataFilters && (
@@ -664,6 +874,12 @@ export default function DashboardScreen({ onToast }) {
               <div className="stat">
                 <strong>{data.dataFilters.by_user?.length ?? 0}</strong>
                 <span>Surveyors</span>
+              </div>
+              <div className="stat">
+                <strong>
+                  {data.dataFilters.total ?? data.totalAll ?? 0}
+                </strong>
+                <span>Confirmed records</span>
               </div>
               <div className="stat">
                 <strong>{data.dataFilters.by_day?.length ?? 0}</strong>
@@ -1011,6 +1227,16 @@ export default function DashboardScreen({ onToast }) {
         </div>
       )}
 
+      {/* Widget-level resilience (08-UXUI-SPEC §4b): keep last good data, retry inline */}
+      {error && data && (
+        <div className="banner error" role="alert" style={{ marginBottom: 12 }}>
+          Refresh failed: {error} — showing last loaded data.{' '}
+          <button type="button" className="link-btn" onClick={load}>
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* KPI strip — only after confirm */}
       {reportReady && data && (
         <div className="kpi-strip">
@@ -1023,13 +1249,81 @@ export default function DashboardScreen({ onToast }) {
             <span>Confirmed</span>
           </div>
           <div className="kpi">
-            <strong>{charts?.byParty?.[0]?.name || '—'}</strong>
+            {charts?.byParty?.[0]?.name ? (
+              <strong>{shown(charts.byParty[0], '', filterLang)}</strong>
+            ) : (
+              <strong style={{ fontStyle: 'italic', fontWeight: 400, color: '#94a3b8' }}>
+                No data yet
+              </strong>
+            )}
             <span>Lead party</span>
           </div>
           <div className="kpi">
-            <strong>{charts?.issues?.[0]?.name || '—'}</strong>
+            {charts?.issues?.[0]?.name ? (
+              <strong>{shown(charts.issues[0], '', filterLang)}</strong>
+            ) : (
+              <strong style={{ fontStyle: 'italic', fontWeight: 400, color: '#94a3b8' }}>
+                No data yet
+              </strong>
+            )}
             <span>Top issue</span>
           </div>
+          <div className="kpi">
+            <strong>{data.collectTime?.avg_label || '—'}</strong>
+            <span>Avg time GPS → finish</span>
+          </div>
+          <div className="kpi">
+            <strong>{data.collectTime?.median_label || '—'}</strong>
+            <span>Median collect time</span>
+          </div>
+        </div>
+      )}
+
+      {reportReady && data?.collectTime?.count > 0 && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <h3 style={{ marginTop: 0 }}>Collect time (Enable GPS → Finish)</h3>
+          <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+            Calculated here on confirmed records. Voice on or off does not change this clock.
+            {data.collectTime.count} record{data.collectTime.count === 1 ? '' : 's'} with timing.
+          </p>
+          <div className="stat-row" style={{ marginBottom: 10 }}>
+            <div className="stat">
+              <strong>{data.collectTime.avg_label}</strong>
+              <span>Average</span>
+            </div>
+            <div className="stat">
+              <strong>{data.collectTime.median_label}</strong>
+              <span>Median</span>
+            </div>
+            <div className="stat">
+              <strong>{data.collectTime.min_sec != null ? `${Math.round(data.collectTime.min_sec)}s` : '—'}</strong>
+              <span>Fastest</span>
+            </div>
+            <div className="stat">
+              <strong>{data.collectTime.max_sec != null ? `${Math.round(data.collectTime.max_sec)}s` : '—'}</strong>
+              <span>Slowest</span>
+            </div>
+          </div>
+          {(data.collectTime.by_surveyor || []).length > 0 && (
+            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>
+                  <th style={{ padding: '6px 8px' }}>Surveyor</th>
+                  <th style={{ padding: '6px 8px' }}>Records</th>
+                  <th style={{ padding: '6px 8px' }}>Avg time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.collectTime.by_surveyor.map((u) => (
+                  <tr key={u.name} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '6px 8px' }}>{u.name}</td>
+                    <td style={{ padding: '6px 8px' }}>{u.n}</td>
+                    <td style={{ padding: '6px 8px', fontWeight: 600 }}>{u.avg_label}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 
@@ -1077,35 +1371,54 @@ export default function DashboardScreen({ onToast }) {
         </section>
       )}
 
-      {/* Filters */}
-      <section className="filter-panel">
-        <div className="filter-head">
-          <h3>Filters {activeCount ? `(${activeCount})` : ''}</h3>
-          {activeCount > 0 && (
-            <button type="button" className="link-btn" onClick={clearFilters}>
-              Clear all
+      {/* Active filter chips — accent-tinted, one tap to remove */}
+      {reportReady && activeFilterChips.length > 0 && (
+        <div className="pill-row" style={{ marginBottom: 10 }}>
+          {activeFilterChips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              className="chip selected"
+              style={{
+                background: 'var(--accent-bg)',
+                border: '1px solid var(--accent-border)',
+                color: 'var(--accent)',
+                fontWeight: 700,
+              }}
+              onClick={() => removeFilter(chip.key)}
+              title={`Remove ${chip.label} filter`}
+            >
+              {chip.label}: {chip.value} ✕
             </button>
-          )}
+          ))}
+          <button type="button" className="link-btn" onClick={clearFilters}>
+            Clear all
+          </button>
         </div>
+      )}
 
-        <label className="field compact">
-          <span>District</span>
-          <select
-            value={filters.district}
-            onChange={(e) => setFilters((f) => ({ ...f, district: e.target.value, constituency: '' }))}
-          >
-            <option value="">All districts</option>
-            {(opts?.districts || []).map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
+
+      {error && !data ? (
+        <div className="card" style={{ padding: 16, textAlign: 'center' }} role="alert">
+          <h3 style={{ margin: '0 0 8px' }}>Couldn't load the dashboard</h3>
+          <p className="muted" style={{ fontSize: 13, margin: '0 0 12px' }}>
+            {error}
+          </p>
+          <button type="button" className="btn small primary" onClick={load}>
+            Retry
+          </button>
+        </div>
+      ) : loading && !data ? (
+        <div className="card" style={{ padding: 16 }}>
+          <p className="muted center" style={{ margin: 0 }}>
+            Checking confirmed data…
+          </p>
+          <div className="portal-skeleton-rows" style={{ marginTop: 12 }}>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="portal-skeleton-row" style={{ width: `${90 - i * 10}%` }} />
             ))}
-          </select>
-        </label>
-      </section>
-
-      {loading && !data ? (
-        <p className="muted center">Checking confirmed data…</p>
+          </div>
+        </div>
       ) : reportLocked ? null : !reportReady ? null : (
         <div className="chart-grid">
           {data && (
@@ -1113,19 +1426,9 @@ export default function DashboardScreen({ onToast }) {
               <SurveyMap
                 analytics={data}
                 filters={filters}
-                onSelectDistrict={(name) =>
-                  setFilters((f) => ({
-                    ...f,
-                    district: f.district === name ? '' : name,
-                    constituency: '',
-                  }))
-                }
-                onSelectConstituency={(name) =>
-                  setFilters((f) => ({
-                    ...f,
-                    constituency: f.constituency === name ? '' : name,
-                  }))
-                }
+                onSelectDistrict={onSelectDistrict}
+                onSelectConstituency={onSelectConstituency}
+                lang={filterLang}
               />
             </div>
           )}
@@ -1193,53 +1496,354 @@ export default function DashboardScreen({ onToast }) {
             <HBar
               data={charts?.byDistrict}
               activeName={filters.district}
-              onBarClick={(name) =>
-                setFilters((f) => ({
-                  ...f,
-                  district: f.district === name ? '' : name,
-                  constituency: '',
-                }))
-              }
+              onSelect={onToggleFilter}
+              selectKey="district"
+              extra={CLEAR_AC}
+              lang={filterLang}
             />
           </ChartCard>
 
-          {(charts?.questionCharts || []).map((q) => (
+          {charts?.partyByDistrict?.rows?.length > 0 && (
+            <ChartCard title="Party × District" subtitle="Stacked share" tall>
+              <StackedParty
+                matrix={charts.partyByDistrict}
+                onSelect={onToggleFilter}
+                selectKey="district"
+                extra={CLEAR_AC}
+              />
+            </ChartCard>
+          )}
+
+          {charts?.byParty?.length > 0 && (
+            <PeriodTable
+              title="Party Preference (Legible Table)"
+              subtitle="Validated palette · measured distribution"
+              columns={[
+                { key: 'name', label: 'Party', partyDot: true },
+                { key: 'value', label: 'Count', align: 'right' },
+                { key: 'pct', label: 'Share %', align: 'right', format: (v) => `${v}%`, bar: true },
+              ]}
+              data={{
+                total: (() => {
+                  const byP = charts.byParty || []
+                  const totalN = byP.reduce((s, p) => s + (p.value || 0), 0)
+                  return byP.map((p) => ({
+                    name: p.name,
+                    value: p.value,
+                    pct: totalN > 0 ? Number(((p.value / totalN) * 100).toFixed(1)) : 0,
+                    color: PARTY_COLORS[p.name] || 'var(--party-others)',
+                  }))
+                })(),
+              }}
+              periods={['total']}
+              onRowClick={(row) => onToggleFilter('party', row.name)}
+            />
+          )}
+
+          {charts?.issues?.length > 0 && (
+            <ChartCard title="Local issues" subtitle="Most mentioned">
+              <RadialIssues data={charts.issues} lang={filterLang} />
+            </ChartCard>
+          )}
+
+          {(() => {
+            const fromCharts = charts?.questionCharts || []
+            const fromFilters = data?.dataFilters?.questions || []
+            const byId = new Map(fromCharts.map((q) => [q.id, q]))
+            const merged = []
+            const seen = new Set()
+            for (const fq of fromFilters) {
+              const cq = byId.get(fq.id) || {}
+              merged.push({
+                ...fq,
+                ...cq,
+                id: fq.id,
+                type: cq.type || fq.type,
+                authored: cq.authored || fq.authored || fq.options || cq.options,
+                options: fq.options?.length ? fq.options : cq.options,
+                options_te: fq.options_te || cq.options_te,
+                counts: cq.counts || fq.counts,
+                meter: cq.meter || fq.meter,
+                label_en: cq.label_en || fq.label_en,
+                label_te: cq.label_te || fq.label_te,
+                label: cq.label || fq.label,
+              })
+              seen.add(fq.id)
+            }
+            for (const cq of fromCharts) {
+              if (!seen.has(cq.id)) merged.push(cq)
+            }
+            return merged.filter((q) => q.visible !== false)
+          })().map((q) => {
+            const counts = rowsFromSurveyQuestion(q)
+            const isMeter = q.type === 'meter' || q.type === 'tapometer'
+            const pieOk = !isMeter && chartShouldUsePie(counts)
+            return (
             <ChartCard
               key={q.id}
-              title={q.label}
-              subtitle="From Client Admin questions — tap to filter"
+              title={questionFilterTitle(q, filterLang)}
+              subtitle="Every option for this question — tap to filter"
             >
-              {q.type !== 'text' ? (
-                <InteractivePie
-                  data={q.counts}
+              {isMeter ? (
+                <MeterChart
+                  q={q}
+                  rows={counts}
+                  lang={filterLang}
+                  onSelect={onToggleFilter}
+                  selectKey={`q_${q.id}`}
                   activeName={filters[`q_${q.id}`] || ''}
-                  onSliceClick={(name) =>
-                    setFilters((f) => ({
-                      ...f,
-                      [`q_${q.id}`]: f[`q_${q.id}`] === name ? '' : name,
-                    }))
-                  }
+                />
+              ) : pieOk ? (
+                <InteractivePie
+                  data={counts}
+                  activeName={filters[`q_${q.id}`] || ''}
+                  onSelect={onToggleFilter}
+                  selectKey={`q_${q.id}`}
+                  lang={filterLang}
                 />
               ) : (
                 <HBar
-                  data={q.counts}
+                  data={counts}
                   activeName={filters[`q_${q.id}`] || ''}
-                  onBarClick={(name) =>
-                    setFilters((f) => ({
-                      ...f,
-                      [`q_${q.id}`]: f[`q_${q.id}`] === name ? '' : name,
-                    }))
-                  }
+                  onSelect={onToggleFilter}
+                  selectKey={`q_${q.id}`}
+                  lang={filterLang}
                 />
               )}
             </ChartCard>
-          ))}
+            )
+          })}
 
           <ChartCard title="Top constituencies" subtitle="By response count" tall>
-            <HBar data={charts?.byConstituency} />
+            <HBar data={charts?.byConstituency} lang={filterLang} />
           </ChartCard>
         </div>
       )}
+
+        </div>
+        {reportReady ? (
+        <aside className="dash-split-filters" aria-label="Dashboard filters">
+      {reportReady && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
+            Filter language
+          </p>
+          <FilterLangToggle value={filterLang} onChange={setFilterLangPersist} />
+          <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
+            English and Telugu stay separate. Pick one language for filter names and choices.
+            Step by step: pick a <strong>survey</strong> → <strong>surveyor</strong> →{' '}
+            <strong>day / month</strong>.
+          </p>
+
+          {/* Step 1 · Survey name */}
+          <div
+            style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 10,
+            }}
+          >
+            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
+              1 · Survey name
+            </p>
+            <label className="field compact">
+              <span>By survey</span>
+              <select
+                value={filters.survey}
+                onChange={(e) => {
+                  const survey = e.target.value
+                  // Changing survey clears old per-question + surveyor filters
+                  const drop = Object.fromEntries(
+                    Object.entries(filters).filter(
+                      ([k]) => !k.startsWith('q_') && k !== 'user',
+                    ),
+                  )
+                  setFilters((f) => ({ ...drop, ...f, survey }))
+                }}
+              >
+                {surveys.length === 0 ? <option value="">Select survey</option> : null}
+                {surveys.map((s) => (
+                  <option key={s.id} value={s.form_key}>
+                    {s.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {/* Step 2 · Surveyor — options load per survey */}
+          <div
+            style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 10,
+            }}
+          >
+            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
+              2 · Surveyor name
+            </p>
+            <label className="field compact">
+              <span>By surveyor</span>
+              <select
+                value={filters.user}
+                onChange={(e) => setFilters((f) => ({ ...f, user: e.target.value }))}
+              >
+                <option value="">
+                  {data?.dataFilters?.by_user?.length ? 'All surveyors' : 'No surveyors yet'}
+                </option>
+                {(data?.dataFilters?.by_user || []).map((u) => (
+                  <option key={u.name} value={u.name}>
+                    {u.name} ({u.value})
+                  </option>
+                ))}
+              </select>
+            </label>
+            {!filters.survey && (
+              <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+                Pick a survey first to load its surveyors.
+              </p>
+            )}
+          </div>
+
+          {/* Step 3 · Day / Month */}
+          <div
+            style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 10,
+            }}
+          >
+            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>3 · Day / Month</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+              {[
+                { id: 'total', label: 'Total data' },
+                { id: 'today', label: 'Today' },
+                { id: 'day', label: 'Day' },
+                { id: 'month', label: 'Month' },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`chip ${filters.period === p.id ? 'selected' : ''}`}
+                  onClick={() => setFilters((f) => ({ ...f, period: p.id }))}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            {filters.period === 'day' && (
+              <label className="field compact">
+                <span>Day</span>
+                <input
+                  type="date"
+                  value={filters.day}
+                  onChange={(e) => setFilters((f) => ({ ...f, day: e.target.value }))}
+                />
+              </label>
+            )}
+            {filters.period === 'month' && (
+              <label className="field compact">
+                <span>Month</span>
+                <input
+                  type="month"
+                  value={filters.month}
+                  onChange={(e) => setFilters((f) => ({ ...f, month: e.target.value }))}
+                />
+              </label>
+            )}
+          </div>
+
+          {/* Question filters — load per survey */}
+          <div
+            style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 10,
+            }}
+          >
+            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
+              {filterLang === 'te' ? 'ప్రశ్న ఫిల్టర్లు' : 'Question filters'}{' '}
+              <span className="muted" style={{ fontWeight: 500 }}>
+                ({filterLang === 'te' ? 'Telugu' : 'English'})
+              </span>
+            </p>
+            {(data?.dataFilters?.questions || []).filter((q) => q.visible !== false).map((q) => {
+              const countMap = new Map((q.counts || []).map((c) => [c.name, c]))
+              const optionNames = [
+                ...new Set([...createdOptions(q), ...countMap.keys()]),
+              ]
+              const title = questionFilterTitle(q, filterLang)
+              return (
+                <label className="field compact" key={q.id}>
+                  <span>{title}</span>
+                  <select
+                    value={filters[`q_${q.id}`] || ''}
+                    onChange={(e) =>
+                      setFilters((f) => ({ ...f, [`q_${q.id}`]: e.target.value }))
+                    }
+                  >
+                    <option value="">{filterLang === 'te' ? 'అన్నీ' : 'All'} {title}</option>
+                    {optionNames.map((name) => {
+                      const shownName = optionFilterText(name, q, countMap.get(name), filterLang)
+                      const n = countMap.get(name)?.value
+                      return (
+                      <option key={name} value={name}>
+                        {`${shownName} (${n != null ? n : 0})`}
+                      </option>
+                      )
+                    })}
+                  </select>
+                </label>
+              )
+            })}
+            {!data?.dataFilters?.questions?.length && (
+              <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                No question filters for this survey yet.
+              </p>
+            )}
+          </div>
+
+          {activeCount > 0 && (
+            <button type="button" className="btn small" onClick={clearFilters}>
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
+      {/* Filters */}
+      <section className="filter-panel">
+        <div className="filter-head">
+          <h3>Filters {activeCount ? `(${activeCount})` : ''}</h3>
+          {activeCount > 0 && (
+            <button type="button" className="link-btn" onClick={clearFilters}>
+              Clear all
+            </button>
+          )}
+        </div>
+
+        <FilterLangToggle value={filterLang} onChange={setFilterLangPersist} />
+        <label className="field compact">
+          <span>{filterLang === 'te' ? 'జిల్లా' : 'District'}</span>
+          <select
+            value={filters.district}
+            onChange={(e) => setFilters((f) => ({ ...f, district: e.target.value, constituency: '' }))}
+          >
+            <option value="">{filterLang === 'te' ? 'అన్ని జిల్లాలు' : 'All districts'}</option>
+            {(opts?.districts || []).map((d) => (
+              <option key={d} value={d}>
+                {filterLang === 'te' ? (data?.filterLabels?.districts?.[d] || d) : d}
+              </option>
+            ))}
+          </select>
+        </label>
+      </section>
+        </aside>
+        ) : null}
+      </div>
 
       <p className="dash-foot muted">
         Charts update live from Neon submissions. Click bars/slices to drill down.

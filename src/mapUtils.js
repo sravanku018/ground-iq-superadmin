@@ -1,6 +1,6 @@
 /** Name matching between Neon analytics labels and Telangana GeoJSON */
 
-export function normKey(s) {
+function normKey(s) {
   return String(s || '')
     .toLowerCase()
     .normalize('NFKD')
@@ -66,16 +66,6 @@ export function canonicalKey(s) {
   return ALIASES[k] || k
 }
 
-export function buildLookup(entries, nameFn) {
-  const map = new Map()
-  for (const e of entries || []) {
-    const name = nameFn(e)
-    if (!name) continue
-    map.set(canonicalKey(name), e)
-    map.set(normKey(name), e)
-  }
-  return map
-}
 
 export function lookup(map, name) {
   if (!name || !map) return null
@@ -115,7 +105,7 @@ export const PARTY_HEX = {
   BRS: '#ec4899',
   Others: '#94a3b8',
   Undecided: '#64748b',
-  Unknown: '#334155',
+  Unknown: '#94a3b8',
 }
 
 /** Choropleth green scale for counts — small districts stay visible */

@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Component, useCallback, useEffect, useRef, useState } from 'react'
+import Icon from './Icons'
 import {
+  clearSession,
   getMyProgress,
   getMySubmissions,
-  getStats,
+  getSurveyForm,
   getToken,
   logout,
   me,
   updateUser,
   uploadProfileMedia,
 } from './api'
-import SubmissionMedia from './SubmissionMedia'
 import { QUALITY, watchNetwork } from './network'
 import { queueCount, refreshQueueCountCache } from './offlineQueue'
 import {
@@ -22,28 +23,108 @@ import {
 import LoginScreen from './Login'
 import FieldCollectScreen from './FieldCollect'
 import PullToRefresh from './PullToRefresh'
-import { deleteDraft, draftCount, listDrafts, listPendingPackages, pushDraft } from './localStore'
-import { clearSession, getSurveyForm } from './api'
-import { APP_VERSION, versionLabel } from './version'
+import {
+  collapseDuplicateDrafts,
+  deleteDraft,
+  draftCount,
+  getPackage,
+  listDrafts,
+  listPendingPackages,
+  pushDraft,
+  updatePackage,
+} from './localStore'
+import { checkForAppUpdate, launchApkUpdate } from './appUpdate'
+import { APP_BUILD, APP_VERSION, APP_VERSION_CODE, versionLabel } from './version'
+import { slugQuestionKey } from './questionKey'
+import { compressImageFile } from './mediaOptimize'
+import PhoneIndiaField from './PhoneIndiaField'
+import { isValidInMobile, toE164In } from './phoneIn'
+import VerifiedBadge from './VerifiedBadge'
+import {
+  getNavMode,
+  setNavMode as persistNavMode,
+  getFontScale,
+  setFontScale as persistFontScale,
+  applyFontScale,
+  getDisplayLang,
+  setDisplayLang as persistDisplayLang,
+  NAV_MODES,
+  FONT_SCALES,
+} from './prefs'
 import './App.css'
 
-/** Surveyor-only field app (mobile / APK) */
+/** Catch ReferenceError / render crashes so a tab does not go fully blank. */
+class ScreenErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error, info) {
+    console.error(`${this.props.title || 'Screen'} error:`, error, info)
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="card" style={{ padding: 24, textAlign: 'center', margin: 16 }}>
+          <h3 style={{ marginTop: 0, color: '#ef4444' }}>
+            {this.props.title || 'Screen'} error
+          </h3>
+          <p className="muted" style={{ fontSize: 13 }}>
+            {this.state.error?.message || 'An unexpected error occurred.'}
+          </p>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() => {
+              this.setState({ hasError: false, error: null })
+              this.props.onReset?.()
+            }}
+          >
+            Reload this screen
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
+function mergeUserKeepMedia(prev, next) {
+  if (!next) return prev || null
+  return {
+    ...prev,
+    ...next,
+    photo: next.photo || prev?.photo || null,
+    aadhaar_front: next.aadhaar_front || prev?.aadhaar_front || null,
+    aadhaar_back: next.aadhaar_back || prev?.aadhaar_back || null,
+  }
+}
+
+const NAV_MODE_INFO = {
+  next: { title: 'Next button', desc: 'One question at a time, with Prev / Next buttons.' },
+  swipe: { title: 'Swipe', desc: 'One question at a time — swipe left or right to move.' },
+  scroll: { title: 'Vertical scroll', desc: 'All questions in one scrollable page.' },
+}
+
+/** Surveyor-only field app (mobile / APK) — 4 focused tabs */
 const TABS = [
-  { id: 'home', label: 'Home', icon: '⌂' },
-  { id: 'collect', label: 'Collect', icon: '✎' },
-  { id: 'drafts', label: 'Pending', icon: '📦' },
-  { id: 'records', label: 'Records', icon: '☰' },
-  { id: 'profile', label: 'Profile', icon: '👤' },
+  { id: 'home', label: 'Home', icon: 'home' },
+  { id: 'collect', label: 'Collect', icon: 'pencil' },
+  { id: 'submissions', label: 'Submissions', icon: 'box' },
+  { id: 'profile', label: 'Profile', icon: 'user' },
 ]
 
-/** On version change, clear old session so login screen + new build show cleanly */
+/** Record build stamp in local storage without clearing active session. */
 function ensureUiVersion() {
   try {
-    const key = 'esurvey_ui_version'
+    const key = 'esurvey_ui_build'
+    const stamp = `${APP_VERSION}:${APP_VERSION_CODE}:${APP_BUILD}`
     const prev = localStorage.getItem(key)
-    if (prev !== APP_VERSION) {
-      clearSession()
-      localStorage.setItem(key, APP_VERSION)
+    if (prev !== stamp) {
+      localStorage.setItem(key, stamp)
       return true
     }
   } catch {
@@ -58,151 +139,371 @@ function networkPillClass(quality) {
   return 'bad'
 }
 
+const FIELD_TZ = 'Asia/Kolkata'
+
+function ymdInTz(value, tz = FIELD_TZ) {
+  const d = value instanceof Date ? value : new Date(value || Date.now())
+  if (Number.isNaN(d.getTime())) {
+    const s = String(value || '')
+    return s.length >= 10 ? s.slice(0, 10) : ''
+  }
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d)
+}
+
+function formatIstDateTime(value) {
+  const d = value instanceof Date ? value : new Date(value || Date.now())
+  if (Number.isNaN(d.getTime())) return String(value || '')
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: FIELD_TZ,
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).format(d)
+}
+
+function formatDayLabel(ymd) {
+  const [y, m, d] = String(ymd).split('-').map(Number)
+  if (!y || !m || !d) return ymd || 'Unknown date'
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+/** Queue / activity lists must never print photo or voice payloads. */
+function queueAnswerText(v) {
+  if (v == null || v === '') return null
+  if (Array.isArray(v)) {
+    const parts = v.map(queueAnswerText).filter(Boolean)
+    return parts.length ? parts.join(', ') : null
+  }
+  if (typeof v === 'object') return null
+  const s = String(v)
+  if (/^data:(image|audio|video)\//i.test(s)) return null
+  if (s.length > 400 && /^[A-Za-z0-9+/=]+$/.test(s.slice(0, 80))) return null
+  return s
+}
+
+function isAnswerMetaKey(k) {
+  const s = String(k || '')
+  if (!s || s.startsWith('_') || s.startsWith('geo_') || s.startsWith('location_')) return true
+  if (s.startsWith('ts_') || s.startsWith('sec_')) return true
+  return [
+    'draft',
+    'data_collector',
+    'client_package_id',
+    'submitted_by',
+    'has_photo',
+    'has_audio',
+    'photo',
+    'audio',
+    'photo_url',
+    'audio_url',
+    'answer_pattern',
+    'ts_gps_start',
+    'ts_gps_lock',
+    'ts_photo',
+    'ts_voice_start',
+    'ts_voice_end',
+    'ts_qa_start',
+    'ts_finish',
+    'sec_gps',
+    'sec_photo',
+    'sec_voice',
+    'sec_qa',
+    'sec_total',
+  ].includes(s)
+}
+
+/** Show the question text, never the field id slug. */
+function labelForAnswerKey(key, questions) {
+  const k = String(key || '')
+  const hit = (questions || []).find((q) => {
+    const id = String(q.id || '')
+    const label = String(q.label || '')
+    return id === k || label === k || slugQuestionKey(label) === k
+  })
+  if (hit?.label) return hit.label
+  if (hit?.label_en) return hit.label_en
+  return 'Question'
+}
+
+function groupRecordsByDay(records) {
+  const map = new Map()
+  for (const r of records || []) {
+    const day = ymdInTz(r.created_at) || 'unknown'
+    if (!map.has(day)) map.set(day, [])
+    map.get(day).push(r)
+  }
+  return [...map.entries()].map(([date, items]) => ({
+    date,
+    pretty: date === 'unknown' ? 'Unknown date' : formatDayLabel(date),
+    items,
+  }))
+}
+
+/** Sequential 1..N by created time (oldest = 1). Optional storedKey uses saved record number when set. */
+function recordNumberMap(records, idKey = 'id', timeKey = 'created_at', storedKey = 'record_index') {
+  const list = records || []
+  const map = new Map()
+  const sorted = [...list].sort((a, b) =>
+    String(a?.[timeKey] || '').localeCompare(String(b?.[timeKey] || '')),
+  )
+  sorted.forEach((r, i) => {
+    const stored = storedKey ? Number(r?.[storedKey]) : NaN
+    map.set(r[idKey], Number.isFinite(stored) && stored > 0 ? stored : i + 1)
+  })
+  return map
+}
+
+function packageFailedRequirements(d) {
+  if (!d) return false
+  if (d.phase === 'failed') return true
+  const qa = d.qa || {}
+  const hasGeo = qa.geo?.lat != null || qa.answers?.geo_lat != null
+  const hasPhoto = !!(d.hasPhoto || d.flags?.photo)
+  const hasVoice = !!(d.hasAudio || d.flags?.audio || d.audioDataUrl)
+  const voiceNeeded = qa.answers?._voice_required === true || d.locks?.voice === true
+  if (d.kind !== 'draft' && (!hasGeo || !hasPhoto || (voiceNeeded && !hasVoice))) return true
+  return /GPS|voice|lock|incomplete|required|too large|compress|geo_lock/i.test(
+    String(d.lastError || ''),
+  )
+}
+
 function HomeScreen({
   user,
-  network,
   pendingSync,
+  pendingLocal,
   myProgress,
   questionsMeta,
   onNewSurvey,
+  onViewRecords,
   onSync,
-  onLogout,
 }) {
-  const quality = network?.quality || QUALITY.OFFLINE
-  const label = network?.label || 'Offline'
-  const done = myProgress?.done ?? 0
-  const target = myProgress?.target ?? 0
-  const complete = myProgress?.complete || (target > 0 && done >= target)
-  const qCount = questionsMeta?.count ?? questionsMeta?.questions?.length ?? 0
+  const assignedSurveys = questionsMeta?.surveys || []
+  const progressSurveys = Array.isArray(myProgress?.surveys) ? myProgress.surveys : []
+  const stacked = progressSurveys.length
+    ? progressSurveys.map((s) => {
+        const meta = assignedSurveys.find(
+          (m) => String(m.form_key) === String(s.form_key) || String(m.id) === String(s.id),
+        )
+        const qn =
+          Number(s.questions_count) ||
+          (Array.isArray(meta?.questions) ? meta.questions.length : 0)
+        return {
+          id: s.id || s.form_key,
+          form_key: s.form_key,
+          title: s.title || meta?.title || 'Survey',
+          target: Number(s.target) || 0,
+          done: Number(s.done) || 0,
+          questions: qn,
+        }
+      })
+    : assignedSurveys.map((s) => ({
+        id: s.id || s.form_key,
+        form_key: s.form_key,
+        title: s.title || 'Survey',
+        target: Number(s.target_quota) || 0,
+        done: 0,
+        questions: Array.isArray(s.questions) ? s.questions.length : 0,
+      }))
+  const surveysCount = stacked.length || assignedSurveys.length || (questionsMeta?.title ? 1 : 0)
+  const qCount =
+    myProgress?.questions_count ||
+    stacked.reduce((n, s) => n + (Number(s.questions) || 0), 0) ||
+    assignedSurveys.reduce((n, s) => n + (Array.isArray(s.questions) ? s.questions.length : 0), 0) ||
+    questionsMeta?.count ||
+    questionsMeta?.questions?.length ||
+    0
+  const done = myProgress?.done ?? stacked.reduce((n, s) => n + s.done, 0)
+  const stackedTarget = stacked.reduce((n, s) => n + (Number(s.target) || 0), 0)
+  const rawTarget = Number(myProgress?.target) || 0
+  // Ignore a leftover user-level 1 when two surveys have no per-survey quota.
+  const target = stackedTarget > 0
+    ? stackedTarget
+    : (stacked.length > 1 && rawTarget <= 1 ? 0 : rawTarget)
+  const withTargets = stacked.filter((s) => s.target > 0)
+  const complete =
+    withTargets.length > 0 &&
+    withTargets.every((s) => s.done >= s.target) &&
+    !stacked.some((s) => s.target <= 0)
+  const localPending = pendingLocal ?? pendingSync ?? 0
+  const percent = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0
+  const nextRecordNum = Math.max(
+    done + 1,
+    Number(myProgress?.next_record) || 0,
+  )
+  const surveyTitle =
+    stacked.length > 1
+      ? `${stacked.length} assigned surveys`
+      : questionsMeta?.title || stacked[0]?.title || 'Field Survey Campaign'
+  const BAR_COLORS = ['#059669', '#2563eb', '#d97706', '#7c3aed', '#db2777', '#0d9488']
+  const weightOf = (s) => (s.target > 0 ? s.target : s.questions > 0 ? s.questions : 1)
+  const weightSum = stacked.reduce((n, s) => n + weightOf(s), 0) || 1
 
   return (
     <div className="screen home-screen">
-      <p className="ptr-hint">↓ Pull down to refresh questions · progress · queue</p>
-      <div className="hero-card">
-        <p className="eyebrow">Field survey · Surveyor</p>
-        <h1>
-          Hi, {user?.name || user?.username}
-          {user?.verified && (
-            <span className="pill ok" style={{ background: '#059669', color: '#fff', fontSize: 12, marginLeft: 8, verticalAlign: 'middle', fontWeight: 'bold' }}>
-              Verified ✓
-            </span>
-          )}
-        </h1>
-        <p className="hero-sub">
-          {myProgress?.label ||
-            'GPS → Photo → Q/A + audio · saved on device · auto next'}
-        </p>
-        <div className="pill-row">
-          <div className={`pill ${networkPillClass(quality)}`} title={network?.error || ''}>
-            <span className="dot" />
-            {label}
-          </div>
-          {user?.verified && (
-            <div className="pill ok" style={{ background: '#059669', color: '#fff', fontWeight: 'bold' }}>
-              <span className="dot" />
-              Verified ✓
-            </div>
-          )}
-          {pendingSync > 0 && (
-            <div className="pill warn">
-              <span className="dot" />
-              {pendingSync} queued on phone
-            </div>
-          )}
-          {complete && (
-            <div className="pill ok">
-              <span className="dot" />
-              Target complete
-            </div>
-          )}
+      {/* 1. Clean Compact Welcome Header */}
+      <div className="home-welcome">
+        <div className="home-welcome-text">
+          <span className="home-greeting">Field Surveyor</span>
+          <h2 className="home-name">
+            {user?.name || user?.username}
+            {user?.verified ? <VerifiedBadge size={16} /> : null}
+          </h2>
         </div>
       </div>
 
-      <div className="stat-row">
-        <div className="stat">
-          <strong>
-            {done}
-            {target ? `/${target}` : ''}
-          </strong>
-          <span>On server</span>
+      {/* 2. Active Mission Card */}
+      <div className="mission-card">
+        <div className="mission-head">
+          <span className="mission-badge">
+            <Icon name="pencil" size={12} /> Active Survey
+          </span>
+          {target > 0 && withTargets.length > 0 && (
+            <span className="mission-percent">{percent}% Goal</span>
+          )}
         </div>
-        <div className="stat">
-          <strong>{pendingSync ?? 0}</strong>
-          <span>Queued</span>
-        </div>
-        <div className="stat">
-          <strong>{qCount || '—'}</strong>
-          <span>Questions</span>
-        </div>
-        <div className="stat">
-          <strong>{myProgress?.status || '—'}</strong>
-          <span>Status</span>
-        </div>
-      </div>
-
-      {questionsMeta?.title && (
-        <div className="card" style={{ marginBottom: 12, padding: '12px 14px' }}>
-          <strong style={{ fontSize: 14 }}>{questionsMeta.title}</strong>
-          <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
-            {qCount} question(s) loaded
-            {questionsMeta.updated_at
-              ? ` · updated ${String(questionsMeta.updated_at).slice(0, 16).replace('T', ' ')}`
-              : ''}
-            . Pull down to fetch latest from Client Admin.
+        <h3 className="mission-title">{surveyTitle}</h3>
+        {stacked.length > 1 && (
+          <p className="mission-sub" style={{ marginBottom: 6 }}>
+            {stacked.map((s) => s.title).join(' · ')}
           </p>
-        </div>
-      )}
+        )}
+        {target > 0 || stacked.length > 1 ? (
+          <div className="mission-progress-box">
+            <div className={`mission-progress-bar${stacked.length > 1 ? ' stacked' : ''}`}>
+              {stacked.length > 1 ? (
+                stacked.map((s, i) => {
+                  const share = (weightOf(s) / weightSum) * 100
+                  const fill = s.target > 0
+                    ? Math.min(100, (s.done / s.target) * 100)
+                    : (s.done > 0 ? 100 : 0)
+                  return (
+                    <div
+                      key={s.form_key || s.id || i}
+                      className="mission-progress-seg"
+                      style={{ width: `${Math.max(share, 4)}%` }}
+                      title={`${s.title}: ${s.done}/${s.target || '—'}`}
+                    >
+                      <div
+                        className="mission-progress-seg-fill"
+                        style={{
+                          width: `${fill}%`,
+                          background: BAR_COLORS[i % BAR_COLORS.length],
+                        }}
+                      />
+                    </div>
+                  )
+                })
+              ) : (
+                <div className="mission-progress-fill" style={{ width: `${percent}%` }} />
+              )}
+            </div>
+            <div className="mission-progress-labels">
+              <span>{done} records submitted</span>
+              <span>Total target: {target || '—'}</span>
+            </div>
+            {stacked.length > 1 && (
+              <div className="mission-progress-legend">
+                {stacked.map((s, i) => (
+                  <span key={s.form_key || s.id || i} className="mission-legend-item">
+                    <i
+                      className="mission-legend-dot"
+                      style={{ background: BAR_COLORS[i % BAR_COLORS.length] }}
+                    />
+                    {s.title}: {s.done}/{s.target || '—'}
+                    {s.questions ? ` · ${s.questions} Q` : ''}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="mission-sub">Continuous field data collection</p>
+        )}
 
-      {target > 0 && (
-        <div
-          style={{
-            height: 10,
-            background: 'rgba(255,255,255,0.08)',
-            borderRadius: 99,
-            marginBottom: 14,
-            overflow: 'hidden',
-          }}
+        <button
+          type="button"
+          className="cta mission-cta"
+          onClick={onNewSurvey}
+          disabled={complete}
         >
-          <div
-            style={{
-              width: `${myProgress?.pct || Math.min(100, Math.round((done / target) * 100))}%`,
-              height: '100%',
-              background: complete ? '#22c55e' : '#38bdf8',
-            }}
-          />
+          {complete ? (
+            <><Icon name="check" size={16} /> Quota Reached</>
+          ) : done > 0 ? (
+            `Start Record #${nextRecordNum}`
+          ) : (
+            'Start Survey (GPS → Photo → Q/A)'
+          )}
+        </button>
+      </div>
+
+      {/* 3. Stats Grid — submitted, total target, total questions, surveys */}
+      <div className="home-stats">
+        <div className="hstat">
+          <span className="hstat-val">{done}</span>
+          <span className="hstat-lbl">Submitted</span>
+        </div>
+        <div className="hstat">
+          <span className="hstat-val">{target || '—'}</span>
+          <span className="hstat-lbl">Total target</span>
+        </div>
+        <div className="hstat">
+          <span className="hstat-val">{qCount || '—'}</span>
+          <span className="hstat-lbl">Questions</span>
+        </div>
+        <div className="hstat">
+          <span className="hstat-val">{surveysCount || 1}</span>
+          <span className="hstat-lbl">Surveys</span>
+        </div>
+      </div>
+
+      {/* 4. Sync Alert Banner (when items are waiting) */}
+      {pendingSync > 0 && (
+        <div className="sync-banner">
+          <div className="sync-banner-text">
+            <strong>{pendingSync} record{pendingSync > 1 ? 's' : ''} pending sync</strong>
+            <span>Saved securely on local storage</span>
+          </div>
+          <button type="button" className="btn small primary sync-banner-btn" onClick={onSync}>
+            Sync now
+          </button>
         </div>
       )}
 
-      <button type="button" className="cta" onClick={onNewSurvey} disabled={complete}>
-        {complete
-          ? 'Target complete ✓'
-          : done > 0
-            ? `Continue record #${myProgress?.next_record || done + 1}`
-            : 'Start collect · GPS → Photo → Q/A'}
-      </button>
-
-      {pendingSync > 0 && (
-        <button type="button" className="cta secondary" onClick={onSync}>
-          Sync {pendingSync} package(s) now
+      {/* 5. Quick Nav to Submissions */}
+      {typeof onViewRecords === 'function' && (
+        <button
+          type="button"
+          className="cta secondary home-view-btn"
+          onClick={onViewRecords}
+        >
+          <Icon name="box" size={15} />
+          View Submissions ({done + localPending})
         </button>
       )}
-
-      <p className="app-version-foot" aria-label="App version">
-        {versionLabel()}
-      </p>
-
-      <button type="button" className="cta secondary danger-cta" onClick={onLogout}>
-        Log out
-      </button>
     </div>
   )
 }
 
-/** My submitted records: photo + audio openable from the field app */
-function MyRecordsScreen({ user, onToast }) {
+/** My submitted records — answers only; photo/audio stay off this list. */
+function MyRecordsScreen({ user, onToast, questions }) {
   const [records, setRecords] = useState(null)
   const [openId, setOpenId] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
+  const recNums = recordNumberMap(records || [])
 
   const load = useCallback(async () => {
     setRefreshing(true)
@@ -210,7 +511,7 @@ function MyRecordsScreen({ user, onToast }) {
       const d = await getMySubmissions()
       setRecords(d.items || [])
     } catch (e) {
-      onToast?.(e.message || 'Failed to load your records', 'error')
+      onToast?.(e.message || 'Failed to load your activity', 'error')
     } finally {
       setRefreshing(false)
     }
@@ -218,19 +519,19 @@ function MyRecordsScreen({ user, onToast }) {
 
   useEffect(() => {
     load()
+    const onRefresh = () => load()
+    window.addEventListener('esurvey-activity-refresh', onRefresh)
+    window.addEventListener('esurvey-queue-change', onRefresh)
+    return () => {
+      window.removeEventListener('esurvey-activity-refresh', onRefresh)
+      window.removeEventListener('esurvey-queue-change', onRefresh)
+    }
   }, [load])
 
   return (
-    <div className="screen records-screen">
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 10,
-        }}
-      >
-        <h2 style={{ margin: 0 }}>My Submitted Records</h2>
+    <div className="screen records-screen" style={{ paddingBottom: 0 }}>
+      <div className="screen-toolbar">
+        <h2>My activity</h2>
         <button
           type="button"
           className="btn small"
@@ -241,101 +542,132 @@ function MyRecordsScreen({ user, onToast }) {
         </button>
       </div>
       <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-        Submissions stored on server for @{user?.username}. Tap a record to open photo/audio.
+        Sent items for @{user?.username}, grouped by date. Tap one to view details.
       </p>
 
       {records === null ? (
-        <p className="muted">Loading records…</p>
+        <p className="muted">Loading activity…</p>
       ) : records.length === 0 ? (
-        <p className="muted">No records submitted yet.</p>
+        <p className="muted">No activity yet.</p>
       ) : (
-        records.map((r) => {
-          const open = openId === r.id
-          return (
-            <div key={r.id} className="card" style={{ marginTop: 10, padding: 12 }}>
-              <button
-                type="button"
-                style={{
-                  width: '100%',
-                  background: 'none',
-                  border: 0,
-                  textAlign: 'left',
-                  padding: 0,
-                  cursor: 'pointer',
-                }}
-                onClick={() => setOpenId(open ? null : r.id)}
-              >
-                <span style={{ fontWeight: 600, fontSize: 14 }}>
-                  Record #{r.id}
-                  <span className={`pill ${r.status === 'confirmed' ? 'ok' : ''}`} style={{ marginLeft: 8 }}>
-                    {r.status}
-                  </span>
-                </span>
-                <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
-                  {String(r.created_at || '').slice(0, 16).replace('T', ' ')}
-                  {r.submitted_by ? ` · ${r.submitted_by}` : ''}
-                </span>
-                <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                  {open ? 'Hide photo/audio ▲' : 'Show photo/audio ▼'}
+        groupRecordsByDay(records).map((group) => (
+          <section key={group.date} className="activity-day-group">
+            <header className="activity-day-head">
+              <strong>{group.pretty}</strong>
+              <span className="activity-day-count">{group.items.length} sent</span>
+            </header>
+            {group.items.map((r) => {
+              const open = openId === r.id
+              const isConfirmed = r.status === 'confirmed' || r.fact_status === 'confirmed' || r.fact_status === 'materialized'
+              const ans = r.answers || r.payload?.answers || {}
+              const recNo = recNums.get(r.id) ?? r.record_index ?? r.id
+              return (
+                <div key={r.id} className="card" style={{ marginTop: 10, padding: 12 }}>
+                  <button
+                    type="button"
+                    style={{
+                      width: '100%',
+                      background: 'none',
+                      border: 0,
+                      textAlign: 'left',
+                      padding: 0,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => setOpenId(open ? null : r.id)}
+                  >
+                    <span style={{ fontWeight: 600, fontSize: 14 }}>
+                      Record #{recNo}
+                      <span className={`pill ${isConfirmed ? 'ok' : ''}`} style={{ marginLeft: 8 }}>
+                        {isConfirmed ? <><Icon name="check" size={11} /> Confirmed</> : r.status || 'pending'}
+                      </span>
+                    </span>
+                    <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                      {formatIstDateTime(r.created_at)}
+                      {r.submitted_by || r.payload?.submitted_by ? ` · ${r.submitted_by || r.payload?.submitted_by}` : ''}
+                    </span>
+                    <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                      {open ? 'Hide details ▲' : 'Show details ▼'}
+                    </div>
+                  </button>
+                  {open && (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: 13, marginTop: 8 }}>
+                        <strong style={{ display: 'block', marginBottom: 6, color: '#0f172a' }}>Activity details</strong>
+                        <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6 }}>
+                          <tbody>
+                            <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td className="muted" style={{ padding: '6px 8px' }}>Record number:</td>
+                              <td style={{ textAlign: 'right', fontWeight: 600, padding: '6px 8px' }}>#{recNo}</td>
+                            </tr>
+                            <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td className="muted" style={{ padding: '6px 8px' }}>Status:</td>
+                              <td style={{ textAlign: 'right', fontWeight: 600, padding: '6px 8px', color: isConfirmed ? '#059669' : '#d97706' }}>
+                                {isConfirmed ? <><Icon name="check" size={11} /> Confirmed</> : r.status || 'pending'}
+                              </td>
+                            </tr>
+                            {(r.submitted_by || r.payload?.submitted_by) && (
+                              <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td className="muted" style={{ padding: '6px 8px' }}>Surveyor:</td>
+                                <td style={{ textAlign: 'right', fontWeight: 600, padding: '6px 8px' }}>{r.submitted_by || r.payload?.submitted_by}</td>
+                              </tr>
+                            )}
+                            {r.created_at && (
+                              <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td className="muted" style={{ padding: '6px 8px' }}>Submitted At:</td>
+                                <td style={{ textAlign: 'right', padding: '6px 8px' }}>{formatIstDateTime(r.created_at)}</td>
+                              </tr>
+                            )}
+                            {Object.entries(ans).map(([k, v]) => {
+                              if (isAnswerMetaKey(k)) return null
+                              const valStr = queueAnswerText(v)
+                              if (!valStr) return null
+                              return (
+                                <tr key={k} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                  <td className="muted" style={{ padding: '6px 8px' }}>{labelForAnswerKey(k, questions)}:</td>
+                                  <td style={{ textAlign: 'right', fontWeight: 600, padding: '6px 8px' }}>{valStr}</td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </button>
-              {open && <SubmissionMedia item={r} compact style={{ marginTop: 8 }} />}
-            </div>
-          )
-        })
+              )
+            })}
+          </section>
+        ))
       )}
     </div>
   )
 }
 
 /** Surveyor Profile Screen: Name, Photo, Phone, Aadhaar Front & Back, Key ID */
-/** Compress profile/Aadhaar image file before upload (max 1200px, 0.75 quality) */
-function compressImageFile(file, maxDimension = 1200, quality = 0.75) {
-  return new Promise((resolve, reject) => {
-    if (!file) {
-      reject(new Error('No file provided'))
-      return
-    }
-    const reader = new FileReader()
-    reader.onerror = () => reject(new Error('Failed to read image file'))
-    reader.onload = (e) => {
-      const img = new Image()
-      img.onerror = () => reject(new Error('Failed to load image'))
-      img.onload = () => {
-        let { width, height } = img
-        if (width > maxDimension || height > maxDimension) {
-          if (width > height) {
-            height = Math.round((height * maxDimension) / width)
-            width = maxDimension
-          } else {
-            width = Math.round((width * maxDimension) / height)
-            height = maxDimension
-          }
-        }
-        const canvas = document.createElement('canvas')
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext('2d')
-        ctx.drawImage(img, 0, 0, width, height)
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality)
-        resolve(compressedDataUrl)
-      }
-      img.src = e.target?.result
-    }
-    reader.readAsDataURL(file)
-  })
-}
 
-function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
+
+function SurveyorProfileScreen({
+  user,
+  onToast,
+  onUserUpdated,
+  navMode,
+  onNavModeChange,
+  displayLang,
+  onDisplayLangChange,
+  fontScale,
+  onFontScaleChange,
+  onLogout,
+  questionsMeta,
+}) {
   const [phone, setPhone] = useState(user?.phone || '')
   const [savingPhone, setSavingPhone] = useState(false)
+  const [editingPhone, setEditingPhone] = useState(false)
   const [uploading, setUploading] = useState({ photo: false, front: false, back: false })
 
   useEffect(() => {
     setPhone(user?.phone || '')
   }, [user?.phone])
 
-  // Fetch latest live profile on mount (including verification status from admin)
   useEffect(() => {
     me()
       .then((res) => {
@@ -351,11 +683,11 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
     const fieldKey = field === 'front' ? 'aadhaar_front' : field === 'back' ? 'aadhaar_back' : 'photo'
     setUploading((u) => ({ ...u, [field]: true }))
     try {
-      const compressedDataUrl = await compressImageFile(file, 1200, 0.75)
+      const compressedDataUrl = await compressImageFile(file)
       const res = await uploadProfileMedia(fieldKey, compressedDataUrl)
       const newUrl = res?.[fieldKey] || compressedDataUrl
       onUserUpdated?.((prev) => ({ ...prev, [fieldKey]: newUrl }))
-      onToast?.(`${fieldKey.replace('_', ' ')} uploaded to DB ✓`, 'ok')
+      onToast?.(`${fieldKey.replace('_', ' ')} updated ✓`, 'ok')
       me().then((m) => m?.user && onUserUpdated?.(m.user)).catch(() => {})
     } catch (err) {
       onToast?.(err.message || 'Upload failed', 'error')
@@ -365,10 +697,16 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
   }
 
   const handleSavePhone = async () => {
+    if (!isValidInMobile(phone)) {
+      onToast?.('Enter a 10-digit Indian mobile (+91)', 'error')
+      return
+    }
+    const saved = toE164In(phone)
     setSavingPhone(true)
     try {
-      await updateUser(user.id, { phone: phone.trim() })
-      onUserUpdated?.((prev) => ({ ...prev, phone: phone.trim() }))
+      await updateUser(user.id, { phone: saved })
+      onUserUpdated?.((prev) => ({ ...prev, phone: saved }))
+      setEditingPhone(false)
       onToast?.('Phone number updated ✓', 'ok')
       me().then((m) => m?.user && onUserUpdated?.(m.user)).catch(() => {})
     } catch (err) {
@@ -378,53 +716,55 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
     }
   }
 
+  const initials = (user?.name || user?.username || 'S')
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+
   return (
-    <div className="screen profile-screen" style={{ padding: '12px 14px 110px' }}>
-      <div className="card" style={{ marginBottom: 14, textAlign: 'center', padding: '16px 14px' }}>
-        <div style={{ position: 'relative', display: 'inline-block', marginBottom: 10 }}>
+    <div className="screen profile-screen" style={{ padding: '4px 0 0' }}>
+      {/* Centered Profile Hero */}
+      <div className="prof">
+        <div style={{ position: 'relative', display: 'inline-block', marginBottom: 8 }}>
           {user?.photo ? (
             <img
               src={user.photo}
               alt="Profile"
-              style={{ width: 84, height: 84, borderRadius: '50%', objectFit: 'cover', border: '3px solid #00e599' }}
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '2px solid #bfdbfe',
+              }}
             />
           ) : (
-            <div
-              style={{
-                width: 84,
-                height: 84,
-                borderRadius: '50%',
-                background: '#243041',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 38,
-                margin: '0 auto',
-              }}
-            >
-              👤
+            <div className="avatar">
+              {initials}
             </div>
           )}
           <label
             style={{
               position: 'absolute',
-              bottom: 0,
-              right: 0,
-              background: user?.verified ? '#334155' : '#00e599',
-              color: user?.verified ? '#64748b' : '#111',
+              bottom: -2,
+              right: -2,
+              background: '#ffffff',
               borderRadius: '50%',
-              width: 30,
-              height: 30,
+              width: 24,
+              height: 24,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: user?.verified ? 'not-allowed' : 'pointer',
-              fontWeight: 'bold',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+              cursor: user?.verified ? 'default' : 'pointer',
+              fontSize: 12,
+              boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+              border: '1px solid #e2e8f0',
             }}
-            title={user?.verified ? 'Photo locked after Admin Verification' : 'Upload photo'}
+            title={user?.verified ? 'Photo locked' : 'Upload photo'}
           >
-            {user?.verified ? '🔒' : '📷'}
+            {user?.verified ? '🔒' : uploading.photo ? '…' : '📷'}
             {!user?.verified && (
               <input
                 type="file"
@@ -435,209 +775,264 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
             )}
           </label>
         </div>
-        <h2 style={{ margin: '4px 0 2px', fontSize: 20 }}>
-          {user?.name || user?.display_name || user?.username}
-          {user?.verified && (
-            <span className="pill ok" style={{ background: '#059669', color: '#fff', fontSize: 12, marginLeft: 8, verticalAlign: 'middle', fontWeight: 'bold' }}>
-              Verified ✓
-            </span>
-          )}
-        </h2>
-        <p className="muted" style={{ margin: '0 0 10px', fontSize: 13 }}>@{user?.username}</p>
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ background: 'rgba(0,229,153,0.12)', border: '1px solid rgba(0,229,153,0.3)', borderRadius: 20, padding: '4px 14px' }}>
-            <span style={{ fontSize: 12, color: '#00e599', fontWeight: 'bold' }}>
-              Key ID: {user?.key_id || 'GROUND-KEY'}
-            </span>
-          </div>
-          {user?.verified ? (
-            <div style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid #10b981', borderRadius: 20, padding: '4px 14px' }}>
-              <span style={{ fontSize: 12, color: '#10b981', fontWeight: 'bold' }}>
-                Identity Verified ✓
-              </span>
-            </div>
-          ) : (
-            <div style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid #f59e0b', borderRadius: 20, padding: '4px 14px' }}>
-              <span style={{ fontSize: 12, color: '#f59e0b', fontWeight: 'bold' }}>
-                Verification Pending ⏳
-              </span>
-            </div>
-          )}
-          <button
-            type="button"
-            className="btn small"
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, background: '#1e293b', border: '1px solid #475569', color: '#38bdf8' }}
-            onClick={() => {
-              me().then((m) => {
-                if (m?.user) {
-                  onUserUpdated?.(m.user)
-                  onToast?.(m.user.verified ? 'Verified ✓' : 'Verification pending', 'ok')
-                }
-              }).catch(() => {})
-            }}
-          >
-            Check Status 🔄
-          </button>
+        <div className="pname" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+          {user?.name || user?.display_name || user?.username}
+          {user?.verified ? <VerifiedBadge size={16} /> : null}
         </div>
+        <div className="puser">@{user?.username}</div>
+        <div className="keychip">
+          Key ID: {user?.key_id || `GROUND-KEY-${String(user?.id || '0000').padStart(4, '0')}`}
+        </div>
+        {(questionsMeta?.surveys || []).length > 0 && (
+          <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+            {(questionsMeta.surveys || []).map((s) => (
+              <span
+                key={s.form_key || s.id || s.title}
+                className={`pill ${s.voice_required ? 'warn' : 'ok'}`}
+                style={{ fontSize: 11 }}
+              >
+                {s.title || s.form_key}
+                {s.voice_required ? ' · Voice' : ''}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <h3 style={{ margin: 0, fontSize: 15, color: '#f8fafc' }}>📞 Surveyor Mobile Number</h3>
-          {user?.verified && (
-            <span style={{ fontSize: 11, background: '#059669', color: '#ffffff', fontWeight: 'bold', padding: '2px 10px', borderRadius: 12 }}>
-              🔒 Verified & Frozen
-            </span>
-          )}
-        </div>
-        <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
-          {user?.verified
-            ? 'Phone number verified by Client Admin. Only Admin can modify this.'
-            : 'Registered phone number for contact & admin verification.'}
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <input
-            type="tel"
-            placeholder="+91 9876543210"
-            value={phone}
-            disabled={user?.verified === true}
-            onChange={(e) => setPhone(e.target.value)}
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              fontSize: 18,
-              fontWeight: 'bold',
-              letterSpacing: '0.04em',
-              padding: '12px 16px',
-              minHeight: 52,
-              borderRadius: 12,
-              border: user?.verified ? '1px solid #475569' : '2px solid #00e599',
-              background: user?.verified ? '#0f172a' : '#1a2332',
-              color: user?.verified ? '#00e599' : '#ffffff',
-              cursor: user?.verified ? 'not-allowed' : 'text',
-            }}
-          />
-          {user?.verified ? (
+      {/* Phone Card */}
+      <div className="idcard">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h4>📞 Phone {user?.verified ? '🔒' : ''}</h4>
+          {!user?.verified && !editingPhone && (
             <button
               type="button"
-              className="btn"
-              disabled={true}
+              onClick={() => setEditingPhone(true)}
               style={{
-                width: '100%',
-                padding: '12px',
-                fontSize: 13,
-                fontWeight: 'bold',
-                minHeight: 48,
-                borderRadius: 12,
-                background: '#1e293b',
-                border: '1px solid #334155',
-                color: '#94a3b8',
-                cursor: 'not-allowed',
-              }}
-            >
-              🔒 Phone Frozen (Contact Admin to Change)
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn primary"
-              style={{
-                width: '100%',
-                padding: '12px',
-                fontSize: 15,
-                fontWeight: 'bold',
-                minHeight: 48,
-                borderRadius: 12,
-                background: '#00e599',
-                color: '#0f172a',
+                background: 'none',
+                border: 'none',
+                color: '#1a73e8',
+                fontSize: 12,
+                fontWeight: 600,
                 cursor: 'pointer',
               }}
-              disabled={savingPhone || phone === (user?.phone || '')}
-              onClick={handleSavePhone}
             >
-              {savingPhone ? 'Saving Phone…' : 'Save Phone Number'}
+              Edit
             </button>
           )}
         </div>
+        {editingPhone ? (
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <PhoneIndiaField value={phone} onChange={setPhone} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                className="btn small primary"
+                disabled={savingPhone}
+                onClick={handleSavePhone}
+                style={{ flex: 1 }}
+              >
+                {savingPhone ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                className="btn small"
+                onClick={() => {
+                  setPhone(user?.phone || '')
+                  setEditingPhone(false)
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p style={{ margin: '2px 0 0' }}>
+            {user?.phone ? `${user.phone} · verified` : 'No phone linked'}
+          </p>
+        )}
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <h3 style={{ margin: 0 }}>🪪 Aadhaar Identity Verification</h3>
-          {user?.verified && (
-            <span style={{ fontSize: 11, background: '#059669', color: '#fff', fontWeight: 'bold', padding: '2px 10px', borderRadius: 12 }}>
-              🔒 Verified & Locked
-            </span>
-          )}
-        </div>
-        <p className="muted" style={{ fontSize: 12, margin: '0 0 12px' }}>
-          {user?.verified
-            ? 'Aadhaar documents locked after Admin Verification. Only Admin can update them.'
-            : 'Upload front & back images of your Aadhaar card for field surveyor verification.'}
+      {/* Aadhaar Card with Compact Tiles */}
+      <div className="idcard">
+        <h4>🪪 Aadhaar Identity {user?.verified ? '🔒' : ''}</h4>
+        <p style={{ margin: '2px 0 0' }}>
+          {user?.verified ? 'Verified documents locked' : 'Upload front & back to verify'}
         </p>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          {/* Front */}
-          <div style={{ border: user?.verified ? '1px solid #1e293b' : '1px dashed #334155', borderRadius: 8, padding: 10, textAlign: 'center', background: user?.verified ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.15)' }}>
-            <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 'bold', color: user?.verified ? '#64748b' : '#f8fafc' }}>Aadhaar Front</p>
+        <div className="id-tiles">
+          {/* Front Tile */}
+          <label
+            className={`id-tile ${user?.aadhaar_front ? 'ok' : ''}`}
+            style={{ position: 'relative', overflow: 'hidden', cursor: user?.verified ? 'default' : 'pointer' }}
+          >
             {user?.aadhaar_front ? (
-              <img
-                src={user.aadhaar_front}
-                alt="Aadhaar Front"
-                style={{ width: '100%', height: 95, objectFit: 'cover', borderRadius: 6, marginBottom: 8, opacity: user?.verified ? 0.7 : 1 }}
-              />
-            ) : (
-              <div style={{ height: 95, background: 'rgba(255,255,255,0.03)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 8 }}>
-                🪪
-              </div>
-            )}
-            <label
-              className="btn small"
-              style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', cursor: user?.verified ? 'not-allowed' : 'pointer', background: user?.verified ? '#1e293b' : undefined, color: user?.verified ? '#64748b' : undefined, border: user?.verified ? '1px solid #334155' : undefined }}
-            >
-              {uploading.front ? 'Uploading…' : user?.verified ? '🔒 Locked (Admin Only)' : user?.aadhaar_front ? 'Change Front' : 'Upload Front'}
-              {!user?.verified && (
-                <input
-                  type="file"
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                  onChange={(e) => handleMediaUpload('front', e.target.files?.[0])}
+              <>
+                <img
+                  src={user.aadhaar_front}
+                  alt="Front"
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.25 }}
                 />
-              )}
-            </label>
-          </div>
+                <span style={{ position: 'relative', zIndex: 1 }}>Front ✓</span>
+              </>
+            ) : (
+              <span>{uploading.front ? 'Uploading…' : '＋ Front'}</span>
+            )}
+            {!user?.verified && (
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => handleMediaUpload('front', e.target.files?.[0])}
+              />
+            )}
+          </label>
 
-          {/* Back */}
-          <div style={{ border: user?.verified ? '1px solid #1e293b' : '1px dashed #334155', borderRadius: 8, padding: 10, textAlign: 'center', background: user?.verified ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.15)' }}>
-            <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 'bold', color: user?.verified ? '#64748b' : '#f8fafc' }}>Aadhaar Back</p>
+          {/* Back Tile */}
+          <label
+            className={`id-tile ${user?.aadhaar_back ? 'ok' : ''}`}
+            style={{ position: 'relative', overflow: 'hidden', cursor: user?.verified ? 'default' : 'pointer' }}
+          >
             {user?.aadhaar_back ? (
-              <img
-                src={user.aadhaar_back}
-                alt="Aadhaar Back"
-                style={{ width: '100%', height: 95, objectFit: 'cover', borderRadius: 6, marginBottom: 8, opacity: user?.verified ? 0.7 : 1 }}
-              />
-            ) : (
-              <div style={{ height: 95, background: 'rgba(255,255,255,0.03)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 8 }}>
-                🪪
-              </div>
-            )}
-            <label
-              className="btn small"
-              style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', cursor: user?.verified ? 'not-allowed' : 'pointer', background: user?.verified ? '#1e293b' : undefined, color: user?.verified ? '#64748b' : undefined, border: user?.verified ? '1px solid #334155' : undefined }}
-            >
-              {uploading.back ? 'Uploading…' : user?.verified ? '🔒 Locked (Admin Only)' : user?.aadhaar_back ? 'Change Back' : 'Upload Back'}
-              {!user?.verified && (
-                <input
-                  type="file"
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                  onChange={(e) => handleMediaUpload('back', e.target.files?.[0])}
+              <>
+                <img
+                  src={user.aadhaar_back}
+                  alt="Back"
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.25 }}
                 />
-              )}
-            </label>
-          </div>
+                <span style={{ position: 'relative', zIndex: 1 }}>Back ✓</span>
+              </>
+            ) : (
+              <span>{uploading.back ? 'Uploading…' : '＋ Back'}</span>
+            )}
+            {!user?.verified && (
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => handleMediaUpload('back', e.target.files?.[0])}
+              />
+            )}
+          </label>
         </div>
+      </div>
+
+      {/* App Preferences & Settings */}
+      <div className="card" style={{ marginTop: 14, padding: 16 }}>
+        <h4 style={{ marginTop: 0, marginBottom: 8, fontSize: 15 }}>🌐 Display Language</h4>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+          {[
+            { id: 'en', label: 'English' },
+            { id: 'te', label: 'తెలుగు' },
+          ].map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`chip ${displayLang === p.id ? 'selected' : ''}`}
+              onClick={() => onDisplayLangChange?.(p.id)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        <h4 style={{ marginTop: 0, marginBottom: 8, fontSize: 15 }}>🔤 Display size</h4>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+          {FONT_SCALES.map((scale) => {
+            const label =
+              scale === 1 ? 'Normal' : scale === 1.15 ? 'Large' : scale === 1.3 ? 'Larger' : 'Largest'
+            const selected = Number(fontScale) === scale
+            return (
+              <button
+                key={scale}
+                type="button"
+                className={`chip ${selected ? 'selected' : ''}`}
+                onClick={() => onFontScaleChange?.(scale)}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+
+        <h4 style={{ marginTop: 0, marginBottom: 8, fontSize: 15 }}>📝 Question Layout</h4>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {NAV_MODES.map((mode) => {
+            const info = NAV_MODE_INFO[mode] || { title: mode, desc: '' }
+            const selected = navMode === mode
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => onNavModeChange?.(mode)}
+                aria-pressed={selected}
+                style={{
+                  textAlign: 'left',
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  border: selected ? '2px solid #00e599' : '1px solid #e2e8f0',
+                  background: selected ? 'rgba(0,229,153,0.08)' : '#fff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <span
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: '50%',
+                    border: selected ? '5px solid #00e599' : '2px solid #cbd5e1',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <span style={{ fontSize: 13, fontWeight: selected ? 700 : 500 }}>{info.title}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* App Version & OTA Updates */}
+      <div className="card" style={{ marginTop: 14, padding: 16, textAlign: 'center' }}>
+        <p style={{ margin: '0 0 8px', fontSize: 13, color: '#64748b', fontWeight: 600 }}>
+          {versionLabel()}
+        </p>
+        <button
+          type="button"
+          className="btn small"
+          style={{ width: '100%', marginBottom: 10 }}
+          onClick={async () => {
+            onToast?.('Checking for updates…', 'ok')
+            try {
+              const res = await checkForAppUpdate({ ignoreDismissed: true })
+              if (res.hasUpdate) {
+                onToast?.(`Downloading v${res.latest.version} inside the app…`, 'ok')
+                await launchApkUpdate(res.latest.apkUrl)
+                onToast?.('Installer opened — tap Install', 'ok')
+              } else {
+                onToast?.(
+                  `App is up to date · v${res.currentVersion || APP_VERSION}` +
+                    (res.latest?.version ? ` (server v${res.latest.version})` : ''),
+                  'ok',
+                )
+              }
+            } catch (e) {
+              onToast?.(e.message || 'Could not check updates', 'error')
+            }
+          }}
+        >
+          Check for updates
+        </button>
+
+        <button
+          type="button"
+          className="cta secondary danger-cta"
+          style={{ width: '100%', marginTop: 6 }}
+          onClick={onLogout}
+        >
+          Log out
+        </button>
       </div>
     </div>
   )
@@ -648,14 +1043,18 @@ function SurveyorProfileScreen({ user, onToast, onUserUpdated }) {
  * queued packages (collected "done" but not yet synced to the server).
  * Surveyors see every done record here BEFORE it reaches the admin.
  */
-function DraftsScreen({ user, onToast, onEdit }) {
+function DraftsScreen({ user, onToast, onEdit, questions, onPushed, onStartNew }) {
   const [items, setItems] = useState(null)
   const [pushing, setPushing] = useState(null)
   const [openId, setOpenId] = useState(null)
 
   const load = useCallback(async () => {
     try {
-      const [drafts, queued] = await Promise.all([listDrafts(), listPendingPackages()])
+      await collapseDuplicateDrafts().catch(() => {})
+      const [drafts, queued] = await Promise.all([
+        listDrafts({ media: false }),
+        listPendingPackages(),
+      ])
       const all = [
         ...(drafts || []).map((d) => ({ ...d, kind: 'draft' })),
         ...(queued || []).map((q) => ({ ...q, kind: 'queued' })),
@@ -677,18 +1076,32 @@ function DraftsScreen({ user, onToast, onEdit }) {
     setPushing(id)
     try {
       await pushDraft(id)
-      onToast?.('Draft pushed to client admin — pending review', 'ok')
-      void forceSyncNow()
+      let res = await forceSyncNow()
+      if (res?.skipped && res.reason === 'busy') {
+        await new Promise((r) => setTimeout(r, 2500))
+        res = await forceSyncNow()
+      }
       await load()
+      window.dispatchEvent(new CustomEvent('esurvey-activity-refresh'))
+      if (res?.fail > 0 && !(res?.ok > 0) && res?.pending > 0) {
+        onToast?.('Send queued — still on this phone until sync finishes', 'error')
+        return
+      }
+      if (res?.ok > 0 || res?.reason === 'empty' || res?.pending === 0) {
+        onToast?.('Sent · now in My activity', 'ok')
+        onPushed?.()
+      } else {
+        onToast?.('Queued on this phone · will appear in My activity after sync', 'ok')
+      }
     } catch (e) {
-      onToast?.(e.message || 'Push failed', 'error')
+      onToast?.(e.message || 'Send failed', 'error')
     } finally {
       setPushing(null)
     }
   }
 
   const remove = async (id) => {
-    if (!confirm('Delete this record from the phone?')) return
+    if (!confirm('Delete this from the phone? It will not be sent.')) return
     await deleteDraft(id).catch(() => {})
     await load()
   }
@@ -700,12 +1113,13 @@ function DraftsScreen({ user, onToast, onEdit }) {
 
   const draftN = (items || []).filter((i) => i.kind === 'draft').length
   const queuedN = (items || []).filter((i) => i.kind === 'queued').length
+  const pendingNums = recordNumberMap(items || [], 'id', 'createdAt', null)
 
   return (
-    <div className="screen home-screen">
-      <p className="ptr-hint">Done records stay on this phone until they reach the server</p>
+    <div className="screen drafts-screen" style={{ paddingBottom: 0 }}>
+      <p className="ptr-hint">Items stay on this phone until you send them</p>
       <div className="hero-card">
-        <p className="eyebrow">Phone pending</p>
+        <p className="eyebrow">Pending</p>
         <h1>{user?.name || user?.username}</h1>
         <p className="hero-sub">
           {items == null
@@ -725,11 +1139,22 @@ function DraftsScreen({ user, onToast, onEdit }) {
       </div>
 
       {items && items.length === 0 && (
-        <div className="card" style={{ marginTop: 12, padding: '14px' }}>
-          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-            Nothing pending — collected records are synced automatically. Use “Save draft only”
-            while collecting to keep records on this phone.
+        <div className="card" style={{ marginTop: 12, padding: '20px 14px', textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+          <strong style={{ display: 'block', fontSize: 16, marginBottom: 4, color: '#0f172a' }}>All Records Synced!</strong>
+          <p className="muted" style={{ margin: '0 0 16px', fontSize: 13 }}>
+            All collected records are safely stored on the server. Tap <strong>Sent Activity</strong> above to view them.
           </p>
+          {typeof onStartNew === 'function' && (
+            <button
+              type="button"
+              className="cta"
+              style={{ width: '100%', minHeight: 46 }}
+              onClick={onStartNew}
+            >
+              + Start Next Record
+            </button>
+          )}
         </div>
       )}
 
@@ -741,67 +1166,97 @@ function DraftsScreen({ user, onToast, onEdit }) {
         const isDraft = d.kind === 'draft'
         const isFailed = d.phase === 'failed'
         const isSyncing = d.phase === 'syncing'
+        const failedReq = packageFailedRequirements(d)
+        const pendingNo = pendingNums.get(d.id) ?? 0
+        const kindLabel = isFailed || failedReq ? 'Failed' : isDraft ? 'Draft' : 'Queued'
         return (
           <div key={d.id} className="card" style={{ marginTop: 12, padding: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
               <strong style={{ fontSize: 14 }}>
                 {a.respondent_name || a.district || loc.display_name || 'Survey'}
-                {d.recordIndex != null && (
-                  <span className="muted" style={{ fontWeight: 600 }}>
-                    {' '}
-                    · Record #{d.recordIndex}
-                  </span>
-                )}
+                <span className="pill" style={{ fontWeight: 'bold', background: '#e0f2fe', color: '#0369a1', marginLeft: 6 }}>
+                  {kindLabel} #{pendingNo}
+                </span>
               </strong>
-              <span className={`pill ${isFailed ? '' : isDraft ? '' : 'ok'}`} style={{ fontSize: 11 }}>
-                {isFailed ? 'failed' : isDraft ? 'draft' : 'to sync'}
+              <span className={`pending-chip ${isFailed || failedReq ? 'fail' : isDraft ? 'draft' : 'sync'}`}>
+                {isFailed || failedReq ? 'failed' : isDraft ? 'draft' : 'to sync'}
               </span>
             </div>
             <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
-              {String(d.createdAt || '').slice(0, 16).replace('T', ' ')} · geo{' '}
-              {qa.geo?.lat != null ? '✓' : '✗'} · photo {d.photoDataUrl ? '✓' : '✗'} · voice{' '}
-              {d.audioDataUrl ? '✓' : '✗'}
+              {formatIstDateTime(d.createdAt)}
+              {qa.form_key ? ` · ${qa.form_key}` : ''}
             </span>
 
-            {isFailed && (
+            {isDraft && (
+              <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                Status: {typeof d.step === 'number' ? `step ${d.step + 1}/4` : 'draft'}
+                {d.total != null
+                  ? ` · ${d.answered ?? 0}/${d.total} questions answered`
+                  : ''}
+              </span>
+            )}
+
+            {(isFailed || failedReq) && (
               <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
-                Sync failed{d.lastError ? `: ${d.lastError}` : ''} — tap “Sync now” to retry.
+                {isFailed
+                  ? `Sync failed${d.lastError ? `: ${d.lastError}` : ''}`
+                  : 'Missing GPS, photo or voice lock'}
+                {' '}— delete this item or fix and retry.
               </p>
             )}
-            {!isDraft && !isFailed && (
+            {!isDraft && !isFailed && !failedReq && (
               <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
                 {isSyncing ? 'Syncing to server…' : 'Waiting for network — auto-syncs when online.'}
               </p>
             )}
 
-            {isDraft && (
-              <div className="pill-row" style={{ marginTop: 8 }}>
+            <div
+              className="act-actions"
+              style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}
+            >
+              {!isSyncing && (
                 <button
                   type="button"
-                  className="cta secondary"
+                  className="btn primary"
                   disabled={pushing === d.id}
                   onClick={() => onEdit(d)}
+                  style={{ flex: '1 1 120px' }}
                 >
                   Edit
                 </button>
+              )}
+              {isDraft && !failedReq && (
                 <button
                   type="button"
-                  className="cta"
+                  className="btn secondary"
                   disabled={pushing === d.id}
                   onClick={() => push(d.id)}
+                  style={{ flex: '1 1 120px' }}
                 >
-                  {pushing === d.id ? 'Pushing…' : 'Push to admin'}
+                  {pushing === d.id ? 'Sending…' : 'Send'}
                 </button>
+              )}
+              {failedReq && !isDraft && (
                 <button
                   type="button"
-                  className="cta secondary danger-cta"
+                  className="btn secondary"
                   disabled={pushing === d.id}
-                  onClick={() => remove(d.id)}
+                  onClick={retry}
+                  style={{ flex: '1 1 120px' }}
                 >
-                  Delete
+                  Retry sync
                 </button>
-              </div>
-            )}
+              )}
+              <button
+                type="button"
+                className="btn secondary danger-cta"
+                disabled={pushing === d.id || isSyncing}
+                onClick={() => remove(d.id)}
+                style={{ flex: '1 1 120px' }}
+              >
+                Delete
+              </button>
+            </div>
 
             <button
               type="button"
@@ -814,10 +1269,10 @@ function DraftsScreen({ user, onToast, onEdit }) {
             {open && (
               <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
                 {Object.entries(a)
-                  .filter(([k]) => !String(k).startsWith('_'))
+                  .filter(([k, v]) => !isAnswerMetaKey(k) && queueAnswerText(v) != null)
                   .map(([k, v]) => (
                     <div key={k}>
-                      <strong>{k}:</strong> {String(v)}
+                      <strong>{labelForAnswerKey(k, questions)}:</strong> {queueAnswerText(v)}
                     </div>
                   ))}
               </div>
@@ -825,6 +1280,113 @@ function DraftsScreen({ user, onToast, onEdit }) {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+/**
+ * Combined Submissions tab: switch between Pending Drafts and Sent Activity.
+ */
+function SubmissionsScreen({ user, onToast, onEdit, questions, onStartNew, initialSubTab = 'drafts' }) {
+  const [subTab, setSubTab] = useState(initialSubTab)
+  const [draftsN, setDraftsN] = useState(0)
+
+  useEffect(() => {
+    const updateCount = async () => {
+      try {
+        const [d, q] = await Promise.all([listDrafts({ media: false }), listPendingPackages()])
+        const total = (d?.length || 0) + (q?.length || 0)
+        setDraftsN(total)
+      } catch {
+        setDraftsN(0)
+      }
+    }
+    void updateCount()
+    window.addEventListener('esurvey-queue-change', updateCount)
+    return () => window.removeEventListener('esurvey-queue-change', updateCount)
+  }, [])
+
+  return (
+    <div className="screen submissions-shell" style={{ paddingBottom: 0 }}>
+      <div
+        style={{
+          display: 'flex',
+          background: '#f1f5f9',
+          border: '1px solid #e2e8f0',
+          borderRadius: 12,
+          padding: 4,
+          margin: '10px 14px 12px',
+          gap: 4,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setSubTab('drafts')}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            borderRadius: 8,
+            border: 'none',
+            fontWeight: 600,
+            fontSize: 13,
+            cursor: 'pointer',
+            background: subTab === 'drafts' ? '#ffffff' : 'transparent',
+            color: subTab === 'drafts' ? '#0f172a' : '#64748b',
+            boxShadow: subTab === 'drafts' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+          }}
+        >
+          📦 Pending Sync
+          {draftsN > 0 && (
+            <span
+              style={{
+                background: '#ef4444',
+                color: '#fff',
+                fontSize: 11,
+                padding: '1px 6px',
+                borderRadius: 999,
+                fontWeight: 700,
+              }}
+            >
+              {draftsN}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab('records')}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            borderRadius: 8,
+            border: 'none',
+            fontWeight: 600,
+            fontSize: 13,
+            cursor: 'pointer',
+            background: subTab === 'records' ? '#ffffff' : 'transparent',
+            color: subTab === 'records' ? '#0f172a' : '#64748b',
+            boxShadow: subTab === 'records' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+          }}
+        >
+          📜 Sent Activity
+        </button>
+      </div>
+
+      {subTab === 'drafts' ? (
+        <DraftsScreen
+          user={user}
+          questions={questions}
+          onToast={onToast}
+          onEdit={onEdit}
+          onPushed={() => setSubTab('records')}
+          onStartNew={onStartNew}
+        />
+      ) : (
+        <MyRecordsScreen user={user} onToast={onToast} questions={questions} />
+      )}
     </div>
   )
 }
@@ -841,43 +1403,81 @@ export default function SurveyorApp() {
   const [collectKey, setCollectKey] = useState(0)
   const [editDraft, setEditDraft] = useState(null)
   const [draftsCount, setDraftsCount] = useState(0)
+  // Device-local UI prefs (per-phone, not synced to the account).
+  const [navMode, setNavModeState] = useState(getNavMode)
+  const [fontScale, setFontScaleState] = useState(getFontScale)
+  const [displayLang, setDisplayLangState] = useState(getDisplayLang)
+  const wasVerified = useRef(false)
+
+  const changeNavMode = useCallback((mode) => {
+    setNavModeState(persistNavMode(mode))
+  }, [])
+
+  const changeFontScale = useCallback((scale) => {
+    setFontScaleState(persistFontScale(scale))
+  }, [])
+
+  const changeDisplayLang = useCallback((lang) => {
+    setDisplayLangState(persistDisplayLang(lang))
+  }, [])
+
+  // Apply the display-size zoom to the whole app on mount and whenever it
+  // changes, so the scale is live on every tab — not just Settings.
+  useEffect(() => {
+    applyFontScale(fontScale)
+  }, [fontScale])
+
+  const verified = !!user?.verified
+  const lockForVerify = !!user && user.role === 'surveyor' && !verified
+
+  const alertVerifyPending = useCallback(() => {
+    window.alert(
+      'Surveyor profile verification is pending. Client Admin must verify your profile before you can open Home or collect.',
+    )
+  }, [])
 
   const refreshDraftCount = useCallback(async () => {
     try {
-      setDraftsCount(await draftCount())
+      const s = await getQueueSnapshot()
+      setPendingSync(s.pending ?? 0)
+      setDraftsCount((s.drafts ?? 0) + (s.pending ?? 0))
     } catch {
-      /* ignore */
+      try {
+        setDraftsCount(await draftCount())
+      } catch {
+        /* ignore */
+      }
     }
   }, [])
 
+  const toastTimer = useRef(0)
   const notify = useCallback((message, type = 'ok') => {
     setToast({ message, type })
-    setTimeout(() => setToast(null), 3200)
+    window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToast(null), 3200)
   }, [])
+  useEffect(() => () => window.clearTimeout(toastTimer.current), [])
 
   /** App-wide pull-to-refresh: tab-aware — refreshes right data for active tab */
   const pullRefreshAll = useCallback(async () => {
     try {
       // Always fetch fresh user profile (catches admin verification, phone changes)
       const meRes = await me().catch(() => null)
-      if (meRes?.user) setUser(meRes.user)
+      if (meRes?.user) setUser((prev) => mergeUserKeepMedia(prev, meRes.user))
 
       if (tab === 'profile') {
         // Profile tab: just user refresh + feedback
-        notify(
-          meRes?.user?.verified
-            ? 'Profile refreshed · ✓ Verified'
-            : 'Profile refreshed',
-          'ok',
-        )
+        notify('Profile refreshed', 'ok')
         return
       }
 
-      if (tab === 'records') {
-        // Records tab: user + progress
+      if (tab === 'submissions') {
+        // Submissions tab: user + progress + sent list + queue
         const prog = await getMyProgress().catch(() => null)
         if (prog) setMyProgress(prog)
-        notify('Records refreshed ✓', 'ok')
+        window.dispatchEvent(new Event('esurvey-activity-refresh'))
+        window.dispatchEvent(new Event('esurvey-queue-change'))
+        notify('Submissions refreshed ✓', 'ok')
         return
       }
 
@@ -891,12 +1491,11 @@ export default function SurveyorApp() {
         title: data.title,
         count: (data.questions || []).length,
         questions: data.questions,
+        surveys: data.surveys || [],
         updated_at: data.updated_at,
       })
       if (prog) setMyProgress(prog)
       if (queue) setPendingSync(queue.pending ?? 0)
-      // Remount Collect so form reloads latest questions
-      setCollectKey((k) => k + 1)
       notify(
         `Refreshed · ${(data.questions || []).length} question(s)` +
           (prog ? ` · ${prog.done ?? 0}/${prog.target || '—'}` : ''),
@@ -907,6 +1506,25 @@ export default function SurveyorApp() {
       throw e
     }
   }, [notify, tab])
+
+  const onCollectDone = useCallback((_id, prog) => {
+    setEditDraft(null)
+    if (prog) setMyProgress(prog)
+    else getMyProgress().then(setMyProgress).catch(() => {})
+    void getQueueSnapshot().then((s) => setPendingSync(s.pending)).catch(() => {})
+  }, [])
+
+  const onCollectSavedDraft = useCallback(() => {
+    setEditDraft(null)
+    setTab('submissions')
+    refreshDraftCount()
+  }, [refreshDraftCount])
+
+  const onCollectIdleHome = useCallback(() => {
+    setEditDraft(null)
+    setTab(lockForVerify ? 'profile' : 'home')
+    setCollectKey((k) => k + 1)
+  }, [lockForVerify])
 
   const handleLogout = useCallback(async () => {
     stopSyncEngine()
@@ -919,15 +1537,34 @@ export default function SurveyorApp() {
 
   useEffect(() => {
     if (!user || !authReady) return undefined
-    const stopNet = watchNetwork(setNetwork, { intervalMs: 45_000 })
+    const stopNet = watchNetwork((s) => {
+      setNetwork((prev) => {
+        if (prev && prev.quality === s.quality && prev.online === s.online) return prev
+        return s
+      })
+    }, { intervalMs: 60_000 })
     startSyncEngine()
     setPendingSync(queueCount())
     void refreshQueueCountCache().then(setPendingSync)
-    void getQueueSnapshot().then((s) => {
-      setPendingSync(s.pending)
-      setDraftsCount((s.drafts ?? 0) + (s.pending ?? 0))
-    })
+    void collapseDuplicateDrafts()
+      .catch(() => {})
+      .then(() => getQueueSnapshot())
+      .then((s) => {
+        setPendingSync(s.pending)
+        setDraftsCount((s.drafts ?? 0) + (s.pending ?? 0))
+      })
     void refreshDraftCount()
+    void getSurveyForm()
+      .then((data) => {
+        setQuestionsMeta({
+          title: data.title,
+          count: (data.questions || []).length,
+          questions: data.questions,
+          surveys: data.surveys || [],
+          updated_at: data.updated_at,
+        })
+      })
+      .catch(() => {})
 
     const offSync = onSyncEngine((ev) => {
       if (ev.type === 'drain-done') {
@@ -965,26 +1602,19 @@ export default function SurveyorApp() {
 
   const loadAppData = useCallback(async () => {
     if (!getToken()) return
-    try {
-      setMyProgress(await getMyProgress())
-    } catch {
-      /* ignore */
-    }
-    try {
-      const data = await getSurveyForm()
+    const [prog, form] = await Promise.all([
+      getMyProgress().catch(() => null),
+      getSurveyForm().catch(() => null),
+    ])
+    if (prog) setMyProgress(prog)
+    if (form) {
       setQuestionsMeta({
-        title: data.title,
-        count: (data.questions || []).length,
-        questions: data.questions,
-        updated_at: data.updated_at,
+        title: form.title,
+        count: (form.questions || []).length,
+        questions: form.questions,
+        surveys: form.surveys || [],
+        updated_at: form.updated_at,
       })
-    } catch {
-      /* questions after redeploy */
-    }
-    try {
-      await getStats()
-    } catch {
-      /* optional */
     }
   }, [])
 
@@ -1032,6 +1662,16 @@ export default function SurveyorApp() {
           }
           return
         }
+        // Defensive: never auto-login a disabled account
+        if (data.user?.active === false) {
+          await logout()
+          if (!cancelled) {
+            setUser(null)
+            setAuthReady(true)
+            notify('Account disabled — contact Client Admin', 'error')
+          }
+          return
+        }
         if (!cancelled) {
           setUser(data.user)
           setAuthReady(true)
@@ -1052,6 +1692,73 @@ export default function SurveyorApp() {
     }
   }, [notify])
 
+  // Global listener for 401 / unauthorized events (e.g. account updated, role changed, password reset)
+  useEffect(() => {
+    const onUnauthorized = (e) => {
+      stopSyncEngine()
+      clearSession()
+      setUser(null)
+      setMyProgress(null)
+      const msg = e?.detail?.error || 'Account updated or session expired — please log in again'
+      notify(msg, 'error')
+    }
+    window.addEventListener('esurvey-unauthorized', onUnauthorized)
+    return () => window.removeEventListener('esurvey-unauthorized', onUnauthorized)
+  }, [notify])
+
+  // Account revalidation — a disabled/inactive user must never stay logged in or auto-login:
+  // re-check every 120 seconds and whenever the app returns to foreground. 401/disabled → force
+  // logout (clears the stored session). Transient network errors keep the session so a
+  // surveyor in the field is never logged out by a bad connection.
+  useEffect(() => {
+    if (!user || !authReady) return undefined
+    let dead = false
+    const check = async () => {
+      try {
+        const res = await me()
+        if (!res?.user || res.user.active === false || res.user.role !== 'surveyor') {
+          const err = new Error('Account no longer active')
+          err.status = 401
+          err.disabled = true
+          throw err
+        }
+        // Only re-set when something actually changed (avoids effect churn on identical objects)
+        if (!dead && res.user.verified !== user.verified) {
+          setUser((prev) => mergeUserKeepMedia(prev, res.user))
+        }
+      } catch (e) {
+        if (dead) return
+        if (e?.status === 401 || e?.disabled) {
+          stopSyncEngine()
+          await logout().catch(() => {})
+          setUser(null)
+          setMyProgress(null)
+          notify(
+            e?.disabled ? 'Account updated / disabled — logged out' : 'Session expired — sign in again',
+            'error',
+          )
+        }
+        // else: transient network error — keep session, retry next tick
+      }
+    }
+    const iv = setInterval(check, 120 * 1000)
+    let visTimer = 0
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return
+      window.clearTimeout(visTimer)
+      visTimer = window.setTimeout(() => {
+        if (!dead) void check()
+      }, 800)
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      dead = true
+      clearInterval(iv)
+      window.clearTimeout(visTimer)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [user, authReady, notify])
+
   useEffect(() => {
     if (user && authReady) loadAppData()
   }, [user, authReady, loadAppData])
@@ -1064,8 +1771,20 @@ export default function SurveyorApp() {
       notify('Surveyor app only — login must be created by Client Admin', 'error')
       return
     }
-    if (!TABS.some((t) => t.id === tab)) setTab('home')
-  }, [user, tab, notify])
+    if (!TABS.some((t) => t.id === tab)) setTab(lockForVerify ? 'profile' : 'home')
+    if (lockForVerify && tab !== 'profile') setTab('profile')
+  }, [user, tab, notify, lockForVerify])
+
+  useEffect(() => {
+    if (!user) {
+      wasVerified.current = false
+      return
+    }
+    if (user.verified && !wasVerified.current) {
+      notify('Profile verified ✓ Home is unlocked', 'ok')
+    }
+    wasVerified.current = !!user.verified
+  }, [user, notify])
 
   if (!authReady) {
     return (
@@ -1103,7 +1822,14 @@ export default function SurveyorApp() {
           onToast={notify}
           onSuccess={(u) => {
             setUser(u)
-            setTab('home')
+            if (u?.role === 'surveyor' && !u.verified) {
+              setTab('profile')
+              window.alert(
+                'Surveyor profile verification is pending. Client Admin must verify your profile before you can open Home or collect.',
+              )
+            } else {
+              setTab('home')
+            }
           }}
         />
       </div>
@@ -1118,64 +1844,130 @@ export default function SurveyorApp() {
         </div>
       )}
 
+      {/* Sleek Fixed Native App Bar */}
+      <header className="app-topbar">
+        <div className="topbar-brand">
+          <div className="topbar-logo">
+            <Icon name="check" size={14} />
+          </div>
+          <div className="topbar-title-group">
+            <span className="topbar-title">Smart Survey X</span>
+            <span className="topbar-badge">{tab.toUpperCase()}</span>
+          </div>
+        </div>
+        <div className="topbar-actions">
+          <div className={`pill ${networkPillClass(network?.quality || QUALITY.OFFLINE)} topbar-net-pill`} title={network?.error || ''}>
+            <span className="dot" />
+            {network?.label || 'Offline'}
+          </div>
+        </div>
+      </header>
+
       <main className="main">
         <PullToRefresh
+          disabled={tab === 'collect'}
           onRefresh={pullRefreshAll}
-          label={tab === 'profile' ? '↓ Pull to refresh profile' : tab === 'records' ? '↓ Pull to refresh records' : '↓ Pull to refresh'}
-          refreshingLabel={tab === 'profile' ? 'Refreshing profile…' : tab === 'records' ? 'Refreshing records…' : 'Refreshing…'}
+          label={tab === 'profile' ? '↓ Pull to refresh profile' : tab === 'submissions' ? '↓ Pull to refresh submissions' : '↓ Pull to refresh'}
+          refreshingLabel={tab === 'profile' ? 'Refreshing profile…' : tab === 'submissions' ? 'Refreshing submissions…' : 'Refreshing…'}
         >
           {tab === 'home' && (
+            <ScreenErrorBoundary title="Home">
             <HomeScreen
               user={user}
               network={network}
               pendingSync={pendingSync}
+              pendingLocal={draftsCount}
               myProgress={myProgress}
               questionsMeta={questionsMeta}
-              onNewSurvey={() => setTab('collect')}
+              onNewSurvey={() => {
+                if (lockForVerify) {
+                  alertVerifyPending()
+                  setTab('profile')
+                  return
+                }
+                setTab('collect')
+              }}
+              onViewRecords={() => {
+                setTab('submissions')
+              }}
               onSync={() => {
                 forceSyncNow().then(() => notify('Syncing device queue…', 'ok'))
               }}
               onLogout={handleLogout}
             />
+            </ScreenErrorBoundary>
           )}
-          {tab === 'collect' && (
-            <FieldCollectScreen
-              key={collectKey}
+          <div style={{ display: tab === 'collect' ? 'block' : 'none' }}>
+            <ScreenErrorBoundary title="Collect" onReset={() => setCollectKey((k) => k + 1)}>
+              <FieldCollectScreen
+                key={collectKey}
+                active={tab === 'collect'}
+                user={user}
+                draft={editDraft}
+                navMode={navMode}
+                onToast={notify}
+                onDone={onCollectDone}
+                onSavedDraft={onCollectSavedDraft}
+                onIdleHome={onCollectIdleHome}
+              />
+            </ScreenErrorBoundary>
+          </div>
+
+          {tab === 'submissions' && (
+            <ScreenErrorBoundary title="Submissions">
+            <SubmissionsScreen
               user={user}
-              draft={editDraft}
+              questions={questionsMeta?.questions}
               onToast={notify}
-              onDone={(_id, prog) => {
-                setEditDraft(null)
-                if (prog) setMyProgress(prog)
-                else getMyProgress().then(setMyProgress).catch(() => {})
-                void getQueueSnapshot().then((s) => setPendingSync(s.pending))
-              }}
-              onSavedDraft={() => {
-                setEditDraft(null)
-                setTab('drafts')
-                refreshDraftCount()
-              }}
-            />
-          )}
-          {tab === 'drafts' && (
-            <DraftsScreen
-              user={user}
-              onToast={notify}
-              onEdit={(d) => {
-                setEditDraft(d)
-                setCollectKey((k) => k + 1)
+              onStartNew={() => {
+                if (lockForVerify) {
+                  alertVerifyPending()
+                  setTab('profile')
+                  return
+                }
                 setTab('collect')
-                notify('Draft loaded — review, then push', 'ok')
+              }}
+              onEdit={async (d) => {
+                if (lockForVerify) {
+                  alertVerifyPending()
+                  setTab('profile')
+                  return
+                }
+                try {
+                  let pkg = await getPackage(d.id)
+                  if (!pkg) pkg = d
+                  if (pkg.phase && pkg.phase !== 'draft' && pkg.phase !== 'syncing') {
+                    pkg = (await updatePackage(pkg.id, { phase: 'draft', lastError: null })) || pkg
+                  }
+                  setEditDraft(pkg)
+                  setCollectKey((k) => k + 1)
+                  setTab('collect')
+                  notify('Opened for edit — photo and voice stay on the phone', 'ok')
+                } catch (e) {
+                  notify(e.message || 'Could not open this record', 'error')
+                }
               }}
             />
+            </ScreenErrorBoundary>
           )}
-          {tab === 'records' && <MyRecordsScreen user={user} onToast={notify} />}
           {tab === 'profile' && (
+            <ScreenErrorBoundary title="Profile">
             <SurveyorProfileScreen
               user={user}
               onToast={notify}
-              onUserUpdated={(updater) => setUser(updater)}
+              onUserUpdated={(next) =>
+                setUser((prev) => mergeUserKeepMedia(prev, typeof next === 'function' ? next(prev) : next))
+              }
+              navMode={navMode}
+              onNavModeChange={changeNavMode}
+              fontScale={fontScale}
+              onFontScaleChange={changeFontScale}
+              displayLang={displayLang}
+              onDisplayLangChange={changeDisplayLang}
+              questionsMeta={questionsMeta}
+              onLogout={handleLogout}
             />
+            </ScreenErrorBoundary>
           )}
         </PullToRefresh>
       </main>
@@ -1190,27 +1982,26 @@ export default function SurveyorApp() {
             key={t.id}
             type="button"
             className={tab === t.id ? 'nav-item active' : 'nav-item'}
-            onClick={() => setTab(t.id)}
+            style={lockForVerify && t.id !== 'profile' ? { opacity: 0.4 } : undefined}
+            aria-disabled={lockForVerify && t.id !== 'profile'}
+            onClick={() => {
+              if (lockForVerify && t.id !== 'profile') {
+                alertVerifyPending()
+                setTab('profile')
+                return
+              }
+              setTab(t.id)
+            }}
           >
             <span className="nav-icon" aria-hidden>
-              {t.icon}
+              <Icon name={t.icon} size={20} />
+              {t.id === 'submissions' && draftsCount > 0 && (
+                <span className="nav-badge" aria-label={`${draftsCount} pending`}>
+                  {draftsCount > 99 ? '99+' : draftsCount}
+                </span>
+              )}
             </span>
             <span>{t.label}</span>
-            {t.id === 'drafts' && draftsCount > 0 && (
-              <span
-                style={{
-                  background: '#e11d48',
-                  color: '#fff',
-                  borderRadius: 10,
-                  fontSize: 10,
-                  lineHeight: '16px',
-                  padding: '0 6px',
-                  marginLeft: 4,
-                }}
-              >
-                {draftsCount}
-              </span>
-            )}
           </button>
         ))}
       </nav>

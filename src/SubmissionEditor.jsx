@@ -1,27 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { deleteSubmission, updateSubmission } from './api'
+import { deleteSubmission, getQuestions, getStoredUser, getSurvey, listSurveys, updateSubmission } from './api'
 import SubmissionMedia from './SubmissionMedia'
-
-/** Core fields Client Admin can always edit */
-const CORE_FIELDS = [
-  { key: 'respondent_name', label: 'Respondent name' },
-  { key: 'phone', label: 'Phone' },
-  { key: 'district', label: 'District' },
-  { key: 'constituency', label: 'Assembly constituency' },
-  { key: 'mp_constituency', label: 'MP constituency' },
-  { key: 'mandal', label: 'Mandal' },
-  { key: 'ward', label: 'Ward / booth' },
-  { key: 'gender', label: 'Gender' },
-  { key: 'caste', label: 'Caste' },
-  { key: 'age', label: 'Age group' },
-  { key: 'employment', label: 'Occupation' },
-  { key: 'education', label: 'Education' },
-  { key: 'winning_party', label: 'Winning party' },
-  { key: 'pm_preference', label: 'PM preference' },
-  { key: 'performance', label: 'Govt performance' },
-  { key: 'issues', label: 'Issues' },
-  { key: 'notes', label: 'Notes' },
-]
+import { getQuestionAliases, getQuestionDisplayLabel, resolveAnswerValue, slugQuestionKey } from './questionKey'
 
 function issuesToText(v) {
   if (Array.isArray(v)) return v.join(', ')
@@ -29,22 +9,34 @@ function issuesToText(v) {
   return String(v)
 }
 
+// Fix 1: Convert string back to an array to match backend expectations
 function textToIssues(s) {
   const t = String(s || '').trim()
-  if (!t) return ''
-  return t
+  if (!t) return []
+  return t.split(',').map(i => i.trim()).filter(Boolean)
+}
+
+// Fix 2: Humanize unmatched keys (e.g. "respondent_age" -> "Respondent Age")
+function humanizeKey(key) {
+  return String(key)
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2') // Handle camelCase
+    .replace(/\b\w/g, c => c.toUpperCase()) // Capitalize words
+    .trim()
 }
 
 /**
- * Client Admin full edit form for one survey submission.
+ * Client Admin full edit form for one survey submission with full question titles and web survey support.
  */
-export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, onToast }) {
+export default function SubmissionEditor({ item, questions: propQuestions, onSaved, onDeleted, onCancel, onToast }) {
   const initialAnswers = item?.answers || {}
   const [answers, setAnswers] = useState(() => {
     const a = { ...initialAnswers }
     if (a.issues != null) a.issues = issuesToText(a.issues)
     return a
   })
+  const [surveyQs, setSurveyQs] = useState(() => propQuestions || item?.questions || [])
+  const [allKnownQs, setAllKnownQs] = useState([])
   const [submittedBy, setSubmittedBy] = useState(item?.submitted_by || '')
   const [status, setStatus] = useState(item?.status || 'pending')
   const [lat, setLat] = useState(
@@ -60,8 +52,17 @@ export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, o
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  const isWeb =
+    item?.source === 'web-survey' ||
+    item?.source === 'web' ||
+    item?.payload?.source === 'web-survey' ||
+    item?.payload?.source === 'web' ||
+    item?.submitted_by === 'Web' ||
+    item?.submitted_by === 'web'
+
+  // Fix 3: Changed dependency to [item] so form updates when parent passes new object
   useEffect(() => {
-    const a = { ...(item?.answers || {}) }
+    const a = { ...item?.answers }
     if (a.issues != null) a.issues = issuesToText(a.issues)
     setAnswers(a)
     setSubmittedBy(item?.submitted_by || '')
@@ -72,30 +73,168 @@ export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, o
     setHasPhoto(!!item?.has_photo)
     setNote('')
     setForce(false)
-  }, [item?.id])
+  }, [item])
 
-  const extraKeys = useMemo(() => {
-    const core = new Set(CORE_FIELDS.map((f) => f.key))
-    return Object.keys(answers || {}).filter((k) => !core.has(k) && k !== 'data_collector')
-  }, [answers])
+  useEffect(() => {
+    let dead = false
+    Promise.all([
+      listSurveys().catch(() => ({ items: [] })),
+      getQuestions().catch(() => ({ questions: [] })),
+    ]).then(([d, gq]) => {
+      if (dead) return
+      const list = []
+      if (Array.isArray(gq?.questions)) list.push(...gq.questions)
+      for (const s of d?.items || []) {
+        if (Array.isArray(s.questions)) list.push(...s.questions)
+      }
+      setAllKnownQs(list)
+    })
+    return () => {
+      dead = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (propQuestions?.length) {
+      setSurveyQs(propQuestions)
+      return
+    }
+    const fk = item?.form_key || item?.payload?.form_key || item?.form_id
+    let dead = false
+    const fetcher =
+      !fk || fk === 'default' || fk === 'legacy'
+        ? getQuestions().then((d) => d?.questions || [])
+        : getSurvey(fk).then((d) => (Array.isArray(d?.survey?.questions) ? d.survey.questions : []))
+    fetcher
+      .then((qs) => {
+        if (dead) return
+        if (qs && qs.length) setSurveyQs(qs)
+      })
+      .catch(() => {})
+    return () => {
+      dead = true
+    }
+  }, [item?.form_key, item?.payload?.form_key, item?.form_id, propQuestions])
 
   function setField(key, value) {
     setAnswers((prev) => ({ ...prev, [key]: value }))
   }
 
+  // Build the list of fields to render with proper question labels
+  const renderedFields = useMemo(() => {
+    const fields = []
+    const renderedKeys = new Set()
+
+    const qLookup = new Map()
+    const allQuestions = [...allKnownQs, ...(surveyQs || [])]
+    allQuestions.forEach((q, idx) => {
+      const qIndex = idx + 1
+      if (q.id) {
+        qLookup.set(String(q.id).toLowerCase(), q)
+        const m = String(q.id).match(/^q_?(\d+)$/i)
+        if (m) {
+          qLookup.set(`q_${m[1]}`, q)
+          qLookup.set(`q${m[1]}`, q)
+        }
+      }
+      qLookup.set(`q_${qIndex}`, q)
+      qLookup.set(`q${qIndex}`, q)
+      if (q.label) {
+        qLookup.set(slugQuestionKey(q.label), q)
+        qLookup.set(String(q.label).toLowerCase(), q)
+      }
+    })
+
+    // 1. Survey defined questions
+    if (surveyQs && surveyQs.length > 0) {
+      for (let idx = 0; idx < surveyQs.length; idx++) {
+        const q = surveyQs[idx]
+        const qIndex = idx + 1
+        const id = String(q.id || `q_${qIndex}`).trim()
+        if (!id) continue
+        const aliases = getQuestionAliases(q, qIndex)
+        for (const al of aliases) {
+          renderedKeys.add(al)
+          renderedKeys.add(String(al).toLowerCase())
+          renderedKeys.add(slugQuestionKey(al))
+        }
+        renderedKeys.add(id)
+        if (q.id) renderedKeys.add(q.id)
+        if (q.label) renderedKeys.add(slugQuestionKey(q.label))
+
+        const val = resolveAnswerValue(answers, q, qIndex)
+        const displayLabel = getQuestionDisplayLabel(q, qIndex)
+
+        fields.push({
+          key: id,
+          label: displayLabel,
+          rawLabel: q.label || q.label_te || id,
+          label_te: q.label_te && q.label_te !== q.label ? q.label_te : null,
+          required: Boolean(q.required),
+          type: q.type === 'textarea' || (typeof val === 'string' && val.length > 60) ? 'textarea' : 'text',
+          value: Array.isArray(val) ? val.join(', ') : String(val ?? ''),
+          isSurveyQ: true,
+        })
+      }
+    }
+
+    // 2. Any additional answered fields
+    const extraEntries = Object.entries(answers || {})
+      .filter(([k, v]) => !k.startsWith('_') && k !== 'data_collector' && v != null && v !== '')
+      .sort(([k1], [k2]) => k1.localeCompare(k2, undefined, { numeric: true, sensitivity: 'base' }))
+
+    for (const [k, v] of extraEntries) {
+      if (renderedKeys.has(k) || renderedKeys.has(String(k).toLowerCase()) || renderedKeys.has(slugQuestionKey(k))) continue
+      const matched = qLookup.get(String(k).toLowerCase()) || qLookup.get(slugQuestionKey(k))
+      renderedKeys.add(k)
+      fields.push({
+        key: k,
+        // Fix 2: Use humanizeKey as a fallback instead of ugly "[Unmatched Field: ...]"
+        label: matched?.label || matched?.label_te || humanizeKey(k),
+        label_te: matched?.label_te || null,
+        required: false,
+        type: typeof v === 'string' && v.length > 60 ? 'textarea' : 'text',
+        value: Array.isArray(v) ? v.join(', ') : String(v ?? ''),
+        isSurveyQ: Boolean(matched),
+      })
+    }
+
+    return fields
+  }, [surveyQs, allKnownQs, answers])
+
   async function save() {
     setSaving(true)
     try {
+      const cleanAnswers = { ...answers }
+      for (let idx = 0; idx < (surveyQs || []).length; idx++) {
+        const q = surveyQs[idx]
+        const qIndex = idx + 1
+        const id = String(q.id || `q_${qIndex}`).trim()
+        if (!id) continue
+        if (cleanAnswers[id] === undefined || cleanAnswers[id] === '') {
+          const v = resolveAnswerValue(cleanAnswers, q, qIndex)
+          if (v !== '') cleanAnswers[id] = v
+        }
+        // Remove legacy aliases so they don't linger
+        const aliases = getQuestionAliases(q, qIndex)
+        for (const al of aliases) {
+          if (al !== id && al !== q.id && al !== slugQuestionKey(q.label || '')) {
+            delete cleanAnswers[al]
+          }
+        }
+      }
+
+
       const body = {
-        answers: { ...answers },
+        answers: cleanAnswers,
         submitted_by: submittedBy.trim() || undefined,
         status,
         note: note.trim() || undefined,
         force: force || undefined,
-        has_audio: hasAudio,
-        has_photo: hasPhoto,
+        has_audio: isWeb ? false : hasAudio,
+        has_photo: isWeb ? false : hasPhoto,
       }
-      // Normalize issues to string (server accepts string)
+
       if (body.answers.issues != null) {
         body.answers.issues = textToIssues(body.answers.issues)
       }
@@ -149,7 +288,9 @@ export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, o
           marginBottom: 10,
         }}
       >
-        <h4 style={{ margin: 0 }}>Edit survey #{item.id}</h4>
+        <h4 style={{ margin: 0 }}>
+          Edit {isWeb ? 'web survey' : 'survey'} #{item.id}
+        </h4>
         {onCancel && (
           <button type="button" className="btn small" onClick={onCancel}>
             Close
@@ -160,7 +301,7 @@ export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, o
         Client Admin can correct answers, surveyor, geo, and status. Changes are logged.
       </p>
 
-      {item?.id ? <SubmissionMedia item={item} /> : null}
+      {!isWeb && item?.id ? <SubmissionMedia item={item} /> : null}
 
       <label className="field compact">
         <span>Surveyor (submitted_by)</span>
@@ -203,67 +344,66 @@ export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, o
         </label>
       </div>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, margin: '8px 0 12px' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-          <input
-            type="checkbox"
-            checked={hasAudio}
-            onChange={(e) => setHasAudio(e.target.checked)}
-          />
-          Has voice
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-          <input
-            type="checkbox"
-            checked={hasPhoto}
-            onChange={(e) => setHasPhoto(e.target.checked)}
-          />
-          Has photo
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-          <input
-            type="checkbox"
-            checked={force}
-            onChange={(e) => setForce(e.target.checked)}
-          />
-          Force confirm if incomplete
-        </label>
-      </div>
+      {!isWeb && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, margin: '8px 0 12px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={hasAudio}
+              onChange={(e) => setHasAudio(e.target.checked)}
+            />
+            Has voice
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={hasPhoto}
+              onChange={(e) => setHasPhoto(e.target.checked)}
+            />
+            Has photo
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={force}
+              onChange={(e) => setForce(e.target.checked)}
+            />
+            Force confirm if incomplete
+          </label>
+        </div>
+      )}
 
-      <h4 style={{ margin: '8px 0 6px', fontSize: 13 }}>Answers</h4>
-      {CORE_FIELDS.map((f) => (
-        <label key={f.key} className="field compact">
-          <span>{f.label}</span>
-          {f.key === 'notes' || f.key === 'issues' ? (
+      <h4 style={{ margin: '12px 0 8px', fontSize: 14, fontWeight: 700, color: '#0f172a' }}>
+        Survey Questions &amp; Answers
+      </h4>
+
+      {renderedFields.map((f) => (
+        <label key={f.key} className="field compact" style={{ marginBottom: 8 }}>
+          <span style={{ fontWeight: 600, color: '#1e293b' }}>
+            {f.label}
+            {f.required ? <span style={{ color: '#ef4444' }}> *</span> : ''}
+          </span>
+          {f.label_te && (
+            <span className="muted" style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+              {f.label_te}
+            </span>
+          )}
+          {f.type === 'textarea' ? (
             <textarea
               rows={2}
-              value={answers[f.key] ?? ''}
+              value={answers[f.key] ?? f.value ?? ''}
               onChange={(e) => setField(f.key, e.target.value)}
             />
           ) : (
             <input
-              value={answers[f.key] ?? ''}
+              value={answers[f.key] ?? f.value ?? ''}
               onChange={(e) => setField(f.key, e.target.value)}
             />
           )}
         </label>
       ))}
 
-      {extraKeys.map((k) => (
-        <label key={k} className="field compact">
-          <span>{k}</span>
-          <input
-            value={
-              Array.isArray(answers[k])
-                ? answers[k].join(', ')
-                : (answers[k] ?? '')
-            }
-            onChange={(e) => setField(k, e.target.value)}
-          />
-        </label>
-      ))}
-
-      <label className="field compact">
+      <label className="field compact" style={{ marginTop: 10 }}>
         <span>Edit note (optional)</span>
         <input
           value={note}
@@ -281,14 +421,16 @@ export default function SubmissionEditor({ item, onSaved, onDeleted, onCancel, o
         >
           {saving ? 'Saving…' : 'Save changes'}
         </button>
-        <button
-          type="button"
-          className="btn danger"
-          disabled={saving || deleting}
-          onClick={remove}
-        >
-          {deleting ? 'Deleting…' : 'Delete'}
-        </button>
+        {getStoredUser()?.role === 'super_admin' && (
+          <button
+            type="button"
+            className="btn danger"
+            disabled={saving || deleting}
+            onClick={remove}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
+          </button>
+        )}
         {onCancel && (
           <button type="button" className="btn" disabled={saving} onClick={onCancel}>
             Cancel

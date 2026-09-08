@@ -1,40 +1,118 @@
 /**
  * Entry router:
  *   /admin  → Client Admin web portal (desktop)
- *   /       → Surveyor field app (phone / APK)
+ *   /       → Surveyor field app (phone / APK) when field build
+ *   /?app=1 → Field app even on portal-only Client Admin builds (share link)
+ *   Super Admin console when VITE_SUPER_ADMIN=1
+ *
+ * SurveyorApp is lazy-loaded so GitHub Pages admin builds never download
+ * the field-collect bundle on first paint (major Pages speed win).
  */
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import AdminPortal from './AdminPortal'
-import SurveyorApp from './SurveyorApp'
-import { storeAppVersion, versionLabel } from './version'
+import { reloadOnceIfUpgraded } from './version'
+import { getStoredUser } from './api'
+import AppUpdateModal from './AppUpdateModal'
+
+const SurveyorApp = lazy(() => import('./SurveyorApp'))
+const PublicWebFill = lazy(() => import('./PublicWebFill'))
 
 function isAdminPath() {
   if (typeof window === 'undefined') return false
   const p = window.location.pathname || ''
-  // Works at /admin and under any base path (e.g. /ground-iq-web/admin on Pages)
-  return p === '/admin' || p.startsWith('/admin/') || /\/admin(\/|$)/.test(p)
+  const q = new URLSearchParams(window.location.search)
+  return (
+    p === '/admin' ||
+    p.startsWith('/admin/') ||
+    /\/admin(\/|$)/.test(p) ||
+    q.get('admin') === '1' ||
+    q.get('portal') === '1'
+  )
 }
 
-/**
- * Website = Client Admin portal only. The Android APK keeps the surveyor
- * field app (built with VITE_FIELD_APP=1).
- */
+function publicFillKey() {
+  if (typeof window === 'undefined') return ''
+  const q = new URLSearchParams(window.location.search).get('fill')
+  return String(q || '').trim()
+}
+
+function publicFillToken() {
+  if (typeof window === 'undefined') return ''
+  const q = new URLSearchParams(window.location.search)
+  return String(q.get('k') || q.get('token') || '').trim()
+}
+
+/** Client Admin “Copy link” uses ?app=1 so portal-only Vercel/Pages builds still open the collector. */
+function wantFieldApp() {
+  if (typeof window === 'undefined') return false
+  const q = new URLSearchParams(window.location.search).get('app') || new URLSearchParams(window.location.search).get('field')
+  return q === '1' || q === 'true'
+}
+
 const FIELD_APP_ENABLED = (import.meta.env.VITE_FIELD_APP ?? '1') !== '0'
+const SUPER_ADMIN_CONSOLE = (import.meta.env.VITE_SUPER_ADMIN ?? '0') === '1'
+
+function FieldBoot() {
+  return (
+    <div
+      className="screen"
+      style={{
+        minHeight: '40vh',
+        display: 'grid',
+        placeItems: 'center',
+        color: '#94a3b8',
+        fontSize: 14,
+        fontWeight: 600,
+      }}
+    >
+      Loading field app…
+    </div>
+  )
+}
 
 export default function App() {
-  // Store running build version in localStorage; show in document title
+  // Web fill is portal-only. Field APK / field builds never open the public form.
+  const fillKey = FIELD_APP_ENABLED ? '' : publicFillKey()
+  const storedUser = typeof window !== 'undefined' ? getStoredUser() : null
+  const isAdminUser = storedUser?.role === 'admin' || storedUser?.role === 'super_admin'
+
+  const openFieldApp =
+    !SUPER_ADMIN_CONSOLE &&
+    !isAdminPath() &&
+    (wantFieldApp() || (FIELD_APP_ENABLED && !isAdminUser))
+
+  const portalOnly = !fillKey && !openFieldApp
+
   useEffect(() => {
-    const info = storeAppVersion()
+    const info = reloadOnceIfUpgraded()
     if (typeof document !== 'undefined') {
-      document.title = `Ground IQ ${versionLabel()}`
+      document.title = SUPER_ADMIN_CONSOLE
+        ? 'Smart Survey X — Super Admin'
+        : portalOnly
+          ? 'Smart Survey X — Client Admin'
+          : 'Smart Survey X'
     }
     if (info.upgraded) {
-      console.info(`[Ground IQ] upgraded ${info.prev} → ${info.current}`)
+      console.info(`[Smart Survey X] upgraded ${info.prev} → ${info.current}`)
     }
-  }, [])
+  }, [portalOnly])
 
-  if (!FIELD_APP_ENABLED || isAdminPath()) {
-    return <AdminPortal />
-  }
-  return <SurveyorApp />
+  return (
+    <>
+      {fillKey ? (
+        <Suspense fallback={<FieldBoot />}>
+          <PublicWebFill formKey={fillKey} fillToken={publicFillToken()} />
+        </Suspense>
+      ) : SUPER_ADMIN_CONSOLE ? (
+        <AdminPortal superAdminOnly />
+      ) : openFieldApp ? (
+        <Suspense fallback={<FieldBoot />}>
+          <SurveyorApp />
+        </Suspense>
+      ) : (
+        <AdminPortal />
+      )}
+      {fillKey || portalOnly ? null : <AppUpdateModal />}
+    </>
+  )
 }

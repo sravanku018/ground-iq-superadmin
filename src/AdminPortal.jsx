@@ -1,41 +1,158 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Component, lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import Icon from './Icons'
 import {
+  clearSession,
+  apkDownloadUrl,
   getStats,
   getStoredUser,
   getToken,
   listSubmissions,
+  listSurveys,
+  listUsers,
   logout,
+
   me,
 } from './api'
+import ShareAppLink from './components/ShareAppLink'
+import QuotaIndicator from './components/QuotaIndicator'
 import AdminLogin from './AdminLogin'
-import AdminUsersScreen from './AdminUsers'
-import AdminSurveysScreen from './AdminSurveys'
-import AdminQuestionsScreen from './AdminQuestions'
-import AdminAnalyzeScreen from './AdminAnalyze'
-import ReviewQAScreen from './ReviewQA'
-import DashboardScreen from './Dashboard'
-import AdminDataScreen from './AdminData'
-import { versionLabel } from './version'
+import VerifiedBadge from './VerifiedBadge'
+import { PortalEmpty, PortalSkeleton } from './PortalUI'
+import AdminBell from './AdminBell'
 import './App.css'
 import './portal.css'
 
+// Lazy-load heavy admin screens — only fetch/parse when that tab is opened
+const AdminUsersScreen = lazy(() => import('./AdminUsers'))
+const AdminSurveysScreen = lazy(() => import('./AdminSurveys'))
+const AdminQuestionsScreen = lazy(() => import('./AdminQuestions'))
+const AdminAnalyzeScreen = lazy(() => import('./AdminAnalyze'))
+const ReviewQAScreen = lazy(() => import('./ReviewQA'))
+const DashboardScreen = lazy(() => import('./Dashboard'))
+const AdminDataScreen = lazy(() => import('./AdminData'))
+const AdminAuditScreen = lazy(() => import('./AdminAudit'))
+const AdminQuestionBankScreen = lazy(() => import('./AdminQuestionBank'))
+const AdminSeatsScreen = lazy(() => import('./AdminSeats'))
+const AdminClientAdminsScreen = lazy(() => import('./AdminClientAdmins'))
+const AdminCompaniesScreen = lazy(() => import('./AdminCompanies'))
+const AdminWebSurveyScreen = lazy(() => import('./AdminWebSurvey'))
+const AdminProfileScreen = lazy(() => import('./AdminProfile'))
+
+// Matches the sidebar: each group’s `pages` become the subtabs on that screen.
 const NAV = [
-  { id: 'dashboard', label: 'Dashboard', icon: '◈', pages: ['overview', 'report', 'analyze'] },
-  { id: 'surveyors', label: 'Surveyors', icon: '👤', pages: ['users'] },
-  { id: 'surveys', label: 'Surveys', icon: '▤', pages: ['surveys'] },
-  { id: 'data', label: 'Data collection', icon: '☰', pages: ['questions', 'review', 'upload', 'data'] },
+  { id: 'overview', label: 'Dashboard', icon: 'grid', pages: ['overview'] },
+  { id: 'analyze', label: 'Analyze & Export', icon: 'chart', pages: ['analyze', 'report', 'upload', 'data'] },
+  { id: 'review', label: 'Review QA', icon: 'check', pages: ['review'] },
+  { id: 'surveyors', label: 'Surveyors', icon: 'user', pages: ['users'] },
+  { id: 'surveys', label: 'Surveys & Forms', icon: 'clipboard', pages: ['surveys', 'questions', 'web', 'bank'] },
+  { id: 'profile', label: 'Organization', icon: 'building', pages: ['profile'] },
 ]
+
+const PLATFORM_NAV = {
+  id: 'platform',
+  label: 'Seats & Audit',
+  icon: 'star',
+  pages: ['audit', 'seats'],
+}
+
+const CLIENT_ADMINS_NAV = {
+  id: 'admins',
+  label: 'Client Admins',
+  icon: 'shield',
+  pages: ['admins'],
+}
+
+const COMPANIES_NAV = {
+  id: 'companies',
+  label: 'Companies',
+  icon: 'building',
+  pages: ['companies'],
+}
 
 const PAGE_LABELS = {
   overview: 'Overview',
-  report: 'Report',
-  analyze: 'Analyze',
-  users: 'Users & targets',
+  analyze: 'Charts',
+  report: 'Live Feed',
+  users: 'Surveyors',
   surveys: 'Surveys',
   questions: 'Questions',
   review: 'Review',
-  upload: 'Upload',
-  data: 'Data',
+  upload: 'Export',
+  data: 'Raw data',
+  audit: 'Audit Log',
+  bank: 'Question Bank',
+  web: 'Web survey',
+  seats: 'Seat Requests',
+  profile: 'Organization',
+  admins: 'Client Admins',
+  companies: 'Companies',
+}
+
+// Only web survey links creation/fill is gated by can_web_survey power grant.
+// All standard survey management, analytics, export, and review screens are visible to Client Admin.
+const PAGE_POWER = {
+  web: 'can_web_survey',
+}
+
+
+/**
+ * Catches lazy chunk load failures (stale cached bundle → removed hashed chunk
+ * returns 404). Auto-recovers by reloading once so the fresh index.html is
+ * served; a cooldown prevents reload loops if the chunk keeps failing.
+ */
+class ChunkErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { failed: false, reloading: false }
+  }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  componentDidCatch(error) {
+    const isChunk =
+      String(error?.message || '').includes('dynamically imported module') ||
+      String(error?.message || '').includes('Loading chunk') ||
+      String(error?.name || '').includes('ChunkLoadError')
+    if (!isChunk || this.state.reloading) return
+    let last = 0
+    try {
+      last = Number(localStorage.getItem('esurvey_chunk_reload') || 0)
+    } catch {
+      /* ignore */
+    }
+    if (Date.now() - last < 30_000) return // recently tried — show the manual card instead
+    this.setState({ reloading: true })
+    try {
+      localStorage.setItem('esurvey_chunk_reload', Date.now().toString())
+    } catch {
+      /* ignore */
+    }
+    setTimeout(() => window.location.reload(), 350)
+  }
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="portal-page">
+          <div className="card" style={{ padding: 24, textAlign: 'center' }}>
+            <h3>{this.state.reloading ? 'Reloading…' : 'This screen could not be loaded'}</h3>
+            {!this.state.reloading && (
+              <p className="muted">A new version may have been deployed. Reload to continue.</p>
+            )}
+            {!this.state.reloading && (
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => window.location.reload()}
+              >
+                Reload now
+              </button>
+            )}
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
 }
 
 function formatDate(v) {
@@ -50,83 +167,486 @@ function formatDate(v) {
   }
 }
 
-function Overview({ user, stats, onNav }) {
+function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => true, onToast }) {
+  const isSuper = superAdminOnly || user?.role === 'super_admin'
+  const gated = (p) => {
+    // Super Admin (or console mode) always sees every feature
+    if (isSuper) return true
+    return canPage(p)
+  }
+
+  const [recentItems, setRecentItems] = useState([])
+  const [surveyBreak, setSurveyBreak] = useState([])
+  const [surveyorCount, setSurveyorCount] = useState(0)
+  const [totalAllocations, setTotalAllocations] = useState(null)
+  const [loadingRecent, setLoadingRecent] = useState(true)
+  const [activityFilter, setActivityFilter] = useState('all')
+
+  const allotCap = Number(user?.max_records) || 0
+  const webPending = Number(stats?.web_pending) || 0
+  const webConfirmed = Number(stats?.web_confirmed) || 0
+  const webRejected = Number(stats?.web_rejected) || 0
+  const webSubmitted = Number(stats?.web_submissions) || webPending + webConfirmed + webRejected
+  const fieldPending = Number(stats?.field_pending ?? stats?.pending) || 0
+  const fieldConfirmed = Number(stats?.field_confirmed ?? stats?.confirmed) || 0
+  const reviewPending = Number(stats?.pending) || fieldPending + webPending
+  const confirmedTotal = Number(stats?.confirmed) || fieldConfirmed + webConfirmed
+  const rejectedTotal = Number(stats?.rejected) || (Number(stats?.field_rejected) || 0) + webRejected
+  const allSubmitted = Number(stats?.submissions) || fieldPending + fieldConfirmed + rejectedTotal + webSubmitted
+  const fieldUsed = fieldPending + fieldConfirmed
+  const webReserved = surveyBreak.reduce(
+    (n, s) => n + (Number(s.web_link?.max_uses) || 0),
+    0,
+  ) || Number(user?.web_reserved) || 0
+  const allotUsed = fieldUsed
+  const fieldLeft = allotCap > 0 ? Math.max(0, allotCap - fieldUsed - webReserved) : null
+  const allotLeft = fieldLeft
+  const allotPct = allotCap > 0
+    ? Math.min(100, Math.round(((fieldUsed + webReserved) / allotCap) * 100))
+    : 0
+
+  const surveysQuestionsSum = surveyBreak.reduce(
+    (sum, s) => sum + (Number(s.question_count) || (Array.isArray(s.questions) ? s.questions.length : 0)),
+    0,
+  )
+  const totalQuestionsUsed = Math.max(Number(user?.question_count) || 0, surveysQuestionsSum)
+
+  useEffect(() => {
+    let alive = true
+    listSubmissions(100, 'all', {})
+      .then((d) => {
+        if (alive) setRecentItems(d.items || [])
+      })
+      .catch(() => {
+        if (alive) setRecentItems([])
+      })
+      .finally(() => {
+        if (alive) setLoadingRecent(false)
+      })
+
+    listSurveys()
+      .then((d) => {
+        if (!alive) return
+        const items = (d.items || []).filter(
+          (s) => s.form_key !== 'default' && s.form_key !== 'legacy',
+        )
+        setSurveyBreak(items)
+      })
+      .catch(() => {
+        if (alive) setSurveyBreak([])
+      })
+
+    listUsers()
+      .then((d) => {
+        if (!alive) return
+        const surveyors = d.users || d.surveyors || (Array.isArray(d) ? d : [])
+        setSurveyorCount(surveyors.length)
+        const total = surveyors.reduce((sum, u) => sum + (Number(u.target) || 0), 0)
+        setTotalAllocations(total)
+      })
+      .catch(() => {})
+
+    return () => {
+      alive = false
+    }
+  }, [stats?.submissions])
+
+  const pendingCount = reviewPending
+  const confirmedCount = confirmedTotal
+  const rejectedCount = rejectedTotal
+  const liveAllCount = allSubmitted
+
+  const displayedItems = recentItems.filter((it) => {
+    if (activityFilter === 'all') return true
+    const st = it.status || 'pending'
+    return st === activityFilter
+  })
+
+
   return (
     <div className="portal-page">
       <header className="portal-page-head">
         <div>
-          <p className="eyebrow">Client Admin</p>
+          <p className="eyebrow">{superAdminOnly ? 'Super Admin Console' : 'Client Admin'}</p>
           <h1>Overview</h1>
           <p className="portal-lead">
-            Welcome, {user?.name || user?.username}. Pipeline: Surveyors → Surveys → Data
-            collection → Dashboard.
+            Welcome, {user?.name || user?.username} · Google + Twitter data review pipeline
           </p>
         </div>
       </header>
 
+      {!isSuper && <ShareAppLink onToast={onToast} />}
+
+      {/* KPI tiles — Mock 3 style with Total Allocations and Rejected */}
       <div className="portal-kpi-grid">
-        <div className="portal-kpi">
-          <strong>{stats?.pending?.toLocaleString?.() ?? '—'}</strong>
+        <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
+          <strong>{reviewPending.toLocaleString()}</strong>
           <span>Pending review</span>
-        </div>
-        <div className="portal-kpi">
-          <strong>{stats?.confirmed?.toLocaleString?.() ?? '—'}</strong>
+        </button>
+        <button type="button" className="portal-kpi" onClick={() => onNav(gated('review') ? 'review' : 'analyze')}>
+          <strong>{confirmedTotal.toLocaleString()}</strong>
           <span>Confirmed</span>
-        </div>
-        <div className="portal-kpi">
-          <strong>{stats?.submissions?.toLocaleString?.() ?? '—'}</strong>
-          <span>All submissions</span>
-        </div>
+        </button>
+        <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
+          <strong style={{ color: rejectedTotal > 0 ? '#ef4444' : undefined }}>
+            {rejectedTotal.toLocaleString()}
+          </strong>
+          <span>Rejected</span>
+        </button>
+        <button type="button" className="portal-kpi" onClick={() => onNav(gated('report') ? 'report' : 'analyze')}>
+          <strong>{allSubmitted.toLocaleString()}</strong>
+          <span>{webSubmitted > 0 ? `All submissions · ${webSubmitted} web` : 'All submissions'}</span>
+        </button>
+        <button type="button" className="portal-kpi" onClick={() => onNav('users')}>
+          <strong>{fieldUsed.toLocaleString()}</strong>
+          <span>Field used</span>
+        </button>
         <div className="portal-kpi">
           <strong>{stats?.districts ?? '—'}</strong>
           <span>Districts in data</span>
         </div>
       </div>
 
-      <div className="portal-action-grid">
-        <button type="button" className="portal-action" onClick={() => onNav('users')}>
-          <span className="portal-action-n">1</span>
-          <strong>Users &amp; targets</strong>
-          <span>Create surveyors, set record quotas</span>
-        </button>
-        <button type="button" className="portal-action" onClick={() => onNav('questions')}>
-          <span className="portal-action-n">2</span>
-          <strong>Questions bank</strong>
-          <span>Field app loads these automatically</span>
-        </button>
-        <button type="button" className="portal-action" onClick={() => onNav('analyze')}>
-          <span className="portal-action-n">3</span>
-          <strong>Analyze</strong>
-          <span>By user, day, month · geo + voice checks</span>
-        </button>
-        <button type="button" className="portal-action" onClick={() => onNav('review')}>
-          <span className="portal-action-n">4</span>
-          <strong>Review · edit · confirm</strong>
-          <span>Correct answers, delete bad rows, then confirm</span>
-        </button>
-        <button type="button" className="portal-action primary" onClick={() => onNav('report')}>
-          <span className="portal-action-n">5</span>
-          <strong>Report dashboard</strong>
-          <span>Charts form after confirm only</span>
-        </button>
-        <button type="button" className="portal-action" onClick={() => onNav('upload')}>
-          <span className="portal-action-n">↑</span>
-          <strong>Upload / geo</strong>
-          <span>CSV &amp; geography inventory</span>
-        </button>
+      {surveyBreak.length > 0 && (
+        <div className="card" style={{ marginBottom: 20, overflowX: 'auto' }}>
+          <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700 }}>Survey breakdown</h3>
+          <p className="muted" style={{ margin: '0 0 12px', fontSize: 12 }}>
+            Field and web fills for every survey · web share turns off when that survey’s target is reached
+          </p>
+          <table className="mini-table" style={{ width: '100%' }}>
+            <thead>
+              <tr>
+                <th>Survey</th>
+                <th>Field</th>
+                <th>Web</th>
+                <th>Pending</th>
+                <th>Confirmed</th>
+                <th>Total</th>
+                <th>Web remaining</th>
+              </tr>
+            </thead>
+            <tbody>
+              {surveyBreak.map((s) => {
+                const web = Number(s.web_submissions) || 0
+                const field = Number(s.field_submissions) || Math.max(0, (Number(s.submissions) || 0) - web)
+                const link = s.web_link
+                const cap = Number(link?.max_uses) || 0
+                const used = Math.max(web, Number(link?.use_count) || 0)
+                const left = Math.max(0, cap - used)
+                const closed = !!link?.expired || (cap > 0 && left === 0)
+                return (
+                  <tr key={s.id || s.form_key}>
+                    <td>
+                      <strong>{s.title || s.form_key}</strong>
+                    </td>
+                    <td>{field}</td>
+                    <td>{web}</td>
+                    <td>{Number(s.pending) || 0}</td>
+                    <td>{Number(s.confirmed) || 0}</td>
+                    <td>
+                      <strong>{Number(s.submissions) || field + web}</strong>
+                    </td>
+                    <td>
+                      {closed ? (
+                        <span style={{ color: '#dc2626', fontWeight: 700, fontSize: 12 }}>Disabled · 0 left</span>
+                      ) : cap > 0 ? (
+                        <span style={{ color: '#059669', fontWeight: 600, fontSize: 12 }}>
+                          {left} left of {cap}
+                        </span>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Mixed Live Intake & Activity Stream — Mock 3 doctrine */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 6 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Live Activity &amp; Intake Stream</h3>
+            <p className="csub" style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b' }}>
+              Real-time submission flow · Pending review, Confirmed &amp; Rejected
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', padding: 3, borderRadius: 8 }}>
+              <button
+                type="button"
+                onClick={() => setActivityFilter('all')}
+                style={{
+                  border: 0,
+                  background: activityFilter === 'all' ? '#ffffff' : 'transparent',
+                  color: activityFilter === 'all' ? '#0f172a' : '#64748b',
+                  fontWeight: activityFilter === 'all' ? 700 : 500,
+                  fontSize: 11,
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  boxShadow: activityFilter === 'all' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                }}
+              >
+                All ({liveAllCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivityFilter('pending')}
+                style={{
+                  border: 0,
+                  background: activityFilter === 'pending' ? '#ffffff' : 'transparent',
+                  color: activityFilter === 'pending' ? '#d97706' : '#64748b',
+                  fontWeight: activityFilter === 'pending' ? 700 : 500,
+                  fontSize: 11,
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  boxShadow: activityFilter === 'pending' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                }}
+              >
+                Pending ({pendingCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivityFilter('confirmed')}
+                style={{
+                  border: 0,
+                  background: activityFilter === 'confirmed' ? '#ffffff' : 'transparent',
+                  color: activityFilter === 'confirmed' ? '#16a34a' : '#64748b',
+                  fontWeight: activityFilter === 'confirmed' ? 700 : 500,
+                  fontSize: 11,
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  boxShadow: activityFilter === 'confirmed' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                }}
+              >
+                Confirmed ({confirmedCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivityFilter('rejected')}
+                style={{
+                  border: 0,
+                  background: activityFilter === 'rejected' ? '#ffffff' : 'transparent',
+                  color: activityFilter === 'rejected' ? '#ef4444' : '#64748b',
+                  fontWeight: activityFilter === 'rejected' ? 700 : 500,
+                  fontSize: 11,
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  boxShadow: activityFilter === 'rejected' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                }}
+              >
+                Rejected ({rejectedCount})
+              </button>
+            </div>
+            {gated('review') && (
+              <button
+                type="button"
+                className="btn small"
+                onClick={() => onNav('review')}
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: '#1d6fe0',
+                  background: '#eff6ff',
+                  border: '1px solid #bfdbfe',
+                  borderRadius: 6,
+                  padding: '5px 12px',
+                  cursor: 'pointer',
+                }}
+              >
+                Open Review →
+              </button>
+            )}
+          </div>
+        </div>
+
+        {loadingRecent ? (
+          <p className="muted" style={{ fontSize: 13, margin: '14px 0 8px' }}>Loading live stream…</p>
+        ) : displayedItems.length === 0 ? (
+          <p className="muted" style={{ fontSize: 13, margin: '14px 0 8px' }}>No submissions matching this filter.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+            {displayedItems.map((it) => {
+              const a = it.answers || {}
+              const isWeb = it.source === 'web-survey' || it.source === 'web'
+              const surveyor = it.submitted_by || a.data_collector || (isWeb ? 'Web survey' : 'Field Surveyor')
+              const district = a.district || a.constituency || (isWeb ? 'Web' : 'General')
+              const respondent = a.respondent_name || a.name || (isWeb ? 'Web respondent' : 'Respondent')
+              const status = it.status || 'pending'
+              const timeStr = it.created_at ? new Date(it.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '9:32 AM'
+
+              return (
+                <div
+                  key={it.id}
+                  onClick={() => onNav(isWeb ? 'web' : 'review')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    padding: '12px 16px',
+                    background: status === 'pending' ? '#ffffff' : '#f8fafc',
+                    border: `1px solid ${status === 'pending' ? '#e2e8f0' : '#e2e8f0'}`,
+                    borderLeft: `3px solid ${status === 'confirmed' ? '#16a34a' : status === 'rejected' ? '#ef4444' : '#f59e0b'}`,
+                    borderRadius: 10,
+                    cursor: 'pointer',
+                    transition: 'all 120ms ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+                      #{it.record_index || it.id}
+                    </span>
+                    <span style={{ fontSize: 13, color: '#334155', fontWeight: 500 }}>
+                      {district} · {respondent} · {timeStr} · <span style={{ color: '#64748b' }}>by {surveyor}</span>
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    {isWeb ? (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: '3px 10px',
+                          borderRadius: 6,
+                          background: '#eff6ff',
+                          color: '#1d4ed8',
+                        }}
+                      >
+                        Web
+                      </span>
+                    ) : null}
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: '3px 10px',
+                        borderRadius: 6,
+                        background: status === 'confirmed' ? '#f0fdf4' : status === 'rejected' ? '#fef2f2' : '#fffbeb',
+                        color: status === 'confirmed' ? '#16a34a' : status === 'rejected' ? '#ef4444' : '#f59e0b',
+                        textTransform: 'capitalize',
+                      }}
+                    >
+                      {status}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onNav('review')
+                      }}
+                      style={{
+                        border: '1px solid #bfdbfe',
+                        background: status === 'pending' ? '#eff6ff' : '#ffffff',
+                        color: '#1d6fe0',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        borderRadius: 6,
+                        padding: '4px 10px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {status === 'pending' ? 'Open Review' : 'Inspect'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
-      <div className="portal-note card">
-        <strong>Surveyors = app access only</strong>
-        <p>
-          Users you create here are for the <strong>mobile/field app only</strong> — they do not
-          use this web portal. Give them username/password for the APK (or field app URL). They
-          collect offline; you verify and confirm here in Client Admin.
-        </p>
-      </div>
+
+      {/* My Allocation for Client Admin / Platform Governance Quick Actions for Super Admin */}
+      {isSuper ? (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Platform Governance Quick Actions</h3>
+          <p className="csub" style={{ margin: '2px 0 14px', fontSize: 12, color: '#64748b' }}>
+            Multi-tenant control, power delegation, audit trails, and projects
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+            <button
+              type="button"
+              className="portal-action"
+              onClick={() => onNav('companies')}
+              style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#ffffff', cursor: 'pointer', textAlign: 'left' }}
+            >
+              <span style={{ fontSize: 16, display: 'block', marginBottom: 4 }}>🏢</span>
+              <strong style={{ fontSize: 13, display: 'block', color: '#0f172a' }}>Companies</strong>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Manage organizations &amp; projects</span>
+            </button>
+            <button
+              type="button"
+              className="portal-action"
+              onClick={() => onNav('admins')}
+              style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#ffffff', cursor: 'pointer', textAlign: 'left' }}
+            >
+              <span style={{ fontSize: 16, display: 'block', marginBottom: 4 }}>🛡️</span>
+              <strong style={{ fontSize: 13, display: 'block', color: '#0f172a' }}>Client Admins</strong>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Power delegation &amp; accounts</span>
+            </button>
+            <button
+              type="button"
+              className="portal-action"
+              onClick={() => onNav('surveys')}
+              style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#ffffff', cursor: 'pointer', textAlign: 'left' }}
+            >
+              <span style={{ fontSize: 16, display: 'block', marginBottom: 4 }}>📋</span>
+              <strong style={{ fontSize: 13, display: 'block', color: '#0f172a' }}>Projects</strong>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Questions &amp; assignments</span>
+            </button>
+            <button
+              type="button"
+              className="portal-action"
+              onClick={() => onNav('audit')}
+              style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#ffffff', cursor: 'pointer', textAlign: 'left' }}
+            >
+              <span style={{ fontSize: 16, display: 'block', marginBottom: 4 }}>⭐</span>
+              <strong style={{ fontSize: 13, display: 'block', color: '#0f172a' }}>Platform Audit</strong>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Platform activity log &amp; quotas</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>My allocation</h3>
+          <p className="csub" style={{ margin: '2px 0 14px', fontSize: 12, color: '#64748b' }}>
+            Records &amp; features granted by Super Admin (0 = unlimited)
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
+              Surveys <strong>{surveyBreak.length || Number(stats?.surveys_count) || 0} / {Number(user?.max_surveys) > 0 ? user.max_surveys : '∞'}</strong>
+            </span>
+            <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
+              Surveyors <strong>{surveyorCount || Number(stats?.surveyors_count) || 0} / {Number(user?.max_surveyors) > 0 ? user.max_surveyors : '∞'}</strong>
+            </span>
+            <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
+              Total survey questions created <strong>{totalQuestionsUsed} / Allotted {Number(user?.max_questions_per_survey) > 0 ? user.max_questions_per_survey : '∞'}</strong>
+            </span>
+            <span className="chip" style={{ background: '#f0fdf4', border: '1px solid #dcfce7', color: '#16a34a', fontSize: 12, fontWeight: 600 }}>
+              Confirmed <strong>{confirmedTotal.toLocaleString()}</strong>
+            </span>
+            <span className="chip" style={{ background: '#fef2f2', border: '1px solid #fee2e2', color: '#ef4444', fontSize: 12, fontWeight: 600 }}>
+              Rejected <strong>{rejectedTotal.toLocaleString()}</strong>
+            </span>
+            <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
+              Records <strong>{allSubmitted.toLocaleString()} / {allotCap > 0 ? allotCap.toLocaleString() : '∞'}</strong>
+            </span>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
+
 
 function DataList({ items, loading, onRefresh, surveys, surveyFilter, onSurveyChange }) {
   return (
@@ -139,7 +659,7 @@ function DataList({ items, loading, onRefresh, surveys, surveyFilter, onSurveyCh
         <label className="field compact">
           <span>By survey</span>
           <select value={surveyFilter} onChange={(e) => onSurveyChange(e.target.value)}>
-            <option value="">All surveys</option>
+            {surveys.length === 0 ? <option value="">Select survey</option> : null}
             {surveys.map((s) => (
               <option key={s.id} value={s.form_key}>
                 {s.title}
@@ -152,16 +672,17 @@ function DataList({ items, loading, onRefresh, surveys, surveyFilter, onSurveyCh
         </button>
       </header>
       {loading ? (
-        <p className="muted">Loading…</p>
+        <PortalSkeleton rows={5} label="Loading submissions…" />
       ) : !items.length ? (
-        <div className="card">
-          <p className="muted">No rows yet.</p>
-        </div>
+        <PortalEmpty title="No rows yet">
+          Collect from the field app or widen the survey filter.
+        </PortalEmpty>
       ) : (
         <ul className="user-list">
           {items.map((it) => {
             const a = it.answers || {}
-            const title = surveys.find((s) => s.form_key === it.form_key)?.title || it.form_key || 'Survey'
+            const title =
+              surveys.find((s) => s.form_key === it.form_key)?.title || it.form_key || 'Survey'
             return (
               <li key={it.id}>
                 <div>
@@ -183,10 +704,15 @@ function DataList({ items, loading, onRefresh, surveys, surveyFilter, onSurveyCh
   )
 }
 
-export default function AdminPortal() {
+export default function AdminPortal({ superAdminOnly = false }) {
   const [user, setUser] = useState(() => {
     const u = getStoredUser()
-    return u?.role === 'admin' ? u : null
+    return u &&
+      (superAdminOnly
+        ? u.role === 'super_admin'
+        : u.role === 'admin' || u.role === 'super_admin')
+      ? u
+      : null
   })
   const [authReady, setAuthReady] = useState(false)
   const [page, setPage] = useState('overview')
@@ -196,31 +722,120 @@ export default function AdminPortal() {
   const [surveyFilter, setSurveyFilter] = useState('')
   const [loadingData, setLoadingData] = useState(false)
   const [toast, setToast] = useState(null)
+  const [navOpen, setNavOpen] = useState(false)
+  const [deepLink, setDeepLink] = useState(null)
 
-  useEffect(() => {
-    import('./api').then(({ listSurveys }) =>
-      listSurveys()
-        .then((d) => setSurveys(d.items || []))
-        .catch(() => {}),
-    )
-  }, [])
+  const isSuper = superAdminOnly || user?.role === 'super_admin'
 
+  const canPage = useCallback(
+    (p) => {
+      if (isSuper) return true
+      if (['companies', 'admins', 'seats', 'audit'].includes(p)) return false
+      const need = PAGE_POWER[p]
+      if (!need) return true
+      const needs = Array.isArray(need) ? need : [need]
+      return needs.some((k) => !!user?.[k])
+    },
+    [isSuper, user]
+  )
+
+  const baseNav = isSuper
+    ? [...NAV, COMPANIES_NAV, CLIENT_ADMINS_NAV, PLATFORM_NAV]
+    : NAV
+  const nav = baseNav
+    .map((n) => ({ ...n, pages: n.pages.filter(canPage) }))
+    .filter((n) => n.pages.length > 0)
+
+  const toastTimer = useRef(0)
   const notify = useCallback((message, type = 'ok') => {
     setToast({ message, type })
-    setTimeout(() => setToast(null), 3200)
+    window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToast(null), 3200)
   }, [])
+  useEffect(() => () => window.clearTimeout(toastTimer.current), [])
+
+  const goPage = useCallback((p, extra = null) => {
+    const src = typeof p === 'string' ? { page: p } : p && typeof p === 'object' ? p : null
+    const raw = src?.page
+    const pageId = raw && PAGE_LABELS[raw] ? raw : null
+    if (!pageId) {
+      notify('Could not open that notification', 'error')
+      return
+    }
+    if (!canPage(pageId)) {
+      notify('You do not have access to that page', 'error')
+      setPage('overview')
+      setDeepLink(null)
+      setNavOpen(false)
+      return
+    }
+    setPage(pageId)
+    setNavOpen(false)
+    const userId = src.userId ?? extra?.userId ?? null
+    const submissionId = src.submissionId ?? extra?.submissionId ?? null
+    if (userId != null || submissionId != null) {
+      setDeepLink({ page: pageId, userId, submissionId })
+    } else if (extra) {
+      setDeepLink({ page: pageId, ...extra })
+    } else {
+      setDeepLink(null)
+    }
+  }, [canPage, notify])
 
   const handleLogout = useCallback(async () => {
     await logout()
     setUser(null)
     setStats(null)
     setItems([])
+    setSurveys([])
     setPage('overview')
     notify('Logged out', 'ok')
   }, [notify])
 
+  useEffect(() => {
+    const onUnauthorized = (e) => {
+      clearSession()
+      setUser(null)
+      setStats(null)
+      setItems([])
+      setSurveys([])
+      setPage('overview')
+      const msg = e?.detail?.error || 'Account updated or session expired — please sign in again'
+      notify(msg, 'error')
+    }
+    window.addEventListener('esurvey-unauthorized', onUnauthorized)
+    return () => window.removeEventListener('esurvey-unauthorized', onUnauthorized)
+  }, [notify])
+
+  /** Lightweight overview KPIs only — not full submissions */
+  const [quotaSurveys, setQuotaSurveys] = useState([])
+  const loadStats = useCallback(async () => {
+    if (!getToken()) return
+    try {
+      const [st, surveyData] = await Promise.all([
+        getStats(),
+        listSurveys().catch(() => null),
+      ])
+      setStats(st)
+      if (surveyData?.items) {
+        setQuotaSurveys(
+          (surveyData.items || []).filter(
+            (s) => s.form_key !== 'default' && s.form_key !== 'legacy',
+          ),
+        )
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  /** Raw data tab only */
   const refreshData = useCallback(async () => {
     if (!getToken()) return
+    if (!surveyFilter) {
+      setItems([])
+      return
+    }
     setLoadingData(true)
     try {
       const data = await listSubmissions(150, '', { survey: surveyFilter })
@@ -236,15 +851,29 @@ export default function AdminPortal() {
     }
   }, [notify, handleLogout, surveyFilter])
 
+  /** Manual refresh: stats always; raw rows only if on Data tab */
   const loadPortal = useCallback(async () => {
     if (!getToken()) return
+    setLoadingData(true)
     try {
-      setStats(await getStats())
-    } catch {
-      /* ignore */
+      const meRes = await me().catch(() => null)
+      if (meRes?.user) setUser(meRes.user)
+      await loadStats()
+      if (page === 'data') {
+        const data = await listSubmissions(150, '', { survey: surveyFilter })
+        setItems(data.items || [])
+      }
+      notify('Portal data refreshed ✓', 'ok')
+    } catch (e) {
+      if (e.status === 401) {
+        await handleLogout()
+        return
+      }
+      notify(e.message || 'Refresh failed', 'error')
+    } finally {
+      setLoadingData(false)
     }
-    await refreshData()
-  }, [refreshData])
+  }, [loadStats, page, surveyFilter, notify, handleLogout])
 
   useEffect(() => {
     let cancelled = false
@@ -266,7 +895,10 @@ export default function AdminPortal() {
       }
       try {
         const data = await me()
-        if (data.user?.role !== 'admin') {
+        const okRole = superAdminOnly
+          ? data.user?.role === 'super_admin'
+          : data.user?.role === 'admin' || data.user?.role === 'super_admin'
+        if (!okRole) {
           await logout()
           if (!cancelled) {
             setUser(null)
@@ -294,16 +926,62 @@ export default function AdminPortal() {
     }
   }, [])
 
+  // Overview: stats only (cheap) — auto-refresh so field completions show up
   useEffect(() => {
-    if (user && authReady) loadPortal()
-  }, [user, authReady, loadPortal])
+    if (user && authReady && (page === 'overview' || !stats)) {
+      void loadStats()
+    }
+  }, [user, authReady, page, loadStats]) // eslint-disable-line react-hooks/exhaustive-deps -- load stats on login + overview
+
+  useEffect(() => {
+    if (!user || !authReady || page !== 'overview') return undefined
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return
+      void loadStats()
+    }
+    const id = setInterval(tick, 25_000)
+    const onVis = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [user, authReady, page, loadStats])
+
+  // Data tab: submissions only when open
+  useEffect(() => {
+    if (user && authReady && page === 'data') {
+      void refreshData()
+    }
+  }, [user, authReady, page, surveyFilter, refreshData])
+
+  // Surveys list only when a page needs the dropdown
+  useEffect(() => {
+    if (!user || !authReady) return
+    if (!['data', 'upload', 'review'].includes(page)) return
+    if (surveys.length) return
+    listSurveys()
+      .then((d) => {
+        const items = d.items || []
+        setSurveys(items)
+        const real = items.filter((s) => {
+          const k = String(s?.form_key || '')
+          return k && k !== 'default' && k !== 'legacy'
+        })
+        const key = String((real[0] || items[0])?.form_key || '')
+        if (key) setSurveyFilter((cur) => cur || key)
+      })
+      .catch(() => {})
+  }, [user, authReady, page, surveys.length])
 
   if (!authReady) {
     return (
       <div className="portal-shell">
         <div className="portal-login">
           <div className="portal-login-card" style={{ textAlign: 'center' }}>
-            <p className="eyebrow">Client Admin</p>
+            <p className="eyebrow">{superAdminOnly ? 'Super Admin Console' : 'Client Admin'}</p>
             <h1 style={{ fontSize: 22 }}>Starting…</h1>
           </div>
         </div>
@@ -320,6 +998,7 @@ export default function AdminPortal() {
           </div>
         )}
         <AdminLogin
+          superAdminOnly={superAdminOnly}
           onToast={notify}
           onSuccess={(u) => {
             setUser(u)
@@ -330,37 +1009,94 @@ export default function AdminPortal() {
     )
   }
 
+  const activeNavLabel =
+    nav.find((n) => n.pages.includes(page))?.label || PAGE_LABELS[page] || 'Admin'
+
   return (
-    <div className="portal-shell">
+    <div className={`portal-shell${navOpen ? ' nav-open' : ''}`}>
       {toast && (
         <div className={`toast portal-toast ${toast.type}`} role="status">
           {toast.message}
         </div>
       )}
 
-      <aside className="portal-sidebar">
-        <div className="portal-sidebar-brand">
-          <span className="portal-logo">◆</span>
-          <div>
-            <strong>Ground IQ</strong>
-            <span>Client Admin</span>
-          </div>
+      <div className="admin-bell-dock" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        {user?.role === 'admin' ? (
+          <QuotaIndicator user={user} stats={stats} surveys={quotaSurveys} />
+        ) : null}
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 9999, background: '#f0fdf4', border: '1px solid #dcfce7', color: '#16a34a', fontSize: 12, fontWeight: 700 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#16a34a' }}></span>
+          Synced just now
+        </div>
+        <AdminBell user={user} onGoPage={goPage} />
+      </div>
+
+
+      <header className="portal-topbar">
+        <button
+          type="button"
+          className="portal-menu-btn"
+          aria-label={navOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={navOpen}
+          onClick={() => setNavOpen((o) => !o)}
+        >
+          {navOpen ? <Icon name="cross" size={18} /> : <Icon name="menu" size={18} />}
+        </button>
+        <div className="portal-topbar-brand">
+          <strong>Smart Survey X</strong>
+          <span>{PAGE_LABELS[page] || activeNavLabel}</span>
+        </div>
+        <div className="portal-topbar-actions">
+          <button
+            type="button"
+            className="btn small portal-refresh-pill"
+            disabled={loadingData}
+            onClick={() => void loadPortal()}
+            title="Refresh"
+          >
+            {loadingData ? '…' : '↻'}
+          </button>
+          <AdminBell user={user} onGoPage={goPage} />
+        </div>
+      </header>
+
+      {navOpen ? (
+        <button
+          type="button"
+          className="portal-drawer-backdrop"
+          aria-label="Close menu"
+          onClick={() => setNavOpen(false)}
+        />
+      ) : null}
+
+      <aside className="portal-sidebar" aria-label="Main navigation">
+        <div className="side-brand">
+          <span style={{ color: '#1d6fe0' }}>✦</span> Smart Survey X
+          <span className="role-tag">{isSuper ? 'Super Admin' : 'Client Admin'}</span>
         </div>
         <nav className="portal-nav">
-          {NAV.map((n) => (
-            <button
-              key={n.id}
-              type="button"
-              className={
-                n.pages.includes(page) ? 'portal-nav-item active' : 'portal-nav-item'
-              }
-              onClick={() => setPage(n.pages[0])}
-            >
-              <span aria-hidden>{n.icon}</span>
-              {n.label}
-            </button>
-          ))}
+          <div className="side-section-label">MONITORING</div>
+          <button className={`side-sub ${page === 'overview' ? 'active' : ''}`} onClick={() => goPage('overview')}>📊 Dashboard</button>
+          <button className={`side-sub ${['analyze', 'report', 'upload', 'data'].includes(page) ? 'active' : ''}`} onClick={() => goPage('analyze')}>📈 Analyze &amp; Export</button>
+          <button className={`side-sub ${page === 'review' ? 'active' : ''}`} onClick={() => goPage('review')}>✅ Review QA</button>
+
+          <div className="side-section-label" style={{ marginTop: 14 }}>SETUP &amp; TEAM</div>
+          <button className={`side-sub ${page === 'users' ? 'active' : ''}`} onClick={() => goPage('users')}>👥 Surveyors &amp; Quotas</button>
+          <button className={`side-sub ${['surveys', 'questions', 'bank', 'web'].includes(page) ? 'active' : ''}`} onClick={() => goPage('surveys')}>📋 Surveys &amp; Forms</button>
+          <button className={`side-sub ${page === 'profile' ? 'active' : ''}`} onClick={() => goPage('profile')}>🏢 Organization</button>
+
+          {isSuper && (
+            <>
+              <div className="side-section-label" style={{ marginTop: 14 }}>GOVERNANCE</div>
+              <button className={`side-sub ${page === 'companies' ? 'active' : ''}`} onClick={() => goPage('companies')}>🏢 Companies</button>
+              <button className={`side-sub ${page === 'admins' ? 'active' : ''}`} onClick={() => goPage('admins')}>🛡️ Client Admins</button>
+              <button className={`side-sub ${page === 'audit' || page === 'seats' ? 'active' : ''}`} onClick={() => goPage('audit')}>💺 Seats &amp; Audit</button>
+            </>
+          )}
         </nav>
+
+
+
         <div className="portal-sidebar-foot">
           <button
             type="button"
@@ -369,9 +1105,9 @@ export default function AdminPortal() {
               width: '100%',
               marginBottom: 10,
               fontWeight: 'bold',
-              background: '#1e293b',
-              border: '1px solid #334155',
-              color: '#00e599',
+              background: '#e2e8f0',
+              border: '1px solid #cbd5e1',
+              color: '#059669',
               padding: '8px 12px',
               borderRadius: 8,
               cursor: 'pointer',
@@ -380,24 +1116,45 @@ export default function AdminPortal() {
               justifyContent: 'center',
               gap: 6,
             }}
-            onClick={() => {
-              loadPortal()
-              notify('Portal data refreshed ✓', 'ok')
-            }}
+            onClick={() => void loadPortal()}
             disabled={loadingData}
           >
             {loadingData ? 'Refreshing…' : '🔄 Refresh Data'}
           </button>
-          <div className="portal-user">
-            <strong>{user.name || user.username}</strong>
-            <span>@{user.username}</span>
+          <button
+            type="button"
+            className="portal-user"
+            onClick={() => (user.role === 'super_admin' ? goPage('profile') : undefined)}
+            disabled={user.role !== 'super_admin'}
+            title={user.role === 'super_admin' ? 'Open Super Admin profile' : undefined}
+            style={{
+              display: 'block',
+              width: '100%',
+              textAlign: 'left',
+              background: 'none',
+              border: 0,
+              padding: 0,
+              cursor: user.role === 'super_admin' ? 'pointer' : 'default',
+            }}
+          >
+            <strong>
+              {user.name || user.username}{' '}
+              {user.verified ? <VerifiedBadge size={16} title="Verified" /> : null}
+              {user.role === 'super_admin' ? <Icon name="star" size={13} /> : ''}
+            </strong>
+            <span>
+              @{user.username} · {user.role === 'super_admin' ? 'Super Admin' : 'Client Admin'}
+              {user.role === 'super_admin' ? ' · Profile' : ''}
+            </span>
+          </button>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '4px 0 8px' }}>
+            <a className="portal-link" href="/?app=1" style={{ fontSize: 12 }}>
+              📱 Field app ↗
+            </a>
+            <a className="portal-link" href={apkDownloadUrl()} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+              Download APK ↗
+            </a>
           </div>
-          <p className="app-version-foot portal-version" aria-label="App version">
-            {versionLabel()}
-          </p>
-          <a className="portal-link" href="/" target="_blank" rel="noreferrer">
-            Field app ↗
-          </a>
           <button type="button" className="btn small danger" onClick={handleLogout}>
             Log out
           </button>
@@ -405,39 +1162,156 @@ export default function AdminPortal() {
       </aside>
 
       <main className="portal-main">
-        {NAV.filter((n) => n.pages.length > 1 && n.pages.includes(page)).map((n) => (
-          <div className="admin-subtabs" key={n.id}>
+        {nav.filter((n) => n.pages.length > 1 && n.pages.includes(page)).map((n) => (
+          <div className="portal-subtabs" key={n.id}>
             {n.pages.map((p) => (
               <button
                 key={p}
                 type="button"
-                className={page === p ? 'map-tab active' : 'map-tab'}
-                onClick={() => setPage(p)}
+                className={page === p ? 'portal-subtab active' : 'portal-subtab'}
+                onClick={() => goPage(p)}
               >
                 {PAGE_LABELS[p]}
               </button>
             ))}
           </div>
         ))}
-        {page === 'overview' && <Overview user={user} stats={stats} onNav={setPage} />}
-        {page === 'users' && <AdminUsersScreen onToast={notify} />}
-        {page === 'surveys' && <AdminSurveysScreen onToast={notify} />}
-        {page === 'questions' && <AdminQuestionsScreen onToast={notify} />}
-        {page === 'analyze' && <AdminAnalyzeScreen onToast={notify} />}
-        {page === 'review' && <ReviewQAScreen onToast={notify} />}
-        {page === 'report' && <DashboardScreen onToast={notify} />}
-        {page === 'upload' && <AdminDataScreen onToast={notify} />}
-        {page === 'data' && (
-          <DataList
-            items={items}
-            loading={loadingData}
-            onRefresh={refreshData}
-            surveys={surveys}
-            surveyFilter={surveyFilter}
-            onSurveyChange={(v) => setSurveyFilter(v)}
-          />
-        )}
+        <Suspense fallback={<PortalSkeleton rows={6} label="Loading screen…" />}>
+          <ChunkErrorBoundary>
+          {(page === 'overview' || !canPage(page) || !PAGE_LABELS[page]) && (
+            <Overview
+              user={user}
+              stats={stats}
+              onNav={goPage}
+              superAdminOnly={isSuper}
+              canPage={canPage}
+              onToast={notify}
+            />
+          )}
+          {page === 'users' && canPage('users') && (
+            <AdminUsersScreen
+              onToast={notify}
+              user={user}
+              focusUserId={deepLink?.page === 'users' ? deepLink.userId : null}
+              onFocusConsumed={() => setDeepLink(null)}
+            />
+          )}
+          {page === 'surveys' && canPage('surveys') && (
+            <AdminSurveysScreen onToast={notify} user={user} />
+          )}
+          {page === 'questions' && canPage('questions') && (
+            <AdminQuestionsScreen onToast={notify} user={user} />
+          )}
+          {/* Report = tables/boards (AdminAnalyze); Analyze = charts/maps (Dashboard) */}
+          {page === 'report' && canPage('report') && <AdminAnalyzeScreen onToast={notify} />}
+          {page === 'analyze' && canPage('analyze') && <DashboardScreen onToast={notify} />}
+          {page === 'review' && canPage('review') && (
+            <ReviewQAScreen
+              onToast={notify}
+              user={user}
+              focusSubmissionId={deepLink?.page === 'review' ? deepLink.submissionId : null}
+              onFocusConsumed={() => setDeepLink(null)}
+            />
+          )}
+          {page === 'upload' && canPage('upload') && <AdminDataScreen onToast={notify} />}
+          {page === 'audit' && canPage('audit') && <AdminAuditScreen onToast={notify} />}
+          {page === 'bank' && canPage('bank') && (
+            <AdminQuestionBankScreen onToast={notify} user={user} />
+          )}
+          {page === 'web' && canPage('web') && (
+            <AdminWebSurveyScreen onToast={notify} user={user} />
+          )}
+          {page === 'profile' && canPage('profile') && (
+            <AdminProfileScreen
+              user={user}
+              onToast={notify}
+              onUserUpdated={(u) => setUser((prev) => ({ ...prev, ...u }))}
+            />
+          )}
+          {page === 'seats' && canPage('seats') && <AdminSeatsScreen onToast={notify} />}
+          {page === 'admins' && canPage('admins') && (
+            <AdminClientAdminsScreen onToast={notify} />
+          )}
+          {page === 'companies' && canPage('companies') && (
+            <AdminCompaniesScreen onToast={notify} onNav={goPage} />
+          )}
+          {page === 'data' && canPage('data') && (
+            <DataList
+              items={items}
+              loading={loadingData}
+              onRefresh={refreshData}
+              surveys={surveys}
+              surveyFilter={surveyFilter}
+              onSurveyChange={(v) => setSurveyFilter(v)}
+            />
+          )}
+          </ChunkErrorBoundary>
+        </Suspense>
       </main>
+
+      {/* ── Modern Mobile Bottom Navigation Bar (Thumb reachable) ── */}
+      <nav className="portal-bottom-nav" aria-label="Mobile Navigation">
+        <button
+          type="button"
+          className={`portal-tab-btn ${page === 'overview' ? 'active' : ''}`}
+          onClick={() => goPage('overview')}
+        >
+          <span className="portal-tab-icon">📊</span>
+          <span className="portal-tab-label">Overview</span>
+        </button>
+
+        <button
+          type="button"
+          className={`portal-tab-btn ${['surveys', 'questions', 'bank', 'web'].includes(page) ? 'active' : ''}`}
+          onClick={() => goPage('surveys')}
+        >
+          <span className="portal-tab-icon">📋</span>
+          <span className="portal-tab-label">Surveys</span>
+        </button>
+
+        <button
+          type="button"
+          className={`portal-tab-btn ${['analyze', 'report', 'upload', 'data'].includes(page) ? 'active' : ''}`}
+          onClick={() => goPage('analyze')}
+        >
+          <span className="portal-tab-icon">📈</span>
+          <span className="portal-tab-label">Analytics</span>
+        </button>
+
+        <button
+          type="button"
+          className={`portal-tab-btn ${page === 'review' ? 'active' : ''}`}
+          onClick={() => goPage('review')}
+        >
+          <span className="portal-tab-icon" style={{ position: 'relative' }}>
+            ✅
+            {(Number(stats?.pending) || 0) > 0 ? (
+              <span className="portal-tab-badge">
+                {Number(stats.pending) > 99 ? '99+' : stats.pending}
+              </span>
+            ) : null}
+          </span>
+          <span className="portal-tab-label">Review</span>
+        </button>
+
+        <button
+          type="button"
+          className={`portal-tab-btn ${page === 'users' ? 'active' : ''}`}
+          onClick={() => goPage('users')}
+        >
+          <span className="portal-tab-icon">👥</span>
+          <span className="portal-tab-label">Surveyors</span>
+        </button>
+
+        <button
+          type="button"
+          className={`portal-tab-btn ${navOpen ? 'active' : ''}`}
+          onClick={() => setNavOpen((o) => !o)}
+        >
+          <span className="portal-tab-icon">☰</span>
+          <span className="portal-tab-label">Menu</span>
+        </button>
+      </nav>
     </div>
   )
 }

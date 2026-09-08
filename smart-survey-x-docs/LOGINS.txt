@@ -1,0 +1,20 @@
+GROUND IQ — LOGIN CREDENTIALS
+==============================
+
+KEEP THIS FILE PRIVATE. Do not commit or share it.
+
+1. SUPER ADMIN CONSOLE (separate site)
+   URL:      https://sravanku018.github.io/ground-iq-superadmin/
+   Username: superadmin
+   Password: admin123
+   Role:     super_admin  (can manage everything incl. other super admins, cap 3)
+
+2. MAIN PORTAL — CLIENT ADMIN
+   URL:      https://sravanku018.github.io/ground-iq-web/
+   Username: admin
+   Password: admin123
+   Role:     admin  (client admin — cannot log into the Super Admin console)
+
+3. SURVEYORS (field app / created via portal)
+   Example:  agent2  (password set when the account was created in the portal)
+   Create/manage more under: Main portal -> Surveyors

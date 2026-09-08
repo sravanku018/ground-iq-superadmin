@@ -1,0 +1,269 @@
+import { useEffect, useState } from 'react'
+import { listWebFillLinks, mintWebFillUrl, webFillUrl } from '../api'
+
+function clampMax(n) {
+  const x = Math.floor(Number(n) || 0)
+  if (x < 1) return 1
+  if (x > 9999) return 9999
+  return x
+}
+
+export default function CopyWebFillLink({ formKey, title, onToast, compact = false }) {
+  const [url, setUrl] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [maxUses, setMaxUses] = useState(100)
+  const [live, setLive] = useState(null)
+  const [quota, setQuota] = useState({ used: 0, cap: 100, submitted: 0, linkUsed: 0 })
+
+  useEffect(() => {
+    const key = String(formKey || '').trim()
+    if (!key || key === 'default' || key === 'legacy') {
+      setLive(null)
+      setQuota({ used: 0, cap: 100, submitted: 0, linkUsed: 0 })
+      return undefined
+    }
+    let dead = false
+    listWebFillLinks(key)
+      .then((d) => {
+        if (dead) return
+        const share = d.live || null
+        setLive(share)
+        const cap = Number(share?.max_uses || d.cap || 100) || 100
+        const submitted = Number(d.submitted ?? d.used ?? 0) || 0
+        const linkUsed = Number(d.link_used ?? share?.use_count ?? 0) || 0
+        setQuota({ used: submitted, cap, submitted, linkUsed })
+        if (share?.max_uses) setMaxUses(clampMax(share.max_uses))
+        if (share?.token) setUrl(webFillUrl(key, share.token))
+      })
+      .catch(() => {
+        if (!dead) {
+          setLive(null)
+          setQuota({ used: 0, cap: 100, submitted: 0, linkUsed: 0 })
+        }
+      })
+    return () => {
+      dead = true
+    }
+  }, [formKey])
+
+  function bump(delta) {
+    setMaxUses((n) => clampMax(n + delta))
+  }
+
+  async function mintAndCopy() {
+    const key = String(formKey || '').trim()
+    if (!key || key === 'default' || key === 'legacy') {
+      onToast?.('Pick a survey first', 'error')
+      return
+    }
+    const limit = clampMax(maxUses)
+    setMaxUses(limit)
+    setBusy(true)
+    try {
+      if (full || live?.expired) {
+        onToast?.('Target reached — sharing is disabled for this survey', 'error')
+        return
+      }
+      const d = await mintWebFillUrl(key, limit)
+      const link = d.url || d
+      setUrl(typeof link === 'string' ? link : '')
+      setLive((prev) => ({
+        ...prev,
+        token: d.token,
+        max_uses: d.max_uses || limit,
+        use_count: d.use_count || 0,
+        expired: false,
+      }))
+      setQuota((q) => ({
+        ...q,
+        cap: Number(d.max_uses) || limit,
+        linkUsed: Number(d.use_count) || 0,
+      }))
+      try {
+        window.dispatchEvent(new CustomEvent('esurvey-quota-changed'))
+      } catch {
+        /* ignore */
+      }
+      const remaining = Number(d.field_remaining)
+      try {
+        await navigator.clipboard.writeText(typeof link === 'string' ? link : String(link || ''))
+        onToast?.(
+          Number.isFinite(remaining)
+            ? `Quota ${limit} reserved · ${remaining.toLocaleString()} remaining for field`
+            : `Copied ${title || 'survey'} link · ${limit} reserved`,
+          'ok',
+        )
+      } catch {
+        onToast?.(typeof link === 'string' ? link : 'Copied', 'ok')
+      }
+    } catch (e) {
+      onToast?.(e.message || 'Could not copy link', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const cap = Number(quota.cap || maxUses || 100) || 100
+  const submitted = Math.max(0, Number(quota.submitted ?? quota.used) || 0)
+  const linkUsed = Math.max(0, Number(quota.linkUsed) || 0)
+  const totalUsed = Math.max(submitted, linkUsed)
+  const full = totalUsed >= cap || live?.expired
+  const left = Math.max(0, cap - totalUsed)
+  const pct = Math.min(100, Math.round((totalUsed / cap) * 100))
+  const isLocked = Boolean(url || live?.token)
+  const hasActiveLink = Boolean(url || live?.token)
+
+  const picker = (
+    <label className="field" style={{ margin: 0, minWidth: compact ? 120 : 180 }}>
+      <span>Responses allowed</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button
+          type="button"
+          className="btn small"
+          disabled={busy || full || live?.expired || isLocked || maxUses <= 1}
+          onClick={() => bump(-1)}
+        >
+          −
+        </button>
+        <input
+          type="number"
+          min={1}
+          max={9999}
+          step={1}
+          value={maxUses}
+          disabled={busy || full || live?.expired || isLocked}
+          onChange={(e) => setMaxUses(clampMax(e.target.value))}
+          style={{ width: compact ? 72 : 88, textAlign: 'center' }}
+        />
+        <button
+          type="button"
+          className="btn small"
+          disabled={busy || full || live?.expired || isLocked || maxUses >= 9999}
+          onClick={() => bump(1)}
+        >
+          +
+        </button>
+      </div>
+    </label>
+  )
+
+  const usage = hasActiveLink ? (
+    <div
+      style={{
+        margin: compact ? '0 0 6px' : '0 0 12px',
+        padding: compact ? '8px 10px' : '12px 14px',
+        borderRadius: 10,
+        border: `1px solid ${full ? '#fecaca' : '#bbf7d0'}`,
+        background: full ? '#fef2f2' : '#f0fdf4',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: full ? '#b91c1c' : '#15803d', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+          {title || 'Web survey'}
+        </div>
+        <span style={{ fontSize: 11, fontWeight: 700, color: full ? '#dc2626' : '#059669' }}>
+          {full ? 'Target reached' : `${left.toLocaleString()} remaining`}
+        </span>
+      </div>
+      <div style={{ fontSize: compact ? 16 : 20, fontWeight: 800, color: '#0f172a', marginTop: 4 }}>
+        <span style={{ color: full ? '#dc2626' : '#059669' }}>{totalUsed.toLocaleString()}</span>
+        <span style={{ fontWeight: 600, color: '#64748b', fontSize: compact ? 13 : 15 }}>
+          {' '}of {cap.toLocaleString()} responses used
+        </span>
+      </div>
+      <div style={{ height: 8, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden', marginTop: 8 }}>
+        <div
+          style={{
+            width: `${pct}%`,
+            height: '100%',
+            background: full ? '#dc2626' : pct >= 80 ? '#f59e0b' : '#059669',
+          }}
+        />
+      </div>
+      {full ? (
+        <p style={{ margin: '6px 0 0', fontSize: 12, color: '#dc2626', fontWeight: 600 }}>
+          Target reached ({totalUsed.toLocaleString()}/{cap.toLocaleString()}) — sharing is disabled for {title || 'this survey'}.
+        </p>
+      ) : (
+        <p className="muted" style={{ margin: '6px 0 0', fontSize: 12 }}>
+          {left.toLocaleString()} remaining · one unique link for {title || 'this survey'}
+        </p>
+      )}
+    </div>
+  ) : (
+    <div
+      style={{
+        margin: compact ? '0 0 6px' : '0 0 12px',
+        padding: compact ? '6px 10px' : '10px 12px',
+        borderRadius: 8,
+        border: '1px dashed #cbd5e1',
+        background: '#f8fafc',
+      }}
+    >
+      <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>
+        No web link generated yet. Pick responses allowed and click <strong>Create &amp; copy link</strong>.
+      </p>
+    </div>
+  )
+
+  const buttonLabel = full || live?.expired
+    ? 'Sharing disabled'
+    : busy
+      ? hasActiveLink
+        ? 'Copying…'
+        : 'Creating…'
+      : hasActiveLink
+        ? 'Copy web link'
+        : 'Create & copy link'
+
+  if (compact) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {usage}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          {picker}
+          <button
+            type="button"
+            className="btn small"
+            disabled={busy || !formKey || full || live?.expired}
+            onClick={() => void mintAndCopy()}
+          >
+            {buttonLabel}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ margin: '0 0 12px' }}>
+      <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 700 }}>
+        {title ? `${title} — web link` : 'Web survey link'}
+      </p>
+      {usage}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 10 }}>
+        {picker}
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {hasActiveLink && (
+          <input
+            readOnly
+            value={url}
+            placeholder="Unique survey link"
+            disabled={full || live?.expired}
+            style={{ flex: 1, minWidth: 220, fontSize: 13, opacity: full || live?.expired ? 0.6 : 1 }}
+            onFocus={(e) => e.target.select()}
+          />
+        )}
+        <button
+          type="button"
+          className="btn primary"
+          disabled={busy || !formKey || full || live?.expired}
+          onClick={() => void mintAndCopy()}
+        >
+          {buttonLabel}
+        </button>
+      </div>
+    </div>
+  )
+}

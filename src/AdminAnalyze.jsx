@@ -1,11 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
+  deleteSubmission,
   getAdminAnalyze,
   getAnalytics,
+  getStoredUser,
   listSubmissions,
   setSubmissionStatus,
 } from './api'
+
 import SubmissionEditor from './SubmissionEditor'
+import { getDisplayLang, setDisplayLang } from './prefs'
+import FeedCard from './components/FeedCard'
 
 /**
  * Client Admin: filter by date + user, strict geo/voice, complete/incomplete, analyze.
@@ -16,6 +21,15 @@ function todayStr() {
 }
 function thisMonthStr() {
   return new Date().toISOString().slice(0, 7)
+}
+
+function pickFirstSurveyKey(items) {
+  const list = Array.isArray(items) ? items : []
+  const real = list.filter((s) => {
+    const k = String(s?.form_key || '')
+    return k && k !== 'default' && k !== 'legacy'
+  })
+  return String((real[0] || list[0])?.form_key || '')
 }
 
 export default function AdminAnalyzeScreen({ onToast }) {
@@ -29,6 +43,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
   const [qFilters, setQFilters] = useState({}) // q_<questionId> → value
   const [surveys, setSurveys] = useState([])
   const [completeness, setCompleteness] = useState('all')
+  const [source, setSource] = useState('all')
   const [board, setBoard] = useState(null)
   const [items, setItems] = useState([])
   const [summary, setSummary] = useState(null)
@@ -37,120 +52,191 @@ export default function AdminAnalyzeScreen({ onToast }) {
   const [busyId, setBusyId] = useState(null)
   const [expanded, setExpanded] = useState(null)
   const [editingId, setEditingId] = useState(null)
+  const [filterLang, setFilterLang] = useState(getDisplayLang)
+  const setFilterLangPersist = (lang) => {
+    setFilterLang(setDisplayLang(lang))
+  }
+
+  const load = useCallback(
+    async (overrides = {}) => {
+      setLoading(true)
+      try {
+        const p = {
+          period,
+          day,
+          month,
+          user,
+          survey,
+          district,
+          constituency,
+          completeness,
+          source,
+          ...overrides,
+        }
+        const periodVal = p.period || 'total'
+        const dayVal = p.day || day
+        const monthVal = p.month || month
+        const userVal = p.user ?? user
+        const surveyVal = p.survey ?? survey
+        const districtVal = p.district ?? district
+        const constituencyVal = p.constituency ?? constituency
+        const completenessVal = p.completeness ?? completeness
+        const sourceVal = p.source ?? source
+
+        const baseScope = {
+          period: periodVal,
+          user: userVal || undefined,
+          district: districtVal || undefined,
+          constituency: constituencyVal || undefined,
+        }
+        if (periodVal === 'day') baseScope.day = dayVal
+        if (periodVal === 'month') baseScope.month = monthVal
+
+        const qParams = Object.fromEntries(Object.entries(qFilters).filter(([, v]) => v))
+        if (!surveyVal) {
+          setBoard(null)
+          setItems([])
+          setSummary(null)
+          setAnalytics(null)
+          return
+        }
+
+        const [analyze, list, charts] = await Promise.all([
+          getAdminAnalyze({
+            ...baseScope,
+            survey: surveyVal,
+            completeness: completenessVal === 'all' ? undefined : completenessVal,
+            source: sourceVal === 'all' ? undefined : sourceVal,
+            ...qParams,
+          }),
+          listSubmissions(300, 'all', {
+            period: periodVal,
+            day: periodVal === 'day' ? dayVal : undefined,
+            month: periodVal === 'month' ? monthVal : undefined,
+            user: userVal,
+            survey: surveyVal,
+            district: districtVal || undefined,
+            constituency: constituencyVal || undefined,
+            completeness: completenessVal === 'all' ? '' : completenessVal,
+            source: sourceVal === 'all' ? undefined : sourceVal,
+            ...qParams,
+            date_from:
+              periodVal === 'day'
+                ? dayVal
+                : periodVal === 'today'
+                  ? todayStr()
+                  : periodVal === 'month'
+                    ? `${monthVal}-01`
+                    : '',
+            date_to:
+              periodVal === 'day'
+                ? dayVal
+                : periodVal === 'today'
+                  ? todayStr()
+                  : periodVal === 'month'
+                    ? `${monthVal}-31`
+                    : '',
+          }),
+          getAnalytics({
+            status: 'all',
+            period: periodVal,
+            day: periodVal === 'day' ? dayVal : undefined,
+            month: periodVal === 'month' ? monthVal : undefined,
+            user: userVal,
+            survey: surveyVal,
+            district: districtVal || undefined,
+            constituency: constituencyVal || undefined,
+            completeness: completenessVal === 'all' ? 'all' : completenessVal,
+            source: sourceVal === 'all' ? undefined : sourceVal,
+            ...qParams,
+          }).catch(() => null),
+        ])
+        setBoard(analyze)
+        setItems(list.items || [])
+        setSummary(list.summary || analyze.totals)
+        setAnalytics(charts)
+        onToast?.(
+          `Loaded ${list.total ?? analyze.totals?.records ?? 0} · ${periodVal}${userVal ? ` · ${userVal}` : ''}${districtVal ? ` · ${districtVal}` : ''}`,
+          'ok',
+        )
+      } catch (e) {
+        onToast?.(e.message, 'error')
+      } finally {
+        setLoading(false)
+      }
+    },
+    [
+      period,
+      day,
+      month,
+      user,
+      survey,
+      district,
+      constituency,
+      completeness,
+      source,
+      qFilters,
+      onToast,
+    ],
+  )
 
   useEffect(() => {
     import('./api')
       .then(({ listSurveys }) => listSurveys())
-      .then((d) => setSurveys(d.items || []))
+      .then((d) => {
+        const items = d.items || []
+        setSurveys(items)
+        const key = pickFirstSurveyKey(items)
+        if (key) {
+          setSurvey(key)
+          return load({ survey: key })
+        }
+        return undefined
+      })
       .catch(() => {})
+    // load on first survey pick — not all-surveys
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const scopeParams = useMemo(() => {
-    const p = {
-      period,
-      user: user || undefined,
-      district: district || undefined,
-      constituency: constituency || undefined,
-    }
-    if (period === 'day') p.day = day
-    if (period === 'month') p.month = month
-    if (period === 'today') {
-      /* server expands */
-    }
-    return p
-  }, [period, day, month, user, district, constituency])
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const base = {
-        ...scopeParams,
-        completeness: completeness === 'all' ? undefined : completeness,
-      }
-      const [analyze, list, charts] = await Promise.all([
-        getAdminAnalyze({
-          ...scopeParams,
-          survey,
-          district: district || undefined,
-          constituency: constituency || undefined,
-          ...Object.fromEntries(Object.entries(qFilters).filter(([, v]) => v)),
-        }),
-        listSubmissions(300, 'all', {
-          period: scopeParams.period,
-          day: scopeParams.day,
-          month: scopeParams.month,
-          user: user,
-          survey,
-          district: district || undefined,
-          constituency: constituency || undefined,
-          completeness: completeness === 'all' ? '' : completeness,
-          ...Object.fromEntries(Object.entries(qFilters).filter(([, v]) => v)),
-          // expand day/month for submissions list if needed
-          date_from:
-            period === 'day'
-              ? day
-              : period === 'today'
-                ? todayStr()
-                : period === 'month'
-                  ? `${month}-01`
-                  : '',
-          date_to:
-            period === 'day'
-              ? day
-              : period === 'today'
-                ? todayStr()
-                : period === 'month'
-                  ? `${month}-31`
-                  : '',
-        }),
-        getAnalytics({
-          status: 'all',
-          period: scopeParams.period,
-          day: scopeParams.day,
-          month: scopeParams.month,
-          user,
-          survey,
-          district: district || undefined,
-          constituency: constituency || undefined,
-          completeness: completeness === 'all' ? 'all' : completeness,
-          ...Object.fromEntries(
-            Object.entries(qFilters).filter(([, v]) => v),
-          ),
-        }).catch(() => null),
-      ])
-      setBoard(analyze)
-      setItems(list.items || [])
-      setSummary(list.summary || analyze.totals)
-      setAnalytics(charts)
-      onToast?.(
-        `Loaded ${list.total ?? analyze.totals?.records ?? 0} · ${period}${user ? ` · ${user}` : ''}${district ? ` · ${district}` : ''}`,
-        'ok',
-      )
-    } catch (e) {
-      onToast?.(e.message, 'error')
-    } finally {
-      setLoading(false)
-    }
-  }, [scopeParams, completeness, user, survey, district, constituency, qFilters, period, day, month, onToast])
 
+  // Optimistic UI (Twitter principle: tap → instant, sync later)
   async function confirmOne(id, force = false) {
-    setBusyId(id)
+    // 1. Optimistic flip
+    setItems(rs => rs.map(r => r.id === id ? { ...r, status: 'confirmed' } : r))
+    onToast?.('Confirming…', 'ok')
     try {
       await setSubmissionStatus(id, 'confirmed', force ? 'force override' : '', force)
-      onToast?.(force ? 'Force confirmed' : 'Confirmed (strict complete)', 'ok')
+      onToast?.(force ? 'Force confirmed' : 'Confirmed', 'ok')
       await load()
     } catch (e) {
+      // 2. Rollback on failure
       onToast?.(e.message, 'error')
-    } finally {
-      setBusyId(null)
+      await load()
     }
   }
 
   async function rejectOne(id) {
-    setBusyId(id)
+    setItems(rs => rs.map(r => r.id === id ? { ...r, status: 'rejected' } : r))
+    onToast?.('Rejecting…', 'ok')
     try {
       await setSubmissionStatus(id, 'rejected')
-      onToast?.('Marked rejected', 'ok')
+      onToast?.('Rejected', 'ok')
+      await load()
+    } catch (e) {
+      onToast?.(e.message, 'error')
+      await load()
+    }
+  }
+
+  async function deleteRejectedOne(id) {
+    if (!confirm('Delete this rejected record permanently? Photo and voice for it are removed too.')) {
+      return
+    }
+    setBusyId(id)
+    try {
+      await deleteSubmission(id)
+      onToast?.('Rejected record deleted', 'ok')
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -164,37 +250,69 @@ export default function AdminAnalyzeScreen({ onToast }) {
   return (
     <div className="screen">
       <header className="screen-head">
-        <h2>Client Admin · Analyze</h2>
-        <p>Survey → surveyor → geolocation → day / month → rest</p>
+        <h2>Client Admin · Report</h2>
+        <p>Survey → surveyor → geolocation → day / month · tables &amp; confirm</p>
       </header>
 
       <div className="card" style={{ marginBottom: 12 }}>
         <h3>Data filters</h3>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+          {[
+            { id: 'en', label: 'English' },
+            { id: 'te', label: 'తెలుగు' },
+          ].map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`chip ${filterLang === p.id ? 'selected' : ''}`}
+              onClick={() => setFilterLangPersist(p.id)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
         <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+          English and Telugu stay separate. Picking a survey applies the language set when
+          its questions were prepared.
           Step by step: <strong>1. Survey name</strong> → <strong>2. Surveyor name</strong> →{' '}
           <strong>3. Geolocation</strong> → <strong>4. Day / Month</strong> → <strong>5. Rest</strong> (questions & status).
         </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+          {[
+            { id: 'all', label: 'Field + web' },
+            { id: 'field', label: 'Field app' },
+            { id: 'web', label: 'Web survey' },
+          ].map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={`chip ${source === s.id ? 'selected' : ''}`}
+              onClick={() => setSource(s.id)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
 
         {/* Step 1 · Survey name */}
-        <div
-          style={{
-            border: '1px solid #243041',
-            borderRadius: 10,
-            padding: 10,
-            marginBottom: 10,
-          }}
-        >
-          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>1 · Survey name</p>
+        <div className="filter-step">
+          <p className="filter-step-title">1 · Survey name</p>
           <label className="field">
             <span>By survey</span>
             <select
               value={survey}
               onChange={(e) => {
-                setSurvey(e.target.value)
+                const v = e.target.value
+                setSurvey(v)
+                setUser('')
                 setQFilters({})
+                const s = surveys.find((x) => x.form_key === v)
+                if (s?.display_lang === 'te' || s?.display_lang === 'en') {
+                  setFilterLangPersist(s.display_lang)
+                }
               }}
             >
-              <option value="">All surveys</option>
+              {surveys.length === 0 ? <option value="">Select survey</option> : null}
               {surveys.map((s) => (
                 <option key={s.id} value={s.form_key}>
                   {s.title}
@@ -205,15 +323,8 @@ export default function AdminAnalyzeScreen({ onToast }) {
         </div>
 
         {/* Step 2 · Surveyor name */}
-        <div
-          style={{
-            border: '1px solid #243041',
-            borderRadius: 10,
-            padding: 10,
-            marginBottom: 10,
-          }}
-        >
-          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>2 · Surveyor name</p>
+        <div className="filter-step">
+          <p className="filter-step-title">2 · Surveyor name</p>
           <label className="field">
             <span>By surveyor</span>
             <select value={user} onChange={(e) => setUser(e.target.value)}>
@@ -222,7 +333,8 @@ export default function AdminAnalyzeScreen({ onToast }) {
               </option>
               {(board?.by_user || []).map((u) => (
                 <option key={u.user} value={u.user}>
-                  {u.user} ({u.complete}/{u.total} complete)
+                  {u.user} ({u.completed ?? u.confirmed ?? 0} completed ·{' '}
+                  {u.pending ?? 0} pending)
                 </option>
               ))}
             </select>
@@ -235,23 +347,18 @@ export default function AdminAnalyzeScreen({ onToast }) {
         </div>
 
         {/* Step 3 · Geolocation */}
-        <div
-          style={{
-            border: '1px solid #243041',
-            borderRadius: 10,
-            padding: 10,
-            marginBottom: 10,
-          }}
-        >
-          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>3 · Geolocation</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+        <div className="filter-step">
+          <p className="filter-step-title">3 · Geolocation</p>
+          <div className="filter-step-grid">
             <label className="field">
-              <span>District</span>
+              <span>{filterLang === 'te' ? 'జిల్లా' : 'District'}</span>
               <select value={district} onChange={(e) => setDistrict(e.target.value)}>
-                <option value="">All districts</option>
+                <option value="">{filterLang === 'te' ? 'అన్ని జిల్లాలు' : 'All districts'}</option>
                 {(analytics?.filterOptions?.districts || []).map((d) => (
                   <option key={d} value={d}>
-                    {d}
+                    {filterLang === 'te'
+                      ? analytics?.filterLabels?.districts?.[d] || d
+                      : d}
                   </option>
                 ))}
               </select>
@@ -269,15 +376,8 @@ export default function AdminAnalyzeScreen({ onToast }) {
         </div>
 
         {/* Step 4 · Day / Month */}
-        <div
-          style={{
-            border: '1px solid #243041',
-            borderRadius: 10,
-            padding: 10,
-            marginBottom: 10,
-          }}
-        >
-          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>4 · Day / Month</p>
+        <div className="filter-step">
+          <p className="filter-step-title">4 · Day / Month</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
             {[
               { id: 'total', label: 'Total data' },
@@ -310,35 +410,46 @@ export default function AdminAnalyzeScreen({ onToast }) {
         </div>
 
         {/* Step 5 · Rest (Question filters & status) */}
-        <div
-          style={{
-            border: '1px solid #243041',
-            borderRadius: 10,
-            padding: 10,
-            marginBottom: 10,
-          }}
-        >
-          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
-            5 · Rest (Question filters & status)
-          </p>
-          {analytics?.dataFilters?.questions?.map((q) => (
+        <div className="filter-step">
+          <p className="filter-step-title">5 · Rest (Question filters & status)</p>
+          {analytics?.dataFilters?.questions?.map((q) => {
+            const countMap = new Map((q.counts || []).map((c) => [c.name, c]))
+            const optionNames = [...new Set([...(q.options || []), ...countMap.keys()])]
+            const titleShown =
+              filterLang === 'te'
+                ? String(q.label_te || q.label || q.label_en || 'Question').trim()
+                : String(q.label_en || q.label || 'Question').trim()
+            return (
             <label className="field" key={q.id}>
-              <span>{q.label}</span>
+              <span>{titleShown}</span>
               <select
                 value={qFilters[`q_${q.id}`] || ''}
                 onChange={(e) =>
                   setQFilters((f) => ({ ...f, [`q_${q.id}`]: e.target.value }))
                 }
               >
-                <option value="">All {q.label}</option>
-                {(q.counts || []).map((c) => (
-                  <option key={c.name} value={c.name}>
-                    {c.name} ({c.value})
-                  </option>
-                ))}
+                <option value="">{filterLang === 'te' ? 'అన్నీ' : 'All'} {titleShown}</option>
+                {optionNames.map((name) => {
+                  const c = countMap.get(name)
+                  let shownName = name
+                  if (filterLang === 'te') {
+                    if (c?.label && c.label !== name) shownName = c.label
+                    else {
+                      const i = (q.options || []).findIndex((o) => o === name)
+                      if (i >= 0 && q.options_te?.[i]) shownName = q.options_te[i]
+                    }
+                  }
+                  const n = c?.value
+                  return (
+                    <option key={name} value={name}>
+                      {n != null ? `${shownName} (${n})` : shownName}
+                    </option>
+                  )
+                })}
               </select>
             </label>
-          ))}
+            )
+          })}
           {survey && (analytics?.dataFilters?.questions || []).length === 0 && (
             <p className="muted" style={{ fontSize: 12 }}>
               This survey has no question filters yet.
@@ -353,9 +464,9 @@ export default function AdminAnalyzeScreen({ onToast }) {
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
           {[
-            { id: 'all', label: 'All status' },
-            { id: 'complete', label: 'Complete' },
-            { id: 'incomplete', label: 'Incomplete' },
+            { id: 'all', label: 'All media' },
+            { id: 'complete', label: 'Media complete' },
+            { id: 'incomplete', label: 'Media incomplete' },
           ].map((c) => (
             <button
               key={c.id}
@@ -371,43 +482,59 @@ export default function AdminAnalyzeScreen({ onToast }) {
           {loading ? 'Loading…' : 'Load data & analyze'}
         </button>
         <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>
-          Strict: geo + voice + photo + Q/A = complete. Report charts use confirmed only.
+          Media complete = geo + voice + photo + Q/A. Pending ≠ media incomplete (pending still
+          needs Client Admin confirm).
         </p>
       </div>
 
-      <div className="stat-row">
+      <div className={`stat-row stat-row-6 ${loading ? 'is-loading' : ''}`}>
         <div className="stat">
-          <strong>{totals.records ?? totals.total ?? '—'}</strong>
+          <strong>{loading && totals.records == null ? '…' : (totals.records ?? totals.total ?? '—')}</strong>
           <span>Records</span>
         </div>
         <div className="stat">
-          <strong>{totals.complete ?? '—'}</strong>
-          <span>Complete</span>
+          <strong>
+            {loading && totals.completed == null && totals.confirmed == null
+              ? '…'
+              : (totals.completed ?? totals.confirmed ?? summary?.completed ?? summary?.confirmed ?? '—')}
+          </strong>
+          <span>Completed</span>
         </div>
         <div className="stat">
-          <strong>{totals.incomplete ?? '—'}</strong>
-          <span>Incomplete</span>
+          <strong>
+            {loading && totals.pending == null && summary?.pending == null
+              ? '…'
+              : (totals.pending ?? summary?.pending ?? '—')}
+          </strong>
+          <span>Pending</span>
         </div>
         <div className="stat">
-          <strong>{totals.voice_fail ?? summary?.voice_fail ?? '—'}</strong>
-          <span>Voice fail</span>
+          <strong>{loading && totals.complete == null ? '…' : (totals.complete ?? '—')}</strong>
+          <span>Media OK</span>
         </div>
         <div className="stat">
-          <strong>{totals.geo_fail ?? summary?.geo_fail ?? '—'}</strong>
-          <span>Geo fail</span>
+          <strong>{loading && totals.incomplete == null ? '…' : (totals.incomplete ?? '—')}</strong>
+          <span>Media fail</span>
         </div>
         <div className="stat">
-          <strong>{totals.confirmed ?? summary?.confirmed ?? '—'}</strong>
-          <span>Confirmed</span>
+          <strong>
+            {loading && totals.draft == null ? '…' : (totals.draft ?? summary?.draft ?? 0)}
+          </strong>
+          <span>Drafts (in pending)</span>
         </div>
       </div>
+      <p className="muted" style={{ fontSize: 12, margin: '-6px 0 12px' }}>
+        <strong>Completed</strong> = confirmed final surveys (not drafts) ·{' '}
+        <strong>Pending</strong> = waiting confirm <em>or</em> still draft ·{' '}
+        <strong>Media OK/fail</strong> = geo + voice + photo + Q/A.
+      </p>
 
       {/* Daily data */}
       {(board?.by_day || board?.by_date)?.length > 0 && (
         <div className="card" style={{ marginBottom: 12 }}>
           <h3>Daily data</h3>
           <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-            Totals per calendar day
+            Totals per calendar day · media complete/incomplete + confirmed/pending
           </p>
           <div className="data-table-wrap">
             <table className="data-table">
@@ -415,9 +542,10 @@ export default function AdminAnalyzeScreen({ onToast }) {
                 <tr>
                   <th>Date</th>
                   <th>Total</th>
-                  <th>Complete</th>
-                  <th>Incomplete</th>
-                  <th>Confirmed</th>
+                  <th>Completed</th>
+                  <th>Pending</th>
+                  <th>Media OK</th>
+                  <th>Media fail</th>
                   <th></th>
                 </tr>
               </thead>
@@ -428,9 +556,10 @@ export default function AdminAnalyzeScreen({ onToast }) {
                       <strong>{d.date}</strong>
                     </td>
                     <td>{d.total}</td>
-                    <td>{d.complete}</td>
-                    <td>{d.incomplete}</td>
-                    <td>{d.confirmed}</td>
+                    <td>{d.completed ?? d.confirmed ?? 0}</td>
+                    <td>{d.pending ?? 0}</td>
+                    <td>{d.complete ?? 0}</td>
+                    <td>{d.incomplete ?? Math.max(0, (d.total || 0) - (d.complete || 0))}</td>
                     <td>
                       <button
                         type="button"
@@ -438,7 +567,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
                         onClick={() => {
                           setPeriod('day')
                           setDay(d.date)
-                          setTimeout(load, 50)
+                          load({ period: 'day', day: d.date })
                         }}
                       >
                         Open
@@ -457,7 +586,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
         <div className="card" style={{ marginBottom: 12 }}>
           <h3>Monthly data</h3>
           <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-            Totals per month
+            Totals per month · media complete/incomplete + confirmed/pending
           </p>
           <div className="data-table-wrap">
             <table className="data-table">
@@ -465,9 +594,10 @@ export default function AdminAnalyzeScreen({ onToast }) {
                 <tr>
                   <th>Month</th>
                   <th>Total</th>
-                  <th>Complete</th>
-                  <th>Incomplete</th>
-                  <th>Confirmed</th>
+                  <th>Completed</th>
+                  <th>Pending</th>
+                  <th>Media OK</th>
+                  <th>Media fail</th>
                   <th></th>
                 </tr>
               </thead>
@@ -478,9 +608,10 @@ export default function AdminAnalyzeScreen({ onToast }) {
                       <strong>{m.month}</strong>
                     </td>
                     <td>{m.total}</td>
-                    <td>{m.complete}</td>
-                    <td>{m.incomplete}</td>
-                    <td>{m.confirmed}</td>
+                    <td>{m.completed ?? m.confirmed ?? 0}</td>
+                    <td>{m.pending ?? 0}</td>
+                    <td>{m.complete ?? 0}</td>
+                    <td>{m.incomplete ?? Math.max(0, (m.total || 0) - (m.complete || 0))}</td>
                     <td>
                       <button
                         type="button"
@@ -488,7 +619,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
                         onClick={() => {
                           setPeriod('month')
                           setMonth(m.month)
-                          setTimeout(load, 50)
+                          load({ period: 'month', month: m.month })
                         }}
                       >
                         Open
@@ -507,7 +638,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
         <div className="card" style={{ marginBottom: 12 }}>
           <h3>Surveyor daily data</h3>
           <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-            Each surveyor · each day
+            Each surveyor · each day · media OK/fail + confirmed/pending
           </p>
           {board?.by_surveyor_day?.length > 0 ? (
             <div className="data-table-wrap">
@@ -517,21 +648,28 @@ export default function AdminAnalyzeScreen({ onToast }) {
                     <th>Surveyor</th>
                     <th>Day</th>
                     <th>Total</th>
-                    <th>Complete</th>
-                    <th>Confirmed</th>
+                    <th>Completed</th>
+                    <th>Pending</th>
+                    <th>Media OK</th>
+                    <th>Media fail</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {board.by_surveyor_day.slice(0, 80).map((r) => (
                     <tr key={`${r.surveyor}-${r.day}`}>
-                      <td>
+                      <td className="cell-clip" title={r.surveyor}>
                         <strong>{r.surveyor}</strong>
                       </td>
                       <td>{r.day}</td>
                       <td>{r.total}</td>
-                      <td>{r.complete}</td>
-                      <td>{r.confirmed}</td>
+                      <td>{r.completed ?? r.confirmed ?? 0}</td>
+                      <td>{r.pending ?? 0}</td>
+                      <td>{r.complete ?? 0}</td>
+                      <td>
+                        {r.incomplete ??
+                          Math.max(0, (r.total || 0) - (r.complete || 0))}
+                      </td>
                       <td>
                         <button
                           type="button"
@@ -540,7 +678,11 @@ export default function AdminAnalyzeScreen({ onToast }) {
                             setUser(r.surveyor)
                             setPeriod('day')
                             setDay(r.day)
-                            setTimeout(load, 50)
+                            load({
+                              user: r.surveyor,
+                              period: 'day',
+                              day: r.day,
+                            })
                           }}
                         >
                           Open
@@ -559,28 +701,35 @@ export default function AdminAnalyzeScreen({ onToast }) {
           {board?.by_user?.length > 0 && (
             <>
               <h4 style={{ margin: '12px 0 6px' }}>By surveyor (total)</h4>
-              <ul className="user-list">
-                {board.by_user.map((u) => (
-                  <li key={u.user}>
-                    <div>
-                      <strong>{u.user}</strong>
-                      <span className="meta">
-                        {' '}
-                        {u.complete}/{u.total} complete · confirmed {u.confirmed}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn small"
-                      onClick={() => {
-                        setUser(u.user)
-                        setTimeout(load, 50)
-                      }}
-                    >
-                      Filter
-                    </button>
-                  </li>
-                ))}
+              <ul className="user-list user-list-actions">
+                {board.by_user.map((u) => {
+                  const mediaFail =
+                    u.incomplete ?? Math.max(0, (u.total || 0) - (u.complete || 0))
+                  const done = u.completed ?? u.confirmed ?? 0
+                  return (
+                    <li key={u.user}>
+                      <div className="user-list-main">
+                        <strong>{u.user}</strong>
+                        <span className="meta">
+                          {u.total} total · completed {done} · pending {u.pending ?? 0}
+                          {u.draft ? ` · drafts ${u.draft}` : ''}
+                          {' · '}
+                          media OK {u.complete ?? 0} / fail {mediaFail}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn small"
+                        onClick={() => {
+                          setUser(u.user)
+                          load({ user: u.user })
+                        }}
+                      >
+                        Filter
+                      </button>
+                    </li>
+                  )
+                })}
               </ul>
             </>
           )}
@@ -592,7 +741,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
         <div className="card" style={{ marginBottom: 12 }}>
           <h3>Surveyor monthly data</h3>
           <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-            Each surveyor · each month
+            Each surveyor · each month · media OK/fail + confirmed/pending
           </p>
           <div className="data-table-wrap">
             <table className="data-table">
@@ -601,21 +750,28 @@ export default function AdminAnalyzeScreen({ onToast }) {
                   <th>Surveyor</th>
                   <th>Month</th>
                   <th>Total</th>
-                  <th>Complete</th>
-                  <th>Confirmed</th>
+                  <th>Completed</th>
+                  <th>Pending</th>
+                  <th>Media OK</th>
+                  <th>Media fail</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {board.by_surveyor_month.slice(0, 80).map((r) => (
                   <tr key={`${r.surveyor}-${r.month}`}>
-                    <td>
+                    <td className="cell-clip" title={r.surveyor}>
                       <strong>{r.surveyor}</strong>
                     </td>
                     <td>{r.month}</td>
                     <td>{r.total}</td>
-                    <td>{r.complete}</td>
-                    <td>{r.confirmed}</td>
+                    <td>{r.completed ?? r.confirmed ?? 0}</td>
+                    <td>{r.pending ?? 0}</td>
+                    <td>{r.complete ?? 0}</td>
+                    <td>
+                      {r.incomplete ??
+                        Math.max(0, (r.total || 0) - (r.complete || 0))}
+                    </td>
                     <td>
                       <button
                         type="button"
@@ -624,7 +780,11 @@ export default function AdminAnalyzeScreen({ onToast }) {
                           setUser(r.surveyor)
                           setPeriod('month')
                           setMonth(r.month)
-                          setTimeout(load, 50)
+                          load({
+                            user: r.surveyor,
+                            period: 'month',
+                            month: r.month,
+                          })
                         }}
                       >
                         Open
@@ -648,7 +808,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
           <ul className="user-list">
             {analytics.charts.byParty.slice(0, 8).map((p) => (
               <li key={p.name}>
-                <strong>{p.name}</strong>
+                <strong>{p.label || p.name}</strong>
                 <span className="meta">
                   {' '}
                   {p.value} ({p.pct}%)
@@ -662,7 +822,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
               <ul className="user-list">
                 {analytics.charts.byDistrict.slice(0, 8).map((p) => (
                   <li key={p.name}>
-                    <strong>{p.name}</strong>
+                    <strong>{p.label || p.name}</strong>
                     <span className="meta">
                       {' '}
                       {p.value} ({p.pct}%)
@@ -678,7 +838,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
               <ul className="user-list">
                 {analytics.charts.byConstituency.slice(0, 8).map((p) => (
                   <li key={p.name}>
-                    <strong>{p.name}</strong>
+                    <strong>{p.label || p.name}</strong>
                     <span className="meta">
                       {' '}
                       {p.value} ({p.pct}%)
@@ -693,136 +853,154 @@ export default function AdminAnalyzeScreen({ onToast }) {
 
       <div className="card">
         <h3>Records ({items.length})</h3>
-        {!items.length ? (
+        {loading && !items.length ? (
+          <div className="portal-skeleton-rows" style={{ marginTop: 8 }}>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="portal-skeleton-row" style={{ width: `${92 - i * 8}%` }} />
+            ))}
+          </div>
+        ) : !items.length ? (
           <p className="muted">No rows for this filter. Adjust date/user or collect more.</p>
         ) : (
-          <ul className="user-list review-list">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {items.map((it) => {
               const open = expanded === it.id
               const v = it.verification || {}
-              return (
-                <li key={it.id} className="card" style={{ marginBottom: 10 }}>
+              const statusLabel = it.draft
+                ? 'draft'
+                : it.work === 'completed' || it.status === 'confirmed'
+                  ? 'confirmed'
+                  : it.status === 'rejected'
+                    ? 'rejected'
+                    : 'pending'
+              const pills = [
+                { label: `media ${it.completeness}`, color: it.completeness === 'complete' ? 'var(--ok)' : 'var(--bad)' },
+                { label: `geo ${it.has_geo ? 'OK' : 'FAIL'}`, color: it.has_geo ? 'var(--ok)' : 'var(--bad)' },
+                { label: `voice ${it.has_voice ? 'OK' : 'FAIL'}`, color: it.has_voice ? 'var(--ok)' : 'var(--bad)' },
+                { label: `photo ${it.has_photo ? 'OK' : '—'}`, color: it.has_photo ? 'var(--ok)' : 'var(--warn)' },
+              ]
+              const signals = []
+              if (it.has_geo) signals.push({ label: 'geo', type: 'ok' })
+              else signals.push({ label: 'no geo', type: 'bad' })
+              if (it.has_voice) signals.push({ label: 'voice', type: 'ok' })
+              else signals.push({ label: 'no voice', type: 'bad' })
+
+              const actionsEl = (
+                <>
                   <button
                     type="button"
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      background: 'none',
-                      border: 0,
-                      color: 'inherit',
-                      padding: 0,
-                      cursor: 'pointer',
-                    }}
-                    onClick={() => setExpanded(open ? null : it.id)}
+                    className="btn small primary"
+                    disabled={busyId === it.id}
+                    onClick={(e) => { e.stopPropagation(); setEditingId(it.id) }}
                   >
-                    <strong>
-                      #{it.id} · {it.submitted_by || '—'} · {it.date}
-                    </strong>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
-                      <span className={`pill ${it.completeness === 'complete' ? 'ok' : 'bad'}`}>
-                        <span className="dot" />
-                        {it.completeness}
-                      </span>
-                      <span className={`pill ${it.has_geo ? 'ok' : 'bad'}`}>
-                        <span className="dot" />
-                        geo {it.has_geo ? 'OK' : 'FAIL'}
-                      </span>
-                      <span className={`pill ${it.has_voice ? 'ok' : 'bad'}`}>
-                        <span className="dot" />
-                        voice {it.has_voice ? 'OK' : 'FAIL'}
-                      </span>
-                      <span className={`pill ${it.has_photo ? 'ok' : 'warn'}`}>
-                        <span className="dot" />
-                        photo {it.has_photo ? 'OK' : '—'}
-                      </span>
-                      <span className="pill">{it.status}</span>
-                    </div>
+                    Edit
                   </button>
-                  {open && (
-                    <div style={{ marginTop: 10 }}>
-                      {editingId === it.id ? (
-                        <SubmissionEditor
-                          item={it}
-                          onToast={onToast}
-                          onCancel={() => setEditingId(null)}
-                          onSaved={async () => {
-                            setEditingId(null)
-                            await load()
-                          }}
-                          onDeleted={async () => {
-                            setEditingId(null)
-                            await load()
-                          }}
-                        />
-                      ) : (
-                        <>
-                          {v.failures?.length > 0 && (
-                            <p className="muted" style={{ fontSize: 12 }}>
-                              Failures: {v.failures.join(', ')}
-                            </p>
-                          )}
-                          {(it.qa || []).slice(0, 8).map((row) => (
-                            <div key={row.q} className="kv" style={{ marginBottom: 4 }}>
-                              <span className="muted">{row.q}</span>
-                              <strong style={{ display: 'block' }}>{row.a}</strong>
-                            </div>
-                          ))}
-                          <div className="user-actions" style={{ marginTop: 10 }}>
-                            <button
-                              type="button"
-                              className="btn small primary"
-                              disabled={busyId === it.id}
-                              onClick={() => setEditingId(it.id)}
-                            >
-                              Edit data
-                            </button>
-                            {it.status !== 'confirmed' && it.completeness === 'complete' && (
-                              <button
-                                type="button"
-                                className="btn small primary"
-                                disabled={busyId === it.id}
-                                onClick={() => confirmOne(it.id, false)}
-                              >
-                                Confirm complete
-                              </button>
-                            )}
-                            {it.status !== 'confirmed' && it.completeness === 'incomplete' && (
-                              <button
-                                type="button"
-                                className="btn small danger"
-                                disabled={busyId === it.id}
-                                onClick={() => {
-                                  if (
-                                    confirm(
-                                      'STRICT FAIL: missing geo/voice/photo. Force confirm anyway?',
-                                    )
-                                  ) {
-                                    confirmOne(it.id, true)
-                                  }
-                                }}
-                              >
-                                Force confirm
-                              </button>
-                            )}
-                            {it.status !== 'rejected' && (
-                              <button
-                                type="button"
-                                className="btn small"
-                                disabled={busyId === it.id}
-                                onClick={() => rejectOne(it.id)}
-                              >
-                                Reject
-                              </button>
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </div>
+                  {it.status !== 'confirmed' && it.completeness === 'complete' && (
+                    <button
+                      type="button"
+                      className="btn small primary"
+                      disabled={busyId === it.id}
+                      onClick={(e) => { e.stopPropagation(); confirmOne(it.id, false) }}
+                      style={{ background: 'var(--ok)', borderColor: 'var(--ok)', color: '#fff' }}
+                    >
+                      Confirm
+                    </button>
                   )}
-                </li>
+                  {it.status !== 'confirmed' && it.completeness === 'incomplete' && (
+                    <button
+                      type="button"
+                      className="btn small primary"
+                      disabled={busyId === it.id}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (confirm('STRICT FAIL: missing geo/voice/photo. Force confirm anyway?')) {
+                          confirmOne(it.id, true)
+                        }
+                      }}
+                    >
+                      Force confirm
+                    </button>
+                  )}
+                  {it.status !== 'rejected' && (
+                    <button
+                      type="button"
+                      className="btn small"
+                      disabled={busyId === it.id}
+                      onClick={(e) => { e.stopPropagation(); rejectOne(it.id) }}
+                      style={{ color: 'var(--bad)', borderColor: 'var(--bad)' }}
+                    >
+                      Reject
+                    </button>
+                  )}
+                  {getStoredUser()?.role === 'super_admin' && it.status === 'rejected' && (
+                    <button
+                      type="button"
+                      className="btn small danger"
+                      disabled={busyId === it.id}
+                      onClick={(e) => { e.stopPropagation(); deleteRejectedOne(it.id) }}
+                    >
+                      Delete
+                    </button>
+                  )}
+
+                </>
+              )
+
+              const detail = (
+                <>
+                  {v.failures?.length > 0 && (
+                    <p className="muted" style={{ fontSize: 12 }}>
+                      Failures: {v.failures.join(', ')}
+                    </p>
+                  )}
+                  {(it.qa || []).map((row) => (
+                    <div key={row.q} className="kv" style={{ marginBottom: 4 }}>
+                      <span className="muted">{row.q}</span>
+                      <strong style={{ display: 'block' }}>{row.a}</strong>
+                    </div>
+                  ))}
+                </>
+              )
+
+              if (editingId === it.id) {
+                return (
+                  <div key={it.id} className="feed-card" style={{ animation: 'fcIn var(--dur-normal) var(--ease-out) both' }}>
+                    <SubmissionEditor
+                      item={it}
+                      onToast={onToast}
+                      onCancel={() => setEditingId(null)}
+                      onSaved={async () => {
+                        setEditingId(null)
+                        await load()
+                      }}
+                      onDeleted={async () => {
+                        setEditingId(null)
+                        await load()
+                      }}
+                    />
+                  </div>
+                )
+              }
+
+              return (
+                <FeedCard
+                  key={it.id}
+                  id={it.id}
+                  avatar={(it.submitted_by || '—')[0]?.toUpperCase()}
+                  name={`#${it.id} · ${it.submitted_by || '—'}`}
+                  location={it.district ? `${it.district}${it.constituency ? ', ' + it.constituency : ''}` : ''}
+                  time={it.date}
+                  pills={pills}
+                  status={statusLabel}
+                  signals={signals}
+                  actions={actionsEl}
+                  detail={detail}
+                  syncing={busyId === it.id}
+                  onClick={() => setExpanded(open ? null : it.id)}
+                />
               )
             })}
-          </ul>
+          </div>
         )}
       </div>
     </div>

@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import Icon from './Icons'
 import { getQuestions, getSurvey, listSurveys, saveQuestions, updateSurvey } from './api'
+import OptionPills from './OptionPills'
+import QuestionTelugu, { fillTeluguFromEnglish } from './QuestionTelugu'
+import { canTeluguQuestions, isQuestionVisible, labelPatch, nextQuestionId, teluguFields } from './questionKey'
 
 const EMPTY_Q = {
   id: '',
@@ -7,6 +11,7 @@ const EMPTY_Q = {
   type: 'text',
   options: [],
   required: false,
+  visible: true,
   speak: '',
 }
 
@@ -16,41 +21,104 @@ const defaultOptionsForType = (t) => {
   if (t === 'sentiment' || t === 'sentiment_text') return ['Positive', 'Neutral', 'Negative']
   if (t === 'range' || t === 'numeric_range' || t === 'age') return ['10-20', '21-30', '31-40', '41-50', '50+']
   if (t === 'choice') return ['Option 1', 'Option 2', 'Option 3']
+  if (t === 'multi_select' || t === 'multi') return ['Option 1', 'Option 2', 'Option 3', 'Option 4']
   return []
 }
 
-export default function AdminQuestionsScreen({ onToast }) {
-  const [title, setTitle] = useState('Field Survey')
+export default function AdminQuestionsScreen({ onToast, user }) {
+  const isSuperAdmin = user?.role === 'super_admin'
+  // Survey-question editing power — Super Admin grants it (least privilege)
+  const canEdit = isSuperAdmin || !!user?.can_edit_surveys
+  const canTelugu = canTeluguQuestions(user)
+  const [title, setTitle] = useState('')
   const [questions, setQuestions] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [surveys, setSurveys] = useState([])
-  const [surveyId, setSurveyId] = useState('') // '' = default form, else survey id
+  // '' = Super Admin platform default only. Client Admin always uses a real survey id.
+  const [surveyId, setSurveyId] = useState('')
+  const [surveysReady, setSurveysReady] = useState(false)
+  const [displayLang, setDisplayLang] = useState('en')
+  const [translatingAll, setTranslatingAll] = useState(false)
+  const [currentSurvey, setCurrentSurvey] = useState(null)
+  const originalLabelsRef = useRef(new Map())
 
   const load = useCallback(async () => {
+    if (!surveysReady) return
+    // Client Admin must never load the platform Field Survey (form_key=default)
+    if (!isSuperAdmin && !surveyId) {
+      setCurrentSurvey(null)
+      setTitle('')
+      setQuestions([])
+      originalLabelsRef.current = new Map()
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
       if (surveyId) {
         const d = await getSurvey(surveyId)
-        setTitle(d.survey?.title || 'Field Survey')
-        setQuestions(Array.isArray(d.survey?.questions) ? d.survey.questions : [])
-      } else {
+        setCurrentSurvey(d.survey || null)
+        setTitle(d.survey?.title || '')
+        const loaded = Array.isArray(d.survey?.questions) ? d.survey.questions : []
+        setQuestions(loaded)
+        const snapshot = new Map()
+        loaded.forEach((q, idx) => snapshot.set(String(q.id || idx), q.label || ''))
+        originalLabelsRef.current = snapshot
+        setDisplayLang(d.survey?.display_lang === 'te' ? 'te' : 'en')
+      } else if (isSuperAdmin) {
         const data = await getQuestions()
+        setCurrentSurvey({ isApp: true, surveyors: ['default'] })
         setTitle(data.title || 'Field Survey')
-        setQuestions(Array.isArray(data.questions) ? data.questions : [])
+        const loaded = Array.isArray(data.questions) ? data.questions : []
+        setQuestions(loaded)
+        const snapshot = new Map()
+        loaded.forEach((q, idx) => snapshot.set(String(q.id || idx), q.label || ''))
+        originalLabelsRef.current = snapshot
+      } else {
+        setCurrentSurvey(null)
+        setTitle('')
+        setQuestions([])
+        originalLabelsRef.current = new Map()
       }
     } catch (e) {
       onToast?.(e.message, 'error')
     } finally {
       setLoading(false)
     }
-  }, [surveyId, onToast])
+  }, [surveyId, onToast, surveysReady, isSuperAdmin])
+
 
   useEffect(() => {
+    let cancelled = false
     listSurveys()
-      .then((d) => setSurveys(d.items || []))
-      .catch(() => {})
-  }, [])
+      .then((d) => {
+        if (cancelled) return
+        // Hide platform seed forms from Client Admin entirely
+        const items = (d.items || []).filter((s) => {
+          if (!isSuperAdmin && (s.form_key === 'default' || s.form_key === 'legacy')) return false
+          return true
+        })
+        setSurveys(items)
+        setSurveysReady(true)
+        setSurveyId((cur) => {
+          if (cur && items.some((s) => String(s.id) === String(cur))) return cur
+          // Client Admin: auto-select first survey — never Field Survey default
+          if (!isSuperAdmin) return items[0] ? String(items[0].id) : ''
+          // Super Admin: prefer a real project if present; empty = platform default
+          return cur || (items[0] ? String(items[0].id) : '')
+        })
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSurveys([])
+          setSurveysReady(true)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isSuperAdmin])
 
   useEffect(() => {
     load()
@@ -69,26 +137,88 @@ export default function AdminQuestionsScreen({ onToast }) {
     })
   }
 
+  const maxQs = !isSuperAdmin ? Number(user?.max_questions_per_survey) || 0 : 0
+  const otherSurveysQuestionsCount = surveys
+    .filter((s) => String(s.id) !== String(surveyId))
+    .reduce((sum, s) => sum + (Number(s.question_count) || 0), 0)
+  const totalQuestionsUsed = otherSurveysQuestionsCount + questions.length
+
+  const surveySubmissions = surveys.find((s) => String(s.id) === String(surveyId))?.submissions || 0
+  const isFrozen = surveySubmissions > 0
+
   function addQ() {
+    if (isFrozen) {
+      onToast?.('Cannot add questions: Questionnaire is locked after survey start.', 'error')
+      return
+    }
+    if (maxQs > 0 && totalQuestionsUsed >= maxQs) {
+      onToast?.(`Total question quota reached: ${totalQuestionsUsed} of ${maxQs} questions allotted across surveys are used`, 'error')
+      return
+    }
     setQuestions((list) => [
       ...list,
       {
         ...EMPTY_Q,
-        id: `q_${Date.now()}`,
-        label: 'New question',
-        speak: 'New question',
+        id: `q_${list.length + 1}`,
+        label: '',
+        speak: '',
+        _uid: `n-${Date.now()}`,
       },
     ])
   }
 
   function removeQ(i) {
+    if (isFrozen) {
+      onToast?.('Cannot delete questions: Questionnaire is locked after survey start.', 'error')
+      return
+    }
     setQuestions((list) => list.filter((_, idx) => idx !== i))
   }
 
-  async function save() {
-    setSaving(true)
+  async function translateAll() {
+    if (isFrozen) return
+    setTranslatingAll(true)
     try {
-      const cleaned = questions.map((q) => {
+      const next = []
+      for (const q of questions) {
+        try {
+          next.push({ ...q, ...(await fillTeluguFromEnglish(q)) })
+        } catch {
+          next.push(q)
+        }
+      }
+      setQuestions(next)
+      onToast?.('Telugu filled for all questions and options', 'ok')
+    } catch (e) {
+      onToast?.(e.message || 'Translate failed', 'error')
+    } finally {
+      setTranslatingAll(false)
+    }
+  }
+
+  async function save() {
+    if (!canEdit) {
+      onToast?.('Super Admin has not granted your account survey-editing rights', 'error')
+      return
+    }
+    if (isFrozen) {
+      onToast?.(`Cannot save or push: This survey has ${surveySubmissions} active response${surveySubmissions === 1 ? '' : 's'}. Questions are frozen.`, 'error')
+      return
+    }
+    if (!isSuperAdmin && !surveyId) {
+      onToast?.('Create a survey first (Surveys tab), then edit its questions here', 'error')
+      return
+    }
+    if (maxQs > 0 && totalQuestionsUsed > maxQs) {
+      onToast?.(`Total question quota exceeded: ${totalQuestionsUsed} questions used of ${maxQs} allotted across all surveys`, 'error')
+      return
+    }
+    setSaving(true)
+
+    try {
+      const used = new Set()
+      const cleaned = questions.map((q, idx) => {
+        const qIndex = idx + 1
         const optsFromText =
           q.optionsText != null
             ? String(q.optionsText)
@@ -108,22 +238,37 @@ export default function AdminQuestionsScreen({ onToast }) {
                   : q.type === 'sentiment' || q.type === 'sentiment_text'
                     ? ['Positive', 'Neutral', 'Negative']
                     : q.type === 'choice'
-                      ? ['Option 1', 'Option 2']
-                      : undefined
+                      ? ['Option 1', 'Option 2', 'Option 3']
+                      : q.type === 'multi_select' || q.type === 'multi'
+                        ? ['Option 1', 'Option 2', 'Option 3', 'Option 4']
+                        : undefined
 
         return {
-          id: String(q.id || '').trim() || `q_${Math.random().toString(36).slice(2, 8)}`,
-          label: String(q.label || '').trim() || 'Question',
+          id: nextQuestionId(q.label, q.id, used, qIndex),
+          label: String(q.label || '').trim() || `Question ${qIndex}`,
           type: String(q.type || 'text'),
           options: finalOptions,
+          max_choices: (q.type === 'multi_select' || q.type === 'multi') ? (q.max_choices !== undefined ? Number(q.max_choices) : 2) : undefined,
           required: !!q.required,
+          visible: q.visible !== false,
           speak: String(q.speak || q.label || '').trim(),
+          ...teluguFields(q),
         }
       })
-      await (surveyId
-        ? updateSurvey(surveyId, { title, questions: cleaned })
-        : saveQuestions({ title, questions: cleaned }))
-      onToast?.('Questions saved — field app loads them automatically', 'ok')
+
+      if (surveyId) {
+        await updateSurvey(surveyId, { title, questions: cleaned, display_lang: displayLang })
+      } else if (isSuperAdmin) {
+        await saveQuestions({ title, questions: cleaned })
+      } else {
+        throw new Error('No survey selected')
+      }
+      const isAppSurvey = Boolean(
+        (currentSurvey?.surveyors || []).length > 0 ||
+        (isSuperAdmin && !surveyId) ||
+        currentSurvey?.isApp
+      )
+      onToast?.(isAppSurvey ? 'Questions saved — field app loads them automatically' : 'Questions saved', 'ok')
       await load()
     } catch (e) {
       onToast?.(e.message, 'error')
@@ -132,7 +277,7 @@ export default function AdminQuestionsScreen({ onToast }) {
     }
   }
 
-  if (loading) {
+  if (!surveysReady || loading) {
     return (
       <div className="screen">
         <p className="muted">Loading questions…</p>
@@ -143,15 +288,92 @@ export default function AdminQuestionsScreen({ onToast }) {
   return (
     <div className="screen">
       <header className="screen-head">
-        <h2>Client Admin · Questions</h2>
-        <p>Pick a survey · edit here · surveyor app loads automatically after unlock</p>
+        <h2>{isSuperAdmin ? 'Super Admin · Questions' : 'Client Admin · Questions'}</h2>
+        <p>Pick a {isSuperAdmin ? 'project' : 'survey'} · edit here · surveyor app loads automatically after unlock</p>
       </header>
 
+      {isFrozen && (
+        <div
+          className="card"
+          style={{
+            marginBottom: 12,
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            background: 'rgba(239, 68, 68, 0.08)',
+            padding: '12px 14px',
+            fontSize: 13,
+            color: '#991b1b',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <Icon name="lock" size={15} />
+          <div>
+            <strong>Questionnaire is frozen ({surveySubmissions} submitted response{surveySubmissions === 1 ? '' : 's'}).</strong>
+            <div style={{ fontSize: 12, marginTop: 2, color: '#b91c1c' }}>
+              Editing, adding, deleting, and saving questions is disabled to preserve the integrity of existing survey responses.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!canEdit && (
+        <div
+          className="card"
+          style={{
+            marginBottom: 12,
+            border: '1px solid rgba(217,119,6,0.5)',
+            background: 'rgba(217,119,6,0.08)',
+            padding: '12px 14px',
+            fontSize: 13,
+          }}
+        >
+          <Icon name="lock" size={13} /> <strong>Survey questions are read-only for you.</strong> Editing is locked until the
+          Super Admin grants your account <strong>Survey questions</strong> power (Surveyors → your
+          profile).
+        </div>
+      )}
+
+      {!isSuperAdmin && surveys.length === 0 && (
+        <div className="card" style={{ marginBottom: 12, padding: '14px 16px' }}>
+          <p style={{ margin: 0 }}>
+            No surveys yet. Create one under <strong>Surveys</strong>, then edit its questions here.
+          </p>
+          <p className="muted" style={{ margin: '8px 0 0', fontSize: 12 }}>
+            The platform “Field Survey” form is not available in Client Admin.
+          </p>
+        </div>
+      )}
+
+      {(isSuperAdmin || surveys.length > 0) && (
       <div className="card" style={{ marginBottom: 12 }}>
+        <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>
+          Display language (phone, dashboard, export)
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+          {[
+            { id: 'en', label: 'English' },
+            { id: 'te', label: 'తెలుగు' },
+          ].map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`chip ${displayLang === p.id ? 'selected' : ''}`}
+              onClick={() => {
+                if (p.id === 'te' && !canTelugu) return
+                setDisplayLang(p.id)
+              }}
+              disabled={isFrozen || !canEdit || (p.id === 'te' && !canTelugu)}
+              title={p.id === 'te' && !canTelugu ? 'Telugu translation is locked — Super Admin must grant it' : undefined}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
         <label className="field">
-          <span>Survey</span>
+          <span>{isSuperAdmin ? 'Project / form' : 'Survey'}</span>
           <select value={surveyId} onChange={(e) => setSurveyId(e.target.value)}>
-            <option value="">Field Survey (default)</option>
+            {isSuperAdmin && <option value="">Platform default (Field Survey)</option>}
             {surveys.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.title}
@@ -162,49 +384,52 @@ export default function AdminQuestionsScreen({ onToast }) {
         </label>
         <label className="field">
           <span>Form title</span>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={isFrozen || !canEdit} />
         </label>
         <p className="muted" style={{ fontSize: 12 }}>
           Surveyor flow: <strong>GPS → Photo → Q/A + audio</strong>. Audio and answers upload
           separately.
         </p>
       </div>
+      )}
 
+      {canTelugu && questions.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <button type="button" className="btn small" disabled={isFrozen || translatingAll || !canEdit} onClick={() => void translateAll()}>
+            {translatingAll ? 'Translating all…' : 'Auto-translate all questions + options'}
+          </button>
+        </div>
+      )}
       {questions.map((q, i) => {
         const type = q.type || 'text'
-        const hasOptions = ['choice', 'yesno', 'abc', 'sentiment', 'sentiment_text', 'range', 'numeric_range', 'age'].includes(type)
+        const hasOptions = ['choice', 'multi_select', 'multi', 'yesno', 'abc', 'sentiment', 'sentiment_text', 'range', 'numeric_range', 'age'].includes(type)
         const currentOpts = Array.isArray(q.options) && q.options.length > 0
           ? q.options
           : (q.optionsText || '').split(',').map((s) => s.trim()).filter(Boolean)
 
         return (
-          <div key={q.id || i} className="card" style={{ marginBottom: 14, borderLeft: '4px solid #00e599' }}>
+          <div key={q._uid || `qi-${i}`} className="card" style={{ marginBottom: 14, borderLeft: '4px solid #00e599' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span className="pill ok" style={{ fontSize: 11, fontWeight: 'bold' }}>
                 Q{i + 1} · {type.toUpperCase().replace('_', ' ')}
               </span>
-              <button type="button" className="btn small danger" onClick={() => removeQ(i)}>
+              <button type="button" className="btn small danger" onClick={() => removeQ(i)} disabled={isFrozen || !canEdit}>
                 Delete Q{i + 1}
               </button>
             </div>
 
             <label className="field">
-              <span>Field ID (Unique Key)</span>
-              <input
-                value={q.id}
-                onChange={(e) => updateQ(i, { id: e.target.value })}
-                placeholder="e.g. age_range"
-              />
-            </label>
-
-            <label className="field">
-              <span>Question Text / Label *</span>
+              <span>{displayLang === 'te' ? 'English question text' : 'Question'}</span>
               <input
                 value={q.label}
-                onChange={(e) => updateQ(i, { label: e.target.value })}
-                placeholder="What is your age or income bracket?"
+                onChange={(e) => updateQ(i, labelPatch(q, e.target.value))}
+                placeholder="Type the question"
+                disabled={isFrozen || !canEdit}
               />
             </label>
+            {canTelugu ? (
+              <QuestionTelugu q={q} onChange={(patch) => updateQ(i, patch)} onToast={onToast} disabled={isFrozen || !canEdit} />
+            ) : null}
 
             <label className="field">
               <span>Voice Prompt (spoken by surveyor / speech fill)</span>
@@ -212,6 +437,7 @@ export default function AdminQuestionsScreen({ onToast }) {
                 value={q.speak || ''}
                 onChange={(e) => updateQ(i, { speak: e.target.value })}
                 placeholder="Ask respondent their age bracket"
+                disabled={isFrozen || !canEdit}
               />
             </label>
 
@@ -221,20 +447,41 @@ export default function AdminQuestionsScreen({ onToast }) {
                 value={type}
                 onChange={(e) => handleTypeChange(i, e.target.value)}
                 style={{ fontWeight: 'bold' }}
+                disabled={isFrozen || !canEdit}
               >
+                <option value="multi_select">☑️ Multiple Select (Choose up to 2 answers / Multi-Pick)</option>
+                <option value="choice">🔘 Single Choice (One-Answer Pill)</option>
                 <option value="range">🔢 Numeric Range Buttons (e.g. 10-20, 21-30, 31-40, 50+)</option>
                 <option value="yesno">✓ Yes / ✕ No Buttons (Green & Red)</option>
                 <option value="sentiment_text">📝 Text + Sentiment Fillers (Positive/Neutral/Negative)</option>
-                <option value="choice">🔘 Choice / Custom Options (Multi-Pill)</option>
                 <option value="abc">🔤 A · B · C · D Choice Buttons</option>
                 <option value="sentiment">⭐ Sentiment Rating Scale (Positive/Neutral/Negative)</option>
+                <option value="meter">🎚️ Sentiment Meter (tap-o-meter 1–100%)</option>
                 <option value="text">✏️ Open Text Input</option>
                 <option value="age">🔢 Age / Numeric Field</option>
               </select>
             </label>
 
+            {(type === 'multi_select' || type === 'multi') && (
+              <label className="field" style={{ marginTop: 8 }}>
+                <span>Max allowed selections (Default: 2 answers)</span>
+                <select
+                  value={q.max_choices || 2}
+                  onChange={(e) => updateQ(i, { max_choices: Number(e.target.value) || 2 })}
+                  disabled={isFrozen || !canEdit}
+                  style={{ fontWeight: 'bold' }}
+                >
+                  <option value={2}>Pick up to 2 answers (Standard)</option>
+                  <option value={3}>Pick up to 3 answers</option>
+                  <option value={4}>Pick up to 4 answers</option>
+                  <option value={5}>Pick up to 5 answers</option>
+                  <option value={0}>Any number of answers (Unlimited)</option>
+                </select>
+              </label>
+            )}
+
             {hasOptions && (
-              <div style={{ marginTop: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid #334155', borderRadius: 8, padding: 12 }}>
+              <div style={{ marginTop: 10, background: 'rgba(15,23,42,0.05)', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 }}>
                 <label className="field" style={{ marginBottom: 8 }}>
                   <span>Answer Options (comma-separated or add chips below)</span>
                   <input
@@ -248,103 +495,116 @@ export default function AdminQuestionsScreen({ onToast }) {
                       const parsed = val.split(',').map((s) => s.trim()).filter(Boolean)
                       updateQ(i, { optionsText: val, options: parsed })
                     }}
-                    placeholder="Satisfied, Neutral, Unsatisfied, Don't Know"
+                    placeholder="Option 1, Option 2, Option 3, Option 4"
+                    disabled={isFrozen || !canEdit}
                   />
                 </label>
 
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ fontSize: 11, fontWeight: 'bold', color: '#38bdf8' }}>Active Option Pills:</span>
-                  {(currentOpts.length > 0 ? currentOpts : defaultOptionsForType(type)).map((opt, optIdx) => (
-                    <span
-                      key={optIdx}
-                      style={{
-                        background: '#243041',
-                        border: '1px solid #00e599',
-                        color: '#fff',
-                        borderRadius: 16,
-                        padding: '4px 10px',
-                        fontSize: 12,
-                        fontWeight: 'bold',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
-                    >
-                      {opt}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const list = currentOpts.filter((_, idx) => idx !== optIdx)
-                          updateQ(i, { options: list, optionsText: list.join(', ') })
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 0,
-                          color: '#ff6b6b',
-                          cursor: 'pointer',
-                          fontWeight: 'bold',
-                          fontSize: 13,
-                          padding: 0,
-                          lineHeight: 1,
-                        }}
-                        title="Remove option"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  ))}
-                  <button
-                    type="button"
-                    className="btn small primary"
-                    style={{ padding: '3px 10px', fontSize: 11 }}
-                    onClick={() => {
-                      const base = currentOpts.length > 0 ? currentOpts : defaultOptionsForType(type)
-                      const next = [...base, `Option ${base.length + 1}`]
-                      updateQ(i, { options: next, optionsText: next.join(', ') })
-                    }}
-                  >
-                    + Add Option
-                  </button>
+                  <OptionPills
+                    options={currentOpts.length > 0 ? currentOpts : defaultOptionsForType(type)}
+                    onChange={(list) => updateQ(i, { options: list, optionsText: list.join(', ') })}
+                    addLabel="+ Add Option"
+                    addValue={(n) => `Option ${n + 1}`}
+                    disabled={isFrozen || !canEdit}
+                  />
                 </div>
               </div>
             )}
 
-            <label
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 10,
-                background: q.required ? 'rgba(0, 229, 153, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                border: q.required ? '1px solid #00e599' : '1px solid #334155',
-                borderRadius: 8,
-                padding: '10px 14px',
-                cursor: 'pointer',
-                margin: '10px 0 12px',
-                width: 'fit-content',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={!!q.required}
-                onChange={(e) => updateQ(i, { required: e.target.checked })}
-              />
-              <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#00e599' : '#e2e8f0' }}>
-                {q.required ? '✓ Required Question (Surveyor must answer)' : 'Optional Question'}
-              </span>
-            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, margin: '10px 0 12px' }}>
+              <label
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  background: isQuestionVisible(q) ? 'rgba(5, 150, 105, 0.12)' : 'rgba(15, 23, 42, 0.05)',
+                  border: isQuestionVisible(q) ? '1px solid #059669' : '1px solid #e2e8f0',
+                  borderRadius: 8,
+                  padding: '10px 14px',
+                  cursor: isFrozen || !canEdit ? 'not-allowed' : 'pointer',
+                  width: 'fit-content',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isQuestionVisible(q)}
+                  onChange={(e) => updateQ(i, { visible: e.target.checked })}
+                  disabled={isFrozen || !canEdit}
+                />
+                <span style={{ fontSize: 13, fontWeight: 'bold', color: isQuestionVisible(q) ? '#059669' : '#64748b' }}>
+                  {isQuestionVisible(q) ? '✓ Visible on dashboard' : 'Hidden on dashboard'}
+                </span>
+              </label>
+              <label
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  background: q.required ? 'rgba(5, 150, 105, 0.12)' : 'rgba(15, 23, 42, 0.05)',
+                  border: q.required ? '1px solid #059669' : '1px solid #e2e8f0',
+                  borderRadius: 8,
+                  padding: '10px 14px',
+                  cursor: isFrozen || !canEdit ? 'not-allowed' : 'pointer',
+                  width: 'fit-content',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={!!q.required}
+                  onChange={(e) => updateQ(i, { required: e.target.checked })}
+                  disabled={isFrozen || !canEdit}
+                />
+                <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#00e599' : '#e2e8f0' }}>
+                  {q.required ? <><Icon name="check" size={12} /> Required (surveyor must answer)</> : 'Optional'}
+                </span>
+              </label>
+            </div>
 
             {/* Live App Preview */}
-            <div style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid #334155', borderRadius: 8, padding: 10, marginTop: 8 }}>
+            <div style={{ background: 'rgba(15,23,42,0.05)', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, marginTop: 8 }}>
               <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 'bold', color: '#38bdf8' }}>
-                📱 Mobile App Preview for Surveyors:
+                <Icon name="smartphone" size={12} /> Mobile App Preview for Surveyors:
               </p>
-              {type === 'yesno' ? (
+              {type === 'multi_select' || type === 'multi' ? (
+                <div>
+                  <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 'bold', color: '#059669' }}>
+                    ☑️ Select up to {q.max_choices || 2} answers (Multiple Choice):
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {(currentOpts.length > 0 ? currentOpts : ['Option 1', 'Option 2', 'Option 3', 'Option 4']).map((opt, idx) => {
+                      const sampleSelected = idx === 0 || idx === 1
+                      return (
+                        <span
+                          key={opt}
+                          style={{
+                            background: sampleSelected ? '#059669' : 'rgba(15,23,42,0.08)',
+                            color: sampleSelected ? '#ffffff' : '#0f172a',
+                            border: sampleSelected ? '2px solid #059669' : '1px solid #cbd5e1',
+                            padding: '6px 14px',
+                            borderRadius: 16,
+                            fontSize: 12,
+                            fontWeight: 'bold',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                          }}
+                        >
+                          <span style={{ fontSize: 13 }}>{sampleSelected ? '☑' : '☐'}</span>
+                          {opt}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : type === 'yesno' ? (
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button type="button" className="btn" style={{ background: '#059669', color: '#fff', fontWeight: 'bold', padding: '8px 20px', border: 0 }}>
-                    ✓ YES
+                    <Icon name="check" size={13} /> YES
                   </button>
                   <button type="button" className="btn" style={{ background: '#dc2626', color: '#fff', fontWeight: 'bold', padding: '8px 20px', border: 0 }}>
-                    ✕ NO
+                    <Icon name="cross" size={13} /> NO
                   </button>
                 </div>
               ) : type === 'sentiment_text' || type === 'sentiment' ? (
@@ -372,10 +632,25 @@ export default function AdminQuestionsScreen({ onToast }) {
                     </span>
                   ))}
                 </div>
+              ) : type === 'meter' ? (
+                <div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="100"
+                    readOnly
+                    style={{ width: '100%', accentColor: '#059669' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                    <span>1% · Negative</span>
+                    <span>50% · Neutral</span>
+                    <span>100% · Positive</span>
+                  </div>
+                </div>
               ) : hasOptions ? (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {(currentOpts.length > 0 ? currentOpts : ['Option 1', 'Option 2', 'Option 3']).map((opt, idx) => (
-                    <span key={idx} style={{ background: '#38bdf8', color: '#111', padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 'bold' }}>
+                  {(currentOpts.length > 0 ? currentOpts : ['Option 1', 'Option 2', 'Option 3']).map((opt, idx, list) => (
+                    <span key={`${String(opt)}:${list.slice(0, idx).filter((o) => o === opt).length}`} style={{ background: '#38bdf8', color: '#111', padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 'bold' }}>
                       {opt}
                     </span>
                   ))}
@@ -388,12 +663,43 @@ export default function AdminQuestionsScreen({ onToast }) {
         )
       })}
 
-      <button type="button" className="btn primary" onClick={addQ} style={{ marginBottom: 12 }}>
-        + Add Question
-      </button>
-      <button type="button" className="btn primary" onClick={save} disabled={saving} style={{ marginLeft: 8 }}>
-        {saving ? 'Saving & Pushing…' : 'Save & Push to Mobile App ✓'}
-      </button>
+      {(isSuperAdmin || surveyId) && (() => {
+        const isAppSurvey = Boolean(
+          (currentSurvey?.surveyors || []).length > 0 ||
+          (isSuperAdmin && !surveyId) ||
+          currentSurvey?.isApp
+        )
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+            <button type="button" className="btn primary" onClick={addQ} disabled={isFrozen || !canEdit || (maxQs > 0 && totalQuestionsUsed >= maxQs)}>
+              + Add Question
+            </button>
+            <button type="button" className="btn primary" onClick={save} disabled={isFrozen || saving || !canEdit} title={isFrozen ? 'Questionnaire is locked because this survey has active submissions' : undefined}>
+              {isFrozen ? (
+                <><Icon name="lock" size={12} /> {isAppSurvey ? 'Save & push to app (Locked)' : 'Save questions (Locked)'}</>
+              ) : saving ? (
+                isAppSurvey ? 'Saving & Pushing…' : 'Saving…'
+              ) : (
+                <><Icon name="check" size={12} /> {isAppSurvey ? 'Save & push to app' : 'Save questions'}</>
+              )}
+            </button>
+            {maxQs > 0 && (
+              <span
+                className="pill"
+                title="No. of questions used by Client Admin / Total questions allotted"
+                style={{
+                  background: totalQuestionsUsed >= maxQs ? '#fef2f2' : 'rgba(0, 229, 153, 0.12)',
+                  color: totalQuestionsUsed >= maxQs ? '#dc2626' : '#047857',
+                  fontWeight: 700,
+                  fontSize: 12,
+                }}
+              >
+                📝 Total survey questions created: {totalQuestionsUsed} / Allotted by Super Admin: {maxQs}
+              </span>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }

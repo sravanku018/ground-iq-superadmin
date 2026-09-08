@@ -4,8 +4,7 @@ import { versionLabel } from './version'
 
 /**
  * Surveyor field app login ONLY.
- * Credentials must be created by Client Admin (Users / generate).
- * No self-signup. Admins must use /admin portal.
+ * Credentials from Client Admin. No demo credentials on screen.
  */
 export default function LoginScreen({ onSuccess, onToast }) {
   const [username, setUsername] = useState('')
@@ -18,28 +17,29 @@ export default function LoginScreen({ onSuccess, onToast }) {
     e.preventDefault()
     setError('')
     if (!username.trim() || !password) {
-      setError('Enter the username and password from Client Admin')
+      setError('Enter username and password')
       onToast?.('Enter username and password', 'error')
       return
     }
     setLoading(true)
     try {
       clearSession()
-      // Server enforces expected_role=surveyor — admin logins rejected here
       const data = await login(username.trim(), password, 'surveyor')
       const role = data.user?.role
+      if (role === 'admin' || role === 'super_admin') {
+        onToast?.(`Welcome ${data.user.name || data.user.username}`, 'ok')
+        window.location.href = '/admin'
+        return
+      }
       if (role !== 'surveyor') {
         clearSession()
-        const msg =
-          role === 'admin'
-            ? 'Client Admin uses the web portal (/admin), not this app.'
-            : 'Not a surveyor login. Ask Client Admin to create your app access.'
+        const msg = 'Invalid surveyor login.'
         setError(msg)
         throw new Error(msg)
       }
       if (data.user?.active === false) {
         clearSession()
-        const msg = 'Account disabled. Contact Client Admin.'
+        const msg = 'Account disabled.'
         setError(msg)
         throw new Error(msg)
       }
@@ -47,8 +47,9 @@ export default function LoginScreen({ onSuccess, onToast }) {
       onSuccess?.(data.user)
     } catch (err) {
       const msg =
-        err.message ||
-        'Login failed. Use the surveyor username/password Client Admin created.'
+        err.status === 429
+          ? 'Too many login attempts — please wait 60 seconds.'
+          : err.message || 'Login failed'
       setError(msg)
       onToast?.(msg, 'error')
     } finally {
@@ -61,23 +62,20 @@ export default function LoginScreen({ onSuccess, onToast }) {
       <div className="fl-bg" aria-hidden />
 
       <header className="fl-header">
-        <div className="fl-logo">G</div>
+        <div className="fl-logo">S</div>
         <div>
-          <p className="fl-brand">Ground IQ</p>
+          <p className="fl-brand">Smart Survey X</p>
           <p className="fl-tag">Field Survey App</p>
         </div>
       </header>
 
       <main className="fl-main">
-        <h1 className="fl-title">Surveyor sign in</h1>
-        <p className="fl-lead">
-          Use the <strong>username &amp; password created by Client Admin</strong>. There is no
-          self-registration.
-        </p>
+        <h1 className="fl-title">Sign in</h1>
+        <p className="fl-lead">Surveyor access only.</p>
 
         <form className="fl-form" onSubmit={handleLogin} autoComplete="on">
           <label className="fl-label">
-            Username (from admin)
+            Username
             <input
               className="fl-input"
               name="username"
@@ -88,12 +86,12 @@ export default function LoginScreen({ onSuccess, onToast }) {
               autoCorrect="off"
               spellCheck={false}
               autoFocus
-              placeholder="e.g. s001"
+              placeholder="Username"
             />
           </label>
 
           <label className="fl-label">
-            Password (from admin)
+            Password
             <div className="fl-pass-wrap">
               <input
                 className="fl-input"
@@ -102,7 +100,7 @@ export default function LoginScreen({ onSuccess, onToast }) {
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password from admin"
+                placeholder="Password"
               />
               <button
                 type="button"
@@ -122,24 +120,20 @@ export default function LoginScreen({ onSuccess, onToast }) {
           ) : null}
 
           <button type="submit" className="fl-submit" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign in to field app'}
+            {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
 
-        <div className="fl-admin-hint">
-          <p>
-            <strong>No account?</strong> Ask Client Admin to open the portal →{' '}
-            <strong>Users</strong> → create or generate surveyors, then give you username +
-            password.
-          </p>
-          <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-            Client Admin portal → <a href={`${import.meta.env.BASE_URL}admin`}>/admin</a> (not this screen)
-          </p>
+        <div style={{ marginTop: 20, textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: 14 }}>
+          <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 8px' }}>Are you a Client Admin?</p>
+          <a
+            href="/admin"
+            className="btn secondary small"
+            style={{ display: 'inline-block', textDecoration: 'none', fontWeight: 600, padding: '8px 16px', background: 'rgba(255,255,255,0.08)', color: '#00e599', border: '1px solid rgba(0,229,153,0.3)', borderRadius: 8 }}
+          >
+            🛡️ Sign in to Client Admin Portal →
+          </a>
         </div>
-
-        <p className="fl-hint">
-          Demo (if seeded) · <span>s001</span> / <span>survey123</span>
-        </p>
 
         <p className="fl-version" aria-label="Build version">
           {versionLabel()}

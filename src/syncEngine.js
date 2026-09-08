@@ -5,17 +5,29 @@
  */
 
 import { getApiBase, getToken } from './api'
+import { mediaTypeOnly, mimeFromDataUrl, normalizeMediaDataUrl } from './mediaOptimize'
 import {
   getPackage,
   listPendingPackages,
   queueStats,
   removePackage,
+  stripDraftAnswers,
   updatePackage,
 } from './localStore'
-import { checkNetwork, isStrongEnoughToSync, watchNetwork } from './network'
+import { checkNetwork, isStrongEnoughToSync, isUsableForSync, watchNetwork } from './network'
 
 const TICK_MS = 60_000
 const POST_TIMEOUT = 45_000
+const MAX_ATTEMPTS = 8
+// Oldest pending item older than this → drain even on a weak link, so data is
+// never stranded forever when the connection is persistently poor.
+const STALE_MS = 15 * 60_000
+
+/** Exponential backoff for a failed package: 30s, 60s, 2m … capped at 30m. */
+function backoffMs(attempts) {
+  const n = Math.max(1, attempts || 1)
+  return Math.min(30_000 * 2 ** (n - 1), 30 * 60_000)
+}
 
 let running = false
 let started = false
@@ -42,14 +54,15 @@ async function fetchJson(url, { method = 'GET', token, body } = {}) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), POST_TIMEOUT)
   try {
+    const hasBody = body != null && method !== 'GET' && method !== 'HEAD'
     const res = await fetch(url, {
       method,
       headers: {
         Accept: 'application/json',
-        'Content-Type': 'application/json',
+        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: body != null ? JSON.stringify(body) : undefined,
+      ...(hasBody ? { body: JSON.stringify(body) } : {}),
       signal: controller.signal,
       cache: 'no-store',
     })
@@ -57,6 +70,16 @@ async function fetchJson(url, { method = 'GET', token, body } = {}) {
     if (!res.ok) {
       const err = new Error(data.error || data.message || `HTTP ${res.status}`)
       err.status = res.status
+      // A token that expires mid-drain must trigger the same re-login flow as
+      // interactive calls (api.js dispatches this too) — otherwise packages
+      // silently pile up as "failed" and the user is never prompted to sign in.
+      if (res.status === 401 && typeof window !== 'undefined') {
+        try {
+          window.dispatchEvent(new CustomEvent('esurvey-unauthorized', { detail: data }))
+        } catch {
+          /* non-DOM context */
+        }
+      }
       throw err
     }
     return data
@@ -79,11 +102,33 @@ export async function syncOnePackage(id) {
   emit({ type: 'package-start', id })
 
   try {
+    const answers = pkg.qa?.answers || {}
+    const voiceNeeded = answers._voice_required === true ||
+      (answers._voice_required !== false && pkg.locks?.voice !== false)
     // 1) Q/A
     if (!pkg.flags?.qa || !pkg.serverSubmissionId) {
-      // Client hard-lock: never sync package missing geo/photo/audio
-      if (!pkg.qa?.geo?.lat || !pkg.photoDataUrl || !pkg.audioDataUrl) {
-        throw new Error('Package incomplete — GPS, photo and voice are locked requirements')
+      // Client hard-lock: GPS + photo always; voice only when Client Admin required it
+      if (!pkg.qa?.geo?.lat || !pkg.photoDataUrl || (voiceNeeded && !pkg.audioDataUrl)) {
+        throw new Error(
+          voiceNeeded
+            ? 'Package incomplete — GPS, photo and voice are locked requirements'
+            : 'Package incomplete — GPS and photo are required',
+        )
+      }
+      const recIdx = Number(pkg.recordIndex)
+      const answers = stripDraftAnswers({
+        ...pkg.qa.answers,
+        client_package_id: pkg.id,
+        ...(Number.isFinite(recIdx) && recIdx > 0 ? { _recordIndex: recIdx } : {}),
+      })
+      const answeredKeys = Object.entries(answers || {}).filter(([k, v]) => {
+        if (!k || k.startsWith('_') || k.startsWith('geo_') || k.startsWith('location_') || k.startsWith('ts_') || k.startsWith('sec_')) return false
+        if (['draft', 'data_collector', 'client_package_id', 'submitted_by', 'has_photo', 'has_audio', 'photo', 'audio', 'photo_url', 'audio_url', 'answer_pattern', 'survey_id', 'form_id', 'form_key'].includes(k)) return false
+        const val = String(v ?? '').trim()
+        return val !== ''
+      })
+      if (answeredKeys.length === 0) {
+        throw new Error('Package has no answered questions — cannot push empty survey')
       }
       const qaBody = {
         form_key: pkg.qa.form_key,
@@ -92,11 +137,10 @@ export async function syncOnePackage(id) {
         submitted_by: pkg.qa.submitted_by,
         geo: pkg.qa.geo,
         location_details: pkg.qa.location_details || null,
-        locks: pkg.locks || pkg.qa.locks || { geo: true, photo: true, voice: true },
-        answers: {
-          ...pkg.qa.answers,
-          client_package_id: pkg.id,
-        },
+        locks: pkg.locks || pkg.qa.locks || { geo: true, photo: true, voice: voiceNeeded },
+        voice_required: voiceNeeded,
+        record_index: Number.isFinite(recIdx) && recIdx > 0 ? recIdx : null,
+        answers,
         // Push app version with every sync so admin knows which build collected data
         app_version:
           typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : pkg.app_version,
@@ -124,52 +168,56 @@ export async function syncOnePackage(id) {
     const serverId = pkg.serverSubmissionId
     if (!serverId) throw new Error('No server submission id after Q/A')
 
-    // 2) Photo
-    if (pkg.photoDataUrl && !pkg.flags?.photo) {
+    // 2) Photo — never mark uploaded if the blob is missing (that deleted it).
+    if (!pkg.flags?.photo) {
+      if (!pkg.photoDataUrl) {
+        throw new Error('Photo missing from device — recapture this record')
+      }
+      const photoData = normalizeMediaDataUrl(pkg.photoDataUrl, 'image/jpeg')
       await fetchJson(`${base}/api/submissions/${serverId}/media`, {
         method: 'POST',
         token,
         body: {
           kind: 'photo',
-          data: pkg.photoDataUrl,
-          mime: 'image/jpeg',
+          data: photoData,
+          mime: mimeFromDataUrl(photoData, 'image/jpeg') || 'image/jpeg',
           meta: { client_package_id: pkg.id, source: 'local_queue' },
         },
       })
       pkg = await updatePackage(id, {
         phase: 'photo_done',
         flags: { ...pkg.flags, photo: true },
-        // free memory after successful photo sync
-        photoDataUrl: null,
       })
       emit({ type: 'phase', id, phase: 'photo_done' })
-    } else if (!pkg.photoDataUrl) {
-      pkg = await updatePackage(id, {
-        flags: { ...pkg.flags, photo: true },
-      })
     }
 
-    // 3) Audio
-    if (pkg.audioDataUrl && !pkg.flags?.audio) {
+    // 3) Audio — skip when Client Admin set voice optional and none was recorded
+    if (!pkg.flags?.audio) {
+      if (!pkg.audioDataUrl) {
+        if (voiceNeeded) {
+          throw new Error('Voice missing from device — recapture this record')
+        }
+        pkg = await updatePackage(id, {
+          flags: { ...pkg.flags, audio: true },
+        })
+        emit({ type: 'phase', id, phase: 'audio_skipped' })
+      } else {
+      const audioData = normalizeMediaDataUrl(pkg.audioDataUrl, pkg.audioMime || 'audio/webm')
       await fetchJson(`${base}/api/submissions/${serverId}/media`, {
         method: 'POST',
         token,
         body: {
           kind: 'audio',
-          data: pkg.audioDataUrl,
-          mime: pkg.audioMime || 'audio/webm',
+          data: audioData,
+          mime: mediaTypeOnly(pkg.audioMime) || mimeFromDataUrl(audioData, 'audio/webm') || 'audio/webm',
           meta: { client_package_id: pkg.id, source: 'local_queue' },
         },
       })
       pkg = await updatePackage(id, {
         flags: { ...pkg.flags, audio: true },
-        audioDataUrl: null,
       })
       emit({ type: 'phase', id, phase: 'audio_done' })
-    } else {
-      pkg = await updatePackage(id, {
-        flags: { ...pkg.flags, audio: true },
-      })
+      }
     }
 
     // 4) Complete — remove heavy package or mark done
@@ -177,12 +225,20 @@ export async function syncOnePackage(id) {
     // keep lightweight trail then remove media shell
     await removePackage(id)
     emit({ type: 'package-done', id, serverId })
+    try {
+      window.dispatchEvent(new CustomEvent('esurvey-activity-refresh', { detail: { serverId } }))
+    } catch {
+      /* ignore */
+    }
     return { ok: true, id, serverId }
   } catch (e) {
+    const attempts = (pkg.attempts || 0) + 1
     await updatePackage(id, {
       phase: 'failed',
-      attempts: (pkg.attempts || 0) + 1,
+      attempts,
       lastError: e.message || 'sync failed',
+      // Back off before this package is eligible for auto-retry again (B3).
+      nextAttemptAt: Date.now() + backoffMs(attempts),
     })
     emit({ type: 'package-fail', id, error: e.message })
     throw e
@@ -190,53 +246,86 @@ export async function syncOnePackage(id) {
 }
 
 /** Drain queue FIFO, one package fully before next */
-export async function drainQueue(reason = 'tick') {
+export async function drainQueue(reason = 'tick', opts = {}) {
   if (running) return { skipped: true, reason: 'busy' }
   if (!getToken()) return { skipped: true, reason: 'no-auth' }
 
-  const net = await checkNetwork()
-  if (!isStrongEnoughToSync(net)) {
-    emit({ type: 'wait-network', quality: net.quality, reason })
-    return { skipped: true, reason: 'weak-network', net }
-  }
+  // Manual runs (the "Sync now" button) bypass the weak-network gate and the
+  // per-package backoff/attempt cap — the user explicitly asked to push now.
+  const manual = !!opts.manual || reason === 'manual'
 
-  const pending = await listPendingPackages()
-  if (!pending.length) {
-    emit({ type: 'empty', reason })
-    return { skipped: true, reason: 'empty' }
-  }
-
+  // Claim the lock synchronously — before any await — so overlapping triggers
+  // (interval / network-strong / enqueue / foreground) can't both pass the
+  // `if (running)` guard and start a second drain over the same pending list.
   running = true
-  emit({
-    type: 'drain-start',
-    count: pending.length,
-    reason,
-    quality: net.quality,
-  })
+  try {
+    const net = await checkNetwork()
 
-  let ok = 0
-  let fail = 0
-  // Systematic: one full package at a time
-  for (const p of pending) {
-    // re-check network between packages
-    const n2 = await checkNetwork()
-    if (!isStrongEnoughToSync(n2)) {
-      emit({ type: 'wait-network', quality: n2.quality, reason: 'mid-drain' })
-      break
+    const pending = await listPendingPackages()
+    if (!pending.length) {
+      emit({ type: 'empty', reason })
+      return { skipped: true, reason: 'empty' }
     }
-    try {
-      await syncOnePackage(p.id)
-      ok += 1
-    } catch {
-      fail += 1
-      // continue next package (don't block whole queue on one fail)
+
+    // Network gate. Automatic drains prefer a strong/ok link; but a manual run,
+    // or a queue whose oldest item has been stranded past STALE_MS, drains on
+    // any reachable link (weak included) so data is never stuck forever.
+    const oldest = pending[0] // sorted ascending by createdAt
+    const oldestAgeMs = Date.now() - new Date(oldest?.createdAt || 0).getTime()
+    const allowWeak = manual || oldestAgeMs >= STALE_MS
+    const gate = allowWeak ? isUsableForSync : isStrongEnoughToSync
+    if (!gate(net)) {
+      emit({ type: 'wait-network', quality: net.quality, reason })
+      return { skipped: true, reason: 'weak-network', net }
     }
+
+    emit({
+      type: 'drain-start',
+      count: pending.length,
+      reason,
+      quality: net.quality,
+    })
+
+    let ok = 0
+    let fail = 0
+    let blocked = 0
+    // Systematic: one full package at a time
+    for (const p of pending) {
+      // B3: don't hammer a failed package — honour its attempt cap + backoff
+      // window, unless this is a manual run.
+      if (!manual) {
+        if ((p.attempts || 0) >= MAX_ATTEMPTS) {
+          blocked += 1
+          continue
+        }
+        if (p.nextAttemptAt && p.nextAttemptAt > Date.now()) continue
+      }
+      // re-check network between packages (same gate as above)
+      const n2 = await checkNetwork()
+      if (!gate(n2)) {
+        emit({ type: 'wait-network', quality: n2.quality, reason: 'mid-drain' })
+        break
+      }
+      try {
+        await syncOnePackage(p.id)
+        ok += 1
+      } catch (e) {
+        fail += 1
+        // A 401 will hit every remaining package — stop the drain and let the
+        // esurvey-unauthorized handler prompt re-login instead of hammering.
+        if (e?.status === 401) break
+        // otherwise continue next package (don't block the queue on one fail)
+      }
+    }
+
+    const stats = await queueStats()
+    emit({ type: 'drain-done', ok, fail, blocked, pending: stats.pending, reason })
+    return { ok, fail, blocked, pending: stats.pending }
+  } finally {
+    // Always release the lock — including the weak-network / empty early
+    // returns and any thrown error — so the engine can never deadlock.
+    running = false
   }
-
-  running = false
-  const stats = await queueStats()
-  emit({ type: 'drain-done', ok, fail, pending: stats.pending, reason })
-  return { ok, fail, pending: stats.pending }
 }
 
 export function startSyncEngine() {
@@ -306,5 +395,6 @@ export async function getQueueSnapshot() {
 
 /** Force sync now (button) */
 export function forceSyncNow() {
-  return drainQueue('manual')
+  // Manual: bypass the weak-network gate and the per-package backoff/attempt cap.
+  return drainQueue('manual', { manual: true })
 }

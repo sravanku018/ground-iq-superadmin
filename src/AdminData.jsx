@@ -1,16 +1,37 @@
 import { useCallback, useEffect, useState } from 'react'
+import Icon from './Icons'
 import Papa from 'papaparse'
-import { exportSubmissions, getGeoSummary, uploadSurveys } from './api'
+import {
+  exportSubmissionMedia,
+  exportSubmissions,
+  fetchMediaBytes,
+  getAnalytics,
+  getGeoSummary,
+  listSubmissionMedia,
+  uploadSurveys,
+} from './api'
+import { saveBlob, zipStore } from './zipStore'
+import { FilterSection } from './PortalUI'
 import SurveyMap from './SurveyMap'
-import { getAnalytics } from './api'
+import { getDisplayLang } from './prefs'
+import { slugQuestionKey } from './questionKey'
+
+function pickFirstSurveyKey(items) {
+  const list = Array.isArray(items) ? items : []
+  const real = list.filter((s) => {
+    const k = String(s?.form_key || '')
+    return k && k !== 'default' && k !== 'legacy'
+  })
+  return String((real[0] || list[0])?.form_key || '')
+}
 
 /**
  * Admin-only: 2 tabs
  * 1) Geography — uploaded districts, mandals, assembly, MP + map
  * 2) Survey upload — CSV/JSON survey responses into Neon
  */
-export default function AdminDataScreen({ onToast }) {
-  const [tab, setTab] = useState('geography') // geography | surveys | export
+export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
+  const [tab, setTab] = useState(initialTab) // export | geography | surveys
   const [geo, setGeo] = useState(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -20,6 +41,7 @@ export default function AdminDataScreen({ onToast }) {
   const [surveys, setSurveys] = useState([])
   const [survey, setSurvey] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [exportingMedia, setExportingMedia] = useState(false)
   const [exp, setExp] = useState({
     period: 'total',
     day: new Date().toISOString().slice(0, 10),
@@ -28,12 +50,84 @@ export default function AdminDataScreen({ onToast }) {
     district: '',
     constituency: '',
     status: 'confirmed',
+    orientation: 'vertical',
+    lang: getDisplayLang() === 'en' ? 'en' : 'te',
   })
+
+  const exportFilters = () => ({
+    period: exp.period,
+    day: exp.day,
+    month: exp.month,
+    user: exp.user,
+    survey,
+    district: exp.district,
+    constituency: exp.constituency,
+    status: exp.status,
+    orientation: exp.orientation || 'vertical',
+    lang: exp.lang || 'te',
+  })
+
+  async function loadKindBytes(it, kind) {
+    const url = kind === 'photo' ? it.photo_url : it.audio_url
+    if (url && String(url).includes('/api/media/')) {
+      try {
+        return await fetchMediaBytes(url)
+      } catch {
+        /* fall through to list */
+      }
+    }
+    const listed = await listSubmissionMedia(it.id).catch(() => null)
+    const m = (listed?.media || []).find((x) => x.kind === kind)
+    if (m?.id) return fetchMediaBytes(`/api/media/${m.id}/file`)
+    if (m?.url && String(m.url).includes('/api/media/')) return fetchMediaBytes(m.url)
+    return null
+  }
+
+  async function downloadRawMedia() {
+    const d = await exportSubmissionMedia(exportFilters())
+    const items = d.items || []
+    const files = []
+    let failed = 0
+    for (const it of items) {
+      const folder = String(it.id)
+      for (const kind of ['photo', 'audio']) {
+        const want = kind === 'photo' ? it.photo_url || it.photo_file : it.audio_url || it.audio_file
+        if (!want) continue
+        try {
+          const data = await loadKindBytes(it, kind)
+          if (data?.length) {
+            const name =
+              kind === 'photo'
+                ? it.photo_file || `${folder}/${folder}.jpg`
+                : it.audio_file || `${folder}/${folder}.webm`
+            files.push({ name, data })
+          }
+        } catch {
+          failed += 1
+        }
+      }
+    }
+    if (!files.length) {
+      throw new Error(
+        failed
+          ? 'Could not download photos/audio (network). Redeploy the Deno API so media is proxied.'
+          : 'No photo or audio in this export',
+      )
+    }
+    const stamp = exp.period === 'day' ? exp.day : exp.period === 'month' ? exp.month : 'total'
+    saveBlob(zipStore(files), `survey-media-${stamp}.zip`)
+    return { files: files.length, records: items.length, failed }
+  }
 
   useEffect(() => {
     import('./api').then(({ listSurveys }) =>
       listSurveys()
-        .then((d) => setSurveys(d.items || []))
+        .then((d) => {
+          const items = d.items || []
+          setSurveys(items)
+          const key = pickFirstSurveyKey(items)
+          if (key) setSurvey((cur) => cur || key)
+        })
         .catch(() => {}),
     )
   }, [])
@@ -43,7 +137,7 @@ export default function AdminDataScreen({ onToast }) {
     try {
       const [summary, analytics] = await Promise.all([
         getGeoSummary(),
-        getAnalytics({ survey }).catch(() => null),
+        survey ? getAnalytics({ survey }).catch(() => null) : Promise.resolve(null),
       ])
       setGeo(summary)
       setMapAnalytics(analytics)
@@ -71,7 +165,6 @@ export default function AdminDataScreen({ onToast }) {
     }
     return {
       respondent_name: pick('respondent_name', 'name', 'voter_name', 'respondent'),
-      phone: pick('phone', 'mobile'),
       district: pick('district', 'dist'),
       constituency: pick('constituency', 'assembly', 'assembly_constituency', 'ac'),
       mp_constituency: pick('mp_constituency', 'mp', 'parliament', 'pc'),
@@ -152,16 +245,7 @@ export default function AdminDataScreen({ onToast }) {
     try {
       let csv = ''
       try {
-        csv = await exportSubmissions({
-          period: exp.period,
-          day: exp.day,
-          month: exp.month,
-          user: exp.user,
-          survey,
-          district: exp.district,
-          constituency: exp.constituency,
-          status: exp.status,
-        })
+        csv = await exportSubmissions(exportFilters())
       } catch (netErr) {
         console.warn('Backend export route hit network/CORS error, falling back to client CSV generator:', netErr)
         const analyticsData = mapAnalytics || (await getAnalytics().catch(() => ({})))
@@ -184,12 +268,29 @@ export default function AdminDataScreen({ onToast }) {
           filtered = filtered.filter((r) => String(r.formKey || r.form_key || r.survey || '') === survey)
         }
 
-        const fixed = ['id', 'date', 'survey', 'surveyor', 'district', 'constituency', 'mandal', 'latitude', 'longitude', 'party', 'gender', 'caste', 'age', 'respondent', 'photo_url', 'audio_url']
+        const fixed = ['id', 'date', 'survey', 'surveyor', 'district', 'constituency', 'mandal', 'latitude', 'longitude', 'party', 'gender', 'caste', 'age', 'respondent', 'photo_url', 'audio_url', 'photo_file', 'audio_file']
         const qKeys = new Set()
         filtered.forEach((r) => {
           Object.keys(r.answers || {}).forEach((k) => qKeys.add(k))
         })
-        const qCols = [...qKeys].sort()
+        const qCols = [...qKeys].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+
+        const qLabelMap = new Map()
+        for (const s of surveys || []) {
+          if (Array.isArray(s.questions)) {
+            s.questions.forEach((q, idx) => {
+              const label = q.label || q.label_te || `Question ${idx + 1}`
+              if (q.id) qLabelMap.set(String(q.id).toLowerCase(), label)
+              qLabelMap.set(`q_${idx + 1}`, label)
+              qLabelMap.set(`q${idx + 1}`, label)
+              if (q.label) qLabelMap.set(slugQuestionKey(q.label), label)
+            })
+          }
+        }
+        const humanize = (k) =>
+          qLabelMap.get(String(k).toLowerCase()) ||
+          qLabelMap.get(slugQuestionKey(k)) ||
+          String(k).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 
         const esc = (v) => {
           const s = String(v ?? '')
@@ -197,44 +298,74 @@ export default function AdminDataScreen({ onToast }) {
         }
 
         const lines = []
-        lines.push([...fixed, ...qCols].map(esc).join(','))
+        const isVertical = exp.orientation !== 'horizontal'
 
-        filtered.forEach((r) => {
-          const base = {
-            id: r.id || '',
-            date: String(r.created_at || r.date || '').slice(0, 10),
-            survey: r.formKey || r.survey || '',
-            surveyor: r.submitted_by || r.surveyor || '',
-            district: r.district || '',
-            constituency: r.constituency || '',
-            mandal: r.mandal || '',
-            latitude: r.latitude || r.lat || '',
-            longitude: r.longitude || r.lng || '',
-            party: r.party || '',
-            gender: r.gender || '',
-            caste: r.caste || '',
-            age: r.age || '',
-            respondent: r.respondent || '',
-            photo_url: r.photo_url || r.photoUrl || '',
-            audio_url: r.audio_url || r.audioUrl || '',
-          }
-          const row = []
-          fixed.forEach((c) => row.push(esc(base[c])))
-          qCols.forEach((c) => {
-            const val = (r.answers || {})[c]
-            row.push(esc(Array.isArray(val) ? val.join(' | ') : val))
-          })
-          lines.push(row.join(','))
+        const getBaseRecord = (r) => ({
+          id: r.id || '',
+          date: String(r.created_at || r.date || '').slice(0, 10),
+          survey: r.formKey || r.survey || '',
+          surveyor: r.submitted_by || r.surveyor || '',
+          district: r.district || '',
+          constituency: r.constituency || '',
+          mandal: r.mandal || '',
+          latitude: r.latitude || r.lat || '',
+          longitude: r.longitude || r.lng || '',
+          party: r.party || '',
+          gender: r.gender || '',
+          caste: r.caste || '',
+          age: r.age || '',
+          respondent: r.respondent || '',
+          photo_url: r.photo_url || r.photoUrl || '',
+          audio_url: r.audio_url || r.audioUrl || '',
+          photo_file: r.id ? `${r.id}/${r.id}.jpg` : '',
+          audio_file: r.id ? `${r.id}/${r.id}.webm` : '',
         })
+
+        if (isVertical) {
+          const headerRow = ['Field / Question', ...filtered.map((r, idx) => `Record #${r.id || idx + 1}`)]
+          lines.push(headerRow.map(esc).join(','))
+          fixed.forEach((c) => {
+            const rowVals = [humanize(c)]
+            filtered.forEach((r) => {
+              const base = getBaseRecord(r)
+              rowVals.push(esc(base[c]))
+            })
+            lines.push(rowVals.join(','))
+          })
+          qCols.forEach((c) => {
+            const rowVals = [esc(humanize(c))]
+            filtered.forEach((r) => {
+              const val = (r.answers || {})[c]
+              rowVals.push(esc(Array.isArray(val) ? val.join(' | ') : val))
+            })
+            lines.push(rowVals.join(','))
+          })
+        } else {
+          lines.push([...fixed.map(humanize), ...qCols.map(humanize)].map(esc).join(','))
+          filtered.forEach((r) => {
+            const base = getBaseRecord(r)
+            const row = []
+            fixed.forEach((c) => row.push(esc(base[c])))
+            qCols.forEach((c) => {
+              const val = (r.answers || {})[c]
+              row.push(esc(Array.isArray(val) ? val.join(' | ') : val))
+            })
+            lines.push(row.join(','))
+          })
+        }
         csv = lines.join('\n')
       }
 
+
       const rows = csv.split('\n').filter(Boolean)
       const stamp = exp.period === 'day' ? exp.day : exp.period === 'month' ? exp.month : 'total'
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+      const asTe = (exp.lang || 'te') === 'te'
+      const blob = new Blob([asTe && !csv.startsWith('\uFEFF') ? `\uFEFF${csv}` : csv], {
+        type: 'text/csv;charset=utf-8',
+      })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
-      a.download = `survey-export-${stamp}.csv`
+      a.download = asTe ? `survey-export-te-${stamp}.csv` : `survey-export-${stamp}.csv`
       a.click()
       URL.revokeObjectURL(a.href)
       onToast?.(`Exported ${Math.max(0, rows.length - 1)} record(s) to CSV`, 'ok')
@@ -315,7 +446,7 @@ export default function AdminDataScreen({ onToast }) {
                     <label className="field compact">
                       <span>By survey</span>
                       <select value={survey} onChange={(e) => setSurvey(e.target.value)}>
-                        <option value="">All surveys</option>
+                        {surveys.length === 0 ? <option value="">Select survey</option> : null}
                         {surveys.map((s) => (
                           <option key={s.id} value={s.form_key}>
                             {s.title}
@@ -442,7 +573,7 @@ export default function AdminDataScreen({ onToast }) {
                   </thead>
                   <tbody>
                     {preview.slice(0, 8).map((r, i) => (
-                      <tr key={i}>
+                      <tr key={`${r.respondent_name}|${r.district}|${r.constituency}|${i}`}>
                         <td>{r.respondent_name || '—'}</td>
                         <td>{r.district || '—'}</td>
                         <td>{r.constituency || '—'}</td>
@@ -472,195 +603,318 @@ export default function AdminDataScreen({ onToast }) {
           <div className="card" style={{ marginBottom: 14 }}>
             <h3>Export collected data (CSV text file)</h3>
             <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-              One row per record — answers + photo/audio links. Filter by day, month, total,
-              surveyor, survey, district or assembly.
+              One row per record — answers + photo/audio links. Open sections below for filters.
             </p>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-              {[
-                { id: 'total', label: 'Total' },
-                { id: 'today', label: 'Today' },
-                { id: 'day', label: 'Day' },
-                { id: 'month', label: 'Month' },
-              ].map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={`chip ${exp.period === p.id ? 'selected' : ''}`}
-                  onClick={() => setExp((f) => ({ ...f, period: p.id }))}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            {exp.period === 'day' && (
+            <FilterSection title="Survey & surveyor" badge={survey || 'select'} defaultOpen>
               <label className="field compact">
-                <span>Day</span>
-                <input
-                  type="date"
-                  value={exp.day}
-                  onChange={(e) => setExp((f) => ({ ...f, day: e.target.value }))}
-                />
-              </label>
-            )}
-            {exp.period === 'month' && (
-              <label className="field compact">
-                <span>Month</span>
-                <input
-                  type="month"
-                  value={exp.month}
-                  onChange={(e) => setExp((f) => ({ ...f, month: e.target.value }))}
-                />
-              </label>
-            )}
-            <label className="field compact">
-              <span>Survey</span>
-              <select value={survey} onChange={(e) => setSurvey(e.target.value)}>
-                <option value="">All surveys</option>
-                {surveys.map((s) => (
-                  <option key={s.id} value={s.form_key}>
-                    {s.title} {s.surveyor_names ? `(👥 ${s.surveyor_names})` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {(() => {
-              if (!survey) return null
-              const sel = surveys.find((s) => s.form_key === survey || String(s.id) === String(survey))
-              const assignedNames = (sel?.surveyor_names || '')
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean)
-
-              const rawItems = mapAnalytics?.items || mapAnalytics?.rawItems || []
-              const matchingSubmissions = rawItems.filter((r) => String(r.formKey || r.form_key || r.survey || '') === survey)
-              const activeNames = [...new Set(matchingSubmissions.map((r) => r.submitted_by || r.surveyor).filter(Boolean))]
-
-              const allTeamNames = [...new Set([...assignedNames, ...activeNames])]
-              const teamDisplay = allTeamNames.length > 0 ? allTeamNames.join(', ') : 'No surveyors registered for this survey yet'
-
-              return (
-                <div
-                  style={{
-                    background: '#1e293b',
-                    border: '1px solid #00e599',
-                    borderRadius: 10,
-                    padding: '12px 14px',
-                    marginBottom: 12,
+                <span>Survey</span>
+                <select
+                  value={survey}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setSurvey(v)
+                    const s = surveys.find((x) => x.form_key === v)
+                    if (s?.display_lang === 'te' || s?.display_lang === 'en') {
+                      setExp((f) => ({ ...f, lang: s.display_lang }))
+                    }
                   }}
                 >
-                  <div style={{ color: '#00e599', fontWeight: 'bold', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span>👥 Field Team Surveyors for "{sel?.title || survey}":</span>
-                  </div>
-                  <div style={{ color: '#ffffff', fontSize: 14, fontWeight: 'bold', marginTop: 4 }}>
-                    {teamDisplay}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
-                    Submissions: <strong>{matchingSubmissions.length || sel?.submissions || 0}</strong> · Questions: <strong>{sel?.question_count || 0}</strong>
-                  </div>
-                </div>
-              )
-            })()}
-
-            {(() => {
-              const sel = surveys.find((s) => s.form_key === survey || String(s.id) === String(survey))
-              const assignedNames = (sel?.surveyor_names || '')
-                .split(',')
-                .map((s) => s.trim().toLowerCase())
-                .filter(Boolean)
-
-              const rawItems = mapAnalytics?.items || mapAnalytics?.rawItems || []
-              const matchingSubmissions = rawItems.filter((r) => String(r.formKey || r.form_key || r.survey || '') === survey)
-              const activeNames = [...new Set(matchingSubmissions.map((r) => String(r.submitted_by || r.surveyor || '').trim().toLowerCase()).filter(Boolean))]
-
-              const allUsers = mapAnalytics?.dataFilters?.by_user || []
-              let displayUsers = allUsers
-
-              if (survey) {
-                const teamUsers = allUsers.filter((u) => {
-                  const uname = u.name.toLowerCase()
-                  return assignedNames.some((an) => uname.includes(an) || an.includes(uname)) ||
-                         activeNames.some((ac) => uname.includes(ac) || ac.includes(uname))
-                })
-                if (teamUsers.length > 0) {
-                  displayUsers = teamUsers
-                }
-              }
-
-              return (
-                <label className="field compact">
-                  <span>Surveyor {survey ? `(Field Collectors for "${sel?.title || survey}")` : ''}</span>
-                  <select
-                    value={exp.user}
-                    onChange={(e) => setExp((f) => ({ ...f, user: e.target.value }))}
-                  >
-                    <option value="">
-                      {survey ? `All field team collectors for "${sel?.title || survey}"` : 'All surveyors'}
+                  {surveys.length === 0 ? <option value="">Select survey</option> : null}
+                  {surveys.map((s) => (
+                    <option key={s.id} value={s.form_key}>
+                      {s.title} {s.surveyor_names ? `(👥 ${s.surveyor_names})` : ''}
                     </option>
-                    {displayUsers.map((u) => {
-                      const uname = u.name.toLowerCase()
-                      const isAssigned = assignedNames.some((an) => uname.includes(an) || an.includes(uname))
-                      return (
-                        <option key={u.name} value={u.name}>
-                          {u.name} ({u.value} submissions) {isAssigned ? '👥 [Assigned Team]' : ''}
-                        </option>
+                  ))}
+                </select>
+              </label>
+
+              {(() => {
+                if (!survey) return null
+                const sel = surveys.find(
+                  (s) => s.form_key === survey || String(s.id) === String(survey),
+                )
+                const assignedNames = (sel?.surveyor_names || '')
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+
+                const rawItems = mapAnalytics?.items || mapAnalytics?.rawItems || []
+                const matchingSubmissions = rawItems.filter(
+                  (r) => String(r.formKey || r.form_key || r.survey || '') === survey,
+                )
+                const activeNames = [
+                  ...new Set(
+                    matchingSubmissions
+                      .map((r) => r.submitted_by || r.surveyor)
+                      .filter(Boolean),
+                  ),
+                ]
+
+                const allTeamNames = [...new Set([...assignedNames, ...activeNames])]
+                const teamDisplay =
+                  allTeamNames.length > 0
+                    ? allTeamNames.join(', ')
+                    : 'No surveyors registered for this survey yet'
+
+                return (
+                  <div
+                    style={{
+                      background: '#f1f5f9',
+                      border: '1px solid #059669',
+                      borderRadius: 10,
+                      padding: '12px 14px',
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: '#059669',
+                        fontWeight: 'bold',
+                        fontSize: 13,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="users" size={13} /> Field team for &quot;{sel?.title || survey}&quot;:</span>
+                    </div>
+                    <div style={{ color: '#0f172a', fontSize: 14, fontWeight: 'bold', marginTop: 4 }}>
+                      {teamDisplay}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+                      Submissions:{' '}
+                      <strong>{matchingSubmissions.length || sel?.submissions || 0}</strong> ·
+                      Questions: <strong>{sel?.question_count || 0}</strong>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {(() => {
+                const sel = surveys.find(
+                  (s) => s.form_key === survey || String(s.id) === String(survey),
+                )
+                const assignedNames = (sel?.surveyor_names || '')
+                  .split(',')
+                  .map((s) => s.trim().toLowerCase())
+                  .filter(Boolean)
+
+                const rawItems = mapAnalytics?.items || mapAnalytics?.rawItems || []
+                const matchingSubmissions = rawItems.filter(
+                  (r) => String(r.formKey || r.form_key || r.survey || '') === survey,
+                )
+                const activeNames = [
+                  ...new Set(
+                    matchingSubmissions
+                      .map((r) =>
+                        String(r.submitted_by || r.surveyor || '')
+                          .trim()
+                          .toLowerCase(),
                       )
-                    })}
-                  </select>
+                      .filter(Boolean),
+                  ),
+                ]
+
+                const allUsers = mapAnalytics?.dataFilters?.by_user || []
+                let displayUsers = allUsers
+
+                if (survey) {
+                  const teamUsers = allUsers.filter((u) => {
+                    const uname = u.name.toLowerCase()
+                    return (
+                      assignedNames.some((an) => uname.includes(an) || an.includes(uname)) ||
+                      activeNames.some((ac) => uname.includes(ac) || ac.includes(uname))
+                    )
+                  })
+                  if (teamUsers.length > 0) {
+                    displayUsers = teamUsers
+                  }
+                }
+
+                return (
+                  <label className="field compact">
+                    <span>
+                      Surveyor
+                      {survey ? ` (team for "${sel?.title || survey}")` : ''}
+                    </span>
+                    <select
+                      value={exp.user}
+                      onChange={(e) => setExp((f) => ({ ...f, user: e.target.value }))}
+                    >
+                      <option value="">
+                        {survey
+                          ? `All field team collectors for "${sel?.title || survey}"`
+                          : 'All surveyors'}
+                      </option>
+                      {displayUsers.map((u) => {
+                        const uname = u.name.toLowerCase()
+                        const isAssigned = assignedNames.some(
+                          (an) => uname.includes(an) || an.includes(uname),
+                        )
+                        return (
+                          <option key={u.name} value={u.name}>
+                            {u.name} ({u.value} submissions){' '}
+                            {isAssigned ? '👥 [Assigned Team]' : ''}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </label>
+                )
+              })()}
+            </FilterSection>
+
+            <FilterSection
+              title="Time range"
+              badge={exp.period}
+              defaultOpen
+            >
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                {[
+                  { id: 'total', label: 'Total' },
+                  { id: 'today', label: 'Today' },
+                  { id: 'day', label: 'Day' },
+                  { id: 'month', label: 'Month' },
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`chip ${exp.period === p.id ? 'selected' : ''}`}
+                    onClick={() => setExp((f) => ({ ...f, period: p.id }))}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              {exp.period === 'day' && (
+                <label className="field compact">
+                  <span>Day</span>
+                  <input
+                    type="date"
+                    value={exp.day}
+                    onChange={(e) => setExp((f) => ({ ...f, day: e.target.value }))}
+                  />
                 </label>
-              )
-            })()}
-            <label className="field compact">
-              <span>District</span>
-              <select
-                value={exp.district}
-                onChange={(e) => setExp((f) => ({ ...f, district: e.target.value }))}
-              >
-                <option value="">All districts</option>
-                {(mapAnalytics?.filterOptions?.districts || []).map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field compact">
-              <span>Assembly</span>
-              <select
-                value={exp.constituency}
-                onChange={(e) => setExp((f) => ({ ...f, constituency: e.target.value }))}
-              >
-                <option value="">All assemblies</option>
-                {(mapAnalytics?.filterOptions?.constituencies || []).map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field compact">
-              <span>Status</span>
-              <select
-                value={exp.status}
-                onChange={(e) => setExp((f) => ({ ...f, status: e.target.value }))}
-              >
-                <option value="confirmed">Confirmed</option>
-                <option value="pending">Pending</option>
-                <option value="all">All</option>
-              </select>
-            </label>
+              )}
+              {exp.period === 'month' && (
+                <label className="field compact">
+                  <span>Month</span>
+                  <input
+                    type="month"
+                    value={exp.month}
+                    onChange={(e) => setExp((f) => ({ ...f, month: e.target.value }))}
+                  />
+                </label>
+              )}
+            </FilterSection>
+
+            <FilterSection
+              title="Location & status"
+              badge={[exp.district, exp.constituency, exp.status].filter(Boolean).join(' · ') || 'all'}
+              defaultOpen={false}
+            >
+              <label className="field compact">
+                <span>District</span>
+                <select
+                  value={exp.district}
+                  onChange={(e) => setExp((f) => ({ ...f, district: e.target.value }))}
+                >
+                  <option value="">All districts</option>
+                  {(mapAnalytics?.filterOptions?.districts || []).map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field compact">
+                <span>Assembly</span>
+                <select
+                  value={exp.constituency}
+                  onChange={(e) => setExp((f) => ({ ...f, constituency: e.target.value }))}
+                >
+                  <option value="">All assemblies</option>
+                  {(mapAnalytics?.filterOptions?.constituencies || []).map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field compact">
+                <span>Status</span>
+                <select
+                  value={exp.status}
+                  onChange={(e) => setExp((f) => ({ ...f, status: e.target.value }))}
+                >
+                  <option value="confirmed">Confirmed</option>
+                  <option value="pending">Pending</option>
+                  <option value="all">All</option>
+                </select>
+              </label>
+              <label className="field compact">
+                <span>CSV Layout</span>
+                <select
+                  value={exp.orientation || 'vertical'}
+                  onChange={(e) => setExp((f) => ({ ...f, orientation: e.target.value }))}
+                >
+                  <option value="vertical">Vertical (Questions as Rows — Key/Value per column)</option>
+                  <option value="horizontal">Horizontal (Standard — One row per record)</option>
+                </select>
+              </label>
+              <label className="field compact">
+                <span>Language / భాష</span>
+                <select
+                  value={exp.lang || 'te'}
+                  onChange={(e) => setExp((f) => ({ ...f, lang: e.target.value }))}
+                >
+                  <option value="te">తెలుగు (Telugu)</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
+            </FilterSection>
+
             <button
               type="button"
               className="btn primary"
               style={{ marginTop: 12 }}
-              disabled={exporting}
+              disabled={exporting || exportingMedia}
               onClick={doExport}
             >
-              {exporting ? 'Exporting…' : 'Download CSV (text file) with photo + audio links'}
+              {exporting
+                ? 'Exporting…'
+                : (exp.lang || 'te') === 'te'
+                  ? 'Download Telugu CSV (ప్రశ్నలు + సమాధానాలు)'
+                  : 'Download CSV (text file) with photo + audio links'}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              style={{ marginTop: 8 }}
+              disabled={exporting || exportingMedia}
+              onClick={async () => {
+                setExportingMedia(true)
+                try {
+                  const { files, records } = await downloadRawMedia()
+                  onToast?.(
+                    files
+                      ? `Downloaded ${files} raw file(s) named with the record id (${records} records)`
+                      : 'No photo or audio in this export',
+                    files ? 'ok' : 'error',
+                  )
+                } catch (e) {
+                  onToast?.(e.message || 'Media download failed', 'error')
+                } finally {
+                  setExportingMedia(false)
+                }
+              }}
+            >
+              {exportingMedia ? 'Packing folder…' : 'Download photos & audio in folders (same record id)'}
             </button>
             <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-              Photo/audio appear as links per record (media stored on R2 / free Neon storage).
+              CSV and the zip use the same fields: <strong>{'{id}/{id}.jpg'}</strong> and{' '}
+              <strong>{'{id}/{id}.webm'}</strong>. One folder per record, named with that record id.
             </p>
           </div>
         </div>

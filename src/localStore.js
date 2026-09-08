@@ -88,6 +88,12 @@ export async function savePackageLocal({
   audioMime,
   recordIndex,
   locks,
+  step,
+  answered,
+  total,
+  id: existingId,
+  activeQ,
+  createdAt: existingCreatedAt,
 }, opts = {}) {
   // Hard reject incomplete packages (client-side lock) — drafts may skip locks
   const draft = !!opts.draft
@@ -97,20 +103,34 @@ export async function savePackageLocal({
   if (!draft && (!photoDataUrl || String(photoDataUrl).length < 100)) {
     throw new Error('Package rejected: photo lock missing')
   }
-  if (!draft && (!audioDataUrl || String(audioDataUrl).length < 100)) {
+  if (!draft && locks?.voice !== false && (!audioDataUrl || String(audioDataUrl).length < 100)) {
     throw new Error('Package rejected: voice lock missing')
   }
 
-  const id = newId()
+  const id = existingId || newId()
+  let prev = null
+  if (existingId) {
+    prev = await getPackage(existingId).catch(() => null)
+  }
+  // Never overwrite a stored photo/voice with empty on draft checkpoint /
+  // remount — that was deleting the capture in the app.
+  const photoKeep = photoDataUrl || prev?.photoDataUrl || null
+  const audioKeep = audioDataUrl || prev?.audioDataUrl || null
+  const mimeKeep = audioMime || prev?.audioMime || 'audio/webm'
   const pkg = {
     id,
     phase: /** @type {PackagePhase} */ (draft ? 'draft' : 'queued'),
-    createdAt: new Date().toISOString(),
+    createdAt: existingCreatedAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     attempts: 0,
     lastError: null,
     serverSubmissionId: null,
     recordIndex: recordIndex ?? null,
+    // Collection status saved with the draft (step + answered-question progress)
+    step: Number.isInteger(step) ? step : null,
+    answered: Number.isInteger(answered) ? answered : null,
+    total: Number.isInteger(total) ? total : null,
+    activeQ: Number.isInteger(activeQ) ? activeQ : null,
     locks: locks || {
       geo: true,
       photo: true,
@@ -131,9 +151,9 @@ export async function savePackageLocal({
       locks: locks || { geo: true, photo: true, voice: true, location: true },
     },
     // Media kept on device until sync
-    photoDataUrl: photoDataUrl || null,
-    audioDataUrl: audioDataUrl || null,
-    audioMime: audioMime || 'audio/webm',
+    photoDataUrl: photoKeep,
+    audioDataUrl: audioKeep,
+    audioMime: mimeKeep,
     // phase flags for systematic upload
     flags: { qa: false, photo: false, audio: false },
   }
@@ -143,20 +163,41 @@ export async function savePackageLocal({
     await idbReq(db.transaction(STORE, 'readwrite').objectStore(STORE).put(pkg))
     db.close()
   } catch {
-    // Fallback: localStorage (no huge audio if possible)
-    const list = listPackagesMetaFallback()
+    // Fallback: localStorage (IndexedDB unavailable — private mode / restricted
+    // WebView). This store is small, so media may not fit. Track whether each
+    // required blob actually persisted — if not, fail loudly instead of saving
+    // an unsyncable shell that silently drops the photo/voice.
+    let photoStored = !photoDataUrl
+    let audioStored = !audioDataUrl
+    const list = listPackagesMetaFallback().filter((x) => x.id !== id)
     list.push(stripHeavy(pkg))
-    localStorage.setItem('esurvey_packages_fallback', JSON.stringify(list))
-    // keep media separately if small enough
     try {
-      if (photoDataUrl && photoDataUrl.length < 800_000) {
+      localStorage.setItem('esurvey_packages_fallback', JSON.stringify(list))
+      if (photoDataUrl) {
         localStorage.setItem(`esurvey_photo_${id}`, photoDataUrl)
+        photoStored = true
       }
-      if (audioDataUrl && audioDataUrl.length < 600_000) {
+      if (audioDataUrl) {
         localStorage.setItem(`esurvey_audio_${id}`, audioDataUrl)
+        audioStored = true
       }
     } catch {
-      /* quota */
+      /* quota exceeded — handled just below */
+    }
+    if (!draft && (!photoStored || !audioStored)) {
+      // Roll back the meta shell + any partial media so nothing dangling is left,
+      // then surface the failure (FieldCollect shows e.message as an error toast).
+      try {
+        const cleaned = listPackagesMetaFallback().filter((x) => x.id !== id)
+        localStorage.setItem('esurvey_packages_fallback', JSON.stringify(cleaned))
+        localStorage.removeItem(`esurvey_photo_${id}`)
+        localStorage.removeItem(`esurvey_audio_${id}`)
+      } catch {
+        /* ignore */
+      }
+      throw new Error(
+        'Device storage is full or unavailable — could not save photo/voice locally. Free up space and recapture this record.',
+      )
     }
   }
 
@@ -171,6 +212,17 @@ function stripHeavy(pkg) {
     ...rest,
     hasPhoto: !!photoDataUrl,
     hasAudio: !!audioDataUrl,
+  }
+}
+
+/** UI / queue lists must not carry photo or audio blobs. */
+export function withoutMedia(pkg) {
+  if (!pkg || typeof pkg !== 'object') return pkg
+  const { photoDataUrl, audioDataUrl, ...rest } = pkg
+  return {
+    ...rest,
+    hasPhoto: !!(photoDataUrl || rest.hasPhoto || rest.flags?.photo),
+    hasAudio: !!(audioDataUrl || rest.hasAudio || rest.flags?.audio),
   }
 }
 
@@ -207,9 +259,11 @@ export async function updatePackage(id, patch) {
   const next = {
     ...pkg,
     ...patch,
-    flags: { ...pkg.flags, ...(patch.flags || {}) },
+    flags: { ...pkg.flags, ...patch.flags },
     updatedAt: new Date().toISOString(),
   }
+  if (!next.photoDataUrl && pkg.photoDataUrl) next.photoDataUrl = pkg.photoDataUrl
+  if (!next.audioDataUrl && pkg.audioDataUrl) next.audioDataUrl = pkg.audioDataUrl
   try {
     const db = await openDb()
     await idbReq(db.transaction(STORE, 'readwrite').objectStore(STORE).put(next))
@@ -218,7 +272,13 @@ export async function updatePackage(id, patch) {
     const list = listPackagesMetaFallback().map((x) =>
       x.id === id ? stripHeavy(next) : x,
     )
-    localStorage.setItem('esurvey_packages_fallback', JSON.stringify(list))
+    try {
+      localStorage.setItem('esurvey_packages_fallback', JSON.stringify(list))
+      if (next.photoDataUrl) localStorage.setItem(`esurvey_photo_${id}`, next.photoDataUrl)
+      if (next.audioDataUrl) localStorage.setItem(`esurvey_audio_${id}`, next.audioDataUrl)
+    } catch {
+      /* quota */
+    }
   }
   emitChange({ type: 'updated', id, phase: next.phase })
   return next
@@ -242,7 +302,7 @@ export async function removePackage(id) {
   emitChange({ type: 'removed', id })
 }
 
-/** Packages waiting for systematic sync (not done) */
+/** Packages waiting for systematic sync (not done). Never includes photo/audio blobs. */
 export async function listPendingPackages() {
   try {
     const db = await openDb()
@@ -251,17 +311,95 @@ export async function listPendingPackages() {
     return (all || [])
       .filter((p) => p.phase !== 'done' && p.phase !== 'draft')
       .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+      .map(withoutMedia)
   } catch {
     return listPackagesMetaFallback()
       .filter((p) => p.phase !== 'done' && p.phase !== 'draft')
       .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+      .map(withoutMedia)
   }
 }
 
 /** Drafts stay on this phone until the surveyor verifies and pushes them */
-export async function listDrafts() {
+export async function listDrafts(opts = {}) {
   const all = await listAllPackages()
-  return (all || []).filter((p) => p.phase === 'draft')
+  const drafts = (all || []).filter((p) => p.phase === 'draft')
+  return opts.media === false ? drafts.map(withoutMedia) : drafts
+}
+
+function draftOwnerKey(pkg) {
+  const qa = pkg?.qa || {}
+  return String(qa.user_id || qa.submitted_by || pkg.submitted_by || '')
+}
+
+function draftRecordKey(pkg) {
+  const qa = pkg?.qa || {}
+  const form = String(qa.form_key || pkg.form_key || 'default')
+  const rec = pkg.recordIndex != null ? String(pkg.recordIndex) : pkg.id
+  return `${draftOwnerKey(pkg)}|${form}|${rec}`
+}
+
+/** Keep the newest draft per surveyor + survey + record number; delete extras. */
+export async function collapseDuplicateDrafts() {
+  const drafts = await listDrafts()
+  const best = new Map()
+  const extras = []
+  for (const d of drafts) {
+    const key = draftRecordKey(d)
+    const prev = best.get(key)
+    if (!prev) {
+      best.set(key, d)
+      continue
+    }
+    const newer = String(d.updatedAt || d.createdAt || '') > String(prev.updatedAt || prev.createdAt || '')
+    const keep = newer ? d : prev
+    const other = newer ? prev : d
+    best.set(key, {
+      ...keep,
+      photoDataUrl: keep.photoDataUrl || other.photoDataUrl,
+      audioDataUrl: keep.audioDataUrl || other.audioDataUrl,
+      audioMime: keep.audioMime || other.audioMime,
+    })
+    extras.push(other)
+  }
+  for (const kept of best.values()) {
+    if (kept.photoDataUrl || kept.audioDataUrl) {
+      await updatePackage(kept.id, {
+        photoDataUrl: kept.photoDataUrl,
+        audioDataUrl: kept.audioDataUrl,
+        audioMime: kept.audioMime,
+      }).catch(() => {})
+    }
+  }
+  const keepIds = new Set([...best.values()].map((p) => p.id))
+  for (const d of extras) {
+    if (keepIds.has(d.id)) continue
+    await removePackage(d.id).catch(() => {})
+  }
+  return extras.length
+}
+
+/** In-progress draft for this surveyor + survey + record (so Next/Finish reuse it). */
+export async function findOpenDraft({ userId, submittedBy, formKey, recordIndex } = {}) {
+  const drafts = await listDrafts()
+  const uid = userId != null ? String(userId) : ''
+  const who = String(submittedBy || '')
+  const form = String(formKey || 'default')
+  const rec = recordIndex != null ? Number(recordIndex) : null
+  const matches = drafts.filter((d) => {
+    const qa = d.qa || {}
+    const sameUser =
+      (uid && String(qa.user_id || '') === uid) ||
+      (who && String(qa.submitted_by || d.submitted_by || '') === who) ||
+      (!uid && !who)
+    const sameForm = String(qa.form_key || 'default') === form
+    const sameRec = rec == null || Number(d.recordIndex) === rec
+    return sameUser && sameForm && sameRec
+  })
+  matches.sort((a, b) =>
+    String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')),
+  )
+  return matches[0] || null
 }
 
 export async function draftCount() {
@@ -275,11 +413,43 @@ export async function draftCount() {
   }
 }
 
+/** Phone-only draft markers — must not go to the server on Send. */
+export function stripDraftAnswers(answers) {
+  const a = { ...answers }
+  delete a._draft
+  delete a.draft
+  return a
+}
+
 /** Push a draft into the sync queue → client admin sees it as pending */
 export async function pushDraft(id) {
   const pkg = await getPackage(id)
   if (!pkg) return null
-  await updatePackage(id, { phase: 'queued', attempts: 0, lastError: null })
+  const qa = { ...pkg.qa }
+  qa.answers = stripDraftAnswers(qa.answers)
+
+  // Guard: refuse to send a draft that has no real question answers
+  const META_PREFIXES = ['_', 'geo_', 'location_', 'ts_', 'sec_']
+  const META_KEYS = new Set([
+    'draft', 'data_collector', 'client_package_id', 'submitted_by',
+    'has_photo', 'has_audio', 'photo', 'audio', 'photo_url', 'audio_url',
+    'answer_pattern', 'survey_id', 'form_id', 'form_key',
+  ])
+  const answeredCount = Object.entries(qa.answers || {}).filter(([k, v]) => {
+    if (!k || META_PREFIXES.some((p) => k.startsWith(p))) return false
+    if (META_KEYS.has(k)) return false
+    return String(v ?? '').trim() !== ''
+  }).length
+  if (answeredCount === 0) {
+    throw new Error('No questions answered — fill in the survey before sending.')
+  }
+
+  await updatePackage(id, {
+    phase: 'queued',
+    attempts: 0,
+    lastError: null,
+    qa,
+  })
   emitChange({ type: 'saved', id, pushed: true })
   return id
 }
@@ -323,8 +493,8 @@ export async function queueStats() {
       attempts: p.attempts,
       lastError: p.lastError,
       recordIndex: p.recordIndex,
-      hasPhoto: !!p.photoDataUrl || p.hasPhoto,
-      hasAudio: !!p.audioDataUrl || p.hasAudio,
+      hasPhoto: !!(p.photoDataUrl || p.hasPhoto || p.flags?.photo),
+      hasAudio: !!(p.audioDataUrl || p.hasAudio || p.flags?.audio),
     })),
   }
 }

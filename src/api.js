@@ -4,8 +4,8 @@ const TOKEN_KEY = 'esurvey_token'
 const USER_KEY = 'esurvey_user'
 const LEGACY_API_KEY = 'esurvey_api_base'
 
-/** Fixed production API — Deno Deploy → Neon */
-export const DENO_API_URL = 'https://jazzy-crocodile-7790.sravanku018.deno.net'
+/** Fixed production API — Oracle Cloud VPS */
+export const DENO_API_URL = 'https://162.35.96.65.sslip.io'
 
 export function getApiBase() {
   // Clear any old local/PC URL the user may have saved earlier
@@ -40,8 +40,23 @@ export function getStoredUser() {
 }
 
 export function setSession(token, user) {
-  localStorage.setItem(TOKEN_KEY, token || '')
-  localStorage.setItem(USER_KEY, JSON.stringify(user || null))
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    else localStorage.removeItem(TOKEN_KEY)
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user))
+    else localStorage.removeItem(USER_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+export function setStoredUser(user) {
+  try {
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user))
+    else localStorage.removeItem(USER_KEY)
+  } catch {
+    /* ignore */
+  }
 }
 
 export function clearSession() {
@@ -58,17 +73,34 @@ async function request(path, options = {}) {
   const url = `${base}${path}`
   const headers = {
     Accept: 'application/json',
-    ...(options.headers || {}),
+    ...options.headers,
   }
 
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const res = await fetch(url, { ...options, headers })
+  const res = await fetch(url, { cache: 'no-store', ...options, headers })
   const data = await res.json().catch(() => ({}))
 
   if (res.status === 401) {
-    const err = new Error(data.error || 'Login required')
+    if (data.totp_required) {
+      const err = new Error(data.error || 'Authenticator code required')
+      err.status = 401
+      err.data = data
+      err.totp_required = true
+      throw err
+    }
+    clearSession()
+    try {
+      window.dispatchEvent(
+        new CustomEvent('esurvey-unauthorized', { detail: data }),
+      )
+    } catch {
+      /* ignore */
+    }
+    const err = new Error(
+      data.error || 'Account updated or session expired. Please log in again.',
+    )
     err.status = 401
     throw err
   }
@@ -86,7 +118,7 @@ export function health() {
 }
 
 /** Login as admin or surveyor (created in admin dashboard) */
-export async function login(username, password, expected_role) {
+export async function login(username, password, expected_role, totp) {
   const data = await request('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -94,6 +126,7 @@ export async function login(username, password, expected_role) {
       username,
       password,
       ...(expected_role ? { expected_role } : {}),
+      ...(totp ? { totp } : {}),
     }),
   })
   setSession(data.token, data.user)
@@ -109,12 +142,30 @@ export async function logout() {
   clearSession()
 }
 
-export function me() {
-  return request('/api/auth/me')
+export async function me() {
+  const data = await request('/api/auth/me')
+  if (data?.user) {
+    const token = getToken()
+    if (token) setSession(token, data.user)
+  }
+  return data
 }
 
 export function listUsers() {
   return request('/api/users')
+}
+
+export function listNotifications(after = 0) {
+  const q = after ? `?after=${encodeURIComponent(String(after))}` : ''
+  return request(`/api/notifications${q}`)
+}
+
+export function notificationsStreamUrl(after = 0) {
+  const token = getToken()
+  const q = new URLSearchParams()
+  if (token) q.set('token', token)
+  if (after) q.set('after', String(after))
+  return `${getApiBase()}/api/notifications/stream?${q}`
 }
 
 export function createUser(body) {
@@ -159,6 +210,97 @@ export function enableUser(id) {
 }
 
 /** Hard delete user (prefer disable) */
+/** Create an additional Super Admin account (cap 3 platform-wide) — Super Admin only */
+export function createSuperAdmin(body) {
+  return request('/api/super-admin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function resetSuperAdminTotp(id) {
+  return request(`/api/super-admin/${id}/totp/reset`, { method: 'POST' })
+}
+
+export function seedSuperAdminSlots() {
+  return request('/api/super-admin/seed-slots', { method: 'POST' })
+}
+
+
+/** Platform-wide audit log (Super Admin only) — FR-AUD-02 */
+export function getAuditLog(params = {}) {
+  const qs = new URLSearchParams()
+  if (params.action) qs.set('action', params.action)
+  if (params.actor) qs.set('actor', params.actor)
+  if (params.entity) qs.set('entity', params.entity)
+  if (params.limit) qs.set('limit', params.limit)
+  const q = qs.toString()
+  return request(`/api/audit-log${q ? `?${q}` : ''}`)
+}
+
+/** Global Question Bank (FR-QB-02) */
+export function listQuestionBank() {
+  return request('/api/question-bank')
+}
+
+export function createQuestionBank(body) {
+  return request('/api/question-bank', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function updateQuestionBank(id, body) {
+  return request(`/api/question-bank/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function deleteQuestionBank(id) {
+  return request(`/api/question-bank/${id}`, { method: 'DELETE' })
+}
+
+export function copyQuestionBank(id, opts = {}) {
+  return request(`/api/question-bank/${id}/copy`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question_count: opts.question_count }),
+  })
+}
+
+/** Seat-limit upgrade requests (BR-006 / FR-USR-10) */
+export function getSeatRequests() {
+  return request('/api/seat-limit-requests')
+}
+
+export function createSeatRequest(body) {
+  return request('/api/seat-limit-requests', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function decideSeatRequest(id, decision) {
+  return request(`/api/seat-limit-requests/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision }),
+  })
+}
+
+export function approveSeatRequest(id) {
+  return decideSeatRequest(id, 'approve')
+}
+
+export function denySeatRequest(id) {
+  return decideSeatRequest(id, 'deny')
+}
+
 export function deleteUser(id) {
   return request(`/api/users/${id}`, {
     method: 'DELETE',
@@ -194,12 +336,15 @@ export function setProgressQuota(body) {
   })
 }
 
+/** KPI summary counts (pending, confirmed, rejected, submissions, districts) */
 export function getStats() {
-  return request('/api/stats')
+  return request('/api/analytics?group_by=kpi')
 }
 
-export function getGeo() {
-  return request('/api/geo')
+/** Combined geo children (mandals + revenue divisions) for a district */
+export function getGeoChildren(district) {
+  const q = district ? `?district=${encodeURIComponent(district)}` : ''
+  return request(`/api/geo/children${q}`)
 }
 
 export function getMandals(district) {
@@ -246,6 +391,7 @@ export function getSubmission(id) {
   return request(`/api/submissions/${id}`)
 }
 
+
 /**
  * Client Admin: edit survey data
  * body: { answers?, submitted_by?, geo?, status?, has_audio?, has_photo?, note?, force? }
@@ -273,6 +419,11 @@ export function confirmAllPending(limit = 500, note = '') {
   })
 }
 
+/** Client Admin: re-run fact materialization for a failed record (FR-PRC-04) */
+export function retryFact(id) {
+  return request(`/api/submissions/${id}/retry-fact`, { method: 'POST' })
+}
+
 export function getAnalytics(filters = {}) {
   const params = new URLSearchParams()
   Object.entries(filters).forEach(([k, v]) => {
@@ -283,6 +434,27 @@ export function getAnalytics(filters = {}) {
   // Dashboard passes report=locked → server forces confirmed + complete
   const q = params.toString()
   return request(`/api/analytics${q ? `?${q}` : ''}`)
+}
+
+/** One-point unified API for Analytics & Report: fetches metrics + intake stream in parallel */
+export async function getUnifiedAnalytics(filters = {}) {
+  const [analytics, analyze] = await Promise.all([
+    getAnalytics(filters).catch(() => null),
+    getAdminAnalyze(filters).catch(() => null),
+  ])
+  return { analytics, analyze }
+}
+
+
+/** List photo/audio URLs for an export (same filters as CSV). Files are named {id}.jpg / {id}.webm. */
+export function exportSubmissionMedia(filters = {}) {
+  return request(
+    `/api/admin/export?${new URLSearchParams(
+      Object.entries({ ...filters, format: 'media' })
+        .filter(([, v]) => v != null && v !== '')
+        .map(([k, v]) => [k, String(v)]),
+    )}`,
+  )
 }
 
 /** Download collected data as CSV/text with photo + audio links (day/month/surveyor/geo filters) */
@@ -351,31 +523,163 @@ export function createSubmission({ form_id, source, submitted_by, answers }) {
   })
 }
 
+/** Portal web fill — requires can_web_survey on the server. */
+export function createWebSurvey({ form_key, form_id, submitted_by, answers }) {
+  return request('/api/web-survey', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      form_key,
+      form_id: form_id || form_key,
+      source: 'web-survey',
+      submitted_by: submitted_by || null,
+      answers,
+    }),
+  })
+}
+
+export function webFillUrl(formKey, token) {
+  if (!formKey) return ''
+  const superConsole = (import.meta.env.VITE_SUPER_ADMIN ?? '0') === '1'
+  let root = CANONICAL_FIELD_APP
+  if (!superConsole && typeof window !== 'undefined') {
+    const base = String(import.meta.env.BASE_URL || '/')
+    root = `${window.location.origin}${base.endsWith('/') ? base : `${base}/`}`
+  }
+  const u = new URL(root)
+  u.searchParams.set('fill', formKey)
+  if (token) u.searchParams.set('k', token)
+  return u.toString()
+}
+
+/** Mint a public fill token. Expires after max_uses submissions (Client Admin picker). */
+export function createWebFillLink(formKey, maxUses = 1) {
+  const n = Math.min(9999, Math.max(1, Math.floor(Number(maxUses) || 1)))
+  return request('/api/web-survey/link', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ form_key: formKey, max_uses: n }),
+  })
+}
+
+export async function mintWebFillUrl(formKey, maxUses = 1) {
+  const d = await createWebFillLink(formKey, maxUses)
+  return { url: webFillUrl(formKey, d.token), ...d }
+}
+
+export function listWebFillLinks(formKey) {
+  return request(`/api/web-survey/links?form_key=${encodeURIComponent(formKey)}`)
+}
+
+export function listWebSurveyStats() {
+  return request('/api/web-survey/stats')
+}
+
+/** Canonical Client Admin / field-app origin (used from Super Admin console). */
+const CANONICAL_FIELD_APP = 'https://ground-iq-web-lake.vercel.app/'
+
+export function apkDownloadUrl() {
+  return `${getApiBase()}/api/app.apk`
+}
+
+/** Shareable field-app URL. Portal-only builds open the collector via ?app=1. */
+export function fieldAppUrl() {
+  const superConsole = (import.meta.env.VITE_SUPER_ADMIN ?? '0') === '1'
+  let root = CANONICAL_FIELD_APP
+  if (!superConsole && typeof window !== 'undefined') {
+    const base = String(import.meta.env.BASE_URL || '/')
+    root = `${window.location.origin}${base.endsWith('/') ? base : `${base}/`}`
+  }
+  const u = new URL(root)
+  u.searchParams.set('app', '1')
+  return u.toString()
+}
+
+export function fieldAppShareText() {
+  return `Smart Survey X — Android app\n${apkDownloadUrl()}`
+}
+
+export function getPublicWebSurvey(formKey, token) {
+  const q = new URLSearchParams()
+  q.set('form_key', formKey)
+  if (token) q.set('k', token)
+  return request(`/api/web-survey?${q.toString()}`)
+}
+
+export function submitPublicWebSurvey({ form_key, token, submitted_by, answers }) {
+  return request('/api/web-survey/public', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      form_key,
+      token: token || '',
+      submitted_by: submitted_by || 'Web',
+      answers,
+    }),
+  })
+}
+
+/** Telugu auto-translate — requires can_manage_questions or can_crud_questionnaire. */
+export function translateQuestion({ text, options }) {
+  return request('/api/questions/translate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, options: options || [] }),
+  })
+}
+
 /** Load questions from admin dashboard (auto for field app) */
 export function getQuestions() {
   return request('/api/questions')
 }
 
-/** Surveyor's assigned surveys with their questions (field app) */
+
+/**
+ * Form for the field app: surveys assigned to this surveyor (GET /api/my-surveys).
+ * Returns { form_key, title, questions, surveys: [...] }.
+ */
+function asQuestionList(raw) {
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
+/** Field app: surveys assigned to this surveyor. */
 export function getMySurveys() {
   return request('/api/my-surveys')
 }
 
-/**
- * Form for the field app: assigned survey if any, else the default form.
- * Returns { form_key, title, questions, surveys: [...] }.
- */
+/** Alias used by some field screens. */
+export function getSurveys() {
+  return getMySurveys()
+}
+
 export async function getSurveyForm() {
-  try {
-    const mine = await getMySurveys()
-    if (mine.items && mine.items.length) {
-      return { ...mine.items[0], surveys: mine.items }
+  const mine = await getMySurveys()
+  const items = Array.isArray(mine?.items) ? mine.items : []
+  if (items.length) {
+    const item = items[0]
+    return {
+      ...item,
+      questions: asQuestionList(item.questions),
+      surveys: items.map((s) => ({ ...s, questions: asQuestionList(s.questions) })),
     }
-  } catch {
-    /* fall back to default */
   }
-  const d = await getQuestions()
-  return { ...d, surveys: [] }
+  // Do not fall back to the platform Field Survey — that is a different form
+  // and looks like "the survey would not load" after assigning a surveyor.
+  return {
+    form_key: '',
+    title: 'No survey assigned',
+    questions: [],
+    surveys: [],
+  }
 }
 
 /** Admin: list surveys (q = name search filter) */
@@ -386,26 +690,43 @@ export function listSurveys(q = '') {
   return request(`/api/surveys${qs ? `?${qs}` : ''}`)
 }
 
-/** Admin: create survey (name + questions). 409 + existing_id if name exists */
-export function createSurvey({ title, questions }) {
+/**
+ * Admin: create survey/project (name + questions). 409 + existing_id if name exists.
+ * Super Admin may also register the company this project is mapped under and the
+ * Client Admins who are part of it (company_name, admin_ids).
+ */
+export function createSurvey({ title, questions, company_name, admin_ids, voice_required, voice_time_limit }) {
+  const body = { title, questions }
+  if (company_name != null && company_name !== '') body.company_name = company_name
+  if (Array.isArray(admin_ids) && admin_ids.length > 0) body.admin_ids = admin_ids
+  if (voice_required !== undefined) body.voice_required = !!voice_required
+  if (voice_time_limit !== undefined) body.voice_time_limit = Number(voice_time_limit) || 0
   return request('/api/surveys', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, questions }),
+    body: JSON.stringify(body),
   })
 }
 
 /** Admin: full survey detail (questions + team + respondents) */
 export function getSurvey(id) {
-  return request(`/api/surveys/${id}`)
+  return request(`/api/surveys/${id}`).then((d) => {
+    if (d?.survey) d.survey.questions = asQuestionList(d.survey.questions)
+    return d
+  })
 }
 
-/** Admin: update title/questions */
-export function updateSurvey(id, { title, questions }) {
+/** Admin: update title/questions; Super Admin may also update company_name */
+export function updateSurvey(id, { title, questions, company_name, display_lang, voice_required, voice_time_limit }) {
+  const body = { title, questions }
+  if (company_name !== undefined) body.company_name = company_name
+  if (display_lang !== undefined) body.display_lang = display_lang
+  if (voice_required !== undefined) body.voice_required = !!voice_required
+  if (voice_time_limit !== undefined) body.voice_time_limit = Number(voice_time_limit) || 0
   return request(`/api/surveys/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, questions }),
+    body: JSON.stringify(body),
   })
 }
 
@@ -414,7 +735,7 @@ export function deleteSurvey(id) {
   return request(`/api/surveys/${id}`, { method: 'DELETE' })
 }
 
-/** Admin: replace surveyor team for a survey */
+/** Admin: replace surveyor team for a survey (survey-centric) */
 export function setSurveySurveyors(id, userIds) {
   return request(`/api/surveys/${id}/surveyors`, {
     method: 'PUT',
@@ -423,32 +744,78 @@ export function setSurveySurveyors(id, userIds) {
   })
 }
 
-/** Admin: add respondent to a survey */
-export function addRespondent(id, { name, phone }) {
-  return request(`/api/surveys/${id}/respondents`, {
+/**
+ * Admin: replace which surveys a surveyor is assigned to (user-centric).
+ * Field app loads these via GET /api/my-surveys.
+ */
+export function getUserSurveys(userId) {
+  return request(`/api/users/${userId}/surveys`)
+}
+
+export function setUserSurveys(userId, surveyIds, extra = {}) {
+  const body = { survey_ids: surveyIds }
+  if (Array.isArray(extra.add)) body.add_survey_ids = extra.add
+  if (Array.isArray(extra.remove)) body.remove_survey_ids = extra.remove
+  if (extra.quotas && typeof extra.quotas === 'object') body.quotas = extra.quotas
+  return request(`/api/users/${userId}/surveys`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+/** Super Admin: replace which Client Admins have access to a survey (shared surveys) */
+export function setSurveyAdmins(id, adminIds) {
+  return request(`/api/surveys/${id}/admins`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ admin_ids: adminIds }),
+  })
+}
+
+/** Super Admin: companies registry — list registered companies (with their Client Admins) */
+export function listCompanies() {
+  return request('/api/companies')
+}
+
+/** Super Admin: create a company */
+export function createCompany(name) {
+  return request('/api/companies', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, phone }),
+    body: JSON.stringify({ name }),
   })
 }
 
-/** Admin: mark respondent done/pending */
-export function setRespondentStatus(surveyId, respondentId, status) {
-  return request(`/api/surveys/${surveyId}/respondents/${respondentId}`, {
-    method: 'PATCH',
+/** Super Admin: rename a company (member profiles stay in sync) */
+export function updateCompany(id, { name }) {
+  return request(`/api/companies/${id}`, {
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ name }),
   })
 }
 
-/** Admin: remove respondent */
-export function deleteRespondent(surveyId, respondentId) {
-  return request(`/api/surveys/${surveyId}/respondents/${respondentId}`, {
-    method: 'DELETE',
+/** Super Admin: delete a company (Client Admins are unlinked) */
+export function deleteCompany(id) {
+  return request(`/api/companies/${id}`, { method: 'DELETE' })
+}
+
+/** Super Admin: replace which Client Admins belong to a company */
+export function setCompanyAdmins(id, adminIds) {
+  return request(`/api/companies/${id}/admins`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ admin_ids: adminIds }),
   })
 }
 
-/** Admin save question bank */
+/** Super Admin / Client Admin: fetch full Company Dashboard data */
+export function getCompanyDashboard(idOrName) {
+  return request(`/api/companies/${encodeURIComponent(idOrName)}/dashboard`)
+}
+
+
 export function saveQuestions({ title, questions }) {
   return request('/api/admin/questions', {
     method: 'PUT',
@@ -457,39 +824,6 @@ export function saveQuestions({ title, questions }) {
   })
 }
 
-/** Q/A only (no media blobs) */
-export function submitSurveyQA({
-  form_key,
-  form_id,
-  source,
-  submitted_by,
-  answers,
-  geo,
-}) {
-  return request('/api/submissions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      form_key,
-      form_id,
-      source: source || 'mobile-field-survey',
-      submitted_by,
-      answers,
-      geo,
-      app_version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : undefined,
-      app_build: typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : undefined,
-    }),
-  })
-}
-
-/** Separate photo/audio upload */
-export function uploadSubmissionMedia(submissionId, { kind, data, mime, meta }) {
-  return request(`/api/submissions/${submissionId}/media`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ kind, data, mime, meta }),
-  })
-}
 
 export function listSubmissionMedia(submissionId, full = false) {
   return request(`/api/submissions/${submissionId}/media${full ? '?full=1' : ''}`)
@@ -497,7 +831,7 @@ export function listSubmissionMedia(submissionId, full = false) {
 
 /** Surveyor's own submitted records (field app "My records") */
 export function getMySubmissions() {
-  return request('/api/submissions/me')
+  return request('/api/submissions?mine=1')
 }
 
 /**
@@ -525,6 +859,40 @@ export async function fetchMediaBlobUrl(pathOrUrl) {
 /**
  * Helper to download photo, audio, or video files to device with admin auth token.
  */
+/** Fetch media bytes with admin auth (for zip export). */
+export async function fetchMediaBytes(pathOrUrl) {
+  if (!pathOrUrl) return null
+  const token = getToken()
+  const base = getApiBase()
+  // Never fetch R2/storage directly — CORS fails in the browser.
+  // Always go through our API file route when the path is /api/media/:id/file
+  // or when we can rewrite a full API URL.
+  let url = String(pathOrUrl)
+  const mediaMatch = url.match(/\/api\/media\/(\d+)\/file/)
+  if (mediaMatch) {
+    url = `${base}/api/media/${mediaMatch[1]}/file`
+  } else if (!/^https?:\/\//i.test(url)) {
+    url = `${base}${url.startsWith('/') ? '' : '/'}${url}`
+  } else if (!url.includes(new URL(base).host)) {
+    throw new Error('Media must be loaded through the API')
+  }
+  const headers = { Accept: '*/*' }
+  if (token) headers.Authorization = `Bearer ${token}`
+  let res
+  try {
+    res = await fetch(url, { headers, redirect: 'manual' })
+  } catch (e) {
+    throw new Error(
+      e?.message || 'NetworkError when fetching media — redeploy the API so files are proxied.',
+    )
+  }
+  if (res.status >= 300 && res.status < 400) {
+    throw new Error('Media is on external storage — redeploy the Deno API so the zip can load it.')
+  }
+  if (!res.ok) throw new Error(`Media load failed (${res.status})`)
+  return new Uint8Array(await res.arrayBuffer())
+}
+
 export async function downloadMediaFile(pathOrUrl, filename = 'media-file') {
   if (!pathOrUrl) return
   const token = getToken()
@@ -590,46 +958,3 @@ export async function submitSurveyOrQueue({
   void forceSyncNow()
   return { mode: 'queued', id }
 }
-
-export const OPTIONS = {
-  caste: ['BC', 'SC', 'ST', 'OC', 'Minority', 'Other'],
-  party: ['Congress', 'BJP', 'BRS', 'Others', 'Undecided'],
-  pm: ['Narendra Modi', 'Rahul Gandhi', 'Other', 'Undecided'],
-  issues: ['Water', 'Roads', 'Jobs', 'Electricity', 'Healthcare', 'Education', 'Housing'],
-  employment: [
-    'Private Sector',
-    'Government',
-    'Self-Employed',
-    'Student',
-    'Unemployed',
-    'Retired',
-    'Farmer',
-    'Other',
-  ],
-  education: ['Illiterate', 'Primary', 'Secondary', 'Graduate', 'Post Graduate', 'Other'],
-  gender: ['Male', 'Female', 'Other'],
-  performance: ['Excellent', 'Good', 'Average', 'Poor', 'Very Poor'],
-}
-
-export const emptyForm = (agentName = '') => ({
-  submittedBy: agentName || '',
-  respondentName: '',
-  phone: '',
-  district: '',
-  constituency: '',
-  mpConstituency: '',
-  mandal: '',
-  revenueDivision: '',
-  ward: '',
-  gender: '',
-  caste: '',
-  age: '',
-  employment: '',
-  education: '',
-  winningParty: '',
-  pmPreference: '',
-  performance: '',
-  issues: [],
-  notes: '',
-})
-

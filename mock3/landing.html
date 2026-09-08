@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Smart Survey X — Field Intelligence & Client Admin Platform</title>
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  /* ══════════════════════════════════════════════════════════
+     SMART SURVEY X — CLIENT ADMIN PRE-LOGIN LANDING FRONT PAGE
+     Designed with Mock3 tokens:
+     - Ruthless clarity (Apple)
+     - High-density data legibility (Google)
+     - Real-time intake & optimism (Twitter/X)
+     ══════════════════════════════════════════════════════════ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html {
+    font-family: var(--font, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+    scroll-behavior: smooth;
+    background: var(--bg, #f8fafc);
+    color: var(--ink, #1e293b);
+  }
+  body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+  .mono { font-family: 'SF Mono', Menlo, Consolas, monospace; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* ── Sticky Top Navigation ── */
+  .navbar {
+    position: sticky; top: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 28px;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--surface-hover, #e2e8f0);
+  }
+  .nav-left { display: flex; align-items: center; gap: 32px; }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    text-decoration: none; color: var(--ink, #1e293b);
+    font-weight: 700; font-size: 17px; letter-spacing: -0.01em;
+  }
+  .brand-glyph {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: linear-gradient(135deg, #1d6fe0 0%, #0284c7 100%);
+    color: #ffffff; display: flex; align-items: center; justify-content: center;
+    font-size: 18px; box-shadow: 0 2px 6px rgba(29, 111, 224, 0.28);
+  }
+  .brand-meta { display: flex; flex-direction: column; line-height: 1.1; }
+  .brand-title { font-weight: 800; font-size: 15px; }
+  .brand-sub { font-size: 11px; color: var(--ink-muted, #64748b); font-weight: 500; }
+
+  .nav-links { display: flex; align-items: center; gap: 24px; list-style: none; }
+  .nav-links a {
+    text-decoration: none; font-size: 14px; font-weight: 500;
+    color: var(--ink-secondary, #475569); transition: color 140ms ease;
+  }
+  .nav-links a:hover { color: var(--accent, #1d6fe0); }
+
+  .nav-actions { display: flex; align-items: center; gap: 12px; }
+  .badge-live {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--ok-bg, #f0fdf4); color: var(--ok, #16a34a);
+    font-size: 11px; font-weight: 700; border: 1px solid #bbf7d0;
+  }
+  .badge-live .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--ok, #16a34a);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 9px 18px; min-height: 40px; border-radius: var(--r-md, 10px);
+    font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none;
+    transition: all var(--dur-fast, 120ms); border: 1px solid transparent;
+  }
+  .btn-primary {
+    background: var(--accent, #1d6fe0); color: #ffffff;
+    box-shadow: 0 2px 8px rgba(29, 111, 224, 0.25);
+  }
+  .btn-primary:hover {
+    background: #185ec4; transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(29, 111, 224, 0.32);
+  }
+  .btn-outline {
+    background: var(--surface, #ffffff); color: var(--ink, #1e293b);
+    border-color: var(--surface-hover, #e2e8f0);
+  }
+  .btn-outline:hover { background: var(--surface-alt, #f1f5f9); border-color: #cbd5e1; }
+  .btn-large { min-height: 46px; padding: 12px 24px; font-size: 14px; font-weight: 700; border-radius: 12px; }
+
+  /* ── Hero Section ── */
+  .hero-section {
+    padding: 64px 24px 48px;
+    background: radial-gradient(circle at 50% -20%, #eff6ff 0%, #ffffff 70%, var(--bg, #f8fafc) 100%);
+    border-bottom: 1px solid var(--surface-hover, #e2e8f0);
+  }
+  .hero-container {
+    max-width: 1200px; margin: 0 auto;
+    display: grid; grid-template-columns: 1.15fr 0.85fr;
+    gap: 48px; align-items: center;
+  }
+  @media (max-width: 960px) {
+    .hero-container { grid-template-columns: 1fr; gap: 36px; text-align: center; }
+    .nav-links { display: none; }
+    .hero-buttons { justify-content: center; }
+    .hero-badges { justify-content: center; }
+  }
+
+  .hero-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 999px;
+    background: var(--accent-bg, #eff6ff); border: 1px solid var(--accent-border, #bfdbfe);
+    color: var(--accent, #1d6fe0); font-size: 12px; font-weight: 700;
+    margin-bottom: 16px;
+  }
+  .hero-title {
+    font-size: 42px; font-weight: 800; line-height: 1.12;
+    letter-spacing: -0.03em; color: #0f172a; margin-bottom: 18px;
+  }
+  .hero-title span {
+    background: linear-gradient(135deg, #1d6fe0 0%, #0284c7 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .hero-desc {
+    font-size: 16px; line-height: 1.6; color: var(--ink-secondary, #475569);
+    max-width: 580px; margin-bottom: 28px;
+  }
+  .hero-buttons { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 32px; }
+  .hero-badges { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; font-size: 12px; color: var(--ink-muted, #64748b); }
+  .hero-badge-item { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+  .hero-badge-item svg { width: 16px; height: 16px; color: var(--ok, #16a34a); flex-shrink: 0; }
+
+  /* ── Interactive Hero Preview / Login Card ── */
+  .hero-card-wrap {
+    background: #ffffff;
+    border: 1px solid var(--surface-hover, #e2e8f0);
+    border-radius: 20px;
+    box-shadow: 0 16px 40px -8px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(0,0,0,0.03);
+    overflow: hidden;
+    transition: transform var(--dur-normal, 200ms);
+  }
+  .hero-card-header {
+    padding: 14px 20px; background: #f8fafc;
+    border-bottom: 1px solid var(--surface-hover, #e2e8f0);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .card-dots { display: flex; gap: 6px; }
+  .card-dot { width: 10px; height: 10px; border-radius: 50%; background: #cbd5e1; }
+  .card-dot.red { background: #fca5a5; }
+  .card-dot.yellow { background: #fde047; }
+  .card-dot.green { background: #86efac; }
+  .card-header-title { font-size: 12px; font-weight: 700; color: #475569; display: flex; align-items: center; gap: 6px; }
+
+  .hero-card-body { padding: 22px; }
+
+  /* Live KPI Chips in Preview */
+  .preview-kpis {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+    margin-bottom: 16px;
+  }
+  .preview-kpi {
+    background: #f8fafc; border: 1px solid var(--surface-hover, #e2e8f0);
+    border-radius: 12px; padding: 10px 12px; text-align: left;
+  }
+  .preview-kpi .label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--ink-muted, #64748b); margin-bottom: 2px; }
+  .preview-kpi .val { font-size: 18px; font-weight: 800; color: var(--ink, #1e293b); }
+  .preview-kpi.accent { background: var(--accent-bg, #eff6ff); border-color: var(--accent-border, #bfdbfe); }
+  .preview-kpi.accent .val { color: var(--accent, #1d6fe0); }
+  .preview-kpi.ok { background: var(--ok-bg, #f0fdf4); border-color: #bbf7d0; }
+  .preview-kpi.ok .val { color: var(--ok, #16a34a); }
+
+  /* Mini Survey Intake Row */
+  .preview-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; border: 1px solid var(--surface-hover, #e2e8f0);
+    border-radius: 10px; background: #ffffff; margin-bottom: 8px; font-size: 12px;
+  }
+  .preview-row .title { font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 6px; }
+  .preview-row .tag-live {
+    font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 99px;
+    background: #dcfce7; color: #15803d; border: 1px solid #86efac;
+  }
+  .preview-row .stats { display: flex; gap: 10px; color: #64748b; font-size: 11px; }
+  .preview-row .stats strong { color: #0f172a; }
+
+  /* Quick Login Form inside Hero */
+  .hero-login-box {
+    margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--surface-hover, #e2e8f0);
+  }
+  .hero-login-title { font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+  .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; text-align: left; }
+  .field label { font-size: 11px; font-weight: 700; color: var(--ink-secondary, #475569); }
+  .field input {
+    height: 38px; border: 1.5px solid var(--surface-hover, #e2e8f0); border-radius: 8px;
+    padding: 0 12px; font-size: 13px; background: #ffffff; color: var(--ink, #1e293b);
+    transition: all 120ms;
+  }
+  .field input:focus { outline: none; border-color: var(--accent, #1d6fe0); box-shadow: 0 0 0 3px var(--accent-light, #dbeafe); }
+
+  /* ── Stats Strip ── */
+  .stats-strip {
+    padding: 24px 20px;
+    background: #ffffff;
+    border-bottom: 1px solid var(--surface-hover, #e2e8f0);
+  }
+  .stats-grid {
+    max-width: 1200px; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 20px; text-align: center;
+  }
+  @media (max-width: 768px) { .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; } }
+  .stat-card .num { font-size: 32px; font-weight: 800; color: var(--accent, #1d6fe0); letter-spacing: -0.02em; }
+  .stat-card .lbl { font-size: 13px; font-weight: 600; color: var(--ink-muted, #64748b); margin-top: 2px; }
+
+  /* ── Feature Pillars ── */
+  .features-section { padding: 64px 24px; max-width: 1200px; margin: 0 auto; }
+  .section-head { text-align: center; max-width: 680px; margin: 0 auto 48px; }
+  .section-eyebrow { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent, #1d6fe0); margin-bottom: 6px; }
+  .section-title { font-size: 28px; font-weight: 800; color: #0f172a; margin-bottom: 12px; letter-spacing: -0.02em; }
+  .section-sub { font-size: 15px; color: var(--ink-secondary, #475569); line-height: 1.5; }
+
+  .features-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+  }
+  @media (max-width: 900px) { .features-grid { grid-template-columns: 1fr; } }
+  .feature-card {
+    background: var(--surface, #ffffff);
+    border: 1px solid var(--surface-hover, #e2e8f0);
+    border-radius: 16px; padding: 28px 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    display: flex; flex-direction: column;
+    transition: transform 160ms ease, box-shadow 160ms ease;
+  }
+  .feature-card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px -4px rgba(0,0,0,0.08); }
+  .feature-icon {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; margin-bottom: 18px;
+  }
+  .feature-icon.blue { background: #eff6ff; color: #1d6fe0; }
+  .feature-icon.green { background: #f0fdf4; color: #16a34a; }
+  .feature-icon.purple { background: #faf5ff; color: #9333ea; }
+  .feature-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; color: #0f172a; }
+  .feature-card p { font-size: 13px; line-height: 1.6; color: var(--ink-secondary, #475569); margin-bottom: 16px; flex: 1; }
+  .feature-list { list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: #334155; }
+  .feature-list li { display: flex; align-items: center; gap: 6px; }
+  .feature-list li::before { content: "✓"; font-weight: 700; color: var(--ok, #16a34a); }
+
+  /* ── Interactive Tabbed Workflow ── */
+  .workflow-section {
+    padding: 60px 24px;
+    background: #ffffff;
+    border-top: 1px solid var(--surface-hover, #e2e8f0);
+    border-bottom: 1px solid var(--surface-hover, #e2e8f0);
+  }
+  .workflow-box { max-width: 1100px; margin: 0 auto; }
+  .wf-tabs { display: flex; justify-content: center; gap: 8px; margin-bottom: 32px; flex-wrap: wrap; }
+  .wf-tab {
+    padding: 10px 20px; border-radius: 999px; border: 1px solid var(--surface-hover, #e2e8f0);
+    background: #f8fafc; font-size: 13px; font-weight: 600; cursor: pointer; color: #475569;
+    transition: all 120ms;
+  }
+  .wf-tab.active {
+    background: var(--accent, #1d6fe0); color: #ffffff; border-color: var(--accent, #1d6fe0);
+    box-shadow: 0 2px 8px rgba(29, 111, 224, 0.25);
+  }
+  .wf-content {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 36px; align-items: center;
+    background: #f8fafc; border: 1px solid var(--surface-hover, #e2e8f0);
+    border-radius: 20px; padding: 36px;
+  }
+  @media (max-width: 840px) { .wf-content { grid-template-columns: 1fr; padding: 24px; } }
+  .wf-text h4 { font-size: 20px; font-weight: 800; margin-bottom: 10px; color: #0f172a; }
+  .wf-text p { font-size: 14px; color: #475569; line-height: 1.6; margin-bottom: 20px; }
+  .wf-screen {
+    background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px;
+    padding: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+  }
+
+  /* ── Dedicated Login Modal Overlay ── */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(6px);
+    display: none; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .modal-overlay.open { display: flex; animation: fadeIn 180ms ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+
+  .login-modal {
+    background: #ffffff; border-radius: 20px;
+    max-width: 440px; width: 100%;
+    box-shadow: 0 20px 48px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.2);
+    overflow: hidden; position: relative;
+  }
+  .modal-head {
+    padding: 24px 24px 16px; border-bottom: 1px solid #f1f5f9;
+    display: flex; justify-content: space-between; align-items: flex-start;
+  }
+  .modal-close {
+    border: none; background: #f1f5f9; width: 32px; height: 32px;
+    border-radius: 50%; font-size: 16px; font-weight: 700; color: #64748b;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .modal-close:hover { background: #e2e8f0; color: #0f172a; }
+  .modal-body { padding: 24px; }
+
+  /* ── Toast Notification ── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 300;
+    background: #0f172a; color: #ffffff; padding: 12px 20px;
+    border-radius: 12px; font-size: 13px; font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    display: none; align-items: center; gap: 8px;
+    animation: slideUp 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .toast.show { display: flex; }
+  @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  /* ── Footer ── */
+  .footer {
+    background: #ffffff; border-top: 1px solid var(--surface-hover, #e2e8f0);
+    padding: 40px 24px; margin-top: auto; font-size: 13px; color: #64748b;
+  }
+  .footer-inner {
+    max-width: 1200px; margin: 0 auto;
+    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;
+  }
+  .footer-links { display: flex; gap: 20px; }
+  .footer-links a { color: #64748b; text-decoration: none; font-weight: 500; }
+  .footer-links a:hover { color: var(--accent, #1d6fe0); }
+</style>
+</head>
+<body>
+
+  <!-- ═══ Navigation Bar ═══ -->
+  <header class="navbar">
+    <div class="nav-left">
+      <a href="#" class="brand">
+        <div class="brand-glyph">◆</div>
+        <div class="brand-meta">
+          <span class="brand-title">Smart Survey X</span>
+          <span class="brand-sub">Enterprise Ground Intelligence</span>
+        </div>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#field-ops">Field Ops</a></li>
+        <li><a href="#web-intake">Web Intake</a></li>
+        <li><a href="#client-admin">Client Admin</a></li>
+        <li><a href="#security">Security</a></li>
+      </ul>
+    </div>
+    <div class="nav-actions">
+      <span class="badge-live"><span class="dot"></span> Platform Live</span>
+      <button type="button" class="btn btn-outline" onclick="openLoginModal()">Field APK</button>
+      <button type="button" class="btn btn-primary" onclick="openLoginModal()">
+        Client Admin Sign In →
+      </button>
+    </div>
+  </header>
+
+  <!-- ═══ Hero Section ═══ -->
+  <section class="hero-section" id="overview">
+    <div class="hero-container">
+      <div>
+        <div class="hero-pill">
+          ⚡ Smart Survey X · Client Admin Portal
+        </div>
+        <h1 class="hero-title">
+          Real-time Field Operations &amp; <span>Survey Intelligence</span>
+        </h1>
+        <p class="hero-desc">
+          Manage ground surveyor teams with offline voice capture and tamper-proof GPS verification, distribute public web surveys with quota control, and review live intakes from your dedicated Client Admin console.
+        </p>
+        <div class="hero-buttons">
+          <button type="button" class="btn btn-primary btn-large" onclick="openLoginModal()">
+            Access Client Admin Portal →
+          </button>
+          <a href="#client-admin" class="btn btn-outline btn-large">
+            Explore Capabilities
+          </a>
+        </div>
+        <div class="hero-badges">
+          <div class="hero-badge-item">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            Offline-first Field App
+          </div>
+          <div class="hero-badge-item">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            Live Quota Enforcement
+          </div>
+          <div class="hero-badge-item">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            Encrypted 2FA Security
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Preview Card -->
+      <div class="hero-card-wrap">
+        <div class="hero-card-header">
+          <div class="card-dots">
+            <div class="card-dot red"></div>
+            <div class="card-dot yellow"></div>
+            <div class="card-dot green"></div>
+          </div>
+          <div class="card-header-title">
+            <span>📊 Harish Rao · Client Admin</span>
+          </div>
+          <span class="badge-live"><span class="dot"></span> Live Sync</span>
+        </div>
+        <div class="hero-card-body">
+          <div class="preview-kpis">
+            <div class="preview-kpi">
+              <div class="label">Total Allocated</div>
+              <div class="val tnum">5,000</div>
+            </div>
+            <div class="preview-kpi accent">
+              <div class="label">Web Reserved</div>
+              <div class="val tnum">200</div>
+            </div>
+            <div class="preview-kpi ok">
+              <div class="label">Field Remaining</div>
+              <div class="val tnum">4,759</div>
+            </div>
+          </div>
+
+          <!-- Mini survey cards -->
+          <div class="preview-row">
+            <div>
+              <div class="title">
+                Genral Survey <span class="tag-live">LIVE</span>
+              </div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
+                Web quota: 200 · 181 left
+              </div>
+            </div>
+            <div class="stats">
+              <span>Web: <strong>19</strong></span>
+              <span>Field: <strong>0</strong></span>
+              <span>Total: <strong>19</strong></span>
+            </div>
+          </div>
+
+          <div class="preview-row">
+            <div>
+              <div class="title">Political Survey</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
+                Assembly Constituencies: 119
+              </div>
+            </div>
+            <div class="stats">
+              <span>Field: <strong>33</strong></span>
+              <span>Total: <strong>33</strong></span>
+            </div>
+          </div>
+
+          <!-- Quick login box -->
+          <div class="hero-login-box">
+            <div class="hero-login-title">
+              <span>Sign in to Client Admin</span>
+              <span style="font-size: 11px; color: #64748b;">Enterprise Access</span>
+            </div>
+            <form onsubmit="handleQuickLogin(event)">
+              <div class="field">
+                <label>Username</label>
+                <input type="text" id="quick-user" value="harish" placeholder="Enter username" required />
+              </div>
+              <div class="field">
+                <label>Password</label>
+                <input type="password" id="quick-pass" value="••••••••" placeholder="Enter password" required />
+              </div>
+              <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 4px;">
+                Sign In to Dashboard →
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Metric Highlights Strip ═══ -->
+  <section class="stats-strip">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="num tnum">99.9%</div>
+        <div class="lbl">Offline Capture Reliability</div>
+      </div>
+      <div class="stat-card">
+        <div class="num tnum">100+</div>
+        <div class="lbl">Assembly &amp; Ward Segments</div>
+      </div>
+      <div class="stat-card">
+        <div class="num tnum">&lt;2s</div>
+        <div class="lbl">Background Sync Latency</div>
+      </div>
+      <div class="stat-card">
+        <div class="num tnum">Zero</div>
+        <div class="lbl">Data Loss with Local Storage</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Core Capabilities ═══ -->
+  <section class="features-section" id="field-ops">
+    <div class="section-head">
+      <div class="section-eyebrow">End-to-End Ground System</div>
+      <h2 class="section-title">Built for High-Stakes Field &amp; Web Research</h2>
+      <p class="section-sub">
+        A single coordinated ecosystem connecting field enumerators, public respondents, and analytical client administrators.
+      </p>
+    </div>
+
+    <div class="features-grid">
+      <!-- Card 1 -->
+      <div class="feature-card">
+        <div class="feature-icon blue">📱</div>
+        <h3>Field Enumeration (PWA &amp; APK)</h3>
+        <p>
+          Offline-first mobile collection with voice notes, geofenced GPS verification, and multi-lingual questionnaire rendering (English &amp; Telugu).
+        </p>
+        <ul class="feature-list">
+          <li>Automated background sync when online</li>
+          <li>Audio snippet verification for QA</li>
+          <li>Surveyor KYC document locking</li>
+          <li>Target quota alerts on mobile</li>
+        </ul>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="feature-card" id="web-intake">
+        <div class="feature-icon green">🌐</div>
+        <h3>Public Web Surveys &amp; WhatsApp</h3>
+        <p>
+          Instantly mint shareable survey links with hard caps, real-time response counters, and 1-click WhatsApp distribution.
+        </p>
+        <ul class="feature-list">
+          <li>Live status tracking (Started &amp; Ended timestamps)</li>
+          <li>Auto-shutdown when quota is reached</li>
+          <li>Bot and duplicate submission protection</li>
+          <li>Instant respondent mobile optimization</li>
+        </ul>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="feature-card" id="client-admin">
+        <div class="feature-icon purple">📊</div>
+        <h3>Client Admin Portal</h3>
+        <p>
+          Complete control over allocated records, quota budgeting, live QA review streams (Confirm, Flag, Reject), and analytical cross-tabs.
+        </p>
+        <ul class="feature-list">
+          <li>Detailed field vs. web quota reconciliation</li>
+          <li>Live intake inspection with audio playback</li>
+          <li>Constituency &amp; district performance tables</li>
+          <li>1-Click Excel / CSV structured exports</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Workflow Demonstration ═══ -->
+  <section class="workflow-section" id="security">
+    <div class="workflow-box">
+      <div class="section-head">
+        <div class="section-eyebrow">Enterprise Governance</div>
+        <h2 class="section-title">Granular Permissions &amp; Data Security</h2>
+        <p class="section-sub">
+          Super Admin governs platform quotas while Client Admins manage day-to-day operations with strict tenant isolation.
+        </p>
+      </div>
+
+      <div class="wf-tabs">
+        <button type="button" class="wf-tab active" onclick="setWfTab(0)">1. Quota &amp; Allocation</button>
+        <button type="button" class="wf-tab" onclick="setWfTab(1)">2. Live Review QA</button>
+        <button type="button" class="wf-tab" onclick="setWfTab(2)">3. Security &amp; 2FA</button>
+      </div>
+
+      <div class="wf-content" id="wf-panel">
+        <div class="wf-text">
+          <h4 id="wf-title">Strict Tenant Quota Governance</h4>
+          <p id="wf-desc">
+            Client Admins receive a dedicated record pool from the Super Admin. Web surveys draw directly from reserved allocations, ensuring field surveyors always have guaranteed headroom for ground work.
+          </p>
+          <div style="display: flex; gap: 12px;">
+            <button type="button" class="btn btn-primary" onclick="openLoginModal()">Login to View Quotas →</button>
+          </div>
+        </div>
+        <div class="wf-screen" id="wf-screen-content">
+          <div style="font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 8px;">
+            ALLOCATION BREAKDOWN FORMULA
+          </div>
+          <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; font-family: monospace; font-size: 13px; line-height: 1.6;">
+            <div>Total Allocated: <strong style="color: #0f172a;">5,000</strong></div>
+            <div>− Web Reserved: <strong style="color: #1d6fe0;">200</strong></div>
+            <div>− Field Used: <strong style="color: #16a34a;">41</strong></div>
+            <div style="border-top: 1px dashed #cbd5e1; margin-top: 6px; padding-top: 6px; color: #15803d; font-weight: 700;">
+              = Remaining for Field: 4,759
+            </div>
+          </div>
+          <div style="margin-top: 12px; font-size: 12px; color: #64748b;">
+            ✓ Real-time audit log tracking every intake event.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Dedicated Client Admin Login Modal ═══ -->
+  <div class="modal-overlay" id="loginModal">
+    <div class="login-modal">
+      <div class="modal-head">
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="color: #1d6fe0; font-size: 18px;">◆</span>
+            <span style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .05em;">Smart Survey X</span>
+          </div>
+          <h2 style="font-size: 20px; font-weight: 800; color: #0f172a; margin-top: 4px;">Client Admin Login</h2>
+        </div>
+        <button type="button" class="modal-close" onclick="closeLoginModal()">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <p style="font-size: 13px; color: #64748b; margin-bottom: 18px;">
+          Sign in to manage your organization's surveys, surveyors, quotas, and field intake streams.
+        </p>
+
+        <form onsubmit="handleModalLogin(event)">
+          <div class="field">
+            <label>Username</label>
+            <input type="text" id="modal-user" value="harish" placeholder="Client admin username" required />
+          </div>
+
+          <div class="field">
+            <label>Password</label>
+            <input type="password" id="modal-pass" value="password123" placeholder="Enter password" required />
+          </div>
+
+          <div class="field" id="modal-totp-field" style="display: none;">
+            <label>2FA Authenticator Code</label>
+            <input type="text" id="modal-totp" placeholder="6-digit code (e.g. 123456)" maxlength="6" />
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin: 12px 0 18px; font-size: 12px;">
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: #475569;">
+              <input type="checkbox" checked /> Remember session
+            </label>
+            <a href="#" style="color: #1d6fe0; text-decoration: none; font-weight: 600;" onclick="showToast('Contact Super Admin to reset password or TOTP'); return false;">
+              Forgot password?
+            </a>
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="modal-submit-btn" style="width: 100%; min-height: 44px; font-size: 14px;">
+            Sign In to Portal →
+          </button>
+        </form>
+
+        <div style="margin-top: 16px; padding: 12px; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0; font-size: 11px; color: #64748b; text-align: center;">
+          🔒 Protected by 256-bit SSL encryption &amp; tenant isolation.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Toast ═══ -->
+  <div class="toast" id="toastMsg">
+    <span id="toastText">Welcome Harish Rao · Client Admin</span>
+  </div>
+
+  <!-- ═══ Footer ═══ -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div>
+        <strong>Smart Survey X</strong> · Powered by Ground IQ System Architecture
+        <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">
+          Next-generation offline mobile surveys and real-time field operations.
+        </div>
+      </div>
+      <div class="footer-links">
+        <a href="whole.html">Unified Mock Prototype</a>
+        <a href="credentials.html">Credentials Card</a>
+        <a href="admin-feed.html">Intake Feed</a>
+        <a href="#" onclick="openLoginModal(); return false;">Client Admin Portal</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ═══ JavaScript Logic ═══ -->
+  <script>
+    function openLoginModal() {
+      document.getElementById('loginModal').classList.add('open');
+    }
+    function closeLoginModal() {
+      document.getElementById('loginModal').classList.remove('open');
+    }
+
+    // Close on clicking backdrop
+    document.getElementById('loginModal').addEventListener('click', function(e) {
+      if (e.target === this) closeLoginModal();
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeLoginModal();
+    });
+
+    function showToast(msg) {
+      const t = document.getElementById('toastMsg');
+      document.getElementById('toastText').innerText = msg;
+      t.classList.add('show');
+      setTimeout(() => { t.classList.remove('show'); }, 3200);
+    }
+
+    function handleQuickLogin(e) {
+      e.preventDefault();
+      const user = document.getElementById('quick-user').value || 'harish';
+      showToast('Authenticating @' + user + ' · Client Admin…');
+      setTimeout(() => {
+        showToast('Login successful ✓ Redirecting to Client Admin portal…');
+        setTimeout(() => {
+          window.location.href = 'whole.html';
+        }, 1000);
+      }, 700);
+    }
+
+    function handleModalLogin(e) {
+      e.preventDefault();
+      const user = document.getElementById('modal-user').value || 'harish';
+      const btn = document.getElementById('modal-submit-btn');
+      btn.innerText = 'Verifying credentials…';
+      btn.disabled = true;
+
+      setTimeout(() => {
+        showToast('Welcome ' + user + ' (Client Admin) ✓');
+        btn.innerText = 'Redirecting…';
+        setTimeout(() => {
+          closeLoginModal();
+          window.location.href = 'whole.html';
+        }, 800);
+      }, 700);
+    }
+
+    const wfData = [
+      {
+        title: "Strict Tenant Quota Governance",
+        desc: "Client Admins receive a dedicated record pool from the Super Admin. Web surveys draw directly from reserved allocations, ensuring field surveyors always have guaranteed headroom for ground work.",
+        screen: `
+          <div style="font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 8px;">ALLOCATION BREAKDOWN FORMULA</div>
+          <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; font-family: monospace; font-size: 13px; line-height: 1.6;">
+            <div>Total Allocated: <strong style="color: #0f172a;">5,000</strong></div>
+            <div>− Web Reserved: <strong style="color: #1d6fe0;">200</strong></div>
+            <div>− Field Used: <strong style="color: #16a34a;">41</strong></div>
+            <div style="border-top: 1px dashed #cbd5e1; margin-top: 6px; padding-top: 6px; color: #15803d; font-weight: 700;">
+              = Remaining for Field: 4,759
+            </div>
+          </div>
+          <div style="margin-top: 12px; font-size: 12px; color: #64748b;">
+            ✓ Real-time audit log tracking every intake event.
+          </div>
+        `
+      },
+      {
+        title: "Real-time QA Verification Stream",
+        desc: "Every submission (whether from the mobile field app or public web link) lands directly in the Client Admin review inbox with GPS coordinates, duration, audio notes, and respondent verification.",
+        screen: `
+          <div style="font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 8px;">LIVE INTAKE QUEUE</div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="padding: 8px 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
+              <span><strong>#2310</strong> · Web respondent</span>
+              <span style="color: #16a34a; font-weight: 700; background: #dcfce7; padding: 2px 8px; border-radius: 99px; font-size: 10px;">Confirmed</span>
+            </div>
+            <div style="padding: 8px 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
+              <span><strong>#2309</strong> · Field surveyor @kiran</span>
+              <span style="color: #d97706; font-weight: 700; background: #fef3c7; padding: 2px 8px; border-radius: 99px; font-size: 10px;">Pending QA</span>
+            </div>
+          </div>
+        `
+      },
+      {
+        title: "Multi-tenant Encryption & 2FA",
+        desc: "Role separation enforced by backend checkpoints. Super Admin oversees platform governance, while Client Admin accounts are locked to designated company surveys and field personnel.",
+        screen: `
+          <div style="font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 8px;">SECURITY STATUS</div>
+          <div style="padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 12px; line-height: 1.7;">
+            <div>🛡️ <strong>TOTP 2FA:</strong> Enforced on all Admin logins</div>
+            <div>🔐 <strong>PII Redaction:</strong> Phone &amp; Aadhaar masked</div>
+            <div>📑 <strong>KYC Locks:</strong> Surveyor media locked upon review</div>
+            <div>⚡ <strong>Rate Limiting:</strong> 60s cooldown on failed auth</div>
+          </div>
+        `
+      }
+    ];
+
+    function setWfTab(idx) {
+      const tabs = document.querySelectorAll('.wf-tab');
+      tabs.forEach((t, i) => t.classList.toggle('active', i === idx));
+      const data = wfData[idx];
+      document.getElementById('wf-title').innerText = data.title;
+      document.getElementById('wf-desc').innerText = data.desc;
+      document.getElementById('wf-screen-content').innerHTML = data.screen;
+    }
+  </script>
+
+</body>
+</html>

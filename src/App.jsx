@@ -17,11 +17,26 @@ import AppUpdateModal from './AppUpdateModal'
 const SurveyorApp = lazy(() => import('./SurveyorApp'))
 const PublicWebFill = lazy(() => import('./PublicWebFill'))
 
+function isSuperAdminPath() {
+  if (typeof window === 'undefined') return false
+  const p = window.location.pathname || ''
+  const q = new URLSearchParams(window.location.search)
+  return (
+    p === '/super' ||
+    p.startsWith('/super/') ||
+    p === '/superadmin' ||
+    p.startsWith('/superadmin/') ||
+    q.get('super') === '1' ||
+    q.get('superadmin') === '1'
+  )
+}
+
 function isAdminPath() {
   if (typeof window === 'undefined') return false
   const p = window.location.pathname || ''
   const q = new URLSearchParams(window.location.search)
   return (
+    isSuperAdminPath() ||
     p === '/admin' ||
     p.startsWith('/admin/') ||
     /\/admin(\/|$)/.test(p) ||
@@ -97,13 +112,15 @@ export default function App() {
     }
   }, [portalOnly])
 
+  const isSuper = SUPER_ADMIN_CONSOLE || isSuperAdminPath()
+
   return (
     <>
       {fillKey ? (
         <Suspense fallback={<FieldBoot />}>
           <PublicWebFill formKey={fillKey} fillToken={publicFillToken()} />
         </Suspense>
-      ) : SUPER_ADMIN_CONSOLE ? (
+      ) : isSuper ? (
         <AdminPortal superAdminOnly />
       ) : openFieldApp ? (
         <Suspense fallback={<FieldBoot />}>

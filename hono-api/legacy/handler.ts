@@ -3388,10 +3388,13 @@ async function adminFormKeyScope(
   me: { role: unknown; id: unknown } | null,
 ): Promise<string[] | null> {
   if (!me || me.role !== "admin") return null;
+  const adminId = Number(me.id);
   const rows = await sqlFn`
     SELECT form_key FROM survey_form
-    WHERE created_by = ${me.id}
-       OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+    WHERE created_by = ${adminId}
+       OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${adminId})
+       OR (company_name IS NOT NULL AND company_name <> '' AND LOWER(TRIM(company_name)) = LOWER(TRIM((SELECT company_name FROM app_users WHERE id = ${adminId}))))
+       OR (company_id IS NOT NULL AND company_id = (SELECT company_id FROM app_users WHERE id = ${adminId}))
   `.catch(() => []);
   return [...new Set((rows as { form_key: string }[]).map((r) => String(r.form_key)))];
 }
@@ -7885,13 +7888,21 @@ async function rawHandler(req: Request): Promise<Response> {
           : (q
                 ? await sql`
                     SELECT id, form_key, title, display_lang, questions, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form
-                    WHERE (created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
+                    WHERE (
+                      created_by = ${me.id}
+                      OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                      OR (company_name IS NOT NULL AND company_name <> '' AND LOWER(TRIM(company_name)) = LOWER(TRIM((SELECT company_name FROM app_users WHERE id = ${me.id}))))
+                      OR (company_id IS NOT NULL AND company_id = (SELECT company_id FROM app_users WHERE id = ${me.id}))
+                    )
                       AND LOWER(title) LIKE ${'%' + q + '%'}
                     ORDER BY title
                   `
                 : await sql`
                     SELECT id, form_key, title, display_lang, questions, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form
-                    WHERE created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                    WHERE created_by = ${me.id}
+                      OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                      OR (company_name IS NOT NULL AND company_name <> '' AND LOWER(TRIM(company_name)) = LOWER(TRIM((SELECT company_name FROM app_users WHERE id = ${me.id}))))
+                      OR (company_id IS NOT NULL AND company_id = (SELECT company_id FROM app_users WHERE id = ${me.id}))
                     ORDER BY title
                   `)) as Record<string, unknown>[];
       } catch {
@@ -7899,7 +7910,10 @@ async function rawHandler(req: Request): Promise<Response> {
           ? await sql`SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form ORDER BY title`.catch(() => [])
           : await sql`
               SELECT id, form_key, title, questions, updated_at, created_by, company_name FROM survey_form
-              WHERE created_by = ${me.id} OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+              WHERE created_by = ${me.id}
+                OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                OR (company_name IS NOT NULL AND company_name <> '' AND LOWER(TRIM(company_name)) = LOWER(TRIM((SELECT company_name FROM app_users WHERE id = ${me.id}))))
+                OR (company_id IS NOT NULL AND company_id = (SELECT company_id FROM app_users WHERE id = ${me.id}))
               ORDER BY title
             `.catch(() => []);
         rows = (fallback as Record<string, unknown>[]).map((r) => ({
@@ -8245,6 +8259,8 @@ async function rawHandler(req: Request): Promise<Response> {
               WHERE id = ${id} AND (
                 created_by = ${me.id}
                 OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                OR (company_name IS NOT NULL AND company_name <> '' AND LOWER(TRIM(company_name)) = LOWER(TRIM((SELECT company_name FROM app_users WHERE id = ${me.id}))))
+                OR (company_id IS NOT NULL AND company_id = (SELECT company_id FROM app_users WHERE id = ${me.id}))
               )
             `.catch(() => null);
       if (!rows) {
@@ -8255,6 +8271,8 @@ async function rawHandler(req: Request): Promise<Response> {
                 WHERE id = ${id} AND (
                   created_by = ${me.id}
                   OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+                  OR (company_name IS NOT NULL AND company_name <> '' AND LOWER(TRIM(company_name)) = LOWER(TRIM((SELECT company_name FROM app_users WHERE id = ${me.id}))))
+                  OR (company_id IS NOT NULL AND company_id = (SELECT company_id FROM app_users WHERE id = ${me.id}))
                 )
               `;
       }
@@ -8678,8 +8696,12 @@ async function rawHandler(req: Request): Promise<Response> {
         ? await sql`SELECT id, title FROM survey_form WHERE id = ${id}`
         : await sql`
             SELECT id, title FROM survey_form
-            WHERE id = ${id} AND (created_by = ${me.id}
-              OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id}))
+            WHERE id = ${id} AND (
+              created_by = ${me.id}
+              OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
+              OR (company_name IS NOT NULL AND company_name <> '' AND LOWER(TRIM(company_name)) = LOWER(TRIM((SELECT company_name FROM app_users WHERE id = ${me.id}))))
+              OR (company_id IS NOT NULL AND company_id = (SELECT company_id FROM app_users WHERE id = ${me.id}))
+            )
           `;
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
       // Super-Admin-set total question quota across surveys for this Client Admin (0 = unlimited)

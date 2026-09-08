@@ -1,41 +1,324 @@
 import { useCallback, useEffect, useState } from 'react'
-import Icon from './Icons'
-import { getSurvey, listSurveys, listWebSurveyStats } from './api'
-import CopyWebFillLink from './components/CopyWebFillLink'
-import { slugQuestionKey } from './questionKey'
+import { listSubmissions, listSurveys, listWebFillLinks, mintWebFillUrl, webFillUrl } from './api'
 
-function qid(q) {
-  return String(q?.id || slugQuestionKey(q?.label) || '').trim()
-}
-
-function formatIstStamp(v) {
+/* ─── helpers ─────────────────────────────────────────────────── */
+function fmt(v) {
   if (!v) return '—'
   const d = v instanceof Date ? v : new Date(v)
   if (Number.isNaN(d.getTime())) return '—'
   return new Intl.DateTimeFormat('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
+    timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short',
+    hour: 'numeric', minute: '2-digit', hour12: true,
   }).format(d)
 }
 
+function shareViaWhatsApp(url, title) {
+  const text = encodeURIComponent(`Please fill this survey: ${title}\n${url}`)
+  window.open(`https://wa.me/?text=${text}`, '_blank')
+}
+
+function Pill({ label, color = '#64748b', bg = '#f1f5f9', dot }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      background: bg, color, fontSize: 11, fontWeight: 700,
+      letterSpacing: '0.04em', padding: '3px 9px',
+      borderRadius: 99, whiteSpace: 'nowrap',
+    }}>
+      {dot && (
+        <span style={{
+          width: 7, height: 7, borderRadius: '50%', background: color,
+          animation: dot === 'pulse' ? 'live-pulse 1.4s ease-in-out infinite' : 'none',
+          display: 'inline-block',
+        }} />
+      )}
+      {label}
+    </span>
+  )
+}
+
+/* ─── per-survey card ─────────────────────────────────────────── */
+function SurveyWebCard({ survey, onToast, expanded, onToggle }) {
+  const [link, setLink] = useState(null)       // { token, max_uses, use_count, expired }
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [maxUses, setMaxUses] = useState(100)
+  const [recents, setRecents] = useState([])
+  const [recLoading, setRecLoading] = useState(false)
+
+  const fk = survey.form_key
+
+  /* load link status */
+  useEffect(() => {
+    if (!fk) return
+    let dead = false
+    setLoading(true)
+    listWebFillLinks(fk)
+      .then((d) => {
+        if (dead) return
+        const share = d.live || null
+        setLink(share)
+        if (share?.max_uses) setMaxUses(Number(share.max_uses) || 100)
+      })
+      .catch(() => {})
+      .finally(() => { if (!dead) setLoading(false) })
+    return () => { dead = true }
+  }, [fk])
+
+  /* load recent web submissions when expanded */
+  useEffect(() => {
+    if (!expanded || !fk) return
+    let dead = false
+    setRecLoading(true)
+    listSubmissions(10, 'all', { survey: fk, source: 'web' })
+      .then((d) => { if (!dead) setRecents(d.items || []) })
+      .catch(() => {})
+      .finally(() => { if (!dead) setRecLoading(false) })
+    return () => { dead = true }
+  }, [expanded, fk])
+
+  const cap = Number(link?.max_uses || maxUses || 100) || 100
+  const used = Math.max(Number(survey.web_submissions) || 0, Number(link?.use_count) || 0)
+  const left = Math.max(0, cap - used)
+  const pct = Math.min(100, Math.round((used / cap) * 100))
+  const full = !!link?.expired || (cap > 0 && left === 0)
+  const isLive = !!link?.token && !full
+  const url = link?.token ? webFillUrl(fk, link.token) : ''
+
+  async function handleMint() {
+    if (!fk) return
+    setBusy(true)
+    try {
+      const d = await mintWebFillUrl(fk, maxUses)
+      const newUrl = d.url || ''
+      setLink({ token: d.token, max_uses: d.max_uses || maxUses, use_count: d.use_count || 0, expired: false })
+      try { await navigator.clipboard.writeText(newUrl) } catch { /* ignore */ }
+      onToast?.(`Link created & copied · ${maxUses} responses allowed`, 'ok')
+    } catch (e) {
+      onToast?.(e.message || 'Could not create link', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleCopy() {
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      onToast?.('Link copied to clipboard ✓', 'ok')
+    } catch {
+      onToast?.(url, 'ok')
+    }
+  }
+
+  const barColor = full ? '#dc2626' : pct >= 80 ? '#f59e0b' : '#059669'
+
+  return (
+    <div style={{
+      border: `1.5px solid ${isLive ? '#86efac' : full ? '#fecaca' : '#e2e8f0'}`,
+      borderRadius: 14,
+      background: isLive ? '#f0fdf4' : full ? '#fef2f2' : '#fff',
+      marginBottom: 12,
+      overflow: 'hidden',
+    }}>
+      {/* ── card header (always visible, tap to expand) ── */}
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          width: '100%', textAlign: 'left', background: 'none',
+          border: 'none', padding: '14px 16px', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+            <strong style={{ fontSize: 15, color: '#0f172a' }}>{survey.title || fk}</strong>
+            {loading ? (
+              <Pill label="Loading…" />
+            ) : isLive ? (
+              <Pill label="LIVE" color="#15803d" bg="#dcfce7" dot="pulse" />
+            ) : full ? (
+              <Pill label="Target reached" color="#b91c1c" bg="#fee2e2" />
+            ) : link?.token ? (
+              <Pill label="Disabled" color="#92400e" bg="#fef3c7" />
+            ) : (
+              <Pill label="No link yet" color="#64748b" bg="#f1f5f9" />
+            )}
+          </div>
+          {/* progress bar */}
+          {link?.token && !loading && (
+            <div>
+              <div style={{ height: 5, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden', marginBottom: 3 }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: 99 }} />
+              </div>
+              <span style={{ fontSize: 11, color: full ? '#dc2626' : '#64748b' }}>
+                {used.toLocaleString()} / {cap.toLocaleString()} responses
+                {!full && ` · ${left.toLocaleString()} left`}
+              </span>
+            </div>
+          )}
+        </div>
+        <span style={{ fontSize: 18, color: '#94a3b8', flexShrink: 0 }}>{expanded ? '▲' : '▼'}</span>
+      </button>
+
+      {/* ── expanded panel ── */}
+      {expanded && (
+        <div style={{ padding: '0 16px 16px' }}>
+
+          {/* quota + action row */}
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            <label className="field" style={{ margin: 0, flex: '0 0 auto' }}>
+              <span style={{ fontSize: 12 }}>Responses allowed</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  type="button" className="btn small"
+                  disabled={busy || full || maxUses <= 1}
+                  onClick={() => setMaxUses(n => Math.max(1, n - (n > 50 ? 10 : 1)))}
+                  style={{ minHeight: 40, minWidth: 40 }}
+                >−</button>
+                <input
+                  type="number" min={1} max={9999} value={maxUses}
+                  disabled={busy}
+                  onChange={(e) => setMaxUses(Math.max(1, Math.min(9999, Number(e.target.value) || 1)))}
+                  style={{ width: 72, textAlign: 'center', minHeight: 40, fontSize: 16 }}
+                />
+                <button
+                  type="button" className="btn small"
+                  disabled={busy || full || maxUses >= 9999}
+                  onClick={() => setMaxUses(n => Math.min(9999, n + (n >= 50 ? 10 : 1)))}
+                  style={{ minHeight: 40, minWidth: 40 }}
+                >+</button>
+              </div>
+            </label>
+
+            {!full ? (
+              <button
+                type="button"
+                className="btn primary"
+                disabled={busy || loading}
+                onClick={() => void (isLive ? handleCopy() : handleMint())}
+                style={{ minHeight: 44, flex: 1, fontSize: 14, fontWeight: 700 }}
+              >
+                {busy ? (isLive ? 'Copying…' : 'Creating…') : isLive ? '📋 Copy link' : '🔗 Create & copy link'}
+              </button>
+            ) : (
+              <div style={{
+                flex: 1, padding: '10px 14px', borderRadius: 10,
+                background: '#fef2f2', border: '1px solid #fecaca',
+                fontSize: 13, color: '#b91c1c', fontWeight: 600,
+              }}>
+                🛑 Target reached — sharing disabled
+              </div>
+            )}
+          </div>
+
+          {/* link row (when live) */}
+          {isLive && url && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{
+                display: 'flex', gap: 8, alignItems: 'center',
+                background: '#f8fafc', border: '1px solid #e2e8f0',
+                borderRadius: 10, padding: '8px 12px', flexWrap: 'wrap',
+              }}>
+                <span style={{
+                  flex: 1, fontSize: 12, color: '#334155', wordBreak: 'break-all',
+                  fontFamily: 'monospace',
+                }}>{url}</span>
+              </div>
+
+              {/* share buttons */}
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="btn"
+                  style={{ flex: 1, minHeight: 44, fontSize: 13, fontWeight: 600 }}
+                >
+                  📋 Copy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => shareViaWhatsApp(url, survey.title)}
+                  style={{
+                    flex: 1, minHeight: 44, fontSize: 13, fontWeight: 700,
+                    background: '#25D366', color: '#fff', border: 'none',
+                    borderRadius: 10, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                  </svg>
+                  WhatsApp
+                </button>
+                {navigator.share && (
+                  <button
+                    type="button"
+                    className="btn"
+                    style={{ flex: 1, minHeight: 44, fontSize: 13, fontWeight: 600 }}
+                    onClick={() => navigator.share({ title: survey.title, url }).catch(() => {})}
+                  >
+                    ↗ Share
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* recent web responses */}
+          <div>
+            <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
+              Recent web responses
+              <span style={{ marginLeft: 6, fontWeight: 400, color: '#64748b', fontSize: 12 }}>
+                ({used} total)
+              </span>
+            </p>
+            {recLoading ? (
+              <p className="muted" style={{ fontSize: 13 }}>Loading…</p>
+            ) : recents.length === 0 ? (
+              <p className="muted" style={{ fontSize: 13 }}>No web responses yet.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {recents.slice(0, 5).map((r) => {
+                  const status = r.payload?.status || r.status || 'pending'
+                  const name = r.payload?.answers?.name || r.payload?.name || r.payload?.answers?.respondent_name || '—'
+                  const ts = fmt(r.payload?.submitted_at || r.created_at)
+                  const statusColor = status === 'confirmed' ? '#059669' : status === 'rejected' ? '#dc2626' : '#f59e0b'
+                  return (
+                    <div key={r.id} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '8px 12px', background: '#f8fafc', borderRadius: 8,
+                      border: '1px solid #e2e8f0', gap: 8, flexWrap: 'wrap',
+                    }}>
+                      <span style={{ fontSize: 13, color: '#334155', flex: 1 }}>{name}</span>
+                      <span style={{ fontSize: 11, color: '#94a3b8' }}>{ts}</span>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, color: statusColor,
+                        background: `${statusColor}18`, padding: '2px 8px', borderRadius: 99,
+                      }}>
+                        {status}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ─── main screen ─────────────────────────────────────────────── */
 export default function AdminWebSurveyScreen({ onToast, user }) {
   const [surveys, setSurveys] = useState([])
-  const [surveyId, setSurveyId] = useState('')
-  const [title, setTitle] = useState('')
-  const [formKey, setFormKey] = useState('')
-  const [questions, setQuestions] = useState([])
   const [loading, setLoading] = useState(true)
-  const [linkStatus, setLinkStatus] = useState({ hasLink: false, expired: false, loading: true })
-  const [tab, setTab] = useState('link')
-  const [stats, setStats] = useState([])
-  const [statsLoading, setStatsLoading] = useState(false)
+  const [expanded, setExpanded] = useState(null)  // form_key of open card
+  const [search, setSearch] = useState('')
 
-  const loadList = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
       const d = await listSurveys()
@@ -43,7 +326,10 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
         (s) => s.form_key !== 'default' && s.form_key !== 'legacy',
       )
       setSurveys(items)
-      setSurveyId((cur) => cur || (items[0] ? String(items[0].id) : ''))
+      // auto-expand first live survey
+      const liveOne = items.find((s) => s.web_link?.token && !s.web_link?.expired)
+      if (liveOne) setExpanded(liveOne.form_key)
+      else if (items.length === 1) setExpanded(items[0].form_key)
     } catch (e) {
       onToast?.(e.message, 'error')
     } finally {
@@ -51,348 +337,92 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
     }
   }, [onToast])
 
-  useEffect(() => {
-    void loadList()
-  }, [loadList])
+  useEffect(() => { void load() }, [load])
 
-  const loadStats = useCallback(async () => {
-    setStatsLoading(true)
-    try {
-      const d = await listWebSurveyStats()
-      setStats(d.items || [])
-    } catch (e) {
-      onToast?.(e.message, 'error')
-    } finally {
-      setStatsLoading(false)
-    }
-  }, [onToast])
+  const filtered = surveys.filter((s) =>
+    !search.trim() || (s.title || s.form_key).toLowerCase().includes(search.toLowerCase()),
+  )
 
-  useEffect(() => {
-    if (tab === 'submitted') void loadStats()
-  }, [tab, loadStats])
-
-  useEffect(() => {
-    if (!surveyId) {
-      setQuestions([])
-      setTitle('')
-      setFormKey('')
-      setLinkStatus({ hasLink: false, expired: false, loading: false })
-      return undefined
-    }
-    const found = surveys.find((s) => String(s.id) === String(surveyId))
-    if (found) {
-      setTitle(found.title || found.form_key || '')
-      setFormKey(found.form_key || '')
-    } else {
-      setFormKey('')
-      setTitle('')
-    }
-    setLinkStatus({ hasLink: false, expired: false, loading: true })
-    let dead = false
-    getSurvey(surveyId)
-      .then((d) => {
-        if (dead) return
-        setTitle(d.survey?.title || found?.title || '')
-        setFormKey(d.survey?.form_key || found?.form_key || '')
-        const qs = Array.isArray(d.survey?.questions) ? d.survey.questions : []
-        setQuestions(qs)
-      })
-      .catch((e) => onToast?.(e.message, 'error'))
-    return () => {
-      dead = true
-    }
-  }, [surveyId, surveys, onToast])
+  const liveCount = surveys.filter((s) => {
+    const l = s.web_link
+    if (!l?.token) return false
+    const cap = Number(l.max_uses) || 0
+    const used = Math.max(Number(s.web_submissions) || 0, Number(l.use_count) || 0)
+    return !l.expired && !(cap > 0 && used >= cap)
+  }).length
 
   return (
     <div>
-      <h2 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Icon name="clipboard" size={18} /> Web survey
-      </h2>
-      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-        Copy a web link, or see how many web fills each survey has received.
-      </p>
-
-      <div className="chip-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-        {[
-          { id: 'link', label: 'Link' },
-          { id: 'submitted', label: 'Submitted' },
-        ].map((t) => (
+      {/* ── header ── */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+              🌐 Web Survey
+              {liveCount > 0 && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  background: '#dcfce7', color: '#15803d',
+                  fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 99,
+                  border: '1px solid #86efac',
+                }}>
+                  <span style={{
+                    width: 7, height: 7, borderRadius: '50%', background: '#16a34a',
+                    animation: 'live-pulse 1.4s ease-in-out infinite', display: 'inline-block',
+                  }} />
+                  {liveCount} LIVE
+                </span>
+              )}
+            </h2>
+            <p className="muted" style={{ margin: '3px 0 0', fontSize: 13 }}>
+              Create links, track responses, share via WhatsApp
+            </p>
+          </div>
           <button
-            key={t.id}
-            type="button"
-            className={`chip ${tab === t.id ? 'selected' : ''}`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
+            type="button" className="btn small"
+            onClick={() => void load()}
+            style={{ minHeight: 40 }}
+          >↻ Refresh</button>
+        </div>
       </div>
 
-      {tab === 'submitted' ? (
-        <div>
-          <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-            How many web surveys were submitted for each questionnaire.
-          </p>
-          {statsLoading ? (
-            <p className="muted">Loading…</p>
-          ) : stats.length === 0 ? (
-            <p className="muted">No surveys yet.</p>
-          ) : (
-            <div className="card" style={{ overflowX: 'auto' }}>
-              <table className="mini-table" style={{ width: '100%' }}>
-                <thead>
-                  <tr>
-                    <th>Survey</th>
-                    <th>Submitted</th>
-                    <th>This link</th>
-                    <th>Created</th>
-                    <th>Ended</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stats.map((s) => {
-                    const hasLink = Boolean(s.has_link || (s.cap != null && s.created_at))
-                    const subCount = Number(s.submitted ?? s.used) || 0
-                    const linkUsed = Number(s.link_used) || 0
-                    const cap = Number(s.cap) || 0
-                    const isExpired = Boolean(s.expired || (cap > 0 && linkUsed >= cap))
-                    return (
-                      <tr key={s.form_key}>
-                        <td>
-                          <strong>{s.title || s.form_key}</strong>
-                        </td>
-                        <td>
-                          <strong style={{ color: subCount > 0 ? '#059669' : '#64748b' }}>
-                            {subCount}
-                          </strong>
-                          <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
-                            web fills
-                          </span>
-                        </td>
-                        <td>
-                          {hasLink ? (
-                            <strong style={{ color: isExpired ? '#dc2626' : '#0f172a' }}>
-                              {linkUsed} / {cap}
-                            </strong>
-                          ) : (
-                            <span className="muted" style={{ fontSize: 12 }}>
-                              No link yet
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
-                          {formatIstStamp(s.created_at)}
-                        </td>
-                        <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
-                          {!hasLink ? (
-                            <span className="muted">—</span>
-                          ) : s.ended_at ? (
-                            formatIstStamp(s.ended_at)
-                          ) : isExpired ? (
-                            <span style={{ color: '#dc2626', fontWeight: 600 }}>Target reached</span>
-                          ) : (
-                            <span style={{ color: '#059669', fontWeight: 600 }}>Active</span>
-                          )}
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn small"
-                            onClick={() => {
-                              setSurveyId(String(s.id))
-                              setTab('link')
-                            }}
-                          >
-                            {hasLink ? 'View link' : 'Create link'}
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      ) : (
-      <>
-      <label className="field" style={{ maxWidth: 420, marginBottom: 16 }}>
-        <span>Survey</span>
-        <select
-          value={surveyId}
-          onChange={(e) => setSurveyId(e.target.value)}
-          disabled={loading}
-        >
-          {surveys.length === 0 ? <option value="">No surveys</option> : null}
-          {surveys.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.title || s.form_key}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {formKey ? (
-        <div className="card" style={{ marginBottom: 16, padding: 14 }}>
-          <CopyWebFillLink
-            key={formKey}
-            formKey={formKey}
-            title={title}
-            onToast={onToast}
-            onStatusChange={(st) => setLinkStatus({ ...st, loading: false })}
-          />
-        </div>
-      ) : null}
-
-      {title ? <h3 style={{ margin: '0 0 12px' }}>{title}</h3> : null}
-
-      {linkStatus.loading ? (
-        <p className="muted" style={{ fontSize: 13 }}>Checking survey link status…</p>
-      ) : !linkStatus.hasLink ? (
-        <div className="card" style={{ textAlign: 'center', padding: '32px 20px', background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: 12, marginBottom: 16 }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>🔗</div>
-          <h3 style={{ margin: '0 0 6px', fontSize: 16, color: '#334155' }}>
-            No Web Survey Link Created Yet
-          </h3>
-          <p className="muted" style={{ margin: '0 auto', maxWidth: 460, fontSize: 13 }}>
-            This survey is not yet accepting web responses. To enable web surveys and activate the live preview, pick responses allowed above and click <strong>Create &amp; copy link</strong>.
-          </p>
-        </div>
-      ) : linkStatus.expired ? (
-        <div className="card" style={{ textAlign: 'center', padding: '32px 20px', background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 12, marginBottom: 16 }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>🛑</div>
-          <h3 style={{ margin: '0 0 6px', fontSize: 16, color: '#b91c1c' }}>
-            Web Survey Target Reached ({linkStatus.totalUsed || 0} / {linkStatus.cap || 0})
-          </h3>
-          <p className="muted" style={{ margin: 0, fontSize: 13, color: '#991b1b' }}>
-            This survey has reached its maximum allocated web responses limit. Sharing is disabled and this survey is no longer accepting web fills.
-          </p>
-        </div>
-      ) : questions.length === 0 && !loading ? (
-        <p className="muted">This survey has no questions yet.</p>
-      ) : (
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Icon name="smartphone" size={16} /> Questionnaire Preview (Read-Only)
-              </h3>
-              <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
-                This is a preview of what respondents see. Web surveys can only be submitted by respondents via the public survey link.
-              </p>
-            </div>
-            <span className="pill" style={{ fontSize: 11, fontWeight: 'bold', background: '#f1f5f9', color: '#475569' }}>
-              Read-Only
-            </span>
-          </div>
-
-          <div>
-            {questions.map((q, i) => {
-              const id = qid(q)
-              const type = q.type || 'text'
-              const opts = Array.isArray(q.options) ? q.options : []
-              const teOpts = Array.isArray(q.options_te) ? q.options_te : []
-              const max = Math.max(1, Number(q.max_choices) || 2)
-
-              return (
-                <div key={id || i} id={`admin-web-q-${id}`} className="card" style={{ marginBottom: 12 }}>
-                  <p style={{ margin: '0 0 4px', fontWeight: 700, fontSize: 14 }}>
-                    Q{i + 1}. {q.label || 'Question'}
-                    {q.required ? ' *' : ''}
-                  </p>
-                  {q.label_te ? (
-                    <p className="muted" style={{ margin: '0 0 10px', fontSize: 13 }}>
-                      {q.label_te}
-                    </p>
-                  ) : (
-                    <div style={{ height: 6 }} />
-                  )}
-
-                  {(type === 'multi_select' || type === 'multi') ? (
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>
-                          ☑️ Multiple Select (Up to {max} answers allowed)
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                        {(opts.length > 0 ? opts : ['Option 1', 'Option 2', 'Option 3', 'Option 4']).map((opt, oi) => (
-                          <div
-                            key={`${opt}-${oi}`}
-                            className="chip"
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 6,
-                              fontWeight: 'bold',
-                              padding: '6px 14px',
-                              borderRadius: 16,
-                              opacity: 0.85,
-                              cursor: 'default',
-                            }}
-                          >
-                            <span>☐</span>
-                            <span>{opt}</span>
-                            {teOpts[oi] ? (
-                              <span className="muted" style={{ marginLeft: 4, fontWeight: 500 }}>
-                                {teOpts[oi]}
-                              </span>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : type === 'meter' ? (
-                    <div className="qa-meter" style={{ marginTop: 8 }}>
-                      <div className="qa-meter-track">
-                        <input
-                          type="range"
-                          min="1"
-                          max="100"
-                          value={50}
-                          disabled
-                          aria-label={q.label || 'Meter 1-100'}
-                          style={{ cursor: 'default' }}
-                        />
-                      </div>
-                      <div className="qa-meter-scale">
-                        <span>{opts[0] || 'Negative'}</span>
-                        <span>{opts[1] || 'Neutral'}</span>
-                        <span>{opts[2] || 'Positive'}</span>
-                      </div>
-                    </div>
-                  ) : opts.length > 0 ? (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {opts.map((opt, oi) => (
-                        <div
-                          key={`${opt}-${oi}`}
-                          className="chip"
-                          style={{ opacity: 0.85, cursor: 'default' }}
-                        >
-                          {opt}
-                          {teOpts[oi] ? (
-                            <span className="muted" style={{ marginLeft: 6, fontWeight: 500 }}>
-                              {teOpts[oi]}
-                            </span>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <input
-                      disabled
-                      placeholder="Respondent text answer…"
-                      style={{ background: '#f8fafc', cursor: 'default' }}
-                    />
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
+      {/* ── search ── */}
+      {surveys.length > 2 && (
+        <input
+          type="search"
+          placeholder="Search surveys…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ width: '100%', marginBottom: 14, minHeight: 44, fontSize: 15, boxSizing: 'border-box' }}
+        />
       )}
-      </>
+
+      {/* ── survey cards ── */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 40 }}>
+          <p className="muted">Loading surveys…</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{
+          textAlign: 'center', padding: '40px 20px',
+          background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: 14,
+        }}>
+          <div style={{ fontSize: 40, marginBottom: 10 }}>🔗</div>
+          <h3 style={{ margin: '0 0 6px', color: '#334155' }}>No surveys yet</h3>
+          <p className="muted" style={{ fontSize: 13 }}>
+            Create a survey first from the Surveys & Forms tab, then come back here to generate a web link.
+          </p>
+        </div>
+      ) : (
+        filtered.map((s) => (
+          <SurveyWebCard
+            key={s.form_key}
+            survey={s}
+            onToast={onToast}
+            expanded={expanded === s.form_key}
+            onToggle={() => setExpanded(expanded === s.form_key ? null : s.form_key)}
+          />
+        ))
       )}
     </div>
   )

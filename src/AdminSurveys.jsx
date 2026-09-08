@@ -4,6 +4,7 @@ import OptionPills from './OptionPills'
 import {
   createSurvey,
   deleteSurvey,
+  getClientAdminBreakdown,
   getSurvey,
   listCompanies,
   listSurveys,
@@ -414,18 +415,25 @@ export default function AdminSurveysScreen({ onToast, user }) {
   // shared access: client admins granted access to this survey (super admin only)
   const [allAdmins, setAllAdmins] = useState([])
   const [adminsOpen, setAdminsOpen] = useState(false)
+  const [clientBreakdown, setClientBreakdown] = useState([])
+  const [showAllocBreakdown, setShowAllocBreakdown] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const d = await listSurveys(search.trim())
       setSurveys(d.items || [])
+      if (isSuper) {
+        getClientAdminBreakdown()
+          .then((bd) => setClientBreakdown(bd.items || []))
+          .catch(() => {})
+      }
     } catch (e) {
       onToast?.(e.message, 'error')
     } finally {
       setLoading(false)
     }
-  }, [search, onToast])
+  }, [search, onToast, isSuper])
 
   useEffect(() => {
     if (mode === 'list') load()
@@ -1252,6 +1260,30 @@ export default function AdminSurveysScreen({ onToast, user }) {
               {s.admin_names ? ` — ${s.admin_names}` : ''}
             </div>
           )}
+          {isSuper && (
+            <div style={{
+              display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
+              marginTop: 6, padding: '4px 10px', background: '#f8fafc',
+              borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 11
+            }}>
+              <span style={{ fontWeight: 700, color: '#475569' }}>Quota &amp; Intake:</span>
+              <span style={{ color: Number(s.web_link?.max_uses) > 0 ? '#1d4ed8' : '#64748b' }}>
+                Web quota: <strong>{Number(s.web_link?.max_uses) > 0 ? Number(s.web_link.max_uses).toLocaleString() : 'No link'}</strong>
+              </span>
+              <span>·</span>
+              <span style={{ color: Number(s.web_submissions) > 0 ? '#059669' : '#64748b' }}>
+                Web used: <strong>{Number(s.web_submissions || 0).toLocaleString()}</strong>
+              </span>
+              <span>·</span>
+              <span style={{ color: Number(s.field_submissions) > 0 ? '#0f172a' : '#64748b' }}>
+                Field used: <strong>{Number(s.field_submissions || 0).toLocaleString()}</strong>
+              </span>
+              <span>·</span>
+              <span>
+                Total: <strong>{Number(s.submissions || 0).toLocaleString()}</strong>
+              </span>
+            </div>
+          )}
           {sharedProject && (
             <div className="muted" style={{ fontSize: 12, marginTop: 3, color: '#5b21b6' }}>
               Created by Super Admin for company {s.company_name || user?.company_name || '—'}. You can
@@ -1332,6 +1364,139 @@ export default function AdminSurveysScreen({ onToast, user }) {
             ? `No ${unit}s match that name.`
             : `No ${unit}s yet — click "+ New ${unit}".`}
         </p>
+      )}
+
+      {/* Super Admin: Client Admin Survey & Quota Allocation Breakdown */}
+      {user?.role === 'super_admin' && (
+        <div className="card" style={{ marginBottom: 16, overflowX: 'auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Icon name="building" size={16} /> Client Admin Survey Allocation Breakdown
+              </h3>
+              <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
+                Records allocated vs. web and field usage for every Client Admin
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => setShowAllocBreakdown((o) => !o)}
+              style={{ fontSize: 12, padding: '3px 10px' }}
+            >
+              {showAllocBreakdown ? '▲ Hide Breakdown' : '▼ Show Breakdown'}
+            </button>
+          </div>
+
+          {showAllocBreakdown && (
+            <table className="mini-table" style={{ width: '100%', marginTop: 6 }}>
+              <thead>
+                <tr>
+                  <th>Client Admin</th>
+                  <th>Company</th>
+                  <th style={{ textAlign: 'right' }}>Total Allocated</th>
+                  <th style={{ textAlign: 'right' }}>Allocated for Web</th>
+                  <th style={{ textAlign: 'right' }}>Used (Web)</th>
+                  <th style={{ textAlign: 'right' }}>Used (Field)</th>
+                  <th style={{ textAlign: 'right' }}>Total Used</th>
+                  <th style={{ textAlign: 'right' }}>Remaining for Field</th>
+                  <th style={{ textAlign: 'center' }}>Surveys</th>
+                </tr>
+              </thead>
+              <tbody>
+                {clientBreakdown.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="muted" style={{ textAlign: 'center', padding: 12 }}>
+                      Loading Client Admin allocations…
+                    </td>
+                  </tr>
+                ) : (
+                  clientBreakdown.map((ca) => (
+                    <tr key={ca.id}>
+                      <td>
+                        <strong>{ca.name || ca.username}</strong>
+                        <span className="muted" style={{ fontSize: 11, display: 'block' }}>@{ca.username}</span>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>
+                          {ca.company_name || '—'}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <strong>{Number(ca.allocated) > 0 ? Number(ca.allocated).toLocaleString() : '∞'}</strong>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span style={{ color: Number(ca.web_allocated) > 0 ? '#1d4ed8' : '#64748b', fontWeight: 600 }}>
+                          {Number(ca.web_allocated) > 0 ? Number(ca.web_allocated).toLocaleString() : '0'}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span style={{ color: Number(ca.web_used) > 0 ? '#059669' : '#64748b', fontWeight: 600 }}>
+                          {Number(ca.web_used).toLocaleString()}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <strong style={{ color: Number(ca.field_used) > 0 ? '#0f172a' : '#64748b' }}>
+                          {Number(ca.field_used).toLocaleString()}
+                        </strong>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <strong>{Number(ca.total_used).toLocaleString()}</strong>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {ca.field_remaining != null ? (
+                          <span style={{
+                            color: Number(ca.field_remaining) === 0 ? '#dc2626' : '#15803d',
+                            fontWeight: 700,
+                          }}>
+                            {Number(ca.field_remaining).toLocaleString()}
+                          </span>
+                        ) : (
+                          <span className="muted">∞</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span className="pill" style={{ fontSize: 11, fontWeight: 700, background: '#f1f5f9', color: '#475569' }}>
+                          {Number(ca.survey_count) || (Array.isArray(ca.surveys) ? ca.surveys.length : 0)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {clientBreakdown.length > 0 && (
+                <tfoot>
+                  <tr style={{ background: '#f1f5f9', fontWeight: 700 }}>
+                    <td colSpan={2}>
+                      <strong>Total Across Client Admins</strong>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.allocated) || 0), 0).toLocaleString()}
+                    </td>
+                    <td style={{ textAlign: 'right', color: '#1d4ed8' }}>
+                      {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.web_allocated) || 0), 0).toLocaleString()}
+                    </td>
+                    <td style={{ textAlign: 'right', color: '#059669' }}>
+                      {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.web_used) || 0), 0).toLocaleString()}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.field_used) || 0), 0).toLocaleString()}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.total_used) || 0), 0).toLocaleString()}
+                    </td>
+                    <td style={{ textAlign: 'right', color: '#15803d' }}>
+                      {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.field_remaining) || 0), 0).toLocaleString()}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.survey_count) || (Array.isArray(ca.surveys) ? ca.surveys.length : 0)), 0)}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          )}
+        </div>
       )}
 
       {user?.role === 'super_admin' && visibleSurveys.length > 0 ? (

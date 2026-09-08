@@ -602,14 +602,19 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
               </thead>
               <tbody>
                 {surveyBreak.map((s) => {
-                  const web = Number(s.web_submissions) || 0
-                  const field = Number(s.field_submissions) || Math.max(0, (Number(s.submissions) || 0) - web)
                   const link = s.web_link
                   const cap = Number(link?.max_uses) || 0
-                  const used = Math.max(web, Number(link?.use_count) || 0)
-                  const left = Math.max(0, cap - used)
+                  const rawWeb = Number(s.web_submissions) || 0
+                  const linkUsed = Number(link?.use_count) || 0
+                  const webTotal = Math.max(rawWeb, linkUsed)
+                  const left = cap > 0 ? Math.max(0, cap - webTotal) : null
                   const closed = !!link?.expired || (cap > 0 && left === 0)
                   const isLive = !!link?.token && !closed
+                  const field = Number(s.field_submissions) || 0
+                  const pending = Number(s.pending) || 0
+                  const confirmed = Number(s.confirmed) || 0
+                  const rejected = Number(s.rejected) || 0
+                  const total = pending + confirmed + rejected
                   return (
                     <tr key={s.id || s.form_key}>
                       <td>
@@ -642,7 +647,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                         )}
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <span style={{ color: web > 0 ? '#059669' : '#64748b', fontWeight: 600 }}>{web.toLocaleString()}</span>
+                        <span style={{ color: webTotal > 0 ? '#059669' : '#64748b', fontWeight: 600 }}>{webTotal.toLocaleString()}</span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         {closed ? (
@@ -658,48 +663,61 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                       <td style={{ textAlign: 'right' }}>
                         <strong>{field.toLocaleString()}</strong>
                       </td>
-                      <td style={{ textAlign: 'right' }}>{Number(s.pending) || 0}</td>
-                      <td style={{ textAlign: 'right' }}>{Number(s.confirmed) || 0}</td>
-                      <td style={{ textAlign: 'right', color: Number(s.rejected || 0) > 0 ? '#dc2626' : '#64748b', fontWeight: Number(s.rejected || 0) > 0 ? 700 : 400 }}>
-                        {Number(s.rejected) || 0}
+                      <td style={{ textAlign: 'right' }}>{pending.toLocaleString()}</td>
+                      <td style={{ textAlign: 'right' }}>{confirmed.toLocaleString()}</td>
+                      <td style={{ textAlign: 'right', color: rejected > 0 ? '#dc2626' : '#64748b', fontWeight: rejected > 0 ? 700 : 400 }}>
+                        {rejected.toLocaleString()}
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <strong>{Number(s.submissions) || field + web}</strong>
+                        <strong>{total.toLocaleString()}</strong>
                       </td>
                     </tr>
                   )
                 })}
               </tbody>
               <tfoot>
-                <tr style={{ background: '#f1f5f9', fontWeight: 700 }}>
-                  <td>
-                    <strong>Total (All Surveys)</strong>
-                  </td>
-                  <td style={{ textAlign: 'right', color: '#1d4ed8' }}>
-                    {webReserved.toLocaleString()}
-                  </td>
-                  <td style={{ textAlign: 'right', color: '#059669' }}>
-                    {webConfirmed.toLocaleString()}
-                  </td>
-                  <td style={{ textAlign: 'right', color: '#059669' }}>
-                    {Math.max(0, webReserved - webConfirmed).toLocaleString()} left
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    {fieldUsed.toLocaleString()}
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    {reviewPending.toLocaleString()}
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    {confirmedTotal.toLocaleString()}
-                  </td>
-                  <td style={{ textAlign: 'right', color: rejectedTotal > 0 ? '#dc2626' : '#64748b' }}>
-                    {rejectedTotal.toLocaleString()}
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <strong>{allSubmitted.toLocaleString()}</strong>
-                  </td>
-                </tr>
+                {(() => {
+                  const totWebAlloc = surveyBreak.reduce((n, s) => n + (Number(s.web_link?.max_uses) || 0), 0)
+                  const totWebUsed = surveyBreak.reduce((n, s) => n + Math.max(Number(s.web_submissions) || 0, Number(s.web_link?.use_count) || 0), 0)
+                  const totWebLeft = totWebAlloc > 0 ? Math.max(0, totWebAlloc - totWebUsed) : null
+                  const totField = surveyBreak.reduce((n, s) => n + (Number(s.field_submissions) || 0), 0)
+                  const totPending = surveyBreak.reduce((n, s) => n + (Number(s.pending) || 0), 0)
+                  const totConfirmed = surveyBreak.reduce((n, s) => n + (Number(s.confirmed) || 0), 0)
+                  const totRejected = surveyBreak.reduce((n, s) => n + (Number(s.rejected) || 0), 0)
+                  const totSubmissions = totPending + totConfirmed + totRejected
+
+                  return (
+                    <tr style={{ background: '#f1f5f9', fontWeight: 700 }}>
+                      <td>
+                        <strong>Total (All Surveys)</strong>
+                      </td>
+                      <td style={{ textAlign: 'right', color: '#1d4ed8' }}>
+                        {totWebAlloc > 0 ? totWebAlloc.toLocaleString() : '0'}
+                      </td>
+                      <td style={{ textAlign: 'right', color: '#059669' }}>
+                        {totWebUsed.toLocaleString()}
+                      </td>
+                      <td style={{ textAlign: 'right', color: '#059669' }}>
+                        {totWebLeft != null ? `${totWebLeft.toLocaleString()} left` : '—'}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {totField.toLocaleString()}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {totPending.toLocaleString()}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {totConfirmed.toLocaleString()}
+                      </td>
+                      <td style={{ textAlign: 'right', color: totRejected > 0 ? '#dc2626' : '#64748b' }}>
+                        {totRejected.toLocaleString()}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <strong>{totSubmissions.toLocaleString()}</strong>
+                      </td>
+                    </tr>
+                  )
+                })()}
               </tfoot>
             </table>
 

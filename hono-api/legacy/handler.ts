@@ -7145,7 +7145,7 @@ async function rawHandler(req: Request): Promise<Response> {
                 SELECT 
                   payload->>'form_key' AS form_key,
                   COUNT(*) FILTER (WHERE COALESCE(payload->>'source','') NOT IN ('web-survey','web') AND COALESCE(payload->>'status','pending') <> 'rejected' AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS field_used,
-                  COUNT(*) FILTER (WHERE COALESCE(payload->>'source','') IN ('web-survey','web') AND COALESCE(payload->>'status','pending') <> 'rejected' AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS web_used,
+                  COUNT(*) FILTER (WHERE COALESCE(payload->>'source','') IN ('web-survey','web') AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS web_used,
                   COUNT(*) FILTER (WHERE COALESCE(payload->>'status','pending') NOT IN ('confirmed', 'rejected') AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS pending,
                   COUNT(*) FILTER (WHERE COALESCE(payload->>'status','pending') = 'confirmed' AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS confirmed,
                   COUNT(*) FILTER (WHERE COALESCE(payload->>'status','pending') = 'rejected' AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS rejected
@@ -7157,7 +7157,10 @@ async function rawHandler(req: Request): Promise<Response> {
                 SELECT 
                   form_key, 
                   MAX(COALESCE(max_uses, 0))::int AS max_uses,
-                  BOOL_OR(token IS NOT NULL AND used_at IS NULL AND (max_uses = 0 OR use_count < max_uses)) AS is_live
+                  MAX(COALESCE(use_count, 0))::int AS use_count,
+                  BOOL_OR(token IS NOT NULL AND used_at IS NULL AND (max_uses = 0 OR use_count < max_uses)) AS is_live,
+                  MIN(created_at) AS starts_at,
+                  MAX(used_at) AS ended_at
                 FROM web_survey_links
                 GROUP BY form_key
               ),
@@ -7169,14 +7172,16 @@ async function rawHandler(req: Request): Promise<Response> {
                   f.form_key,
                   COALESCE(c.max_uses, 0)::int AS web_allocated,
                   COALESCE(s.field_used, 0)::int AS field_used,
-                  COALESCE(s.web_used, 0)::int AS web_used,
-                  (COALESCE(s.field_used, 0) + COALESCE(s.web_used, 0))::int AS total_used,
+                  GREATEST(COALESCE(s.web_used, 0), COALESCE(c.use_count, 0))::int AS web_used,
+                  (COALESCE(s.pending, 0) + COALESCE(s.confirmed, 0) + COALESCE(s.rejected, 0))::int AS total_used,
                   COALESCE(s.pending, 0)::int AS pending,
                   COALESCE(s.confirmed, 0)::int AS confirmed,
                   COALESCE(s.rejected, 0)::int AS rejected,
                   COALESCE(c.is_live, false) AS is_live,
+                  c.starts_at,
+                  c.ended_at,
                   CASE 
-                    WHEN COALESCE(c.max_uses, 0) > 0 THEN GREATEST(0, c.max_uses - COALESCE(s.web_used, 0)) 
+                    WHEN COALESCE(c.max_uses, 0) > 0 THEN GREATEST(0, c.max_uses - GREATEST(COALESCE(s.web_used, 0), COALESCE(c.use_count, 0))) 
                     ELSE NULL 
                   END AS web_remaining
                 FROM app_users u
@@ -7221,6 +7226,8 @@ async function rawHandler(req: Request): Promise<Response> {
                       'confirmed', asv.confirmed,
                       'rejected', asv.rejected,
                       'is_live', asv.is_live,
+                      'starts_at', asv.starts_at,
+                      'ended_at', asv.ended_at,
                       'web_remaining', asv.web_remaining
                     )
                   ) FILTER (WHERE asv.survey_id IS NOT NULL),
@@ -7237,7 +7244,7 @@ async function rawHandler(req: Request): Promise<Response> {
                 SELECT 
                   payload->>'form_key' AS form_key,
                   COUNT(*) FILTER (WHERE COALESCE(payload->>'source','') NOT IN ('web-survey','web') AND COALESCE(payload->>'status','pending') <> 'rejected' AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS field_used,
-                  COUNT(*) FILTER (WHERE COALESCE(payload->>'source','') IN ('web-survey','web') AND COALESCE(payload->>'status','pending') <> 'rejected' AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS web_used,
+                  COUNT(*) FILTER (WHERE COALESCE(payload->>'source','') IN ('web-survey','web') AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS web_used,
                   COUNT(*) FILTER (WHERE COALESCE(payload->>'status','pending') NOT IN ('confirmed', 'rejected') AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS pending,
                   COUNT(*) FILTER (WHERE COALESCE(payload->>'status','pending') = 'confirmed' AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS confirmed,
                   COUNT(*) FILTER (WHERE COALESCE(payload->>'status','pending') = 'rejected' AND COALESCE(payload->>'draft','false') NOT IN ('true','t','1'))::int AS rejected
@@ -7249,7 +7256,10 @@ async function rawHandler(req: Request): Promise<Response> {
                 SELECT 
                   form_key, 
                   MAX(COALESCE(max_uses, 0))::int AS max_uses,
-                  BOOL_OR(token IS NOT NULL AND used_at IS NULL AND (max_uses = 0 OR use_count < max_uses)) AS is_live
+                  MAX(COALESCE(use_count, 0))::int AS use_count,
+                  BOOL_OR(token IS NOT NULL AND used_at IS NULL AND (max_uses = 0 OR use_count < max_uses)) AS is_live,
+                  MIN(created_at) AS starts_at,
+                  MAX(used_at) AS ended_at
                 FROM web_survey_links
                 GROUP BY form_key
               ),
@@ -7261,14 +7271,16 @@ async function rawHandler(req: Request): Promise<Response> {
                   f.form_key,
                   COALESCE(c.max_uses, 0)::int AS web_allocated,
                   COALESCE(s.field_used, 0)::int AS field_used,
-                  COALESCE(s.web_used, 0)::int AS web_used,
-                  (COALESCE(s.field_used, 0) + COALESCE(s.web_used, 0))::int AS total_used,
+                  GREATEST(COALESCE(s.web_used, 0), COALESCE(c.use_count, 0))::int AS web_used,
+                  (COALESCE(s.pending, 0) + COALESCE(s.confirmed, 0) + COALESCE(s.rejected, 0))::int AS total_used,
                   COALESCE(s.pending, 0)::int AS pending,
                   COALESCE(s.confirmed, 0)::int AS confirmed,
                   COALESCE(s.rejected, 0)::int AS rejected,
                   COALESCE(c.is_live, false) AS is_live,
+                  c.starts_at,
+                  c.ended_at,
                   CASE 
-                    WHEN COALESCE(c.max_uses, 0) > 0 THEN GREATEST(0, c.max_uses - COALESCE(s.web_used, 0)) 
+                    WHEN COALESCE(c.max_uses, 0) > 0 THEN GREATEST(0, c.max_uses - GREATEST(COALESCE(s.web_used, 0), COALESCE(c.use_count, 0))) 
                     ELSE NULL 
                   END AS web_remaining
                 FROM app_users u
@@ -7313,6 +7325,8 @@ async function rawHandler(req: Request): Promise<Response> {
                       'confirmed', asv.confirmed,
                       'rejected', asv.rejected,
                       'is_live', asv.is_live,
+                      'starts_at', asv.starts_at,
+                      'ended_at', asv.ended_at,
                       'web_remaining', asv.web_remaining
                     )
                   ) FILTER (WHERE asv.survey_id IS NOT NULL),
@@ -8171,7 +8185,6 @@ async function rawHandler(req: Request): Promise<Response> {
                )::int AS n,
                COUNT(*) FILTER (
                  WHERE COALESCE(payload->>'source', '') IN ('web-survey', 'web')
-                   AND COALESCE(payload->>'status', 'pending') <> 'rejected'
                    AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
                )::int AS web_n,
                COUNT(*) FILTER (
@@ -8267,9 +8280,9 @@ async function rawHandler(req: Request): Promise<Response> {
           admin_names: admins.map((a) => `${a.company_name || 'No company'} · ${a.name}`).join(", "),
           respondents_total: (rspMap.get(Number(r.id)) as any)?.total || 0,
           respondents_done: (rspMap.get(Number(r.id)) as any)?.done || 0,
-          submissions: subCount + webCount,
+          submissions: (pendingByFk.get(fk) || 0) + (confirmedByFk.get(fk) || 0) + (rejectedByFk.get(fk) || 0),
           field_submissions: subCount,
-          web_submissions: webCount,
+          web_submissions: Math.max(webCount, Number(webLink?.use_count) || 0),
           pending: pendingByFk.get(fk) || 0,
           confirmed: confirmedByFk.get(fk) || 0,
           rejected: rejectedByFk.get(fk) || 0,

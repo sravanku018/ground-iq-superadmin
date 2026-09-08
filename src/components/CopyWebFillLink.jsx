@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { deleteWebFillLink, listWebFillLinks, mintWebFillUrl, webFillUrl } from '../api'
+import { listWebFillLinks, mintWebFillUrl, webFillUrl } from '../api'
 
 function clampMax(n) {
   const x = Math.floor(Number(n) || 0)

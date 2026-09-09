@@ -33,6 +33,7 @@ function emptyAnswers(qs) {
 
 export default function PublicWebFill({ formKey, fillToken }) {
   const [title, setTitle] = useState('')
+  const [companyName, setCompanyName] = useState('')
   const [displayLang, setDisplayLang] = useState('en')
   const [questions, setQuestions] = useState([])
   const [answers, setAnswers] = useState({})
@@ -55,6 +56,7 @@ export default function PublicWebFill({ formKey, fillToken }) {
       .then((d) => {
         if (dead) return
         setTitle(d.title || 'Survey')
+        setCompanyName(d.company_name || '')
         setDisplayLang(d.display_lang === 'te' ? 'te' : 'en')
         const qs = Array.isArray(d.questions) ? d.questions : []
         setQuestions(qs)
@@ -140,7 +142,7 @@ export default function PublicWebFill({ formKey, fillToken }) {
   return (
     <div className="portal-shell" style={{ minHeight: '100vh', padding: 24 }}>
       <div style={{ maxWidth: 640, margin: '0 auto' }}>
-        <p className="eyebrow">Smart Survey X · Web survey</p>
+        <p className="eyebrow">{companyName ? `${companyName} · Web Survey` : 'Public Web Survey'}</p>
         <h1 style={{ fontSize: 26, margin: '0 0 8px', lineHeight: 1.25, color: '#0f172a' }}>
           {heading}
         </h1>

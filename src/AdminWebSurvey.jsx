@@ -374,6 +374,37 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
   const [expanded, setExpanded] = useState(null)  // form_key of open card
   const [search, setSearch] = useState('')
 
+  // Quick generator states
+  const [genSurveyKey, setGenSurveyKey] = useState('')
+  const [genQuota, setGenQuota] = useState(100)
+  const [genBusy, setGenBusy] = useState(false)
+  const [genUrl, setGenUrl] = useState('')
+
+  useEffect(() => {
+    if (surveys.length > 0 && !genSurveyKey) {
+      setGenSurveyKey(surveys[0].form_key)
+    }
+  }, [surveys, genSurveyKey])
+
+  const selectedSurveyObj = surveys.find((s) => s.form_key === genSurveyKey) || null
+
+  async function handleQuickGenerate() {
+    if (!genSurveyKey) return
+    setGenBusy(true)
+    try {
+      const d = await mintWebFillUrl(genSurveyKey, genQuota)
+      const u = d.url || ''
+      setGenUrl(u)
+      try { await navigator.clipboard.writeText(u) } catch {}
+      onToast?.(`Link generated & copied for "${selectedSurveyObj?.title || genSurveyKey}" ✓`, 'ok')
+      void load() // refresh live link badge in survey cards
+    } catch (e) {
+      onToast?.(e.message || 'Could not generate link', 'error')
+    } finally {
+      setGenBusy(false)
+    }
+  }
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -442,11 +473,124 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
         </div>
       </div>
 
+      {/* ── Quick Link Generator Card ── */}
+      <div className="card" style={{ padding: 18, marginBottom: 20, background: 'linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)', border: '1.5px solid #86efac', borderRadius: 14, boxShadow: '0 4px 12px rgba(22, 163, 74, 0.08)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#14532d', display: 'flex', alignItems: 'center', gap: 8 }}>
+              ⚡ Quick Public Survey Link Generator
+            </h3>
+            <p className="muted" style={{ margin: '3px 0 0', fontSize: 12 }}>
+              Select any survey by name, set response quota, and generate a shareable WhatsApp/Web link instantly.
+            </p>
+          </div>
+          <span style={{ fontSize: 11, background: '#dcfce7', color: '#15803d', fontWeight: 700, padding: '3px 10px', borderRadius: 99, border: '1px solid #86efac' }}>
+            Public Access · No Login Required
+          </span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, alignItems: 'flex-end' }}>
+          <label className="field" style={{ margin: 0 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>Select Survey by Name</span>
+            <select
+              value={genSurveyKey}
+              onChange={(e) => setGenSurveyKey(e.target.value)}
+              style={{ width: '100%', minHeight: 42, fontSize: 14, fontWeight: 600, background: '#fff', border: '1.5px solid #cbd5e1', borderRadius: 8 }}
+            >
+              {surveys.length === 0 ? (
+                <option value="">No surveys found</option>
+              ) : (
+                surveys.map((s) => (
+                  <option key={s.form_key} value={s.form_key}>
+                    {s.title || s.form_key} {s.web_link?.token && !s.web_link?.expired ? '🟢 (Active Link)' : ''}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+
+          <label className="field" style={{ margin: 0 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>Response Quota (Max Uses)</span>
+            <input
+              type="number"
+              min={1}
+              max={9999}
+              value={genQuota}
+              onChange={(e) => setGenQuota(Math.max(1, Math.min(9999, Number(e.target.value) || 1)))}
+              style={{ width: '100%', minHeight: 42, fontSize: 14, fontWeight: 600, background: '#fff', border: '1.5px solid #cbd5e1', borderRadius: 8 }}
+            />
+          </label>
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={genBusy || !genSurveyKey}
+              onClick={handleQuickGenerate}
+              style={{ flex: 1, minHeight: 42, fontSize: 14, fontWeight: 700, background: '#16a34a', borderColor: '#15803d', boxShadow: '0 2px 6px rgba(22, 163, 74, 0.3)' }}
+            >
+              {genBusy ? 'Generating…' : '🔗 Generate & Copy Link'}
+            </button>
+          </div>
+        </div>
+
+        {/* Live Generated URL display */}
+        {genUrl && (
+          <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: '#ffffff', border: '1.5px solid #86efac' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, flexWrap: 'wrap', gap: 6 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#15803d' }}>
+                ✓ Live Link for: <strong>{selectedSurveyObj?.title || genSurveyKey}</strong>
+              </span>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Quota: {genQuota} responses</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                readOnly
+                value={genUrl}
+                onFocus={(e) => e.target.select()}
+                style={{ flex: 1, minWidth: 240, fontSize: 12, fontFamily: 'monospace', color: '#0f172a', background: '#f8fafc' }}
+              />
+              <button
+                type="button"
+                className="btn small"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(genUrl)
+                    onToast?.('Link copied to clipboard ✓', 'ok')
+                  } catch {
+                    onToast?.(genUrl, 'ok')
+                  }
+                }}
+                style={{ fontWeight: 700 }}
+              >
+                📋 Copy
+              </button>
+              <button
+                type="button"
+                className="btn small"
+                onClick={() => shareViaWhatsApp(genUrl, selectedSurveyObj?.title || 'Survey')}
+                style={{ background: '#25D366', color: '#fff', border: 'none', fontWeight: 700 }}
+              >
+                WhatsApp ↗
+              </button>
+              <a
+                className="btn small"
+                href={genUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open ↗
+              </a>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ── search ── */}
       {surveys.length > 2 && (
         <input
           type="search"
-          placeholder="Search surveys…"
+          placeholder="Search surveys by name…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{ width: '100%', marginBottom: 14, minHeight: 44, fontSize: 15, boxSizing: 'border-box' }}

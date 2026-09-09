@@ -143,11 +143,18 @@ export async function launchApkUpdate(apkUrl) {
   const target = apkUrl || defaultApkUrl()
   const native = typeof Capacitor !== "undefined" && Capacitor.isNativePlatform?.()
   if (native) {
-    const result = await ApkInstall.downloadAndInstall({ url: target })
-    if (result?.needPermission) {
-      throw new Error("Allow this app to install updates, then tap Check for Updates again.")
+    try {
+      const result = await ApkInstall.downloadAndInstall({ url: target })
+      if (result?.needPermission) {
+        throw new Error("Allow this app to install updates, then tap Check for Updates again.")
+      }
+      return result
+    } catch (e) {
+      // Fallback: If native package installer or permission crashes, open download URL in system browser
+      console.warn("Native in-app APK install failed, falling back to browser download:", e)
+      window.open(target, "_system")
+      return { ok: true, fallback: true }
     }
-    return result
   }
   // Browser / portal: download the file in this tab
   const a = document.createElement("a")

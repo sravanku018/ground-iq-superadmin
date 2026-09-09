@@ -132,9 +132,11 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
     const page =
       it?.page === 'users' || it?.kind === 'docs'
         ? 'users'
-        : it?.page === 'review' || it?.kind === 'activity'
-          ? 'review'
-          : it?.page || ''
+        : it?.kind === 'web' || it?.page === 'web'
+          ? 'web'
+          : it?.page === 'review' || it?.kind === 'activity'
+            ? 'review'
+            : it?.page || ''
     onGoPage?.({
       page,
       userId: it?.userId ?? null,
@@ -171,6 +173,7 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
             <ul className="admin-bell-list">
               {shown.map((it) => {
                 const isDocs = it.kind === 'docs'
+                const isWeb = it.kind === 'web'
                 const isVerified = isDocs && it.verified === true
                 return (
                   <li key={it.id} style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
@@ -180,8 +183,8 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
                       onClick={() => openItem(it)}
                       style={{ flex: 1, textAlign: 'left' }}
                     >
-                      <span className="admin-bell-kind" style={{ color: isVerified ? '#059669' : isDocs ? '#d97706' : undefined }}>
-                        {isDocs ? (isVerified ? 'ID Verified ✓' : 'ID Pending ⏳') : 'Activity'}
+                      <span className="admin-bell-kind" style={{ color: isVerified ? '#059669' : isWeb ? '#1d4ed8' : isDocs ? '#d97706' : undefined }}>
+                        {isWeb ? 'Web survey' : isDocs ? (isVerified ? 'ID Verified ✓' : 'ID Pending ⏳') : 'Activity'}
                       </span>
                       <span className="admin-bell-title">{it.title}</span>
                       <span className="admin-bell-detail">
@@ -189,7 +192,9 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
                           ? isVerified
                             ? 'Verification complete ✓'
                             : 'Verification pending (click to open Users tab)'
-                          : it.detail}
+                          : isWeb
+                            ? `${it.detail || 'Web respondent'} · open Web survey`
+                            : it.detail}
                       </span>
                     </button>
                     <button

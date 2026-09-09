@@ -299,7 +299,12 @@
   z-index: 90;
 }
 
+.admin-bell {
+  position: relative;
+}
+
 .admin-bell-btn {
+  position: relative;
   width: 38px;
   height: 38px;
   border: 1px solid var(--surface-hover, #e2e8f0);
@@ -328,6 +333,73 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.admin-bell-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: min(380px, calc(100vw - 24px));
+  max-height: min(70vh, 480px);
+  overflow: auto;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.16);
+  z-index: 130;
+}
+
+.admin-bell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+  background: #ffffff;
+  z-index: 1;
+}
+
+.admin-bell-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.admin-bell-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.admin-bell-item:hover {
+  background: #f8fafc;
+}
+
+.admin-bell-kind {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.admin-bell-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.admin-bell-detail {
+  font-size: 12px;
+  color: #64748b;
 }
 
 /* ── Screen Headers & Subtabs ── */

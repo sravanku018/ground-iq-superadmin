@@ -1398,6 +1398,22 @@ function mapInboxRow(r: Record<string, unknown>) {
   const actorId = r.actor_id != null ? Number(r.actor_id) : null;
   const entityId = r.entity_id != null && String(r.entity_id) !== "" ? Number(r.entity_id) : null;
   const verified = sqlBool((r as { surveyor_verified?: unknown }).surveyor_verified);
+  if (action === "web_submission_create") {
+    const surveyTitle = String(meta.title || meta.form_key || "Web survey");
+    const who = String(r.actor_name || "Web respondent").trim() || "Web respondent";
+    return {
+      id: `evt-${r.id}`,
+      seq: Number(r.id) || 0,
+      kind: "web",
+      page: "web",
+      userId: null,
+      submissionId: entityId,
+      verified: false,
+      title: `${surveyTitle} — web response`,
+      detail: who,
+      at: r.created_at,
+    };
+  }
   if (action === "profile_media") {
     return {
       id: `evt-${r.id}`,
@@ -1426,6 +1442,36 @@ function mapInboxRow(r: Record<string, unknown>) {
   };
 }
 
+async function backfillWebSubmissionAudits(sqlFn: NonNullable<typeof sql>) {
+  await sqlFn`
+    INSERT INTO audit_log (actor_id, actor_name, actor_role, action, entity_type, entity_id, meta, created_at)
+    SELECT
+      COALESCE(f.created_by, 0),
+      LEFT(COALESCE(NULLIF(s.payload->>'submitted_by', ''), 'Web'), 80),
+      'web',
+      'web_submission_create',
+      'submission',
+      s.id::text,
+      jsonb_build_object(
+        'form_key', s.payload->>'form_key',
+        'source', 'web-survey',
+        'title', COALESCE(f.title, s.payload->>'form_key')
+      ),
+      s.created_at
+    FROM submissions s
+    LEFT JOIN survey_form f ON f.form_key = s.payload->>'form_key'
+    WHERE COALESCE(s.payload->>'source', '') IN ('web-survey', 'web')
+      AND COALESCE(s.payload->>'draft', 'false') NOT IN ('true', 't', '1')
+      AND NOT EXISTS (
+        SELECT 1 FROM audit_log a
+        WHERE a.action = 'web_submission_create'
+          AND a.entity_id = s.id::text
+      )
+    ORDER BY s.id DESC
+    LIMIT 80
+  `.catch(() => null);
+}
+
 async function listAdminInbox(
   sqlFn: NonNullable<typeof sql>,
   admin: { id: unknown; role: unknown },
@@ -1434,6 +1480,11 @@ async function listAdminInbox(
   const after = Math.max(0, Number(afterId) || 0);
   const isSuper = admin.role === "super_admin";
   const adminId = Number(admin.id);
+  await backfillWebSubmissionAudits(sqlFn);
+  const scopeKeys = isSuper
+    ? null
+    : await adminFormKeyScope(sqlFn, { role: "admin", id: adminId });
+  const webKeys = scopeKeys && scopeKeys.length ? scopeKeys : ["__none__"];
 
   return await sqlFn`
     SELECT a.id, a.actor_id, a.actor_name, a.action, a.entity_type, a.entity_id, a.meta, a.created_at,
@@ -1443,20 +1494,31 @@ async function listAdminInbox(
       WHEN a.action = 'profile_media' AND a.entity_id ~ '^[0-9]+$' THEN a.entity_id::int
       ELSE a.actor_id
     END
-    WHERE (a.action = 'submission_create' OR (${!isSuper} AND a.action = 'profile_media'))
+    WHERE (
+        a.action = 'submission_create'
+        OR a.action = 'web_submission_create'
+        OR (${!isSuper} AND a.action = 'profile_media')
+      )
       AND a.id > ${after}
       AND (
         ${isSuper}
-        OR CASE
-          WHEN a.action = 'profile_media' AND a.entity_id ~ '^[0-9]+$' THEN a.entity_id::int
-          ELSE a.actor_id
-        END IN (
-          SELECT id FROM app_users
-          WHERE role = 'surveyor'
-            AND (
-              created_by = ${adminId}
-              OR company_id = (SELECT company_id FROM app_users WHERE id = ${adminId} AND company_id IS NOT NULL)
-            )
+        OR (
+          a.action = 'web_submission_create'
+          AND COALESCE(a.meta->>'form_key', '') = ANY(${webKeys})
+        )
+        OR (
+          a.action <> 'web_submission_create'
+          AND CASE
+            WHEN a.action = 'profile_media' AND a.entity_id ~ '^[0-9]+$' THEN a.entity_id::int
+            ELSE a.actor_id
+          END IN (
+            SELECT id FROM app_users
+            WHERE role = 'surveyor'
+              AND (
+                created_by = ${adminId}
+                OR company_id = (SELECT company_id FROM app_users WHERE id = ${adminId} AND company_id IS NOT NULL)
+              )
+          )
         )
       )
     ORDER BY a.id DESC
@@ -9944,10 +10006,11 @@ async function rawHandler(req: Request): Promise<Response> {
       const remaining = Math.max(0, maxUses - useCount);
       const expired = remaining === 0 || Boolean(slot.used_at);
       const exists = await sql`
-        SELECT form_key, created_by FROM survey_form WHERE form_key = ${formKey} LIMIT 1
+        SELECT form_key, title, created_by FROM survey_form WHERE form_key = ${formKey} LIMIT 1
       `.catch(() => []);
       if (!exists.length) return json({ error: "Survey not found" }, 404);
       const ownerId = Number((exists[0] as { created_by?: number }).created_by);
+      const surveyTitle = String((exists[0] as { title?: string }).title || formKey);
       if (Number.isFinite(ownerId)) {
         const [capRow] = await sql`
           SELECT COALESCE(max_records, 0) AS max_records FROM app_users WHERE id = ${ownerId} LIMIT 1
@@ -9987,6 +10050,17 @@ async function rawHandler(req: Request): Promise<Response> {
       await sql`
         UPDATE web_survey_links SET submission_id = ${row.id} WHERE token = ${token}
       `.catch(() => []);
+      logAudit(
+        {
+          id: Number.isFinite(ownerId) ? ownerId : 0,
+          username: agent.slice(0, 80) || "Web",
+          role: "web",
+        },
+        "web_submission_create",
+        "submission",
+        row.id,
+        { form_key: formKey, source: "web-survey", title: surveyTitle },
+      );
       return json({
         ok: true,
         id: row.id,

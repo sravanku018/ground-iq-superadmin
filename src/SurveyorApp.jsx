@@ -1093,6 +1093,12 @@ function SurveyorProfileScreen({
             try {
               const res = await checkForAppUpdate({ ignoreDismissed: true })
               if (res.hasUpdate) {
+                const isNative = typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform?.()
+                if (!isNative) {
+                  onToast?.(`Updating to v${res.latest.version}…`, 'ok')
+                  setTimeout(() => window.location.reload(), 800)
+                  return
+                }
                 onToast?.(`Downloading v${res.latest.version} inside the app…`, 'ok')
                 await launchApkUpdate(res.latest.apkUrl)
                 onToast?.('Installer opened — tap Install', 'ok')

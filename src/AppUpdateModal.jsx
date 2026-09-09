@@ -4,6 +4,8 @@ import { checkForAppUpdate, dismissUpdate, launchApkUpdate } from "./appUpdate";
 export default function AppUpdateModal() {
   const [updateInfo, setUpdateInfo] = useState(null);
   const [loading, setLoading] = useState(false);
+  const isNative = typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform?.();
+  const isPwa = typeof window !== 'undefined' && (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone);
 
   useEffect(() => {
     // Check for updates on startup with a gentle delay (after main screen paints)
@@ -28,6 +30,12 @@ export default function AppUpdateModal() {
   const handleUpdate = async () => {
     setLoading(true);
     try {
+      if (!isNative) {
+        // In PWA / Web mode, updates are web assets — a simple reload loads the latest version instantly
+        // without closing the app or downloading an unneeded APK!
+        window.location.reload();
+        return;
+      }
       await launchApkUpdate(latest.apkUrl);
     } catch {
       /* toast from Profile path; here just stop spinner */
@@ -117,7 +125,9 @@ export default function AppUpdateModal() {
                 gap: 6,
               }}
             >
-              {loading ? "Downloading inside app…" : "Install in app"}
+              {loading
+                ? (isNative ? "Downloading inside app…" : "Updating…")
+                : (isNative ? "Install in app" : "Update Now ↻")}
             </button>
             {!latest.mandatory && (
               <button

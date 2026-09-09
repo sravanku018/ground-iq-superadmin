@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Smart Survey X — Field Intelligence & Client Admin Platform</title>
-<link rel="stylesheet" href="tokens.css" />
+
 <style>
   /* ══════════════════════════════════════════════════════════
      SMART SURVEY X — CLIENT ADMIN PRE-LOGIN LANDING FRONT PAGE
@@ -439,6 +439,50 @@
   .footer-links { display: flex; gap: 20px; }
   .footer-links a { color: #64748b; text-decoration: none; font-weight: 500; }
   .footer-links a:hover { color: var(--accent, #1d6fe0); }
+
+  /* Mock 4 — clarity-first visual refresh */
+  :root { --accent:#3157d5; --accent-bg:#eef2ff; --accent-border:#c7d2fe; --accent-light:#e0e7ff; --ink:#172033; --ink-secondary:#4b5875; --ink-muted:#73809a; --bg:#f5f7fb; --surface:#fff; --surface-alt:#f7f8fc; --surface-hover:#e5e9f2; --ok:#11865b; --ok-bg:#edfdf6; --r-md:12px; --font:Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  body { background:var(--bg); color:var(--ink); }
+  .navbar { max-width:1180px; width:calc(100% - 40px); margin:16px auto 0; top:12px; padding:11px 14px 11px 16px; border:1px solid rgba(226,232,240,.9); border-radius:16px; box-shadow:0 10px 30px rgba(20,31,56,.07); }
+  .brand-glyph { border-radius:10px; background:linear-gradient(145deg,#3157d5,#5535c9); box-shadow:none; }
+  .brand-sub { letter-spacing:.01em; }
+  .nav-links { gap:22px; }
+  .btn { border-radius:10px; }
+  .btn-primary { background:#3157d5; box-shadow:0 6px 16px rgba(49,87,213,.22); }
+  .btn-primary:hover { background:#294ab8; }
+  .hero-section { padding:100px 24px 78px; background:radial-gradient(700px 360px at 78% 18%,rgba(215,222,255,.75),transparent 70%),linear-gradient(180deg,#fbfcff 0%,#f4f7fb 100%); border-bottom:0; }
+  .hero-container { max-width:1160px; grid-template-columns:1.06fr .94fr; gap:72px; }
+  .hero-pill { background:#fff; color:#4c3fc5; border-color:#ddd9ff; box-shadow:0 4px 12px rgba(46,49,95,.05); text-transform:uppercase; letter-spacing:.07em; font-size:10px; padding:7px 11px; }
+  .hero-title { font-size:clamp(44px,5vw,66px); line-height:1.02; letter-spacing:-.052em; margin-bottom:24px; max-width:700px; }
+  .hero-title span { background:linear-gradient(120deg,#3157d5,#6d39c6 75%); -webkit-background-clip:text; background-clip:text; }
+  .hero-desc { font-size:18px; line-height:1.7; max-width:630px; margin-bottom:30px; }
+  .hero-buttons { margin-bottom:28px; }
+  .hero-badges { gap:18px; }
+  .hero-card-wrap { border-radius:24px; border-color:#dde3ef; box-shadow:0 35px 80px -30px rgba(32,47,87,.35),0 4px 12px rgba(20,31,56,.04); transform:rotate(1deg); }
+  .hero-card-wrap:hover { transform:rotate(0deg) translateY(-3px); }
+  .hero-card-header { padding:15px 20px; }
+  .hero-card-body { padding:24px; }
+  .preview-kpi,.preview-row { border-color:#e7eaf2; }
+  .hero-login-box { background:#f8f9fc; margin:18px -4px -4px; padding:16px; border:1px solid #e8ebf2; border-radius:14px; }
+  .stats-strip { padding:0 24px 32px; background:var(--bg); border-bottom:0; }
+  .stats-grid { max-width:1160px; background:#172033; color:#fff; border-radius:20px; padding:25px 30px; box-shadow:0 18px 45px rgba(23,32,51,.14); }
+  .stat-card { position:relative; }
+  .stat-card:not(:last-child)::after { content:""; position:absolute; right:-10px; top:10%; height:80%; width:1px; background:rgba(255,255,255,.12); }
+  .stat-card .num { font-size:13px; color:#9fb0ff; letter-spacing:.14em; }
+  .stat-card .lbl { color:#fff; font-size:14px; margin-top:6px; }
+  .features-section { padding:92px 24px; }
+  .section-head { margin-bottom:44px; }
+  .section-title { font-size:clamp(30px,3vw,42px); letter-spacing:-.035em; }
+  .section-sub { font-size:16px; line-height:1.7; }
+  .features-grid { gap:18px; }
+  .feature-card { padding:28px; border-radius:20px; box-shadow:0 8px 30px rgba(25,38,70,.04); }
+  .feature-card:hover { transform:translateY(-5px); box-shadow:0 20px 38px rgba(25,38,70,.09); }
+  .web-survey-section,.workflow-section { padding-top:88px; padding-bottom:88px; }
+  button:focus-visible,a:focus-visible,input:focus-visible { outline:3px solid rgba(49,87,213,.35); outline-offset:3px; }
+  @media (max-width:960px) { .navbar{width:calc(100% - 24px);margin-top:10px}.nav-demo{display:none}.hero-section{padding-top:70px}.hero-container{text-align:left;gap:44px}.hero-buttons,.hero-badges{justify-content:flex-start}.hero-card-wrap{transform:none;max-width:650px}.nav-actions .btn-primary{display:inline-flex} }
+  @media (max-width:640px) { .navbar{padding:10px 12px}.brand-sub{display:none}.nav-actions .btn-outline{display:none}.hero-section{padding:54px 18px 48px}.hero-title{font-size:42px}.hero-desc{font-size:16px}.hero-buttons{align-items:stretch}.hero-buttons .btn{width:100%}.hero-badges{display:grid;gap:10px}.preview-kpis{grid-template-columns:1fr}.preview-row{align-items:flex-start;gap:10px}.preview-row .stats{flex-direction:column;gap:3px}.stats-strip{padding:0 14px 20px}.stats-grid{grid-template-columns:1fr 1fr;padding:20px 14px}.stat-card:nth-child(2)::after{display:none}.feature-card{padding:23px}.features-section{padding:64px 18px} }
+  @media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+
 </style>
 </head>
 <body>
@@ -450,23 +494,23 @@
         <div class="brand-glyph">◆</div>
         <div class="brand-meta">
           <span class="brand-title">Smart Survey X</span>
-          <span class="brand-sub">Enterprise Ground Intelligence</span>
+          <span class="brand-sub">Verified survey operations</span>
         </div>
       </a>
       <ul class="nav-links">
         <li><a href="#overview">Overview</a></li>
-        <li><a href="#web-survey-hub">Web Survey (Live)</a></li>
-        <li><a href="#field-ops">Field Ops</a></li>
-        <li><a href="#client-admin">Client Admin</a></li>
+        <li><a href="#field-ops">Platform</a></li>
+        <li><a href="#web-survey-hub">How it works</a></li>
+        
         <li><a href="#security">Security</a></li>
       </ul>
     </div>
     <div class="nav-actions">
-      <span class="badge-live"><span class="dot"></span> Platform Live</span>
-      <button type="button" class="btn btn-outline" onclick="openWebSurveyDemo()">🌐 Try Web Survey</button>
-      <button type="button" class="btn btn-outline" onclick="openLoginModal()">Field APK</button>
+      
+      <button type="button" class="btn btn-outline nav-demo" onclick="openWebSurveyDemo()">View interactive demo</button>
+      
       <button type="button" class="btn btn-primary" onclick="openLoginModal()">
-        Client Admin Sign In →
+        Sign in →
       </button>
     </div>
   </header>
@@ -476,34 +520,34 @@
     <div class="hero-container">
       <div>
         <div class="hero-pill">
-          ⚡ Smart Survey X · Client Admin Portal
+          Built for field research teams
         </div>
         <h1 class="hero-title">
-          Real-time Field Operations &amp; <span>Survey Intelligence</span>
+          Run every survey with <span>proof, control, and clarity.</span>
         </h1>
         <p class="hero-desc">
-          Manage ground surveyor teams with offline voice capture and tamper-proof GPS verification, distribute public web surveys with quota control, and review live intakes from your dedicated Client Admin console.
+          Plan fieldwork, collect responses online or offline, verify every submission, and monitor quotas from one secure operations console.
         </p>
         <div class="hero-buttons">
           <button type="button" class="btn btn-primary btn-large" onclick="openLoginModal()">
-            Access Client Admin Portal →
+            Sign in to your workspace →
           </button>
           <a href="#client-admin" class="btn btn-outline btn-large">
-            Explore Capabilities
+            See how it works
           </a>
         </div>
         <div class="hero-badges">
           <div class="hero-badge-item">
             <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-            Offline-first Field App
+            Works offline
           </div>
           <div class="hero-badge-item">
             <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-            Live Quota Enforcement
+            Live quota control
           </div>
           <div class="hero-badge-item">
             <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-            Encrypted 2FA Security
+            Verified GPS &amp; audio
           </div>
         </div>
       </div>
@@ -517,7 +561,7 @@
             <div class="card-dot green"></div>
           </div>
           <div class="card-header-title">
-            <span>📊 Harish Rao · Client Admin</span>
+            <span>Operations overview · Demo data</span>
           </div>
           <span class="badge-live"><span class="dot"></span> Live Sync</span>
         </div>
@@ -541,7 +585,7 @@
           <div class="preview-row" style="cursor: pointer; transition: background 140ms;" onclick="openWebSurveyDemo()" title="Click to test Web Survey">
             <div>
               <div class="title">
-                Genral Survey <span class="tag-live">LIVE</span>
+                General Survey <span class="tag-live">LIVE</span>
                 <span style="font-size: 10px; color: #16a34a; font-weight: 700; background: #dcfce7; padding: 1px 6px; border-radius: 4px; margin-left: 4px;">Test Fill ↗</span>
               </div>
               <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
@@ -576,12 +620,12 @@
             </div>
             <form onsubmit="handleQuickLogin(event)">
               <div class="field">
-                <label>Username</label>
-                <input type="text" id="quick-user" value="harish" placeholder="Enter username" required />
+                <label for="quick-user">Username</label>
+                <input type="text" id="quick-user" placeholder="Enter username" autocomplete="username" required />
               </div>
               <div class="field">
-                <label>Password</label>
-                <input type="password" id="quick-pass" value="••••••••" placeholder="Enter password" required />
+                <label for="quick-pass">Password</label>
+                <input type="password" id="quick-pass" placeholder="Enter password" autocomplete="current-password" required />
               </div>
               <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 4px;">
                 Sign In to Dashboard →
@@ -597,20 +641,20 @@
   <section class="stats-strip">
     <div class="stats-grid">
       <div class="stat-card">
-        <div class="num tnum">99.9%</div>
-        <div class="lbl">Offline Capture Reliability</div>
+        <div class="num tnum">01</div>
+        <div class="lbl">Design &amp; allocate</div>
       </div>
       <div class="stat-card">
-        <div class="num tnum">100+</div>
-        <div class="lbl">Assembly &amp; Ward Segments</div>
+        <div class="num tnum">02</div>
+        <div class="lbl">Collect anywhere</div>
       </div>
       <div class="stat-card">
-        <div class="num tnum">&lt;2s</div>
-        <div class="lbl">Background Sync Latency</div>
+        <div class="num tnum">03</div>
+        <div class="lbl">Verify submissions</div>
       </div>
       <div class="stat-card">
-        <div class="num tnum">Zero</div>
-        <div class="lbl">Data Loss with Local Storage</div>
+        <div class="num tnum">04</div>
+        <div class="lbl">Analyze &amp; export</div>
       </div>
     </div>
   </section>
@@ -618,10 +662,10 @@
   <!-- ═══ Core Capabilities ═══ -->
   <section class="features-section" id="field-ops">
     <div class="section-head">
-      <div class="section-eyebrow">End-to-End Ground System</div>
-      <h2 class="section-title">Built for High-Stakes Field &amp; Web Research</h2>
+      <div class="section-eyebrow">One connected workflow</div>
+      <h2 class="section-title">From questionnaire to verified dataset</h2>
       <p class="section-sub">
-        A single coordinated ecosystem connecting field enumerators, public respondents, and analytical client administrators.
+        Give field teams a dependable capture tool and operations teams one clear source of truth.
       </p>
     </div>
 
@@ -645,11 +689,11 @@
       <div class="feature-card" id="web-intake" style="border-color: #86efac; box-shadow: 0 4px 14px rgba(22, 163, 74, 0.08);">
         <div class="feature-icon green">🌐</div>
         <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-          <h3 style="margin: 0;">Public Web Surveys &amp; WhatsApp</h3>
+          <h3 style="margin: 0;">Link-based surveys</h3>
           <span class="badge-live" style="font-size: 10px; padding: 2px 8px;"><span class="dot"></span> Active</span>
         </div>
         <p>
-          Generate tokenized web survey links with strict response limits, real-time counters, starting/ending schedules, and instant 1-click WhatsApp distribution.
+          Launch mobile-friendly survey links, control quotas, schedule availability, and track responses as they arrive.
         </p>
         <ul class="feature-list" style="margin-bottom: 16px;">
           <li><strong>Responses Allowed Cap:</strong> Stepper controls (1–9,999) with real-time field reservation deduction</li>
@@ -691,9 +735,9 @@
     <div class="ws-wrap">
       <div class="section-head">
         <div class="section-eyebrow" style="color: #16a34a;">Self-Service Web Distribution</div>
-        <h2 class="section-title">End-to-End Web Survey &amp; WhatsApp Campaigns</h2>
+        <h2 class="section-title">Launch, distribute, and control every response</h2>
         <p class="section-sub">
-          Generate secure public survey links on-the-fly, calibrate responses allowed, broadcast instantly to WhatsApp groups, and monitor intake in real time with auto-cutoff.
+          Create a public survey link, set the response limit, share it through your preferred channel, and watch verified intake in real time.
         </p>
       </div>
 
@@ -706,7 +750,7 @@
                 Interactive Console · Live Simulation
               </span>
               <h3 style="font-size: 17px; font-weight: 800; color: #0f172a; margin-top: 2px;">
-                Genral Survey — Web Distribution Link
+                General Survey — Web Distribution Link
               </h3>
             </div>
             <span class="badge-live"><span class="dot"></span> 1 LIVE</span>
@@ -937,12 +981,12 @@
 
         <form onsubmit="handleModalLogin(event)">
           <div class="field">
-            <label>Username</label>
+            <label for="quick-user">Username</label>
             <input type="text" id="modal-user" value="harish" placeholder="Client admin username" required />
           </div>
 
           <div class="field">
-            <label>Password</label>
+            <label for="quick-pass">Password</label>
             <input type="password" id="modal-pass" value="password123" placeholder="Enter password" required />
           </div>
 
@@ -984,7 +1028,7 @@
             </span>
           </div>
           <h2 style="font-size: 18px; font-weight: 800; color: #0f172a; margin-top: 4px;">
-            Genral Survey (Telangana State)
+            General Survey (Telangana State)
           </h2>
           <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
             Token: <span class="mono" style="color: #0f172a; font-weight: 600;">Z6ksbfQvkMzb_7m8N5nd3cXl</span> · Quota: <span id="modal-ws-quota">200 max uses</span>
@@ -1148,7 +1192,7 @@
     /* ── Web Survey Interactive Simulation Functions ── */
     let currentWsCap = 200;
     let currentWsUsed = 19;
-    const wsSurveyTitle = "Genral Survey (Telangana State)";
+    const wsSurveyTitle = "General Survey (Telangana State)";
     const wsSurveyUrl = "https://ground-iq-web-lake.vercel.app/?fill=genral-survey&k=Z6ksbfQvkMzb_7m8N5nd3cXl";
 
     function updateWsUi() {
@@ -1324,3 +1368,4 @@
 
 </body>
 </html>
+

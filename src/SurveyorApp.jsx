@@ -663,6 +663,23 @@ function SurveyorProfileScreen({
   const [savingPhone, setSavingPhone] = useState(false)
   const [editingPhone, setEditingPhone] = useState(false)
   const [uploading, setUploading] = useState({ photo: false, front: false, back: false })
+  const [pwaPrompt, setPwaPrompt] = useState(null)
+  const [isStandalone, setIsStandalone] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return (
+      window.matchMedia?.('(display-mode: standalone)').matches ||
+      window.navigator?.standalone === true
+    )
+  })
+
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault()
+      setPwaPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
 
   useEffect(() => {
     setPhone(user?.phone || '')
@@ -991,6 +1008,75 @@ function SurveyorProfileScreen({
             )
           })}
         </div>
+      </div>
+
+      {/* Progressive Web App (PWA) Option for Surveyors */}
+      <div className="card" style={{ marginTop: 14, padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <h4 style={{ margin: 0, fontSize: 15, display: 'flex', alignItems: 'center', gap: 6 }}>
+            📱 Install App / PWA
+          </h4>
+          {isStandalone ? (
+            <span
+              style={{
+                fontSize: 11,
+                background: '#dcfce7',
+                color: '#15803d',
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: 999,
+              }}
+            >
+              Installed ✓
+            </span>
+          ) : (
+            <span
+              style={{
+                fontSize: 11,
+                background: '#eff6ff',
+                color: '#1d4ed8',
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: 999,
+              }}
+            >
+              Web Mode
+            </span>
+          )}
+        </div>
+        <p className="muted" style={{ fontSize: 12, margin: '0 0 10px', lineHeight: 1.5 }}>
+          {isStandalone
+            ? 'Running as installed standalone mobile app with offline storage and background sync.'
+            : 'Install this app directly onto your home screen for quick offline field access without Play Store restrictions.'}
+        </p>
+        {!isStandalone && (
+          <button
+            type="button"
+            className="btn small primary"
+            style={{ width: '100%', fontWeight: 700 }}
+            onClick={async () => {
+              if (pwaPrompt) {
+                pwaPrompt.prompt()
+                const { outcome } = await pwaPrompt.userChoice
+                if (outcome === 'accepted') {
+                  onToast?.('Installing app on home screen…', 'ok')
+                  setPwaPrompt(null)
+                  setIsStandalone(true)
+                }
+              } else {
+                onToast?.(
+                  'Tap browser menu (⋮) → "Add to Home screen" or "Install App"',
+                  'ok',
+                )
+                window.alert(
+                  'To install on Android / iPhone:\n1. Tap the 3 dots (⋮) in Chrome or Share button in Safari.\n2. Select "Add to Home screen" or "Install App".\n3. An icon will appear on your phone screen!',
+                )
+              }
+            }}
+          >
+            ➕ Add to Home Screen (PWA)
+          </button>
+        )}
       </div>
 
       {/* App Version & OTA Updates */}

@@ -135,6 +135,31 @@ export default function LoginScreen({ onSuccess, onToast }) {
           </a>
         </div>
 
+        <div style={{ marginTop: 12, textAlign: 'center' }}>
+          <button
+            type="button"
+            onClick={() => {
+              if (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone) {
+                onToast?.('App is already installed on this phone ✓', 'ok')
+              } else {
+                window.alert(
+                  '📱 To install this surveyor app on your home screen:\n\n1. In Chrome: Tap the 3 dots (⋮) in the top-right corner.\n2. Tap "Add to Home screen" or "Install App".\n3. Tap Add/Install.\n\nThe app will now appear on your home screen and works offline!',
+                )
+              }
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#94a3b8',
+              fontSize: 12,
+              textDecoration: 'underline',
+              cursor: 'pointer',
+            }}
+          >
+            📱 Install as Home Screen App (PWA)
+          </button>
+        </div>
+
         <p className="fl-version" aria-label="Build version">
           {versionLabel()}
         </p>

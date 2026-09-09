@@ -458,12 +458,7 @@ function webLinkSpent(link: { used_at?: unknown; use_count?: unknown; max_uses?:
   return used >= max;
 }
 
-/** One canonical public fill token per survey (oldest row). Creates it if missing. */
-async function ensureCanonicalWebLink(
-  formKey: string,
-  createdBy: number,
-  maxUses = 100,
-): Promise<{
+type WebLinkRow = {
   token: string;
   form_key: string;
   max_uses: number;
@@ -471,29 +466,44 @@ async function ensureCanonicalWebLink(
   used_at: unknown;
   created_at: unknown;
   expired: boolean;
-} | null> {
+};
+
+function mapWebLinkRow(r: Record<string, unknown>): WebLinkRow {
+  const max = clampWebLinkMaxUses(r.max_uses);
+  const used = Math.max(0, Number(r.use_count) || 0);
+  return {
+    token: String(r.token || ""),
+    form_key: String(r.form_key || ""),
+    max_uses: max,
+    use_count: used,
+    used_at: r.used_at || null,
+    created_at: r.created_at || null,
+    expired: Boolean(r.used_at) || used >= max,
+  };
+}
+
+/** Live (shareable) token for a survey — not deactivated and under cap. */
+async function findLiveWebLink(formKey: string): Promise<WebLinkRow | null> {
   if (!sql || !formKey) return null;
   const existing = await sql`
     SELECT token, form_key, max_uses, use_count, used_at, created_at
     FROM web_survey_links
     WHERE form_key = ${formKey}
+      AND used_at IS NULL
+      AND use_count < max_uses
     ORDER BY created_at ASC
     LIMIT 1
   `.catch(() => []);
-  if (existing.length) {
-    const r = existing[0] as Record<string, unknown>;
-    const max = clampWebLinkMaxUses(r.max_uses);
-    const used = Math.max(0, Number(r.use_count) || 0);
-    return {
-      token: String(r.token),
-      form_key: String(r.form_key),
-      max_uses: max,
-      use_count: used,
-      used_at: r.used_at || null,
-      created_at: r.created_at || null,
-      expired: Boolean(r.used_at) || used >= max,
-    };
-  }
+  if (!existing.length) return null;
+  return mapWebLinkRow(existing[0] as Record<string, unknown>);
+}
+
+async function insertWebLink(
+  formKey: string,
+  createdBy: number,
+  maxUses = 100,
+): Promise<WebLinkRow | null> {
+  if (!sql || !formKey) return null;
   const token = newWebFillToken();
   const cap = clampWebLinkMaxUses(maxUses);
   await sql`
@@ -509,6 +519,33 @@ async function ensureCanonicalWebLink(
     created_at: new Date().toISOString(),
     expired: false,
   };
+}
+
+/** Live token if one exists; otherwise mint. Does not reopen a target-reached survey. */
+async function ensureCanonicalWebLink(
+  formKey: string,
+  createdBy: number,
+  maxUses = 100,
+): Promise<WebLinkRow | null> {
+  const live = await findLiveWebLink(formKey);
+  if (live) return live;
+  const hit = await sql`
+    SELECT token FROM web_survey_links
+    WHERE form_key = ${formKey} AND use_count >= max_uses
+    ORDER BY created_at DESC
+    LIMIT 1
+  `.catch(() => []);
+  if (hit.length) {
+    const spent = await sql`
+      SELECT token, form_key, max_uses, use_count, used_at, created_at
+      FROM web_survey_links
+      WHERE form_key = ${formKey}
+      ORDER BY created_at DESC
+      LIMIT 1
+    `.catch(() => []);
+    return spent.length ? { ...mapWebLinkRow(spent[0] as Record<string, unknown>), expired: true } : null;
+  }
+  return insertWebLink(formKey, createdBy, maxUses);
 }
 
 // ── Crypto helpers (same idea as Node auth) ───────────────
@@ -8257,7 +8294,9 @@ async function rawHandler(req: Request): Promise<Response> {
       const linkRows = await sql`
         SELECT DISTINCT ON (form_key) form_key, token, max_uses, use_count, used_at, created_at
         FROM web_survey_links
-        ORDER BY form_key, created_at ASC
+        ORDER BY form_key,
+          CASE WHEN used_at IS NULL AND use_count < max_uses THEN 0 ELSE 1 END,
+          created_at ASC
       `.catch(() => []);
       const linkMap = new Map<string, {
         token: string;
@@ -9545,6 +9584,59 @@ async function rawHandler(req: Request): Promise<Response> {
       return json({ ok: true, message: "Web link deleted" });
     }
 
+    if (path === "/api/web-survey/link" && method === "PATCH") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (!hasPower(me, "can_web_survey")) {
+        return json({ error: "Super Admin has not granted Web survey permission" }, 403);
+      }
+      const body = await readBody(req);
+      const formKey = String(body.form_key || url.searchParams.get("form_key") || "").trim();
+      if (!formKey || formKey === "default" || formKey === "legacy") {
+        return json({ error: "form_key required" }, 400);
+      }
+      if (me.role === "admin") {
+        const writeScope = await adminFormKeyScope(sql, me);
+        if (writeScope && !writeScope.includes(formKey)) {
+          return json({ error: "You can only deactivate links for your own surveys" }, 403);
+        }
+      }
+      const active = body.active;
+      if (active === false || body.deactivate === true) {
+        const closed = await sql`
+          UPDATE web_survey_links
+          SET used_at = NOW()
+          WHERE form_key = ${formKey}
+            AND used_at IS NULL
+            AND use_count < max_uses
+          RETURNING token, form_key, max_uses, use_count, used_at, created_at
+        `.catch(() => []);
+        if (!closed.length) {
+          return json({ error: "No active web link for this survey" }, 404);
+        }
+        const row = mapWebLinkRow(closed[0] as Record<string, unknown>);
+        logAudit(me, "web_link_deactivate", "web_survey_link", formKey, {
+          token: row.token,
+          use_count: row.use_count,
+          max_uses: row.max_uses,
+        });
+        const titleRows = await sql`
+          SELECT title FROM survey_form WHERE form_key = ${formKey} LIMIT 1
+        `.catch(() => []);
+        const surveyTitle = String((titleRows[0] as { title?: string } | undefined)?.title || formKey);
+        return json({
+          ok: true,
+          deactivated: true,
+          form_key: formKey,
+          title: surveyTitle,
+          token: row.token,
+          used_at: row.used_at,
+          ended_at: row.used_at,
+        });
+      }
+      return json({ error: "Set active=false to deactivate" }, 400);
+    }
+
     if (path === "/api/web-survey/links" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
@@ -9552,7 +9644,54 @@ async function rawHandler(req: Request): Promise<Response> {
         return json({ error: "Super Admin has not granted Web survey permission" }, 403);
       }
       const formKey = String(url.searchParams.get("form_key") || "").trim();
-      if (!formKey || formKey === "default" || formKey === "legacy") {
+      if (!formKey) {
+        const scopeKeys = await adminFormKeyScope(sql, me);
+        const liveRows = scopeKeys
+          ? await sql`
+              SELECT DISTINCT ON (l.form_key)
+                l.token, l.form_key, l.max_uses, l.use_count, l.used_at, l.created_at,
+                f.title, f.company_name,
+                COALESCE(u.display_name, u.username) AS owner_name
+              FROM web_survey_links l
+              JOIN survey_form f ON f.form_key = l.form_key
+              LEFT JOIN app_users u ON u.id = f.created_by
+              WHERE l.form_key = ANY(${scopeKeys})
+                AND f.form_key NOT IN ('default', 'legacy')
+                AND l.used_at IS NULL
+                AND l.use_count < l.max_uses
+              ORDER BY l.form_key, l.created_at ASC
+            `.catch(() => [])
+          : await sql`
+              SELECT DISTINCT ON (l.form_key)
+                l.token, l.form_key, l.max_uses, l.use_count, l.used_at, l.created_at,
+                f.title, f.company_name,
+                COALESCE(u.display_name, u.username) AS owner_name
+              FROM web_survey_links l
+              JOIN survey_form f ON f.form_key = l.form_key
+              LEFT JOIN app_users u ON u.id = f.created_by
+              WHERE f.form_key NOT IN ('default', 'legacy')
+                AND l.used_at IS NULL
+                AND l.use_count < l.max_uses
+              ORDER BY l.form_key, l.created_at ASC
+            `.catch(() => []);
+        const items = (liveRows as Record<string, unknown>[]).map((r) => {
+          const row = mapWebLinkRow(r);
+          const title = String(r.title || row.form_key);
+          return {
+            ...row,
+            title,
+            company_name: r.company_name ? String(r.company_name) : null,
+            owner_name: r.owner_name ? String(r.owner_name) : null,
+            remaining: Math.max(0, row.max_uses - row.use_count),
+            url: publicWebFillUrl(row.form_key, row.token),
+            live: true,
+            starts_at: row.created_at,
+            ended_at: null,
+          };
+        });
+        return json({ items, count: items.length });
+      }
+      if (formKey === "default" || formKey === "legacy") {
         return json({ error: "Pick a real survey" }, 400);
       }
       if (me.role === "admin") {
@@ -9589,10 +9728,8 @@ async function rawHandler(req: Request): Promise<Response> {
         SELECT title FROM survey_form WHERE form_key = ${formKey} LIMIT 1
       `.catch(() => []);
       const surveyTitle = String((titleRows[0] as { title?: string } | undefined)?.title || formKey);
-      const canonical = items.length
-        ? [...items].sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))[0]
-        : null;
-      const share = canonical;
+      const liveRow = items.find((x) => !x.expired) || null;
+      const share = liveRow;
       const [subRow] = await sql`
         SELECT COUNT(*)::int AS n FROM submissions
         WHERE payload->>'form_key' = ${formKey}
@@ -9671,10 +9808,12 @@ async function rawHandler(req: Request): Promise<Response> {
       }
       const liveRows = keys.length
         ? await sql`
-            SELECT DISTINCT ON (form_key) form_key, max_uses, use_count, used_at, created_at
+            SELECT DISTINCT ON (form_key) form_key, token, max_uses, use_count, used_at, created_at
             FROM web_survey_links
             WHERE form_key = ANY(${keys})
-            ORDER BY form_key, created_at DESC
+            ORDER BY form_key,
+              CASE WHEN used_at IS NULL AND use_count < max_uses THEN 0 ELSE 1 END,
+              created_at ASC
           `.catch(() => [])
         : [];
       const liveMap = new Map<string, {

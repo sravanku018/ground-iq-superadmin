@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import { listSubmissions, listSurveys, listWebFillLinks, mintWebFillUrl, webFillUrl } from './api'
+import {
+  deactivateWebFillLink,
+  listActiveWebFillLinks,
+  listSubmissions,
+  listSurveys,
+  listWebFillLinks,
+  mintWebFillUrl,
+  webFillUrl,
+} from './api'
 
 /* ─── helpers ─────────────────────────────────────────────────── */
 function fmt(v) {
@@ -38,7 +46,7 @@ function Pill({ label, color = '#64748b', bg = '#f1f5f9', dot }) {
 }
 
 /* ─── per-survey card ─────────────────────────────────────────── */
-function SurveyWebCard({ survey, onToast, expanded, onToggle }) {
+function SurveyWebCard({ survey, onToast, expanded, onToggle, canDeactivate, reloadAt, onDeactivated }) {
   const [link, setLink] = useState(null)       // { token, max_uses, use_count, expired }
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -63,7 +71,7 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle }) {
       .catch(() => {})
       .finally(() => { if (!dead) setLoading(false) })
     return () => { dead = true }
-  }, [fk])
+  }, [fk, reloadAt])
 
   /* load recent web submissions when expanded */
   useEffect(() => {
@@ -81,8 +89,10 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle }) {
   const used = Math.max(Number(survey.web_submissions) || 0, Number(link?.use_count) || 0)
   const left = Math.max(0, cap - used)
   const pct = Math.min(100, Math.round((used / cap) * 100))
-  const full = !!link?.expired || (cap > 0 && left === 0)
-  const isLive = !!link?.token && !full
+  const capHit = cap > 0 && used >= cap
+  const deactivated = !!(link?.used_at || link?.ended_at) && !capHit
+  const full = capHit
+  const isLive = !!link?.token && !deactivated && !full && !link?.expired
   const url = link?.token ? webFillUrl(fk, link.token) : ''
 
   const startTime = link?.starts_at || link?.created_at || survey.web_link?.starts_at || survey.web_link?.created_at
@@ -123,6 +133,23 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle }) {
     }
   }
 
+  async function handleDeactivate() {
+    if (!fk || !isLive) return
+    const title = survey.title || fk
+    if (!window.confirm(`Deactivate the live web link for “${title}”? Copied URLs will stop working.`)) return
+    setBusy(true)
+    try {
+      await deactivateWebFillLink(fk)
+      setLink((prev) => prev ? { ...prev, expired: true, used_at: new Date().toISOString(), ended_at: new Date().toISOString() } : prev)
+      onToast?.(`“${title}” web link deactivated`, 'ok')
+      onDeactivated?.()
+    } catch (e) {
+      onToast?.(e.message || 'Could not deactivate', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const barColor = full ? '#dc2626' : pct >= 80 ? '#f59e0b' : '#059669'
 
   return (
@@ -150,6 +177,8 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle }) {
               <Pill label="Loading…" />
             ) : isLive ? (
               <Pill label="LIVE" color="#15803d" bg="#dcfce7" dot="pulse" />
+            ) : deactivated ? (
+              <Pill label="Deactivated" color="#92400e" bg="#fef3c7" />
             ) : full ? (
               <Pill label="Target reached" color="#b91c1c" bg="#fee2e2" />
             ) : link?.token ? (
@@ -318,6 +347,17 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle }) {
                     ↗ Share
                   </button>
                 )}
+                {canDeactivate && (
+                  <button
+                    type="button"
+                    className="btn danger"
+                    disabled={busy}
+                    onClick={() => void handleDeactivate()}
+                    style={{ flex: 1, minHeight: 44, fontSize: 13, fontWeight: 700 }}
+                  >
+                    {busy ? 'Stopping…' : 'Deactivate'}
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -373,6 +413,12 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(null)  // form_key of open card
   const [search, setSearch] = useState('')
+  const [activeLinks, setActiveLinks] = useState([])
+  const [activeLoading, setActiveLoading] = useState(false)
+  const [deactKey, setDeactKey] = useState('')
+  const [reloadAt, setReloadAt] = useState(0)
+
+  const isSuper = user?.role === 'super_admin'
 
   // Quick generator states
   const [genSurveyKey, setGenSurveyKey] = useState('')
@@ -397,13 +443,30 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
       setGenUrl(u)
       try { await navigator.clipboard.writeText(u) } catch {}
       onToast?.(`Link generated & copied for "${selectedSurveyObj?.title || genSurveyKey}" ✓`, 'ok')
-      void load() // refresh live link badge in survey cards
+      setReloadAt((n) => n + 1)
+      void load()
     } catch (e) {
       onToast?.(e.message || 'Could not generate link', 'error')
     } finally {
       setGenBusy(false)
     }
   }
+
+  const loadActive = useCallback(async () => {
+    if (!isSuper) {
+      setActiveLinks([])
+      return
+    }
+    setActiveLoading(true)
+    try {
+      const d = await listActiveWebFillLinks()
+      setActiveLinks(d.items || [])
+    } catch (e) {
+      onToast?.(e.message, 'error')
+    } finally {
+      setActiveLoading(false)
+    }
+  }, [isSuper, onToast])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -413,18 +476,38 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
         (s) => s.form_key !== 'default' && s.form_key !== 'legacy',
       )
       setSurveys(items)
-      // auto-expand first live survey
-      const liveOne = items.find((s) => s.web_link?.token && !s.web_link?.expired)
-      if (liveOne) setExpanded(liveOne.form_key)
-      else if (items.length === 1) setExpanded(items[0].form_key)
+      setExpanded((cur) => {
+        if (cur && items.some((s) => s.form_key === cur)) return cur
+        const liveOne = items.find((s) => s.web_link?.token && !s.web_link?.expired)
+        if (liveOne) return liveOne.form_key
+        if (items.length === 1) return items[0].form_key
+        return null
+      })
     } catch (e) {
       onToast?.(e.message, 'error')
     } finally {
       setLoading(false)
     }
-  }, [onToast])
+    void loadActive()
+  }, [onToast, loadActive])
 
   useEffect(() => { void load() }, [load])
+
+  async function deactivateSurveyLink(formKey, title) {
+    if (!formKey) return
+    if (!window.confirm(`Deactivate the live web link for “${title || formKey}”? Copied URLs will stop working.`)) return
+    setDeactKey(formKey)
+    try {
+      await deactivateWebFillLink(formKey)
+      onToast?.(`“${title || formKey}” web link deactivated`, 'ok')
+      setReloadAt((n) => n + 1)
+      await load()
+    } catch (e) {
+      onToast?.(e.message || 'Could not deactivate', 'error')
+    } finally {
+      setDeactKey('')
+    }
+  }
 
   const filtered = surveys.filter((s) =>
     !search.trim() || (s.title || s.form_key).toLowerCase().includes(search.toLowerCase()),
@@ -462,7 +545,9 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
               )}
             </h2>
             <p className="muted" style={{ margin: '3px 0 0', fontSize: 13 }}>
-              Create links, track responses, share via WhatsApp
+              {isSuper
+                ? 'See every live public fill link and deactivate it. Copy uses the field Vercel URL.'
+                : 'Create links, track responses, share via WhatsApp'}
             </p>
           </div>
           <button
@@ -472,6 +557,83 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
           >↻ Refresh</button>
         </div>
       </div>
+
+      {isSuper && (
+        <div className="card" style={{ padding: 16, marginBottom: 20, border: '1.5px solid #86efac', background: '#f0fdf4' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 16, color: '#14532d' }}>
+              Active web links
+              <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: '#15803d' }}>
+                {activeLoading ? '…' : `${activeLinks.length} live`}
+              </span>
+            </h3>
+          </div>
+          {activeLoading ? (
+            <p className="muted" style={{ margin: 0, fontSize: 13 }}>Loading live links…</p>
+          ) : activeLinks.length === 0 ? (
+            <p className="muted" style={{ margin: 0, fontSize: 13 }}>No active web links right now.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {activeLinks.map((l) => {
+                const url = l.url || webFillUrl(l.form_key, l.token)
+                const used = Number(l.use_count) || 0
+                const cap = Number(l.max_uses) || 0
+                const busyThis = deactKey === l.form_key
+                return (
+                  <div
+                    key={l.token || l.form_key}
+                    style={{
+                      background: '#fff',
+                      border: '1px solid #bbf7d0',
+                      borderRadius: 12,
+                      padding: 12,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                      <div>
+                        <strong style={{ fontSize: 14, color: '#0f172a' }}>{l.title || l.form_key}</strong>
+                        <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                          {[l.company_name, l.owner_name].filter(Boolean).join(' · ') || '—'}
+                          {cap > 0 ? ` · ${used.toLocaleString()} / ${cap.toLocaleString()} responses` : ''}
+                          {l.created_at || l.starts_at ? ` · started ${fmt(l.starts_at || l.created_at)}` : ''}
+                        </div>
+                      </div>
+                      <Pill label="LIVE" color="#15803d" bg="#dcfce7" dot="pulse" />
+                    </div>
+                    <div style={{ fontSize: 12, fontFamily: 'monospace', color: '#334155', wordBreak: 'break-all', marginBottom: 8 }}>
+                      {url}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn small"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(url)
+                            onToast?.('Link copied ✓', 'ok')
+                          } catch {
+                            onToast?.(url, 'ok')
+                          }
+                        }}
+                      >
+                        Copy
+                      </button>
+                      <button
+                        type="button"
+                        className="btn small danger"
+                        disabled={busyThis}
+                        onClick={() => void deactivateSurveyLink(l.form_key, l.title)}
+                      >
+                        {busyThis ? 'Stopping…' : 'Deactivate'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Quick Link Generator Card ── */}
       <div className="card" style={{ padding: 18, marginBottom: 20, background: 'linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)', border: '1.5px solid #86efac', borderRadius: 14, boxShadow: '0 4px 12px rgba(22, 163, 74, 0.08)' }}>
@@ -621,6 +783,12 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
             onToast={onToast}
             expanded={expanded === s.form_key}
             onToggle={() => setExpanded(expanded === s.form_key ? null : s.form_key)}
+            canDeactivate={isSuper}
+            reloadAt={reloadAt}
+            onDeactivated={() => {
+              setReloadAt((n) => n + 1)
+              void load()
+            }}
           />
         ))
       )}

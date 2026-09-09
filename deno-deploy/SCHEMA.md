@@ -73,10 +73,10 @@ via `.catch()`. Known broken instance: the submissions/geo section of
 | `created_by` | Client Admin / Super Admin who clicked Copy. |
 | `max_uses` | How many public submits this token allows (1–9999). Set from the Web survey number picker. Default 1 for old rows. |
 | `use_count` | Successful `POST /api/web-survey/public` count. Atomic `use_count + 1 WHERE use_count < max_uses`. |
-| `used_at` | Set when `use_count` reaches `max_uses`. GET/POST then return 410 expired. |
+| `used_at` | Set when `use_count` reaches `max_uses`, or when Super Admin / Client Admin deactivates the live link (`PATCH /api/web-survey/link` `{ active: false }`). GET/POST public fill then return 410 expired. |
 | `submission_id` | Last pending web row created by this token. |
 
-Copying a web link (`POST /api/web-survey/link`) mints a **new** token with the chosen `max_uses`. The same URL stays valid until that many people submit. Generic `?fill=form_key` without `k=` is expired (410). Logged-in portal fill (`POST /api/web-survey`) is unchanged and does not consume the public cap.
+Copying a web link (`POST /api/web-survey/link`) reuses the live token or mints a new one with the chosen `max_uses`. The same URL stays valid until that many people submit **or Super Admin deactivates it**. `GET /api/web-survey/links` with no `form_key` lists every live link (Super Admin: all tenants; Client Admin: own surveys). Generic `?fill=form_key` without `k=` is expired (410). Logged-in portal fill (`POST /api/web-survey`) is unchanged and does not consume the public cap.
 
 **`survey_admin_access`** — junction: `survey_id → survey_form`,
 `admin_id → app_users`. **This is the access-control source of truth.**

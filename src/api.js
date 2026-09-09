@@ -583,12 +583,25 @@ export async function mintWebFillUrl(formKey, maxUses = 1) {
 }
 
 export function listWebFillLinks(formKey) {
-  return request(`/api/web-survey/links?form_key=${encodeURIComponent(formKey)}`)
+  const q = formKey ? `?form_key=${encodeURIComponent(formKey)}` : ''
+  return request(`/api/web-survey/links${q}`)
+}
+
+export function listActiveWebFillLinks() {
+  return request('/api/web-survey/links')
 }
 
 export function deleteWebFillLink(formKey) {
   return request(`/api/web-survey/link?form_key=${encodeURIComponent(formKey)}`, {
     method: 'DELETE',
+  })
+}
+
+export function deactivateWebFillLink(formKey) {
+  return request('/api/web-survey/link', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ form_key: formKey, active: false }),
   })
 }
 

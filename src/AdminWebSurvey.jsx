@@ -93,6 +93,7 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle, canDeactivate, rel
   const deactivated = !!(link?.used_at || link?.ended_at) && !capHit
   const full = capHit
   const isLive = !!link?.token && !deactivated && !full && !link?.expired
+  const quotaFrozen = Boolean(link?.token) && !deactivated
   const url = link?.token ? webFillUrl(fk, link.token) : ''
 
   const startTime = link?.starts_at || link?.created_at || survey.web_link?.starts_at || survey.web_link?.created_at
@@ -115,7 +116,9 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle, canDeactivate, rel
         ended_at: d.ended_at || null,
       })
       try { await navigator.clipboard.writeText(newUrl) } catch { /* ignore */ }
+      try { window.dispatchEvent(new CustomEvent('esurvey-quota-changed')) } catch { /* ignore */ }
       onToast?.(`Link created & copied · ${maxUses} responses allowed`, 'ok')
+      onDeactivated?.()
     } catch (e) {
       onToast?.(e.message || 'Could not create link', 'error')
     } finally {
@@ -226,26 +229,40 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle, canDeactivate, rel
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <button
                   type="button" className="btn small"
-                  disabled={busy || full || maxUses <= 1}
+                  disabled={busy || quotaFrozen || maxUses <= 1}
                   onClick={() => setMaxUses(n => Math.max(1, n - (n > 50 ? 10 : 1)))}
                   style={{ minHeight: 40, minWidth: 40 }}
                 >−</button>
                 <input
                   type="number" min={1} max={9999} value={maxUses}
-                  disabled={busy}
+                  disabled={busy || quotaFrozen}
+                  readOnly={quotaFrozen}
                   onChange={(e) => setMaxUses(Math.max(1, Math.min(9999, Number(e.target.value) || 1)))}
-                  style={{ width: 72, textAlign: 'center', minHeight: 40, fontSize: 16 }}
+                  style={{ width: 72, textAlign: 'center', minHeight: 40, fontSize: 16, opacity: quotaFrozen ? 0.7 : 1 }}
                 />
                 <button
                   type="button" className="btn small"
-                  disabled={busy || full || maxUses >= 9999}
+                  disabled={busy || quotaFrozen || maxUses >= 9999}
                   onClick={() => setMaxUses(n => Math.min(9999, n + (n >= 50 ? 10 : 1)))}
                   style={{ minHeight: 40, minWidth: 40 }}
                 >+</button>
               </div>
+              {quotaFrozen && (
+                <span style={{ fontSize: 11, color: '#64748b' }}>
+                  Quota locked after link generation
+                </span>
+              )}
             </label>
 
-            {!full ? (
+            {full ? (
+              <div style={{
+                flex: 1, padding: '10px 14px', borderRadius: 10,
+                background: '#fef2f2', border: '1px solid #fecaca',
+                fontSize: 13, color: '#b91c1c', fontWeight: 600,
+              }}>
+                🛑 Target reached — sharing disabled
+              </div>
+            ) : (
               <button
                 type="button"
                 className="btn primary"
@@ -255,14 +272,6 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle, canDeactivate, rel
               >
                 {busy ? (isLive ? 'Copying…' : 'Creating…') : isLive ? '📋 Copy link' : '🔗 Create & copy link'}
               </button>
-            ) : (
-              <div style={{
-                flex: 1, padding: '10px 14px', borderRadius: 10,
-                background: '#fef2f2', border: '1px solid #fecaca',
-                fontSize: 13, color: '#b91c1c', fontWeight: 600,
-              }}>
-                🛑 Target reached — sharing disabled
-              </div>
             )}
           </div>
 
@@ -425,6 +434,7 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
   const [genQuota, setGenQuota] = useState(100)
   const [genBusy, setGenBusy] = useState(false)
   const [genUrl, setGenUrl] = useState('')
+  const [genLockedKey, setGenLockedKey] = useState('')
 
   useEffect(() => {
     if (surveys.length > 0 && !genSurveyKey) {
@@ -432,15 +442,41 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
     }
   }, [surveys, genSurveyKey])
 
+  useEffect(() => {
+    const live = selectedSurveyObj?.web_link
+    if (live?.token && !live.expired && live.max_uses) {
+      setGenQuota(Number(live.max_uses) || 100)
+    }
+  }, [genSurveyKey, selectedSurveyObj?.web_link?.token, selectedSurveyObj?.web_link?.max_uses, selectedSurveyObj?.web_link?.expired])
+
   const selectedSurveyObj = surveys.find((s) => s.form_key === genSurveyKey) || null
+  const genFrozen = Boolean(
+    genSurveyKey && (
+      genSurveyKey === genLockedKey ||
+      (selectedSurveyObj?.web_link?.token && !selectedSurveyObj?.web_link?.expired)
+    ),
+  )
 
   async function handleQuickGenerate() {
     if (!genSurveyKey) return
+    if (genFrozen) {
+      const token = selectedSurveyObj?.web_link?.token
+      const u = (genUrl && genLockedKey === genSurveyKey)
+        ? genUrl
+        : (token ? webFillUrl(genSurveyKey, token) : '')
+      if (!u) return
+      setGenUrl(u)
+      try { await navigator.clipboard.writeText(u) } catch { /* ignore */ }
+      onToast?.('Link copied to clipboard ✓', 'ok')
+      return
+    }
     setGenBusy(true)
     try {
       const d = await mintWebFillUrl(genSurveyKey, genQuota)
       const u = d.url || ''
       setGenUrl(u)
+      setGenLockedKey(genSurveyKey)
+      if (d.max_uses) setGenQuota(Number(d.max_uses) || genQuota)
       try { await navigator.clipboard.writeText(u) } catch {}
       onToast?.(`Link generated & copied for "${selectedSurveyObj?.title || genSurveyKey}" ✓`, 'ok')
       setReloadAt((n) => n + 1)
@@ -678,9 +714,21 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
               min={1}
               max={9999}
               value={genQuota}
+              disabled={genBusy || genFrozen}
+              readOnly={genFrozen}
               onChange={(e) => setGenQuota(Math.max(1, Math.min(9999, Number(e.target.value) || 1)))}
-              style={{ width: '100%', minHeight: 42, fontSize: 14, fontWeight: 600, background: '#fff', border: '1.5px solid #cbd5e1', borderRadius: 8 }}
+              style={{
+                width: '100%', minHeight: 42, fontSize: 14, fontWeight: 600,
+                background: genFrozen ? '#f1f5f9' : '#fff',
+                border: '1.5px solid #cbd5e1', borderRadius: 8,
+                opacity: genFrozen ? 0.75 : 1,
+              }}
             />
+            {genFrozen && (
+              <span style={{ fontSize: 11, color: '#64748b', marginTop: 4, display: 'block' }}>
+                Quota locked after link generation
+              </span>
+            )}
           </label>
 
           <div style={{ display: 'flex', gap: 8 }}>
@@ -691,7 +739,7 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
               onClick={handleQuickGenerate}
               style={{ flex: 1, minHeight: 42, fontSize: 14, fontWeight: 700, background: '#16a34a', borderColor: '#15803d', boxShadow: '0 2px 6px rgba(22, 163, 74, 0.3)' }}
             >
-              {genBusy ? 'Generating…' : '🔗 Generate & Copy Link'}
+              {genBusy ? 'Generating…' : genFrozen ? '📋 Copy link' : '🔗 Generate & Copy Link'}
             </button>
           </div>
         </div>

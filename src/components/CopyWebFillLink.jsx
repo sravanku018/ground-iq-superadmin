@@ -135,7 +135,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
   const left = Math.max(0, cap - totalUsed)
   const pct = Math.min(100, Math.round((totalUsed / cap) * 100))
   const hasActiveLink = Boolean(url || live?.token)
-  const quotaChanged = hasActiveLink && maxUses !== cap
+  const quotaFrozen = hasActiveLink
 
   const picker = (
     <label className="field" style={{ margin: 0, minWidth: compact ? 120 : 180 }}>
@@ -144,7 +144,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
         <button
           type="button"
           className="btn small"
-          disabled={busy || (full && !quotaChanged) || live?.expired || maxUses <= 1}
+          disabled={busy || quotaFrozen || live?.expired || maxUses <= 1}
           onClick={() => bump(-1)}
         >
           −
@@ -155,19 +155,23 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
           max={9999}
           step={1}
           value={maxUses}
-          disabled={busy}
+          disabled={busy || quotaFrozen}
+          readOnly={quotaFrozen}
           onChange={(e) => setMaxUses(clampMax(e.target.value))}
-          style={{ width: compact ? 72 : 88, textAlign: 'center' }}
+          style={{ width: compact ? 72 : 88, textAlign: 'center', opacity: quotaFrozen ? 0.7 : 1 }}
         />
         <button
           type="button"
           className="btn small"
-          disabled={busy || (full && !quotaChanged) || live?.expired || maxUses >= 9999}
+          disabled={busy || quotaFrozen || live?.expired || maxUses >= 9999}
           onClick={() => bump(1)}
         >
           +
         </button>
       </div>
+      {quotaFrozen && (
+        <span style={{ fontSize: 11, color: '#64748b' }}>Quota locked after link generation</span>
+      )}
     </label>
   )
 
@@ -206,11 +210,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
         <span style={{ fontWeight: 600, color: '#64748b', fontSize: compact ? 13 : 15 }}>
           {' '}of {cap.toLocaleString()} responses used
         </span>
-        {quotaChanged ? (
-          <span className="pill" style={{ marginLeft: 8, fontSize: 11, background: '#fef3c7', color: '#92400e', fontWeight: 600 }}>
-            Pending update to {maxUses}
-          </span>
-        ) : null}
+
       </div>
       <div style={{ height: 8, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden', marginTop: 8 }}>
         <div
@@ -249,17 +249,15 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
 
   const buttonLabel = fetching
     ? 'Checking…'
-    : full && !quotaChanged
+    : full
       ? 'Sharing disabled'
       : busy
         ? hasActiveLink
-          ? 'Updating…'
+          ? 'Copying…'
           : 'Creating…'
-        : quotaChanged
-          ? `Update quota to ${maxUses} & copy`
-          : hasActiveLink
-            ? 'Copy web link'
-            : 'Create & copy link'
+        : hasActiveLink
+          ? 'Copy web link'
+          : 'Create & copy link'
 
   if (compact) {
     return (
@@ -270,7 +268,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
           <button
             type="button"
             className="btn small"
-            disabled={fetching || busy || !formKey || (full && !quotaChanged)}
+            disabled={fetching || busy || !formKey || full}
             onClick={() => void mintAndCopy()}
           >
             {buttonLabel}
@@ -295,15 +293,15 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
             readOnly
             value={url}
             placeholder="Unique survey link"
-            disabled={full && !quotaChanged}
-            style={{ flex: 1, minWidth: 220, fontSize: 13, opacity: full && !quotaChanged ? 0.6 : 1 }}
+            disabled={full}
+            style={{ flex: 1, minWidth: 220, fontSize: 13, opacity: full ? 0.6 : 1 }}
             onFocus={(e) => e.target.select()}
           />
         )}
         <button
           type="button"
           className="btn primary"
-          disabled={fetching || busy || !formKey || (full && !quotaChanged)}
+          disabled={fetching || busy || !formKey || full}
           onClick={() => void mintAndCopy()}
         >
           {buttonLabel}

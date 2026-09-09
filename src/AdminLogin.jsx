@@ -162,14 +162,45 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
               </a>
             </p>
           )}
-          <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 8px' }}>Surveyor collecting field data?</p>
-          <a
-            href="/?app=1"
-            className="btn secondary small"
-            style={{ display: 'inline-block', textDecoration: 'none', fontWeight: 600, padding: '8px 16px' }}
-          >
-            📱 Switch to Surveyor Field App →
-          </a>
+          {/* Surveyor field app link (hidden in standalone PWA) */}
+          {!(typeof window !== 'undefined' && (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone)) && (
+            <>
+              <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 8px' }}>Surveyor collecting field data?</p>
+              <a
+                href="/?app=1"
+                className="btn secondary small"
+                style={{ display: 'inline-block', textDecoration: 'none', fontWeight: 600, padding: '8px 16px' }}
+              >
+                📱 Switch to Surveyor Field App →
+              </a>
+            </>
+          )}
+
+          {/* Client Admin PWA install helper */}
+          <div style={{ marginTop: 14 }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== 'undefined' && (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone)) {
+                  onToast?.('Client Admin portal is already installed ✓', 'ok')
+                } else {
+                  window.alert(
+                    '💻📱 Install Client Admin Portal as an App:\n\n• On Chrome/Edge (PC/Mac/Android): Click the Install icon in the address bar or menu (⋮) → "Install App".\n• On iPhone/iPad (Safari): Tap Share (↑) → "Add to Home Screen".\n\nRuns standalone with instant updates!',
+                  )
+                }
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#64748b',
+                fontSize: 12,
+                textDecoration: 'underline',
+                cursor: 'pointer',
+              }}
+            >
+              💻📱 Install Client Admin Portal (PWA)
+            </button>
+          </div>
         </div>
       </div>
     </div>

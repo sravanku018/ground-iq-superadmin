@@ -32,6 +32,44 @@ export default function AdminProfileScreen({ user, onToast, onUserUpdated }) {
 
       <div style={{ maxWidth: 680 }}>
         {!isSuper && <ShareAppLink onToast={onToast} />}
+
+        {/* Client Admin PWA Desktop / Tablet App Card */}
+        <div className="card" style={{ marginBottom: 16, padding: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <h4 style={{ margin: 0, fontSize: 15, display: 'flex', alignItems: 'center', gap: 6 }}>
+              💻📱 Client Admin App (PWA)
+            </h4>
+            {typeof window !== 'undefined' && (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone) ? (
+              <span style={{ fontSize: 11, background: '#dcfce7', color: '#15803d', fontWeight: 700, padding: '2px 8px', borderRadius: 999 }}>
+                Installed ✓
+              </span>
+            ) : (
+              <span style={{ fontSize: 11, background: '#eff6ff', color: '#1d4ed8', fontWeight: 700, padding: '2px 8px', borderRadius: 999 }}>
+                Browser Mode
+              </span>
+            )}
+          </div>
+          <p className="muted" style={{ fontSize: 12, margin: '0 0 10px', lineHeight: 1.5 }}>
+            Install the Client Admin portal as a standalone desktop or tablet app. It opens in its own window without browser tabs or address bar, and automatically stays up to date with new features.
+          </p>
+          <button
+            type="button"
+            className="btn small"
+            style={{ width: '100%', fontWeight: 600, background: '#f8fafc', border: '1px solid #cbd5e1' }}
+            onClick={() => {
+              if (typeof window !== 'undefined' && (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone)) {
+                onToast?.('Client Admin portal is running in installed app mode ✓', 'ok')
+              } else {
+                window.alert(
+                  '💻 On PC / Mac (Chrome / Edge):\nLook for the Install icon (🖳 or ⊕) in the browser address bar on the right, or click Menu (⋮) → "Install Smart Survey X".\n\n📱 On iPad / iPhone (Safari):\nTap the Share button (↑) → "Add to Home Screen".\n\n📱 On Android Tablet (Chrome):\nTap Menu (⋮) → "Add to Home screen" or "Install App".',
+                )
+              }
+            }}
+          >
+            ➕ How to install Client Admin App
+          </button>
+        </div>
+
         <CredentialsCard
           name={user?.name || user?.username}
           username={user?.username}

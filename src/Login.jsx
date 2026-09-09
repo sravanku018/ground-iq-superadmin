@@ -124,16 +124,19 @@ export default function LoginScreen({ onSuccess, onToast }) {
           </button>
         </form>
 
-        <div style={{ marginTop: 20, textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: 14 }}>
-          <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 8px' }}>Are you a Client Admin?</p>
-          <a
-            href="/admin"
-            className="btn secondary small"
-            style={{ display: 'inline-block', textDecoration: 'none', fontWeight: 600, padding: '8px 16px', background: 'rgba(255,255,255,0.08)', color: '#00e599', border: '1px solid rgba(0,229,153,0.3)', borderRadius: 8 }}
-          >
-            🛡️ Sign in to Client Admin Portal →
-          </a>
-        </div>
+        {/* Hide Client Admin link when launched as installed standalone PWA app */}
+        {!(typeof window !== 'undefined' && (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone)) && (
+          <div style={{ marginTop: 20, textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: 14 }}>
+            <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 8px' }}>Are you a Client Admin?</p>
+            <a
+              href="/admin"
+              className="btn secondary small"
+              style={{ display: 'inline-block', textDecoration: 'none', fontWeight: 600, padding: '8px 16px', background: 'rgba(255,255,255,0.08)', color: '#00e599', border: '1px solid rgba(0,229,153,0.3)', borderRadius: 8 }}
+            >
+              🛡️ Sign in to Client Admin Portal →
+            </a>
+          </div>
+        )}
 
         <div style={{ marginTop: 12, textAlign: 'center' }}>
           <button

@@ -52,22 +52,50 @@ export default function AdminProfileScreen({ user, onToast, onUserUpdated }) {
           <p className="muted" style={{ fontSize: 12, margin: '0 0 10px', lineHeight: 1.5 }}>
             Install the Client Admin portal as a standalone desktop or tablet app. It opens in its own window without browser tabs or address bar, and automatically stays up to date with new features.
           </p>
-          <button
-            type="button"
-            className="btn small"
-            style={{ width: '100%', fontWeight: 600, background: '#f8fafc', border: '1px solid #cbd5e1' }}
-            onClick={() => {
-              if (typeof window !== 'undefined' && (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone)) {
-                onToast?.('Client Admin portal is running in installed app mode ✓', 'ok')
-              } else {
-                window.alert(
-                  '💻 On PC / Mac (Chrome / Edge):\nLook for the Install icon (🖳 or ⊕) in the browser address bar on the right, or click Menu (⋮) → "Install Smart Survey X".\n\n📱 On iPad / iPhone (Safari):\nTap the Share button (↑) → "Add to Home Screen".\n\n📱 On Android Tablet (Chrome):\nTap Menu (⋮) → "Add to Home screen" or "Install App".',
-                )
-              }
-            }}
-          >
-            ➕ How to install Client Admin App
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn small"
+              style={{ flex: 1, minWidth: 160, fontWeight: 600, background: '#f8fafc', border: '1px solid #cbd5e1' }}
+              onClick={() => {
+                if (typeof window !== 'undefined' && (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone)) {
+                  onToast?.('Client Admin portal is running in installed app mode ✓', 'ok')
+                } else {
+                  window.alert(
+                    '💻 On PC / Mac (Chrome / Edge):\nLook for the Install icon (🖳 or ⊕) in the browser address bar on the right, or click Menu (⋮) → "Install Smart Survey X".\n\n📱 On iPad / iPhone (Safari):\nTap the Share button (↑) → "Add to Home Screen".\n\n📱 On Android Tablet (Chrome):\nTap Menu (⋮) → "Add to Home screen" or "Install App".',
+                  )
+                }
+              }}
+            >
+              ➕ How to install App
+            </button>
+            <button
+              type="button"
+              className="btn small"
+              style={{ minWidth: 140, fontWeight: 600, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8' }}
+              onClick={async () => {
+                onToast?.('Checking for latest version…', 'ok')
+                try {
+                  const res = await fetch(`/api/app-version?t=${Date.now()}`, { cache: 'no-store' }).catch(() => null)
+                  if (res && res.ok) {
+                    const data = await res.json()
+                    if (data?.version) {
+                      onToast?.(`Latest app version is v${data.version}`, 'ok')
+                    } else {
+                      onToast?.('Portal is up to date ✓', 'ok')
+                    }
+                  } else {
+                    onToast?.('Portal is up to date ✓', 'ok')
+                  }
+                  setTimeout(() => window.location.reload(), 1200)
+                } catch {
+                  window.location.reload()
+                }
+              }}
+            >
+              ↻ Check for updates
+            </button>
+          </div>
         </div>
 
         <CredentialsCard

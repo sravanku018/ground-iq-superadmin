@@ -419,6 +419,21 @@ function newWebFillToken(): string {
   return randomBytes(18).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
+/** Public fill page — field Vercel app, survey name in the path, never Super Admin. */
+const CANONICAL_FIELD_APP = "https://ground-iq-web-lake.vercel.app/";
+
+function publicWebFillUrl(formKey: string, token: string): string {
+  const slug = String(formKey || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!slug) return "";
+  const u = new URL(`fill/${encodeURIComponent(slug)}`, CANONICAL_FIELD_APP);
+  if (token) u.searchParams.set("k", token);
+  return u.toString();
+}
+
 function webLinkExpired(extra: Record<string, unknown> = {}) {
   return json(
     {
@@ -773,10 +788,44 @@ function corsPreflight(req: Request): Response {
 
 const GITHUB_RELEASE_APK =
   "https://github.com/sravanku018/ground-iq-web/releases/latest/download/ElectionSurvey-release.apk";
+const LOCAL_APK_PATHS = [
+  "/opt/smart-survey-x/SmartSurveyX.apk",
+  "/opt/smart-survey-x/app.apk",
+];
 
-/** Direct APK file for phones / WhatsApp. GitHub's own URL often fails in in-app browsers. */
+function apkHeaders(byteLength?: number): Record<string, string> {
+  const headers: Record<string, string> = {
+    "content-type": "application/vnd.android.package-archive",
+    "content-disposition": 'attachment; filename="SmartSurveyX.apk"',
+    "cache-control": "no-store, no-cache, must-revalidate",
+    "x-content-type-options": "nosniff",
+    ...CORS_HEADERS,
+    "access-control-allow-origin": "*",
+  };
+  if (byteLength != null && byteLength > 0) headers["content-length"] = String(byteLength);
+  return headers;
+}
+
+function isZipApk(bytes: Uint8Array): boolean {
+  return bytes.length > 100_000 && bytes[0] === 0x50 && bytes[1] === 0x4b;
+}
+
+/** Direct APK file for phones. Prefer a cached file on disk; never serve HTML as APK. */
 async function serveAppApk(method: string): Promise<Response> {
   try {
+    for (const p of LOCAL_APK_PATHS) {
+      try {
+        const file = await Deno.readFile(p);
+        if (!isZipApk(file)) continue;
+        if (method === "HEAD") {
+          return new Response(null, { status: 200, headers: apkHeaders(file.byteLength) });
+        }
+        return new Response(file, { status: 200, headers: apkHeaders(file.byteLength) });
+      } catch {
+        /* try next path */
+      }
+    }
+
     const upstream = await fetch(GITHUB_RELEASE_APK, {
       redirect: "follow",
       headers: {
@@ -787,20 +836,15 @@ async function serveAppApk(method: string): Promise<Response> {
     if (!upstream.ok) {
       return json({ error: "App download is temporarily unavailable" }, 502);
     }
-    const headers: Record<string, string> = {
-      "content-type": "application/vnd.android.package-archive",
-      "content-disposition": 'attachment; filename="SmartSurveyX.apk"',
-      "cache-control": "public, max-age=600",
-      "x-content-type-options": "nosniff",
-      ...CORS_HEADERS,
-      "access-control-allow-origin": "*",
-    };
-    const len = upstream.headers.get("content-length");
-    if (len) headers["content-length"] = len;
-    if (method === "HEAD") {
-      return new Response(null, { status: 200, headers });
+    const buf = new Uint8Array(await upstream.arrayBuffer());
+    if (!isZipApk(buf)) {
+      return json({ error: "App package is invalid. Use the PWA web app instead." }, 502);
     }
-    return new Response(upstream.body, { status: 200, headers });
+    Deno.writeFile(LOCAL_APK_PATHS[0], buf).catch(() => null);
+    if (method === "HEAD") {
+      return new Response(null, { status: 200, headers: apkHeaders(buf.byteLength) });
+    }
+    return new Response(buf, { status: 200, headers: apkHeaders(buf.byteLength) });
   } catch (err) {
     console.error("apk proxy:", err);
     return json({ error: "App download failed" }, 502);
@@ -9474,6 +9518,7 @@ async function rawHandler(req: Request): Promise<Response> {
         token: link.token,
         form_key: formKey,
         title: surveyTitle,
+        url: publicWebFillUrl(formKey, link.token),
         max_uses: link.max_uses,
         use_count: link.use_count,
         starts_at: link.created_at || null,
@@ -9568,6 +9613,7 @@ async function rawHandler(req: Request): Promise<Response> {
         items,
         live: share ? {
           ...share,
+          url: publicWebFillUrl(formKey, String(share.token || "")),
           use_count: effectiveUsed,
           expired,
           starts_at: share.created_at || null,

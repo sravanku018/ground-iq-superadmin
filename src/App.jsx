@@ -50,7 +50,15 @@ function isAdminPath() {
 function publicFillKey() {
   if (typeof window === 'undefined') return ''
   const q = new URLSearchParams(window.location.search).get('fill')
-  return String(q || '').trim()
+  if (q) return String(q).trim()
+  const p = String(window.location.pathname || '')
+  const m = p.match(/^\/(?:fill|s)\/([^/]+)\/?$/i)
+  if (!m) return ''
+  try {
+    return decodeURIComponent(m[1]).trim()
+  } catch {
+    return String(m[1] || '').trim()
+  }
 }
 
 function publicFillToken() {

@@ -3,6 +3,7 @@ import Icon from './Icons'
 import {
   clearSession,
   apkDownloadUrl,
+  fieldAppUrl,
   getClientAdminBreakdown,
   getStats,
   getStoredUser,
@@ -1543,7 +1544,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
             </span>
           </button>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '4px 0 8px' }}>
-            <a className="portal-link" href="/?app=1" style={{ fontSize: 12 }} title="Open surveyor app / PWA in browser">
+            <a className="portal-link" href={fieldAppUrl()} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12 }} title="Open surveyor app / PWA in browser">
               📱 PWA App ↗
             </a>
             <a className="portal-link" href={apkDownloadUrl()} target="_blank" rel="noreferrer" style={{ fontSize: 12 }} title="Download Android APK">

@@ -543,16 +543,26 @@ export function createWebSurvey({ form_key, form_id, submitted_by, answers }) {
   })
 }
 
+/** Field / public-fill site on Vercel — never Super Admin, never current portal origin. */
+const CANONICAL_FIELD_APP = 'https://ground-iq-web-lake.vercel.app/'
+
+function fieldWebOrigin() {
+  return CANONICAL_FIELD_APP
+}
+
+function surveyFillSlug(formKey) {
+  return String(formKey || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+/** Public fill URL: Vercel + survey name in the path + random token. */
 export function webFillUrl(formKey, token) {
-  if (!formKey) return ''
-  const superConsole = (import.meta.env.VITE_SUPER_ADMIN ?? '0') === '1'
-  let root = CANONICAL_FIELD_APP
-  if (!superConsole && typeof window !== 'undefined') {
-    const base = String(import.meta.env.BASE_URL || '/')
-    root = `${window.location.origin}${base.endsWith('/') ? base : `${base}/`}`
-  }
-  const u = new URL(root)
-  u.searchParams.set('fill', formKey)
+  const slug = surveyFillSlug(formKey)
+  if (!slug) return ''
+  const u = new URL(`fill/${encodeURIComponent(slug)}`, fieldWebOrigin())
   if (token) u.searchParams.set('k', token)
   return u.toString()
 }
@@ -569,7 +579,7 @@ export function createWebFillLink(formKey, maxUses = 1) {
 
 export async function mintWebFillUrl(formKey, maxUses = 1) {
   const d = await createWebFillLink(formKey, maxUses)
-  return { url: webFillUrl(formKey, d.token), ...d }
+  return { ...d, url: webFillUrl(formKey, d.token) }
 }
 
 export function listWebFillLinks(formKey) {
@@ -586,22 +596,13 @@ export function listWebSurveyStats() {
   return request('/api/web-survey/stats')
 }
 
-/** Canonical Client Admin / field-app origin (used from Super Admin console). */
-const CANONICAL_FIELD_APP = 'https://ground-iq-web-lake.vercel.app/'
-
 export function apkDownloadUrl() {
   return `${getApiBase()}/api/app.apk`
 }
 
-/** Shareable field-app URL. Portal-only builds open the collector via ?app=1. */
+/** Shareable field-app URL. Always the Client Admin / field site, never Super Admin. */
 export function fieldAppUrl() {
-  const superConsole = (import.meta.env.VITE_SUPER_ADMIN ?? '0') === '1'
-  let root = CANONICAL_FIELD_APP
-  if (!superConsole && typeof window !== 'undefined') {
-    const base = String(import.meta.env.BASE_URL || '/')
-    root = `${window.location.origin}${base.endsWith('/') ? base : `${base}/`}`
-  }
-  const u = new URL(root)
+  const u = new URL(fieldWebOrigin())
   u.searchParams.set('app', '1')
   return u.toString()
 }

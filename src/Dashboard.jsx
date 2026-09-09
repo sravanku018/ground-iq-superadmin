@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ResponsiveContainer,
   PieChart,
@@ -47,8 +47,6 @@ const PALETTE = [
   '#f59e0b',
   '#e879f9',
 ]
-
-const CLEAR_AC = { constituency: '' }
 
 function pickFirstSurveyKey(items) {
   const list = Array.isArray(items) ? items : []
@@ -603,8 +601,10 @@ export default function DashboardScreen({ onToast }) {
     )
   }, [])
 
+  const hasChartData = useRef(false)
   const load = useCallback(async () => {
-    setLoading(true)
+    const first = !hasChartData.current
+    if (first) setLoading(true)
     setError(null)
     try {
       const params = {
@@ -632,6 +632,7 @@ export default function DashboardScreen({ onToast }) {
         report: 'locked',
       })
       setData(res)
+      hasChartData.current = true
     } catch (e) {
       setError(e.message)
       onToast?.(e.message, 'error')
@@ -645,24 +646,6 @@ export default function DashboardScreen({ onToast }) {
     const t = setTimeout(load, 180)
     return () => clearTimeout(t)
   }, [load, filters.survey])
-
-  const onToggleFilter = useCallback((key, name, extra) => {
-    setFilters((f) => ({
-      ...f,
-      [key]: f[key] === name ? '' : name,
-      ...extra,
-    }))
-  }, [])
-
-  const onSelectDistrict = useCallback(
-    (name) => onToggleFilter('district', name, CLEAR_AC),
-    [onToggleFilter],
-  )
-
-  const onSelectConstituency = useCallback(
-    (name) => onToggleFilter('constituency', name),
-    [onToggleFilter],
-  )
 
   const clearFilters = useCallback(
     () =>
@@ -757,7 +740,7 @@ export default function DashboardScreen({ onToast }) {
   const charts = data?.charts
   const opts = data?.filterOptions
   const confirmedCount = data?.statusCounts?.confirmed ?? data?.totalAll ?? 0
-  const reportReady = !loading && data && (data.totalAll || 0) > 0
+  const reportReady = data && (data.totalAll || 0) > 0
   const reportLocked = !loading && data && (data.totalAll || 0) === 0
 
   const filtersBroken =
@@ -1426,8 +1409,6 @@ export default function DashboardScreen({ onToast }) {
               <SurveyMap
                 analytics={data}
                 filters={filters}
-                onSelectDistrict={onSelectDistrict}
-                onSelectConstituency={onSelectConstituency}
                 lang={filterLang}
               />
             </div>
@@ -1490,27 +1471,18 @@ export default function DashboardScreen({ onToast }) {
 
           <ChartCard
             title="Top districts"
-            subtitle="Tap a bar to filter by district"
+            subtitle="By response count"
             tall
           >
             <HBar
               data={charts?.byDistrict}
-              activeName={filters.district}
-              onSelect={onToggleFilter}
-              selectKey="district"
-              extra={CLEAR_AC}
               lang={filterLang}
             />
           </ChartCard>
 
           {charts?.partyByDistrict?.rows?.length > 0 && (
             <ChartCard title="Party × District" subtitle="Stacked share" tall>
-              <StackedParty
-                matrix={charts.partyByDistrict}
-                onSelect={onToggleFilter}
-                selectKey="district"
-                extra={CLEAR_AC}
-              />
+              <StackedParty matrix={charts.partyByDistrict} />
             </ChartCard>
           )}
 
@@ -1536,7 +1508,6 @@ export default function DashboardScreen({ onToast }) {
                 })(),
               }}
               periods={['total']}
-              onRowClick={(row) => onToggleFilter('party', row.name)}
             />
           )}
 
@@ -1582,31 +1553,22 @@ export default function DashboardScreen({ onToast }) {
             <ChartCard
               key={q.id}
               title={questionFilterTitle(q, filterLang)}
-              subtitle="Every option for this question — tap to filter"
+              subtitle="Every option for this question"
             >
               {isMeter ? (
                 <MeterChart
                   q={q}
                   rows={counts}
                   lang={filterLang}
-                  onSelect={onToggleFilter}
-                  selectKey={`q_${q.id}`}
-                  activeName={filters[`q_${q.id}`] || ''}
                 />
               ) : pieOk ? (
                 <InteractivePie
                   data={counts}
-                  activeName={filters[`q_${q.id}`] || ''}
-                  onSelect={onToggleFilter}
-                  selectKey={`q_${q.id}`}
                   lang={filterLang}
                 />
               ) : (
                 <HBar
                   data={counts}
-                  activeName={filters[`q_${q.id}`] || ''}
-                  onSelect={onToggleFilter}
-                  selectKey={`q_${q.id}`}
                   lang={filterLang}
                 />
               )}

@@ -105,6 +105,17 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle, canDeactivate, rel
 
   async function handleMint() {
     if (!fk) return
+    if (deactivated || surveyEnded || full) {
+      onToast?.(
+        surveyEnded
+          ? 'This survey has ended. A new web link cannot be created.'
+          : deactivated
+            ? 'Super Admin deactivated this web link. A new link cannot be created.'
+            : 'Target reached — sharing is disabled.',
+        'error',
+      )
+      return
+    }
     setBusy(true)
     try {
       const d = await mintWebFillUrl(fk, maxUses)
@@ -455,10 +466,17 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
   const [genLockedKey, setGenLockedKey] = useState('')
 
   const selectedSurveyObj = surveys.find((s) => s.form_key === genSurveyKey) || null
+  const genLinkClosed = Boolean(
+    selectedSurveyObj?.ended ||
+    selectedSurveyObj?.ended_at ||
+    selectedSurveyObj?.web_link?.deactivated ||
+    (selectedSurveyObj?.web_link?.token && selectedSurveyObj?.web_link?.expired),
+  )
   const genFrozen = Boolean(
     genSurveyKey && (
       genSurveyKey === genLockedKey ||
-      (selectedSurveyObj?.web_link?.token && !selectedSurveyObj?.web_link?.expired)
+      selectedSurveyObj?.web_link?.token ||
+      genLinkClosed
     ),
   )
 
@@ -477,12 +495,24 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
 
   async function handleQuickGenerate() {
     if (!genSurveyKey) return
+    if (genLinkClosed) {
+      onToast?.(
+        selectedSurveyObj?.ended || selectedSurveyObj?.ended_at
+          ? 'This survey has ended. A new web link cannot be created.'
+          : 'Super Admin deactivated this web link. A new link cannot be created.',
+        'error',
+      )
+      return
+    }
     if (genFrozen) {
       const token = selectedSurveyObj?.web_link?.token
       const u = (genUrl && genLockedKey === genSurveyKey)
         ? genUrl
-        : (token ? webFillUrl(genSurveyKey, token) : '')
-      if (!u) return
+        : (token && !selectedSurveyObj?.web_link?.expired ? webFillUrl(genSurveyKey, token) : '')
+      if (!u) {
+        onToast?.('Sharing is off for this survey.', 'error')
+        return
+      }
       setGenUrl(u)
       try { await navigator.clipboard.writeText(u) } catch { /* ignore */ }
       onToast?.('Link copied to clipboard ✓', 'ok')
@@ -753,11 +783,16 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
             <button
               type="button"
               className="btn primary"
-              disabled={genBusy || !genSurveyKey}
+              disabled={genBusy || !genSurveyKey || genLinkClosed}
               onClick={handleQuickGenerate}
-              style={{ flex: 1, minHeight: 42, fontSize: 14, fontWeight: 700, background: '#16a34a', borderColor: '#15803d', boxShadow: '0 2px 6px rgba(22, 163, 74, 0.3)' }}
+              style={{
+                flex: 1, minHeight: 42, fontSize: 14, fontWeight: 700,
+                background: genLinkClosed ? '#94a3b8' : '#16a34a',
+                borderColor: genLinkClosed ? '#64748b' : '#15803d',
+                boxShadow: genLinkClosed ? 'none' : '0 2px 6px rgba(22, 163, 74, 0.3)',
+              }}
             >
-              {genBusy ? 'Generating…' : genFrozen ? '📋 Copy link' : '🔗 Generate & Copy Link'}
+              {genBusy ? 'Generating…' : genLinkClosed ? 'Sharing off' : genFrozen ? '📋 Copy link' : '🔗 Generate & Copy Link'}
             </button>
           </div>
         </div>

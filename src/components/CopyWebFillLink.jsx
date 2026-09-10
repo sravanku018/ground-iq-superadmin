@@ -33,19 +33,20 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
     listWebFillLinks(key)
       .then((d) => {
         if (dead) return
-        const share = d.live || null
-        setLive(share)
+        const share = d.live || d.latest || null
+        setLive(share ? { ...share, deactivated: Boolean(share.deactivated || d.deactivated) } : null)
         const cap = Number(share?.max_uses || d.cap || 100) || 100
         const submitted = Number(d.submitted ?? d.used ?? 0) || 0
         const linkUsed = Number(d.link_used ?? share?.use_count ?? 0) || 0
         const totalUsed = Math.max(submitted, linkUsed)
-        const isExp = Boolean(share?.expired || (cap > 0 && totalUsed >= cap))
-        const hasActive = Boolean(share?.token)
-        const mintedUrl = share?.token ? webFillUrl(key, share.token) : ''
+        const isExp = Boolean(share?.expired || share?.deactivated || d.deactivated || d.survey_ended || (cap > 0 && totalUsed >= cap))
+        const closed = Boolean(share?.deactivated || d.deactivated || d.survey_ended || share?.expired)
+        const hasActive = Boolean(share?.token) && !closed
+        const mintedUrl = hasActive && share?.token ? webFillUrl(key, share.token) : ''
         setQuota({ used: submitted, cap, submitted, linkUsed })
         if (share?.max_uses) setMaxUses(clampMax(share.max_uses))
-        if (share?.token) setUrl(mintedUrl)
-        onStatusChange?.({ hasLink: hasActive, expired: isExp, cap, totalUsed, url: mintedUrl })
+        if (mintedUrl) setUrl(mintedUrl)
+        onStatusChange?.({ hasLink: hasActive, expired: isExp, deactivated: closed, cap, totalUsed, url: mintedUrl })
       })
       .catch(() => {
         if (!dead) {
@@ -77,8 +78,13 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
     setMaxUses(limit)
     setBusy(true)
     try {
-      if (full || live?.expired) {
-        onToast?.('Target reached — sharing is disabled for this survey', 'error')
+      if (full || live?.expired || live?.deactivated) {
+        onToast?.(
+          live?.deactivated
+            ? 'Super Admin deactivated this web link. A new link cannot be created.'
+            : 'Target reached — sharing is disabled for this survey',
+          'error',
+        )
         return
       }
       const d = await mintWebFillUrl(key, limit)
@@ -131,11 +137,12 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
   const submitted = Math.max(0, Number(quota.submitted ?? quota.used) || 0)
   const linkUsed = Math.max(0, Number(quota.linkUsed) || 0)
   const totalUsed = Math.max(submitted, linkUsed)
-  const full = totalUsed >= cap || live?.expired
+  const closed = Boolean(live?.deactivated || live?.expired)
+  const full = totalUsed >= cap || closed
   const left = Math.max(0, cap - totalUsed)
   const pct = Math.min(100, Math.round((totalUsed / cap) * 100))
-  const hasActiveLink = Boolean(url || live?.token)
-  const quotaFrozen = hasActiveLink
+  const hasActiveLink = Boolean(url || (live?.token && !closed))
+  const quotaFrozen = Boolean(live?.token) || closed
 
   const picker = (
     <label className="field" style={{ margin: 0, minWidth: compact ? 120 : 180 }}>
@@ -249,15 +256,17 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
 
   const buttonLabel = fetching
     ? 'Checking…'
-    : full
-      ? 'Sharing disabled'
-      : busy
-        ? hasActiveLink
-          ? 'Copying…'
-          : 'Creating…'
-        : hasActiveLink
-          ? 'Copy web link'
-          : 'Create & copy link'
+    : live?.deactivated
+      ? 'Deactivated'
+      : full
+        ? 'Sharing disabled'
+        : busy
+          ? hasActiveLink
+            ? 'Copying…'
+            : 'Creating…'
+          : hasActiveLink
+            ? 'Copy web link'
+            : 'Create & copy link'
 
   if (compact) {
     return (

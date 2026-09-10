@@ -563,7 +563,7 @@ async function expireWebLinksForSurvey(formKey: string) {
   `.catch(() => null);
 }
 
-/** Live token if one exists; otherwise mint. Does not reopen a target-reached survey. */
+/** Live token if one exists; otherwise mint. Never remints after deactivate, end, or target. */
 async function ensureCanonicalWebLink(
   formKey: string,
   createdBy: number,
@@ -571,21 +571,15 @@ async function ensureCanonicalWebLink(
 ): Promise<WebLinkRow | null> {
   const live = await findLiveWebLink(formKey);
   if (live) return live;
-  const hit = await sql`
-    SELECT token FROM web_survey_links
-    WHERE form_key = ${formKey} AND use_count >= max_uses
+  const closed = await sql`
+    SELECT token, form_key, max_uses, use_count, used_at, created_at
+    FROM web_survey_links
+    WHERE form_key = ${formKey}
     ORDER BY created_at DESC
     LIMIT 1
   `.catch(() => []);
-  if (hit.length) {
-    const spent = await sql`
-      SELECT token, form_key, max_uses, use_count, used_at, created_at
-      FROM web_survey_links
-      WHERE form_key = ${formKey}
-      ORDER BY created_at DESC
-      LIMIT 1
-    `.catch(() => []);
-    return spent.length ? { ...mapWebLinkRow(spent[0] as Record<string, unknown>), expired: true } : null;
+  if (closed.length) {
+    return { ...mapWebLinkRow(closed[0] as Record<string, unknown>), expired: true };
   }
   return insertWebLink(formKey, createdBy, maxUses);
 }
@@ -9778,9 +9772,13 @@ async function rawHandler(req: Request): Promise<Response> {
       if (!link) return json({ error: "Could not create web link" }, 500);
       if (link.expired) {
         const snap0 = me.role === "admin" ? await allocationSnapshot(sql, Number(me.id)) : null;
+        const deactivated = Boolean(link.used_at) && link.use_count < link.max_uses;
         return json({
-          error: "Web target reached — sharing is disabled for this survey",
+          error: deactivated
+            ? "This web link was deactivated by Super Admin. A new link cannot be created."
+            : "Web target reached — sharing is disabled for this survey",
           expired: true,
+          deactivated,
           token: link.token,
           form_key: formKey,
           title: surveyTitle,

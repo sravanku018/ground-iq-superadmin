@@ -64,8 +64,11 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle, canDeactivate, rel
     listWebFillLinks(fk)
       .then((d) => {
         if (dead) return
-        const share = d.live || null
-        setLink(share)
+        const share = d.live || d.latest || null
+        setLink(share ? {
+          ...share,
+          deactivated: Boolean(share.deactivated || d.deactivated || d.survey_ended),
+        } : (survey.web_link || null))
         if (share?.max_uses) setMaxUses(Number(share.max_uses) || 100)
       })
       .catch(() => {})
@@ -90,10 +93,11 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle, canDeactivate, rel
   const left = Math.max(0, cap - used)
   const pct = Math.min(100, Math.round((used / cap) * 100))
   const capHit = cap > 0 && used >= cap
-  const deactivated = !!(link?.used_at || link?.ended_at) && !capHit
-  const full = capHit
-  const isLive = !!link?.token && !deactivated && !full && !link?.expired
-  const quotaFrozen = Boolean(link?.token) && !deactivated
+  const surveyEnded = Boolean(survey.ended || survey.ended_at)
+  const deactivated = Boolean(link?.deactivated) || surveyEnded || (!!link?.token && !!(link?.used_at || link?.ended_at) && !capHit)
+  const full = capHit && !deactivated
+  const isLive = !!link?.token && !deactivated && !full && !link?.expired && !surveyEnded
+  const quotaFrozen = Boolean(link?.token) || deactivated || surveyEnded
   const url = link?.token ? webFillUrl(fk, link.token) : ''
 
   const startTime = link?.starts_at || link?.created_at || survey.web_link?.starts_at || survey.web_link?.created_at
@@ -157,9 +161,9 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle, canDeactivate, rel
 
   return (
     <div style={{
-      border: `1.5px solid ${isLive ? '#86efac' : full ? '#fecaca' : '#e2e8f0'}`,
+      border: `1.5px solid ${isLive ? '#86efac' : deactivated ? '#fcd34d' : full ? '#fecaca' : '#e2e8f0'}`,
       borderRadius: 14,
-      background: isLive ? '#f0fdf4' : full ? '#fef2f2' : '#fff',
+      background: isLive ? '#f0fdf4' : deactivated ? '#fffbeb' : full ? '#fef2f2' : '#fff',
       marginBottom: 12,
       overflow: 'hidden',
     }}>
@@ -181,7 +185,7 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle, canDeactivate, rel
             ) : isLive ? (
               <Pill label="LIVE" color="#15803d" bg="#dcfce7" dot="pulse" />
             ) : deactivated ? (
-              <Pill label="Deactivated" color="#92400e" bg="#fef3c7" />
+              <Pill label={surveyEnded ? 'Ended' : 'Deactivated'} color="#92400e" bg="#fef3c7" />
             ) : full ? (
               <Pill label="Target reached" color="#b91c1c" bg="#fee2e2" />
             ) : link?.token ? (
@@ -254,7 +258,17 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle, canDeactivate, rel
               )}
             </label>
 
-            {full ? (
+            {deactivated ? (
+              <div style={{
+                flex: 1, padding: '10px 14px', borderRadius: 10,
+                background: '#fffbeb', border: '1px solid #fcd34d',
+                fontSize: 13, color: '#92400e', fontWeight: 700,
+              }}>
+                {surveyEnded
+                  ? 'This survey has ended. The web link is expired.'
+                  : 'Super Admin deactivated this web link. Sharing is off.'}
+              </div>
+            ) : full ? (
               <div style={{
                 flex: 1, padding: '10px 14px', borderRadius: 10,
                 background: '#fef2f2', border: '1px solid #fecaca',
@@ -298,6 +312,10 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle, canDeactivate, rel
                   <strong style={{ color: '#0f172a', fontSize: 13 }}>🏁 {fmt(endTime)}</strong>
                 ) : isLive ? (
                   <span style={{ color: '#15803d', fontWeight: 700, fontSize: 13 }}>🟢 Live &amp; Ongoing (Active)</span>
+                ) : deactivated ? (
+                  <span style={{ color: '#92400e', fontWeight: 700, fontSize: 13 }}>
+                    {surveyEnded ? 'Ended — link expired' : 'Deactivated by Super Admin'}
+                  </span>
                 ) : full ? (
                   <span style={{ color: '#b91c1c', fontWeight: 700, fontSize: 13 }}>🛑 Closed (Target reached)</span>
                 ) : (

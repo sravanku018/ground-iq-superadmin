@@ -8500,6 +8500,7 @@ async function rawHandler(req: Request): Promise<Response> {
           max_uses: max,
           use_count: used,
           expired: Boolean(r.used_at) || used >= max,
+          deactivated: Boolean(r.used_at) && used < max,
           starts_at: r.created_at || null,
           created_at: r.created_at || null,
           ended_at: r.used_at || null,
@@ -9971,6 +9972,7 @@ async function rawHandler(req: Request): Promise<Response> {
         const max = clampWebLinkMaxUses(r.max_uses);
         const used = Math.max(0, Number(r.use_count) || 0);
         const expired = Boolean(r.used_at) || used >= max;
+        const deactivated = Boolean(r.used_at) && used < max;
         return {
           token: r.token,
           form_key: r.form_key,
@@ -9978,6 +9980,7 @@ async function rawHandler(req: Request): Promise<Response> {
           use_count: used,
           remaining: Math.max(0, max - used),
           expired,
+          deactivated,
           starts_at: r.created_at || null,
           created_at: r.created_at || null,
           ended_at: r.used_at || null,
@@ -9985,11 +9988,13 @@ async function rawHandler(req: Request): Promise<Response> {
         };
       });
       const titleRows = await sql`
-        SELECT title FROM survey_form WHERE form_key = ${formKey} LIMIT 1
+        SELECT title, ended_at FROM survey_form WHERE form_key = ${formKey} LIMIT 1
       `.catch(() => []);
       const surveyTitle = String((titleRows[0] as { title?: string } | undefined)?.title || formKey);
+      const surveyEnded = Boolean((titleRows[0] as { ended_at?: unknown } | undefined)?.ended_at);
       const liveRow = items.find((x) => !x.expired) || null;
-      const share = liveRow;
+      const latest = items[0] || null;
+      const share = liveRow || latest;
       const [subRow] = await sql`
         SELECT COUNT(*)::int AS n FROM submissions
         WHERE payload->>'form_key' = ${formKey}
@@ -10006,13 +10011,26 @@ async function rawHandler(req: Request): Promise<Response> {
       const effectiveUsed = Math.max(submitted, rawUsed);
       const expired = share ? Boolean(share.expired) || effectiveUsed >= cap : false;
       const snap = me.role === "admin" ? await allocationSnapshot(sql, Number(me.id)) : null;
+      const deactivated = Boolean(share?.deactivated) || (Boolean(share?.used_at) && effectiveUsed < cap);
       return json({
         items,
-        live: share ? {
+        live: liveRow && !surveyEnded ? {
+          ...liveRow,
+          url: publicWebFillUrl(formKey, String(liveRow.token || "")),
+          use_count: effectiveUsed,
+          expired: false,
+          deactivated: false,
+          starts_at: liveRow.created_at || null,
+          created_at: liveRow.created_at || null,
+          ended_at: liveRow.used_at || null,
+          used_at: liveRow.used_at || null,
+        } : null,
+        latest: share ? {
           ...share,
           url: publicWebFillUrl(formKey, String(share.token || "")),
-          use_count: effectiveUsed,
-          expired,
+          use_count: Math.max(effectiveUsed, Number(share.use_count) || 0),
+          expired: expired || surveyEnded || deactivated,
+          deactivated: deactivated || surveyEnded,
           starts_at: share.created_at || null,
           created_at: share.created_at || null,
           ended_at: share.used_at || null,
@@ -10023,8 +10041,10 @@ async function rawHandler(req: Request): Promise<Response> {
         cap,
         link_used: effectiveUsed,
         used: effectiveUsed,
-        expired,
-        sharing_disabled: expired,
+        expired: expired || surveyEnded,
+        deactivated: deactivated || surveyEnded,
+        survey_ended: surveyEnded,
+        sharing_disabled: expired || deactivated || surveyEnded,
         ...(snap || {}),
       });
     }

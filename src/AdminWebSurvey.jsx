@@ -583,7 +583,7 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
             <p className="muted" style={{ margin: '3px 0 0', fontSize: 13 }}>
               {isSuper
                 ? 'See every live public fill link. Only Super Admin can deactivate. Ending a survey expires the link.'
-                : 'Create links, track responses, share via WhatsApp. Super Admin deactivates links; Client Admin cannot.'
+                : 'Create links, track responses, share via WhatsApp. Super Admin deactivates links; Client Admin cannot.'}
             </p>
           </div>
           <button

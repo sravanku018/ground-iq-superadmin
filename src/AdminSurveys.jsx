@@ -4,6 +4,7 @@ import OptionPills from './OptionPills'
 import {
   createSurvey,
   deleteSurvey,
+  endSurvey,
   getClientAdminBreakdown,
   getSurvey,
   listCompanies,
@@ -16,12 +17,14 @@ import CopyWebFillLink from './components/CopyWebFillLink'
 import QuestionTelugu, { fillTeluguFromEnglish } from './QuestionTelugu'
 import { canTeluguQuestions, isQuestionVisible, labelPatch, nextQuestionId, teluguFields } from './questionKey'
 
-function isLiveSurvey(s) {
-  const l = s?.web_link
-  if (!l?.token || l.expired) return false
-  const cap = Number(l.max_uses) || 0
-  const used = Math.max(Number(s?.web_submissions) || 0, Number(l.use_count) || 0)
-  return !(cap > 0 && used >= cap)
+function isFrozenSurvey(s) {
+  if (!s) return false
+  if (s.frozen || s.ended || s.ended_at) return true
+  if (s.web_link?.token) return true
+  if (Number(s.web_submissions) > 0 || Number(s.field_submissions) > 0 || Number(s.submissions) > 0) return true
+  if (Number(s.surveyors) > 0) return true
+  if (Array.isArray(s.surveyors) && s.surveyors.length > 0) return true
+  return false
 }
 
 const EMPTY_Q = {
@@ -583,8 +586,8 @@ export default function AdminSurveysScreen({ onToast, user }) {
 
   async function saveDetailChanges() {
     if (!detail) return
-    if (isLiveSurvey(detail)) {
-      onToast?.('This survey is live — deactivate the web link before editing.', 'error')
+    if (isFrozenSurvey(detail)) {
+      onToast?.('This survey is ongoing and frozen. It cannot be edited.', 'error')
       return
     }
     const maxQs = !isSuper ? Number(user?.max_questions_per_survey) || 0 : 0
@@ -624,8 +627,8 @@ export default function AdminSurveysScreen({ onToast, user }) {
 
   async function toggleAdmin(u) {
     if (!detail || user?.role !== 'super_admin') return
-    if (isLiveSurvey(detail)) {
-      onToast?.('This survey is live — deactivate the web link before changing Client Admins.', 'error')
+    if (isFrozenSurvey(detail)) {
+      onToast?.('This survey is ongoing and frozen. Client Admins cannot be changed.', 'error')
       return
     }
     setBusy(true)
@@ -648,13 +651,29 @@ export default function AdminSurveysScreen({ onToast, user }) {
     }
   }
 
+  async function endThisSurvey() {
+    if (!detail || user?.role !== 'super_admin') return
+    if (!window.confirm(`End survey “${detail.title}”? The public web link expires and the survey stays frozen. This cannot be undone.`)) return
+    setBusy(true)
+    try {
+      await endSurvey(detail.id)
+      onToast?.('Survey ended. Web link expired.', 'ok')
+      await openDetail(detail.id)
+      await load()
+    } catch (e) {
+      onToast?.(e.message || 'Could not end survey', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function removeSurvey() {
     if (!canEdit) {
       onToast?.('Super Admin has not granted your account survey-editing rights', 'error')
       return
     }
-    if (isLiveSurvey(detail)) {
-      onToast?.('This survey is live — deactivate the web link before deleting.', 'error')
+    if (isFrozenSurvey(detail)) {
+      onToast?.('This survey is ongoing and frozen. It cannot be deleted.', 'error')
       return
     }
     if (!detail || !window.confirm(`Delete project "${detail.title}"? Team assignments are removed too.`)) return
@@ -914,7 +933,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
     const ownerCompany =
       (detail.admins || []).find((a) => Number(a.id) === Number(detail.owner_id))?.company_name ||
       null
-    const liveFrozen = isLiveSurvey(detail)
+    const liveFrozen = isFrozenSurvey(detail)
     return (
       <div className="screen">
         <header className="screen-head">
@@ -924,12 +943,25 @@ export default function AdminSurveysScreen({ onToast, user }) {
           </button>
         </header>
         {liveFrozen && (
-          <div className="card" style={{ marginBottom: 12, padding: 12, background: '#f0fdf4', border: '1.5px solid #86efac' }}>
-            <strong style={{ color: '#15803d' }}>LIVE — survey frozen</strong>
+          <div className="card" style={{ marginBottom: 12, padding: 12, background: detail.ended ? '#f8fafc' : '#f0fdf4', border: `1.5px solid ${detail.ended ? '#cbd5e1' : '#86efac'}` }}>
+            <strong style={{ color: detail.ended ? '#334155' : '#15803d' }}>
+              {detail.ended ? 'ENDED — survey frozen' : 'ONGOING — survey frozen'}
+            </strong>
             <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
-              Questions, voice, company mapping, and delete are locked while the web link is live.
-              Deactivate the link on Web survey to edit again.
+              Web and field collection lock questions, voice, mapping, save, and delete.
+              Ending the survey expires the public link. Deactivate does not unlock editing.
             </p>
+            {isSuper && !detail.ended && (
+              <button
+                type="button"
+                className="btn danger"
+                style={{ marginTop: 10 }}
+                disabled={busy}
+                onClick={() => void endThisSurvey()}
+              >
+                End survey (expire web link)
+              </button>
+            )}
           </div>
         )}
 
@@ -1245,12 +1277,17 @@ export default function AdminSurveysScreen({ onToast, user }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <strong style={{ fontSize: 16, color: '#0f172a' }}>{s.title}</strong>
-            {isLiveSurvey(s) && (
+            {isFrozenSurvey(s) && (
               <span
                 className="pill"
-                style={{ background: '#dcfce7', color: '#15803d', fontWeight: 800, fontSize: 11 }}
+                style={{
+                  background: s.ended ? '#f1f5f9' : '#dcfce7',
+                  color: s.ended ? '#334155' : '#15803d',
+                  fontWeight: 800,
+                  fontSize: 11,
+                }}
               >
-                LIVE · frozen
+                {s.ended ? 'ENDED · frozen' : 'ONGOING · frozen'}
               </span>
             )}
             {sharedProject ? (

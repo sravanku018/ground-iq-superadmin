@@ -755,6 +755,11 @@ export function updateSurvey(id, { title, questions, company_name, display_lang,
   })
 }
 
+/** Super Admin: end a survey — expires the public web link and freezes edits. */
+export function endSurvey(id) {
+  return request(`/api/surveys/${id}/end`, { method: 'POST' })
+}
+
 /** Admin: delete survey (removes team + respondent list) */
 export function deleteSurvey(id) {
   return request(`/api/surveys/${id}`, { method: 'DELETE' })

@@ -521,6 +521,48 @@ async function insertWebLink(
   };
 }
 
+async function surveyIsFrozen(
+  sqlFn: NonNullable<typeof sql>,
+  formKey: string,
+  surveyId?: number | null,
+): Promise<{ frozen: boolean; ended: boolean }> {
+  if (!formKey) return { frozen: false, ended: false };
+  const endedRows = await sqlFn`
+    SELECT ended_at FROM survey_form WHERE form_key = ${formKey} LIMIT 1
+  `.catch(() => []);
+  const ended = Boolean((endedRows[0] as { ended_at?: unknown } | undefined)?.ended_at);
+  if (ended) return { frozen: true, ended: true };
+  const links = await sqlFn`
+    SELECT token FROM web_survey_links WHERE form_key = ${formKey} LIMIT 1
+  `.catch(() => []);
+  if (links.length) return { frozen: true, ended: false };
+  const subs = await sqlFn`
+    SELECT id FROM submissions
+    WHERE payload->>'form_key' = ${formKey}
+      AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+      AND COALESCE(payload->'answers'->>'_draft', 'false') NOT IN ('true', 't', '1')
+    LIMIT 1
+  `.catch(() => []);
+  if (subs.length) return { frozen: true, ended: false };
+  if (surveyId) {
+    const team = await sqlFn`
+      SELECT 1 FROM survey_assignments WHERE survey_id = ${surveyId} LIMIT 1
+    `.catch(() => []);
+    if (team.length) return { frozen: true, ended: false };
+  }
+  return { frozen: false, ended: false };
+}
+
+async function expireWebLinksForSurvey(formKey: string) {
+  if (!sql || !formKey) return;
+  await sql`
+    UPDATE web_survey_links
+    SET used_at = COALESCE(used_at, NOW())
+    WHERE form_key = ${formKey}
+      AND used_at IS NULL
+  `.catch(() => null);
+}
+
 /** Live token if one exists; otherwise mint. Does not reopen a target-reached survey. */
 async function ensureCanonicalWebLink(
   formKey: string,
@@ -1801,6 +1843,7 @@ async function ensureSchema(): Promise<void> {
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS display_lang TEXT NOT NULL DEFAULT 'en'`,
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS voice_required BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS voice_time_limit INT NOT NULL DEFAULT 0`,
+    () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ`,
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_name TEXT`,
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS company_id INT`,
     () => sql`CREATE INDEX IF NOT EXISTS idx_survey_form_company ON survey_form(company_id)`,
@@ -8322,11 +8365,11 @@ async function rawHandler(req: Request): Promise<Response> {
       try {
         rows = (me.role === "super_admin"
           ? (q
-              ? await sql`SELECT id, form_key, title, display_lang, questions, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form WHERE LOWER(title) LIKE ${'%' + q + '%'} ORDER BY title`
-              : await sql`SELECT id, form_key, title, display_lang, questions, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form ORDER BY title`)
+              ? await sql`SELECT id, form_key, title, display_lang, questions, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit, ended_at FROM survey_form WHERE LOWER(title) LIKE ${'%' + q + '%'} ORDER BY title`
+              : await sql`SELECT id, form_key, title, display_lang, questions, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit, ended_at FROM survey_form ORDER BY title`)
           : (q
                 ? await sql`
-                    SELECT id, form_key, title, display_lang, questions, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form
+                    SELECT id, form_key, title, display_lang, questions, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit, ended_at FROM survey_form
                     WHERE (
                       created_by = ${me.id}
                       OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
@@ -8337,7 +8380,7 @@ async function rawHandler(req: Request): Promise<Response> {
                     ORDER BY title
                   `
                 : await sql`
-                    SELECT id, form_key, title, display_lang, questions, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form
+                    SELECT id, form_key, title, display_lang, questions, CASE WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions) ELSE 0 END::int AS question_count, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit, ended_at FROM survey_form
                     WHERE created_by = ${me.id}
                       OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
                       OR (company_name IS NOT NULL AND company_name <> '' AND LOWER(TRIM(company_name)) = LOWER(TRIM((SELECT company_name FROM app_users WHERE id = ${me.id}))))
@@ -8513,6 +8556,13 @@ async function rawHandler(req: Request): Promise<Response> {
           confirmed: confirmedByFk.get(fk) || 0,
           rejected: rejectedByFk.get(fk) || 0,
           web_link: webLink,
+          ended_at: (r as { ended_at?: unknown }).ended_at || null,
+          ended: Boolean((r as { ended_at?: unknown }).ended_at),
+          frozen: Boolean((r as { ended_at?: unknown }).ended_at) ||
+            Boolean(webLink?.token) ||
+            subCount > 0 ||
+            webCount > 0 ||
+            (Number(asgData?.n) || 0) > 0,
         };
       });
       return json({ items, count: items.length });
@@ -8697,9 +8747,9 @@ async function rawHandler(req: Request): Promise<Response> {
       // Client Admin: own survey or explicit share only — no company
       // predicate (see SCHEMA.md).
       let rows = me.role === "super_admin"
-        ? await sql`SELECT id, form_key, title, display_lang, questions, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form WHERE id = ${id}`.catch(() => null)
+        ? await sql`SELECT id, form_key, title, display_lang, questions, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit, ended_at FROM survey_form WHERE id = ${id}`.catch(() => null)
         : await sql`
-              SELECT id, form_key, title, display_lang, questions, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit FROM survey_form
+              SELECT id, form_key, title, display_lang, questions, updated_at, created_by, company_name, COALESCE(voice_required, FALSE) AS voice_required, COALESCE(voice_time_limit, 0) AS voice_time_limit, ended_at FROM survey_form
               WHERE id = ${id} AND (
                 created_by = ${me.id}
                 OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
@@ -8754,12 +8804,16 @@ async function rawHandler(req: Request): Promise<Response> {
       }));
       const owner = admins.find((a) => Number(a.id) === Number(r.created_by));
       const webLink = await findLiveWebLink(r.form_key);
+      const lock = await surveyIsFrozen(sql, r.form_key, r.id);
       return json({
         survey: {
           id: r.id,
           form_key: r.form_key,
           title: r.title,
           web_link: webLink,
+          ended_at: (r as { ended_at?: unknown }).ended_at || null,
+          ended: lock.ended,
+          frozen: lock.frozen,
           display_lang: surveyDisplayLang(r.display_lang),
           voice_required: r.voice_required === true,
           voice_time_limit: Number(r.voice_time_limit) || 0,
@@ -8773,6 +8827,30 @@ async function rawHandler(req: Request): Promise<Response> {
           admins,
           admin_count: admins.length,
         },
+      });
+    }
+
+    if (path.match(/^\/api\/surveys\/\d+\/end$/) && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") {
+        return json({ error: "Super Admin only — Client Admin cannot end a survey" }, 403);
+      }
+      const id = Number(path.split("/")[3]);
+      const rows = await sql`
+        SELECT id, form_key, title, ended_at FROM survey_form WHERE id = ${id} LIMIT 1
+      `.catch(() => []);
+      if (!rows.length) return json({ error: "Survey not found" }, 404);
+      const formKey = String((rows[0] as { form_key: string }).form_key || "");
+      const title = String((rows[0] as { title?: string }).title || formKey);
+      await sql`UPDATE survey_form SET ended_at = NOW(), updated_at = NOW() WHERE id = ${id}`.catch(() => null);
+      await expireWebLinksForSurvey(formKey);
+      logAudit(me, "survey_end", "survey", id, { form_key: formKey, title });
+      return json({
+        ok: true,
+        ended: true,
+        form_key: formKey,
+        title,
+        message: "Survey ended. The public web link has expired.",
       });
     }
 
@@ -9152,11 +9230,14 @@ async function rawHandler(req: Request): Promise<Response> {
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
       {
         const formKey = String((rows[0] as { form_key?: string }).form_key || "");
-        const live = formKey ? await findLiveWebLink(formKey) : null;
-        if (live) {
+        const lock = formKey ? await surveyIsFrozen(sql, formKey, id) : { frozen: false, ended: false };
+        if (lock.frozen) {
           return json({
-            error: "This survey is live — deactivate the web link before editing questions or settings.",
-            live: true,
+            error: lock.ended
+              ? "This survey has ended and is frozen. It cannot be edited."
+              : "This survey is ongoing (web or field) and is frozen. It cannot be edited.",
+            frozen: true,
+            ended: lock.ended,
             form_key: formKey,
           }, 409);
         }
@@ -9311,11 +9392,14 @@ async function rawHandler(req: Request): Promise<Response> {
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
       {
         const formKey = String((rows[0] as { form_key?: string }).form_key || "");
-        const live = formKey ? await findLiveWebLink(formKey) : null;
-        if (live) {
+        const lock = formKey ? await surveyIsFrozen(sql, formKey, id) : { frozen: false, ended: false };
+        if (lock.frozen) {
           return json({
-            error: "This survey is live — deactivate the web link before deleting.",
-            live: true,
+            error: lock.ended
+              ? "This survey has ended and is frozen. It cannot be deleted."
+              : "This survey is ongoing (web or field) and is frozen. It cannot be deleted.",
+            frozen: true,
+            ended: lock.ended,
             form_key: formKey,
           }, 409);
         }
@@ -9677,9 +9761,16 @@ async function rawHandler(req: Request): Promise<Response> {
         }
       }
       const exists = await sql`
-        SELECT form_key, title FROM survey_form WHERE form_key = ${formKey} LIMIT 1
+        SELECT form_key, title, ended_at FROM survey_form WHERE form_key = ${formKey} LIMIT 1
       `.catch(() => []);
       if (!exists.length) return json({ error: "Survey not found" }, 404);
+      if ((exists[0] as { ended_at?: unknown }).ended_at) {
+        return json({
+          error: "This survey has ended. The web link is expired and a new one cannot be created.",
+          ended: true,
+          form_key: formKey,
+        }, 410);
+      }
       const surveyTitle = String((exists[0] as { title?: string }).title || formKey);
       const maxUses = clampWebLinkMaxUses(body.max_uses ?? body.maxUses ?? body.limit);
       let link = await ensureCanonicalWebLink(formKey, Number(me.id), maxUses);
@@ -9753,7 +9844,9 @@ async function rawHandler(req: Request): Promise<Response> {
 
     if (path === "/api/web-survey/link" && method === "PATCH") {
       if (!me) return json({ error: "Login required" }, 401);
-      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      if (me.role !== "super_admin") {
+        return json({ error: "Super Admin only — Client Admin cannot deactivate web links" }, 403);
+      }
       if (!hasPower(me, "can_web_survey")) {
         return json({ error: "Super Admin has not granted Web survey permission" }, 403);
       }
@@ -10050,7 +10143,7 @@ async function rawHandler(req: Request): Promise<Response> {
       };
       if (String(link.form_key) !== formKey) return webLinkExpired();
       const rows = await sql`
-        SELECT form_key, title, display_lang, questions
+        SELECT form_key, title, display_lang, questions, ended_at
         FROM survey_form
         WHERE form_key = ${formKey}
         LIMIT 1
@@ -10061,7 +10154,11 @@ async function rawHandler(req: Request): Promise<Response> {
         title: string;
         display_lang?: string;
         questions: unknown;
+        ended_at?: unknown;
       };
+      if (f.ended_at) {
+        return webLinkExpired({ title: f.title, form_key: f.form_key, ended: true });
+      }
       if (webLinkSpent(link)) {
         return webLinkExpired({ title: f.title, form_key: f.form_key });
       }
@@ -10111,9 +10208,16 @@ async function rawHandler(req: Request): Promise<Response> {
       const remaining = Math.max(0, maxUses - useCount);
       const expired = remaining === 0 || Boolean(slot.used_at);
       const exists = await sql`
-        SELECT form_key, title, created_by FROM survey_form WHERE form_key = ${formKey} LIMIT 1
+        SELECT form_key, title, created_by, ended_at FROM survey_form WHERE form_key = ${formKey} LIMIT 1
       `.catch(() => []);
       if (!exists.length) return json({ error: "Survey not found" }, 404);
+      if ((exists[0] as { ended_at?: unknown }).ended_at) {
+        return webLinkExpired({
+          title: String((exists[0] as { title?: string }).title || formKey),
+          form_key: formKey,
+          ended: true,
+        });
+      }
       const ownerId = Number((exists[0] as { created_by?: number }).created_by);
       const surveyTitle = String((exists[0] as { title?: string }).title || formKey);
       if (Number.isFinite(ownerId)) {
@@ -10231,6 +10335,22 @@ async function rawHandler(req: Request): Promise<Response> {
               used,
               max_records: maxRec,
             }, 422);
+          }
+        }
+      }
+
+      {
+        const incomingKey0 = String(body.form_key || body.form_id || "").trim();
+        if (incomingKey0 && incomingKey0 !== "default" && incomingKey0 !== "legacy") {
+          const endedRows = await sql`
+            SELECT ended_at FROM survey_form WHERE form_key = ${incomingKey0} LIMIT 1
+          `.catch(() => []);
+          if ((endedRows[0] as { ended_at?: unknown } | undefined)?.ended_at) {
+            return json({
+              error: "This survey has ended. New field records are closed.",
+              ended: true,
+              form_key: incomingKey0,
+            }, 410);
           }
         }
       }

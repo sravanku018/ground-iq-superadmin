@@ -54,7 +54,15 @@ function pickFirstSurveyKey(items) {
     const k = String(s?.form_key || '')
     return k && k !== 'default' && k !== 'legacy'
   })
-  return String((real[0] || list[0])?.form_key || '')
+  const withData = real.find((s) => {
+    const n =
+      (Number(s.submissions) || 0) +
+      (Number(s.web_submissions) || 0) +
+      (Number(s.field_submissions) || 0) +
+      (Number(s.pending) || 0)
+    return n > 0
+  })
+  return String((withData || real[0] || list[0])?.form_key || '')
 }
 
 function colorFor(name, i = 0) {
@@ -546,7 +554,7 @@ const RadialIssues = memo(function RadialIssues({ data, onClick, lang = 'en' }) 
 })
 
 export default function DashboardScreen({ onToast }) {
-  // Report is LOCKED to Client Admin confirmed data only — never pending/raw
+  // Field stays confirmed+complete. Pending web fills are included (source=web to check only web).
   const [filters, setFilters] = useState({
     district: '',
     party: '',
@@ -555,6 +563,7 @@ export default function DashboardScreen({ onToast }) {
     constituency: '',
     user: '',
     survey: '',
+    source: '', // '' all · web · field
     period: 'total', // total | today | day | month
     day: new Date().toISOString().slice(0, 10),
     month: new Date().toISOString().slice(0, 7),
@@ -615,6 +624,7 @@ export default function DashboardScreen({ onToast }) {
         constituency: filters.constituency,
         user: filters.user,
         survey: filters.survey,
+        source: filters.source || '',
         period: filters.period || 'total',
       }
       // Dynamic per-question filters (q_<questionId>)
@@ -656,6 +666,7 @@ export default function DashboardScreen({ onToast }) {
         constituency: '',
         user: '',
         survey: f.survey || pickFirstSurveyKey(surveys),
+        source: f.source || '',
         period: 'total',
         day: new Date().toISOString().slice(0, 10),
         month: new Date().toISOString().slice(0, 7),
@@ -738,9 +749,11 @@ export default function DashboardScreen({ onToast }) {
 
   const charts = data?.charts
   const opts = data?.filterOptions
-  const confirmedCount = data?.statusCounts?.confirmed ?? data?.totalAll ?? 0
-  const reportReady = data && (data.totalAll || 0) > 0
-  const reportLocked = !loading && data && (data.totalAll || 0) === 0
+  const confirmedCount = data?.statusCounts?.confirmed ?? 0
+  const pendingCount = data?.statusCounts?.pending ?? 0
+  const reportCount = data?.totalAll || data?.filtered || 0
+  const reportReady = data && reportCount > 0
+  const reportLocked = !loading && data && reportCount === 0 && pendingCount === 0
 
   const filtersBroken =
     data &&
@@ -762,11 +775,11 @@ export default function DashboardScreen({ onToast }) {
           <p>
             {loading && !data
               ? 'Loading…'
-              : reportLocked
-                ? 'Locked until Client Admin confirms'
-                : data
-                  ? `${data.filtered.toLocaleString()} confirmed · charts & maps`
-                  : 'Confirmed data only'}
+              : reportReady
+                ? `${Number(data.filtered || reportCount).toLocaleString()} records · field confirmed + pending web`
+                : pendingCount > 0
+                  ? `${pendingCount.toLocaleString()} pending web — pick that survey`
+                  : 'No chart data for this survey yet'}
           </p>
         </div>
         <button type="button" className="btn small" onClick={load} disabled={loading}>
@@ -776,8 +789,8 @@ export default function DashboardScreen({ onToast }) {
 
       <div className="card" style={{ marginBottom: 12 }}>
         <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
-          <strong>Dashboard does not form</strong> until Client Admin confirms records
-          (GPS + photo + Q/A; voice only if required). Pending web fills are included in charts.
+          Field charts use confirmed records (GPS + photo + Q/A). Pending web fills are
+          included — use the Web check below to view them.
         </p>
         {data?.statusCounts && (
           <p style={{ margin: '0 0 8px', fontSize: 13 }}>
@@ -819,22 +832,16 @@ export default function DashboardScreen({ onToast }) {
         )}
       </div>
 
-      {/* LOCK: no charts / maps until confirmed data exists */}
-      {reportLocked && (
+      {!reportReady && !loading && data && (
         <div className="card" style={{ marginBottom: 14, textAlign: 'center', padding: 24 }}>
-          <div className="pill bad" style={{ marginBottom: 12 }}>
-            <span className="dot" />
-            Report locked
-          </div>
-          <h3 style={{ margin: '0 0 8px' }}>No confirmed data yet</h3>
+          <h3 style={{ margin: '0 0 8px' }}>No chart rows for this survey</h3>
           <p className="muted" style={{ fontSize: 13, margin: '0 0 12px' }}>
-            Charts, maps and KPIs stay empty until Client Admin opens{' '}
-            <strong>Review QA</strong> and taps <strong>Confirm</strong>.
+            Pending web fills chart here. Confirm the <strong>Web</strong> source check
+            and pick the survey that received the web responses.
           </p>
           <p style={{ fontSize: 13, margin: 0 }}>
-            Pending in queue / review:{' '}
-            <strong>{data?.statusCounts?.pending ?? '—'}</strong>
-            {confirmedCount === 0 ? ' · confirmed: 0' : ''}
+            Waiting confirm: <strong>{pendingCount}</strong>
+            {' · '}confirmed: <strong>{confirmedCount}</strong>
           </p>
         </div>
       )}
@@ -848,7 +855,7 @@ export default function DashboardScreen({ onToast }) {
         <div className="data-boards" style={{ marginBottom: 14 }}>
           <div className="card" style={{ marginBottom: 12 }}>
             <h3 style={{ marginTop: 0 }}>
-              Confirmed data summary ·{' '}
+              Report summary ·{' '}
               {(data.dataFilters.total ?? data.totalAll)?.toLocaleString?.() ?? data.totalAll}{' '}
               records
             </h3>
@@ -861,7 +868,7 @@ export default function DashboardScreen({ onToast }) {
                 <strong>
                   {data.dataFilters.total ?? data.totalAll ?? 0}
                 </strong>
-                <span>Confirmed records</span>
+                <span>Records in report</span>
               </div>
               <div className="stat">
                 <strong>{data.dataFilters.by_day?.length ?? 0}</strong>
@@ -1606,6 +1613,25 @@ export default function DashboardScreen({ onToast }) {
             }}
           >
             <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
+              Source
+            </p>
+            <div className="chip-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+              {[
+                { id: '', label: 'All' },
+                { id: 'web', label: 'Web (incl. pending)' },
+                { id: 'field', label: 'Field (confirmed)' },
+              ].map((p) => (
+                <button
+                  key={p.id || 'all'}
+                  type="button"
+                  className={`chip ${filters.source === p.id ? 'selected' : ''}`}
+                  onClick={() => setFilters((f) => ({ ...f, source: p.id }))}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
               1 · Survey name
             </p>
             <label className="field compact">
@@ -1627,6 +1653,7 @@ export default function DashboardScreen({ onToast }) {
                 {surveys.map((s) => (
                   <option key={s.id} value={s.form_key}>
                     {s.title}
+                    {Number(s.web_submissions) > 0 ? ` · ${Number(s.web_submissions)} web` : ''}
                   </option>
                 ))}
               </select>

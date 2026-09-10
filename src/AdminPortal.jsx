@@ -275,10 +275,13 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
   const liveAllCount = allSubmitted
 
   const displayedItems = recentItems.filter((it) => {
+    const isWeb = it.source === 'web-survey' || it.source === 'web'
+    if (activityFilter === 'web') return isWeb
     if (activityFilter === 'all') return true
     const st = it.status || 'pending'
     return st === activityFilter
   })
+  const liveWebCount = recentItems.filter((it) => it.source === 'web-survey' || it.source === 'web').length
 
 
   return (
@@ -761,6 +764,23 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                 }}
               >
                 All ({liveAllCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivityFilter('web')}
+                style={{
+                  border: 0,
+                  background: activityFilter === 'web' ? '#ffffff' : 'transparent',
+                  color: activityFilter === 'web' ? '#1d4ed8' : '#64748b',
+                  fontWeight: activityFilter === 'web' ? 700 : 500,
+                  fontSize: 11,
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  boxShadow: activityFilter === 'web' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                }}
+              >
+                Web ({liveWebCount || webSubmitted})
               </button>
               <button
                 type="button"

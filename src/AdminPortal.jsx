@@ -874,7 +874,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
               return (
                 <div
                   key={it.id}
-                  onClick={() => onNav(isWeb ? 'web' : 'review')}
+                  onClick={() => onNav({ page: 'review', submissionId: it.id })}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -929,7 +929,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
-                        onNav('review')
+                        onNav({ page: 'review', submissionId: it.id })
                       }}
                       style={{
                         border: '1px solid #bfdbfe',

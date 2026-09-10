@@ -132,11 +132,9 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
     const page =
       it?.page === 'users' || it?.kind === 'docs'
         ? 'users'
-        : it?.kind === 'web' || it?.page === 'web'
-          ? 'web'
-          : it?.page === 'review' || it?.kind === 'activity'
-            ? 'review'
-            : it?.page || ''
+        : it?.kind === 'web' || it?.page === 'web' || it?.page === 'review' || it?.kind === 'activity'
+          ? 'review'
+          : it?.page || ''
     onGoPage?.({
       page,
       userId: it?.userId ?? null,
@@ -193,7 +191,7 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
                             ? 'Verification complete ✓'
                             : 'Verification pending (click to open Users tab)'
                           : isWeb
-                            ? `${it.detail || 'Web respondent'} · pending · open Web survey`
+                            ? `${it.detail || 'Web respondent'} · pending · open Review QA`
                             : it.detail}
                       </span>
                     </button>

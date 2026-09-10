@@ -79,7 +79,9 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
   useEffect(() => {
     if (focusSubmissionId == null) return
     if (status !== 'pending' && status !== 'all') setStatus('pending')
-  }, [focusSubmissionId, status])
+    // Web pending notices must not be hidden by the default field-only chip.
+    if (source === 'field') setSource('all')
+  }, [focusSubmissionId, status, source])
 
   useEffect(() => {
     if (focusSubmissionId == null || loading) return
@@ -90,6 +92,10 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
     }
     const idx = items.findIndex((it) => Number(it.id) === id)
     if (idx < 0) {
+      if (source !== 'all') {
+        setSource('all')
+        return
+      }
       if (status !== 'all') {
         setStatus('all')
         return
@@ -105,7 +111,7 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
       const el = listRef.current?.querySelector?.(`[data-review-id="${id}"]`)
       el?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
     })
-  }, [focusSubmissionId, loading, items, status, onFocusConsumed, onToast])
+  }, [focusSubmissionId, loading, items, status, source, onFocusConsumed, onToast])
 
   useEffect(() => {
     Promise.all([

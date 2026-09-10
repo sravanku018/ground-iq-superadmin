@@ -874,7 +874,14 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
               return (
                 <div
                   key={it.id}
-                  onClick={() => onNav({ page: 'review', submissionId: it.id })}
+                  onClick={() =>
+                    onNav({
+                      page: 'review',
+                      submissionId: it.id,
+                      source: isWeb ? 'web' : 'field',
+                      formKey: it.form_key || it.form_id || '',
+                    })
+                  }
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -929,7 +936,12 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
-                        onNav({ page: 'review', submissionId: it.id })
+                        onNav({
+                          page: 'review',
+                          submissionId: it.id,
+                          source: isWeb ? 'web' : 'field',
+                          formKey: it.form_key || it.form_id || '',
+                        })
                       }}
                       style={{
                         border: '1px solid #bfdbfe',
@@ -1165,8 +1177,10 @@ export default function AdminPortal({ superAdminOnly = false }) {
     setNavOpen(false)
     const userId = src.userId ?? extra?.userId ?? null
     const submissionId = src.submissionId ?? extra?.submissionId ?? null
-    if (userId != null || submissionId != null) {
-      setDeepLink({ page: pageId, userId, submissionId })
+    const source = src.source ?? extra?.source ?? null
+    const formKey = src.formKey ?? src.form_key ?? extra?.formKey ?? extra?.form_key ?? null
+    if (userId != null || submissionId != null || source != null || formKey != null) {
+      setDeepLink({ page: pageId, userId, submissionId, source, formKey })
     } else if (extra) {
       setDeepLink({ page: pageId, ...extra })
     } else {
@@ -1626,6 +1640,8 @@ export default function AdminPortal({ superAdminOnly = false }) {
               onToast={notify}
               user={user}
               focusSubmissionId={deepLink?.page === 'review' ? deepLink.submissionId : null}
+              focusSource={deepLink?.page === 'review' ? deepLink.source : null}
+              focusFormKey={deepLink?.page === 'review' ? deepLink.formKey : null}
               onFocusConsumed={() => setDeepLink(null)}
             />
           )}

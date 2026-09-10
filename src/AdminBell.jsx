@@ -139,6 +139,8 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
       page,
       userId: it?.userId ?? null,
       submissionId: it?.submissionId ?? null,
+      source: it?.kind === 'web' || it?.source === 'web' ? 'web' : it?.source || null,
+      formKey: it?.formKey || it?.form_key || null,
     })
   }
 
@@ -191,7 +193,7 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
                             ? 'Verification complete ✓'
                             : 'Verification pending (click to open Users tab)'
                           : isWeb
-                            ? `${it.detail || 'Web respondent'} · pending · open Review QA`
+                            ? `${it.detail || 'Web respondent'} · pending · open Review QA (Web survey)`
                             : it.detail}
                       </span>
                     </button>

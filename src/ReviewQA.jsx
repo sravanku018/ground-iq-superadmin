@@ -34,14 +34,23 @@ function partyColor(p) {
  * Q/A review → confirm / reject.
  * Keyboard: j/k move · Enter expand · c confirm · r reject · e edit
  */
-export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFocusConsumed }) {
+export default function ReviewQAScreen({
+  onToast,
+  user,
+  focusSubmissionId,
+  focusSource,
+  focusFormKey,
+  onFocusConsumed,
+}) {
   // Data verification power — Super Admin grants it (least privilege)
   const canReview = user?.role === 'super_admin' || !!user?.can_review_data
   const isSuper = user?.role === 'super_admin'
   const [status, setStatus] = useState('pending')
-  const [source, setSource] = useState('field')
+  const [source, setSource] = useState(() =>
+    String(focusSource || '').toLowerCase() === 'web' ? 'web' : 'field',
+  )
 
-  const [survey, setSurvey] = useState('')
+  const [survey, setSurvey] = useState(() => String(focusFormKey || ''))
   const [surveys, setSurveys] = useState([])
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -79,9 +88,11 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
   useEffect(() => {
     if (focusSubmissionId == null) return
     if (status !== 'pending' && status !== 'all') setStatus('pending')
-    // Web pending notices must not be hidden by the default field-only chip.
-    if (source === 'field') setSource('all')
-  }, [focusSubmissionId, status, source])
+    const wantSrc = String(focusSource || '').toLowerCase()
+    if (wantSrc === 'web' && source !== 'web') setSource('web')
+    const wantKey = String(focusFormKey || '')
+    if (wantKey && survey !== wantKey) setSurvey(wantKey)
+  }, [focusSubmissionId, focusSource, focusFormKey, status, source, survey])
 
   useEffect(() => {
     if (focusSubmissionId == null || loading) return
@@ -92,7 +103,20 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
     }
     const idx = items.findIndex((it) => Number(it.id) === id)
     if (idx < 0) {
-      if (source !== 'all') {
+      const wantSrc = String(focusSource || '').toLowerCase()
+      if (wantSrc === 'web' && source !== 'web') {
+        setSource('web')
+        return
+      }
+      if (status !== 'pending' && status !== 'all') {
+        setStatus('pending')
+        return
+      }
+      if (survey) {
+        setSurvey('')
+        return
+      }
+      if (wantSrc !== 'web' && source !== 'all') {
         setSource('all')
         return
       }
@@ -111,7 +135,17 @@ export default function ReviewQAScreen({ onToast, user, focusSubmissionId, onFoc
       const el = listRef.current?.querySelector?.(`[data-review-id="${id}"]`)
       el?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
     })
-  }, [focusSubmissionId, loading, items, status, source, onFocusConsumed, onToast])
+  }, [
+    focusSubmissionId,
+    focusSource,
+    loading,
+    items,
+    status,
+    source,
+    survey,
+    onFocusConsumed,
+    onToast,
+  ])
 
   useEffect(() => {
     Promise.all([

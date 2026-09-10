@@ -8753,11 +8753,13 @@ async function rawHandler(req: Request): Promise<Response> {
         company_name: a.company_name || null,
       }));
       const owner = admins.find((a) => Number(a.id) === Number(r.created_by));
+      const webLink = await findLiveWebLink(r.form_key);
       return json({
         survey: {
           id: r.id,
           form_key: r.form_key,
           title: r.title,
+          web_link: webLink,
           display_lang: surveyDisplayLang(r.display_lang),
           voice_required: r.voice_required === true,
           voice_time_limit: Number(r.voice_time_limit) || 0,
@@ -9137,9 +9139,9 @@ async function rawHandler(req: Request): Promise<Response> {
       // Connected Client Admins may edit the project, while only the owner (or
       // Super Admin) can delete it.
       const rows = me.role === "super_admin"
-        ? await sql`SELECT id, title FROM survey_form WHERE id = ${id}`
+        ? await sql`SELECT id, title, form_key FROM survey_form WHERE id = ${id}`
         : await sql`
-            SELECT id, title FROM survey_form
+            SELECT id, title, form_key FROM survey_form
             WHERE id = ${id} AND (
               created_by = ${me.id}
               OR id IN (SELECT survey_id FROM survey_admin_access WHERE admin_id = ${me.id})
@@ -9148,6 +9150,17 @@ async function rawHandler(req: Request): Promise<Response> {
             )
           `;
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
+      {
+        const formKey = String((rows[0] as { form_key?: string }).form_key || "");
+        const live = formKey ? await findLiveWebLink(formKey) : null;
+        if (live) {
+          return json({
+            error: "This survey is live — deactivate the web link before editing questions or settings.",
+            live: true,
+            form_key: formKey,
+          }, 409);
+        }
+      }
       // Super-Admin-set total question quota across surveys for this Client Admin (0 = unlimited)
       const maxQsPut = Number((me as Record<string, unknown>).max_questions_per_survey) || 0;
       if (maxQsPut > 0 && me.role === "admin" && Array.isArray(body.questions) && sql) {
@@ -9296,6 +9309,17 @@ async function rawHandler(req: Request): Promise<Response> {
         ? await sql`SELECT form_key FROM survey_form WHERE id = ${id}`
         : await sql`SELECT form_key FROM survey_form WHERE id = ${id} AND created_by = ${me.id}`;
       if (!rows.length) return json({ error: "Not found or not your survey" }, 404);
+      {
+        const formKey = String((rows[0] as { form_key?: string }).form_key || "");
+        const live = formKey ? await findLiveWebLink(formKey) : null;
+        if (live) {
+          return json({
+            error: "This survey is live — deactivate the web link before deleting.",
+            live: true,
+            form_key: formKey,
+          }, 409);
+        }
+      }
       await sql`DELETE FROM survey_assignments WHERE survey_id = ${id}`.catch(() => null);
       await sql`DELETE FROM survey_respondents WHERE survey_id = ${id}`.catch(() => null);
       await sql`DELETE FROM survey_form WHERE id = ${id}`;

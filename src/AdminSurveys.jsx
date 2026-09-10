@@ -16,6 +16,14 @@ import CopyWebFillLink from './components/CopyWebFillLink'
 import QuestionTelugu, { fillTeluguFromEnglish } from './QuestionTelugu'
 import { canTeluguQuestions, isQuestionVisible, labelPatch, nextQuestionId, teluguFields } from './questionKey'
 
+function isLiveSurvey(s) {
+  const l = s?.web_link
+  if (!l?.token || l.expired) return false
+  const cap = Number(l.max_uses) || 0
+  const used = Math.max(Number(s?.web_submissions) || 0, Number(l.use_count) || 0)
+  return !(cap > 0 && used >= cap)
+}
+
 const EMPTY_Q = {
   id: '',
   label: '',
@@ -44,11 +52,13 @@ function QuestionEditor({
   displayLang = 'en',
   maxQs = 0,
   otherQuestionsCount = 0,
+  frozen = false,
 }) {
   const [translatingAll, setTranslatingAll] = useState(false)
   const totalQuestionsUsed = otherQuestionsCount + questions.length
 
   function updateQ(i, patch) {
+    if (frozen) return
     onChange(questions.map((q, idx) => (idx === i ? { ...q, ...patch } : q)))
   }
 
@@ -82,6 +92,7 @@ function QuestionEditor({
   }
 
   function addQ() {
+    if (frozen) return
     if (maxQs > 0 && totalQuestionsUsed >= maxQs) {
       onToast?.(`Total question quota reached: ${totalQuestionsUsed} of ${maxQs} questions allotted across surveys are used`, 'error')
       return
@@ -93,11 +104,15 @@ function QuestionEditor({
   }
 
   function removeQ(i) {
+    if (frozen) return
     onChange(questions.filter((_, idx) => idx !== i))
   }
 
   return (
-    <>
+    <fieldset
+      disabled={frozen}
+      style={{ border: 0, margin: 0, padding: 0, minWidth: 0, opacity: frozen ? 0.72 : 1 }}
+    >
       {canTelugu && questions.length > 0 && (
         <div style={{ marginBottom: 12 }}>
           <button type="button" className="btn small" disabled={translatingAll} onClick={() => void translateAll()}>
@@ -334,7 +349,7 @@ function QuestionEditor({
           </span>
         )}
       </div>
-    </>
+    </fieldset>
   )
 }
 
@@ -568,6 +583,10 @@ export default function AdminSurveysScreen({ onToast, user }) {
 
   async function saveDetailChanges() {
     if (!detail) return
+    if (isLiveSurvey(detail)) {
+      onToast?.('This survey is live — deactivate the web link before editing.', 'error')
+      return
+    }
     const maxQs = !isSuper ? Number(user?.max_questions_per_survey) || 0 : 0
     const otherSurveysQuestionsCount = surveys
       .filter((s) => Number(s.id) !== Number(detail.id))
@@ -605,6 +624,10 @@ export default function AdminSurveysScreen({ onToast, user }) {
 
   async function toggleAdmin(u) {
     if (!detail || user?.role !== 'super_admin') return
+    if (isLiveSurvey(detail)) {
+      onToast?.('This survey is live — deactivate the web link before changing Client Admins.', 'error')
+      return
+    }
     setBusy(true)
     try {
       const ownerId = detail.owner_id != null ? Number(detail.owner_id) : null
@@ -628,6 +651,10 @@ export default function AdminSurveysScreen({ onToast, user }) {
   async function removeSurvey() {
     if (!canEdit) {
       onToast?.('Super Admin has not granted your account survey-editing rights', 'error')
+      return
+    }
+    if (isLiveSurvey(detail)) {
+      onToast?.('This survey is live — deactivate the web link before deleting.', 'error')
       return
     }
     if (!detail || !window.confirm(`Delete project "${detail.title}"? Team assignments are removed too.`)) return
@@ -887,6 +914,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
     const ownerCompany =
       (detail.admins || []).find((a) => Number(a.id) === Number(detail.owner_id))?.company_name ||
       null
+    const liveFrozen = isLiveSurvey(detail)
     return (
       <div className="screen">
         <header className="screen-head">
@@ -895,6 +923,15 @@ export default function AdminSurveysScreen({ onToast, user }) {
             ← Back
           </button>
         </header>
+        {liveFrozen && (
+          <div className="card" style={{ marginBottom: 12, padding: 12, background: '#f0fdf4', border: '1.5px solid #86efac' }}>
+            <strong style={{ color: '#15803d' }}>LIVE — survey frozen</strong>
+            <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+              Questions, voice, company mapping, and delete are locked while the web link is live.
+              Deactivate the link on Web survey to edit again.
+            </p>
+          </div>
+        )}
 
         <div className="card" style={{ marginBottom: 12, borderLeft: '4px solid #00e599' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -914,9 +951,11 @@ export default function AdminSurveysScreen({ onToast, user }) {
               <span>Company (project mapped under)</span>
               <input
                 value={detail.company_name || ownerCompany || ''}
-                onChange={(e) => setDetail({ ...detail, company_name: e.target.value })}
+                onChange={(e) => !liveFrozen && setDetail({ ...detail, company_name: e.target.value })}
                 placeholder="e.g. Acme Research"
                 list="registered-companies"
+                disabled={liveFrozen}
+                readOnly={liveFrozen}
               />
             </label>
           )}
@@ -1065,9 +1104,10 @@ export default function AdminSurveysScreen({ onToast, user }) {
                 key={p.id}
                 type="button"
                 className={`chip ${(detail.display_lang || 'en') === p.id ? 'selected' : ''}`}
-                disabled={p.id === 'te' && !canTeluguQuestions(user)}
+                disabled={liveFrozen || (p.id === 'te' && !canTeluguQuestions(user))}
                 title={p.id === 'te' && !canTeluguQuestions(user) ? 'Telugu translation is locked — Super Admin must grant it' : undefined}
                 onClick={() => {
+                  if (liveFrozen) return
                   if (p.id === 'te' && !canTeluguQuestions(user)) return
                   setDetail({ ...detail, display_lang: p.id })
                 }}
@@ -1100,8 +1140,8 @@ export default function AdminSurveysScreen({ onToast, user }) {
                   key={String(m.id)}
                   type="button"
                   className={`chip ${Boolean(detail.voice_required) === m.id ? 'selected' : ''}`}
-                  disabled={!canVoice}
-                  onClick={() => canVoice && setDetail({ ...detail, voice_required: m.id })}
+                  disabled={!canVoice || liveFrozen}
+                  onClick={() => canVoice && !liveFrozen && setDetail({ ...detail, voice_required: m.id })}
                 >
                   {m.label}
                 </button>
@@ -1126,7 +1166,8 @@ export default function AdminSurveysScreen({ onToast, user }) {
                   key={t.id}
                   type="button"
                   className={`chip ${Number(detail.voice_time_limit || 0) === t.id ? 'selected' : ''}`}
-                  onClick={() => setDetail({ ...detail, voice_time_limit: t.id })}
+                  disabled={liveFrozen}
+                  onClick={() => !liveFrozen && setDetail({ ...detail, voice_time_limit: t.id })}
                 >
                   {t.label}
                 </button>
@@ -1146,13 +1187,14 @@ export default function AdminSurveysScreen({ onToast, user }) {
           otherQuestionsCount={surveys
             .filter((s) => Number(s.id) !== Number(detail.id))
             .reduce((sum, s) => sum + (Number(s.question_count) || 0), 0)}
+          frozen={liveFrozen}
         />
 
         <button
           type="button"
           className="btn primary"
           onClick={saveDetailChanges}
-          disabled={saving || busy}
+          disabled={saving || busy || liveFrozen}
         >
           {saving
             ? ((detail.surveyors || []).length > 0 ? 'Saving & Pushing…' : 'Saving…')
@@ -1164,7 +1206,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           type="button"
           className="btn danger"
           onClick={removeSurvey}
-          disabled={busy}
+          disabled={busy || liveFrozen}
           style={{ marginLeft: 8 }}
         >
           Delete project
@@ -1203,6 +1245,14 @@ export default function AdminSurveysScreen({ onToast, user }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <strong style={{ fontSize: 16, color: '#0f172a' }}>{s.title}</strong>
+            {isLiveSurvey(s) && (
+              <span
+                className="pill"
+                style={{ background: '#dcfce7', color: '#15803d', fontWeight: 800, fontSize: 11 }}
+              >
+                LIVE · frozen
+              </span>
+            )}
             {sharedProject ? (
               <span
                 className="pill"

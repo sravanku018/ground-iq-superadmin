@@ -1409,7 +1409,7 @@ function mapInboxRow(r: Record<string, unknown>) {
       userId: null,
       submissionId: entityId,
       verified: false,
-      title: `${surveyTitle} — web response`,
+      title: `${surveyTitle} — pending web response`,
       detail: who,
       at: r.created_at,
     };
@@ -1443,33 +1443,102 @@ function mapInboxRow(r: Record<string, unknown>) {
 }
 
 async function backfillWebSubmissionAudits(sqlFn: NonNullable<typeof sql>) {
-  await sqlFn`
-    INSERT INTO audit_log (actor_id, actor_name, actor_role, action, entity_type, entity_id, meta, created_at)
-    SELECT
-      COALESCE(f.created_by, 0),
-      LEFT(COALESCE(NULLIF(s.payload->>'submitted_by', ''), 'Web'), 80),
-      'web',
-      'web_submission_create',
-      'submission',
-      s.id::text,
-      jsonb_build_object(
-        'form_key', s.payload->>'form_key',
-        'source', 'web-survey',
-        'title', COALESCE(f.title, s.payload->>'form_key')
-      ),
-      s.created_at
-    FROM submissions s
-    LEFT JOIN survey_form f ON f.form_key = s.payload->>'form_key'
-    WHERE COALESCE(s.payload->>'source', '') IN ('web-survey', 'web')
-      AND COALESCE(s.payload->>'draft', 'false') NOT IN ('true', 't', '1')
-      AND NOT EXISTS (
-        SELECT 1 FROM audit_log a
-        WHERE a.action = 'web_submission_create'
-          AND a.entity_id = s.id::text
-      )
-    ORDER BY s.id DESC
-    LIMIT 80
-  `.catch(() => null);
+  try {
+    await sqlFn`
+      INSERT INTO audit_log (actor_id, actor_name, actor_role, action, entity_type, entity_id, meta, created_at)
+      SELECT
+        COALESCE(x.created_by, 0),
+        x.actor_name,
+        'web',
+        'web_submission_create',
+        'submission',
+        x.sid,
+        jsonb_build_object(
+          'form_key', x.form_key,
+          'source', 'web-survey',
+          'title', x.title
+        ),
+        x.created_at
+      FROM (
+        SELECT
+          s.id::text AS sid,
+          s.created_at,
+          COALESCE(f.created_by, 0) AS created_by,
+          LEFT(COALESCE(NULLIF(s.payload->>'submitted_by', ''), 'Web'), 80) AS actor_name,
+          COALESCE(s.payload->>'form_key', '') AS form_key,
+          COALESCE(f.title, s.payload->>'form_key', 'Web survey') AS title
+        FROM submissions s
+        LEFT JOIN survey_form f ON f.form_key = s.payload->>'form_key'
+        WHERE COALESCE(s.payload->>'source', '') IN ('web-survey', 'web')
+          AND COALESCE(s.payload->>'status', 'pending') NOT IN ('rejected')
+          AND COALESCE(s.payload->>'draft', 'false') NOT IN ('true', 't', '1')
+          AND NOT EXISTS (
+            SELECT 1 FROM audit_log a
+            WHERE a.action = 'web_submission_create'
+              AND a.entity_id = s.id::text
+          )
+        ORDER BY s.id DESC
+        LIMIT 80
+      ) x
+    `;
+  } catch (e) {
+    console.error("web inbox backfill:", (e as Error)?.message || e);
+  }
+}
+
+function isWebSource(src: unknown): boolean {
+  const s = String(src || "").toLowerCase();
+  return s === "web-survey" || s === "web";
+}
+
+async function listPendingWebNotices(
+  sqlFn: NonNullable<typeof sql>,
+  admin: { id: unknown; role: unknown },
+) {
+  const isSuper = admin.role === "super_admin";
+  const scopeKeys = isSuper
+    ? null
+    : await adminFormKeyScope(sqlFn, { role: "admin", id: Number(admin.id) });
+  const rows = scopeKeys
+    ? await sqlFn`
+        SELECT s.id, s.created_at, s.payload, f.title
+        FROM submissions s
+        LEFT JOIN survey_form f ON f.form_key = s.payload->>'form_key'
+        WHERE COALESCE(s.payload->>'source', '') IN ('web-survey', 'web')
+          AND COALESCE(s.payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
+          AND COALESCE(s.payload->>'draft', 'false') NOT IN ('true', 't', '1')
+          AND COALESCE(s.payload->>'form_key', '') = ANY(${scopeKeys.length ? scopeKeys : ["__none__"]})
+        ORDER BY s.id DESC
+        LIMIT 40
+      `.catch(() => [])
+    : await sqlFn`
+        SELECT s.id, s.created_at, s.payload, f.title
+        FROM submissions s
+        LEFT JOIN survey_form f ON f.form_key = s.payload->>'form_key'
+        WHERE COALESCE(s.payload->>'source', '') IN ('web-survey', 'web')
+          AND COALESCE(s.payload->>'status', 'pending') NOT IN ('confirmed', 'rejected')
+          AND COALESCE(s.payload->>'draft', 'false') NOT IN ('true', 't', '1')
+        ORDER BY s.id DESC
+        LIMIT 40
+      `.catch(() => []);
+  return (rows as Record<string, unknown>[]).map((r) => {
+    const payload = parsePayload(r.payload);
+    const answers = (payload?.answers || {}) as Record<string, unknown>;
+    const who = String(payload?.submitted_by || answers.data_collector || "Web respondent").trim() || "Web respondent";
+    const title = String(r.title || payload?.form_key || "Web survey");
+    return {
+      id: `web-sub-${r.id}`,
+      seq: Number(r.id) || 0,
+      kind: "web",
+      page: "web",
+      userId: null,
+      submissionId: Number(r.id) || null,
+      verified: false,
+      title: `${title} — pending web response`,
+      detail: who,
+      at: r.created_at,
+    };
+  });
 }
 
 async function listAdminInbox(
@@ -2227,6 +2296,7 @@ type Row = {
   submitted_by: string;
   respondent: string;
   formKey: string;
+  source: string;
   answers: Record<string, unknown>;
 };
 
@@ -3965,12 +4035,11 @@ async function buildAnalytics(
   const caste = (url.searchParams.get("caste") || "").trim();
   const constituency = (url.searchParams.get("constituency") || "").trim();
   // Report pipeline: default analytics = confirmed only
-  // report=locked → Client Admin dashboard: force confirmed + complete (no raw/pending charts)
+  // report=locked → field charts stay confirmed+complete; pending web fills are included.
   const reportLocked = (url.searchParams.get("report") || "").trim().toLowerCase() === "locked";
   let statusFilter = (url.searchParams.get("status") || "confirmed").trim().toLowerCase();
   let completenessFilter = (url.searchParams.get("completeness") || "all").trim().toLowerCase();
   if (reportLocked) {
-    statusFilter = "confirmed";
     completenessFilter = "complete";
   }
   let dateFrom = (url.searchParams.get("date_from") || url.searchParams.get("from") || "").trim();
@@ -4013,9 +4082,16 @@ async function buildAnalytics(
     total: allRows.length,
   };
 
-  // Analytics universe: confirmed report by default (after Q/A confirm)
+  // Analytics universe: confirmed report by default (after Q/A confirm).
+  // Locked dashboard: confirmed field + pending/confirmed web (not rejected).
   let universe = allRows;
-  if (statusFilter === "confirmed") {
+  if (reportLocked) {
+    universe = allRows.filter((r) => {
+      if (r.status === "rejected") return false;
+      if (isWebSource(r.source)) return r.status === "pending" || r.status === "confirmed";
+      return r.status === "confirmed";
+    });
+  } else if (statusFilter === "confirmed") {
     universe = allRows.filter((r) => r.status === "confirmed");
   } else if (statusFilter === "pending") {
     universe = allRows.filter((r) => r.status === "pending");
@@ -4510,7 +4586,7 @@ async function buildAnalytics(
       step: "1 Users → 2 Collect → 3 Verify geo+voice → 4 Client Admin confirms → 5 Report forms",
       analytics_on: statusFilter,
       note: reportLocked
-        ? "Dashboard locked to confirmed + complete only. Unconfirmed data never forms charts."
+        ? "Dashboard: confirmed field records plus pending and confirmed web fills."
         : statusFilter === "confirmed"
         ? "Report uses confirmed surveys. GPS + photo + Q/A required; voice only when Super Admin/Client Admin set it required."
         : `Analytics scope: ${statusFilter}`,
@@ -6556,9 +6632,14 @@ async function rawHandler(req: Request): Promise<Response> {
       if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
       const after = Math.max(0, Number(url.searchParams.get("after")) || 0);
       const rows = await listAdminInbox(sql, me, after);
+      const fromAudit = (rows as Record<string, unknown>[]).map(mapInboxRow);
+      const pendingWeb = after > 0 ? [] : await listPendingWebNotices(sql, me);
+      const seen = new Set(fromAudit.map((i) => String(i.submissionId || "")));
+      const extra = pendingWeb.filter((i) => !seen.has(String(i.submissionId || "")));
+      const items = [...extra, ...fromAudit].slice(0, 80);
       return json({
-        items: (rows as Record<string, unknown>[]).map(mapInboxRow),
-        count: (rows as unknown[]).length,
+        items,
+        count: items.length,
       });
     }
 

@@ -435,8 +435,8 @@ export function getAnalytics(filters = {}) {
     if (v) params.set(k, String(v))
   })
   // Default report = confirmed only (set explicitly if missing)
-  if (!params.has('status')) params.set('status', 'confirmed')
-  // Dashboard passes report=locked → server forces confirmed + complete
+  if (!params.has('status') && filters.report !== 'locked') params.set('status', 'confirmed')
+  // Dashboard report=locked → confirmed field + pending/confirmed web
   const q = params.toString()
   return request(`/api/analytics${q ? `?${q}` : ''}`)
 }

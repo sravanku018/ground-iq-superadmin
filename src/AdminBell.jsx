@@ -193,7 +193,7 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
                             ? 'Verification complete ✓'
                             : 'Verification pending (click to open Users tab)'
                           : isWeb
-                            ? `${it.detail || 'Web respondent'} · open Web survey`
+                            ? `${it.detail || 'Web respondent'} · pending · open Web survey`
                             : it.detail}
                       </span>
                     </button>

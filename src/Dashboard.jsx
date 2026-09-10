@@ -624,10 +624,9 @@ export default function DashboardScreen({ onToast }) {
       if (filters.period === 'day') params.day = filters.day
       if (filters.period === 'month') params.month = filters.month
       const clean = Object.fromEntries(Object.entries(params).filter(([, v]) => v))
-      // Hard lock: only Client Admin confirmed + complete records form charts
+      // Field charts stay confirmed+complete. Pending web fills are included server-side.
       const res = await getAnalytics({
         ...clean,
-        status: 'confirmed',
         completeness: 'complete',
         report: 'locked',
       })
@@ -778,7 +777,7 @@ export default function DashboardScreen({ onToast }) {
       <div className="card" style={{ marginBottom: 12 }}>
         <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
           <strong>Dashboard does not form</strong> until Client Admin confirms records
-          (GPS + photo + Q/A; voice only if required). Pending data stays out of charts.
+          (GPS + photo + Q/A; voice only if required). Pending web fills are included in charts.
         </p>
         {data?.statusCounts && (
           <p style={{ margin: '0 0 8px', fontSize: 13 }}>

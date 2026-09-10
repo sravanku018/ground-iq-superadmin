@@ -436,6 +436,14 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
   const [genUrl, setGenUrl] = useState('')
   const [genLockedKey, setGenLockedKey] = useState('')
 
+  const selectedSurveyObj = surveys.find((s) => s.form_key === genSurveyKey) || null
+  const genFrozen = Boolean(
+    genSurveyKey && (
+      genSurveyKey === genLockedKey ||
+      (selectedSurveyObj?.web_link?.token && !selectedSurveyObj?.web_link?.expired)
+    ),
+  )
+
   useEffect(() => {
     if (surveys.length > 0 && !genSurveyKey) {
       setGenSurveyKey(surveys[0].form_key)
@@ -448,14 +456,6 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
       setGenQuota(Number(live.max_uses) || 100)
     }
   }, [genSurveyKey, selectedSurveyObj?.web_link?.token, selectedSurveyObj?.web_link?.max_uses, selectedSurveyObj?.web_link?.expired])
-
-  const selectedSurveyObj = surveys.find((s) => s.form_key === genSurveyKey) || null
-  const genFrozen = Boolean(
-    genSurveyKey && (
-      genSurveyKey === genLockedKey ||
-      (selectedSurveyObj?.web_link?.token && !selectedSurveyObj?.web_link?.expired)
-    ),
-  )
 
   async function handleQuickGenerate() {
     if (!genSurveyKey) return

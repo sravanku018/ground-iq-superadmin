@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Smart Survey X — Political Product & Market Survey Interactive Demo</title>
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  /* ══════════════════════════════════════════════════════════
+     SMART SURVEY X — DUAL-ENGINE DEMO PAGE (MOCK 3)
+     Showcasing:
+     1. Political Campaign & Voter Intelligence Platform
+     2. Enterprise Market Research & Consumer Insights Platform
+     Built with Mock 3 design tokens:
+     - Apple surveyor craft (minimal, tactile, offline-first)
+     - Google data density & design tokens
+     - Twitter/X real-time intake feed & live stream optimism
+     ══════════════════════════════════════════════════════════ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html {
+    font-family: var(--font, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+    background: var(--bg, #f8fafc);
+    color: var(--ink, #1e293b);
+    scroll-behavior: smooth;
+  }
+  body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+  .mono { font-family: 'SF Mono', Menlo, Consolas, monospace; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* ── Sticky Top Bar ── */
+  .topbar {
+    position: sticky; top: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 24px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--surface-hover, #e2e8f0);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  }
+  .topbar-left { display: flex; align-items: center; gap: 20px; }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    text-decoration: none; color: var(--ink, #1e293b);
+    font-weight: 700; font-size: 16px;
+  }
+  .brand-glyph {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: linear-gradient(135deg, #1d6fe0 0%, #0284c7 100%);
+    color: #fff; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 800; box-shadow: 0 2px 6px rgba(29, 111, 224, 0.25);
+  }
+  .brand-meta { display: flex; flex-direction: column; line-height: 1.15; }
+  .brand-title { font-weight: 800; font-size: 14px; letter-spacing: -0.01em; }
+  .brand-sub { font-size: 11px; color: var(--ink-muted, #64748b); font-weight: 500; }
+
+  /* ── Suite Mode Switcher Tabs ── */
+  .suite-switcher {
+    display: flex; align-items: center; gap: 4px;
+    background: var(--surface-alt, #f1f5f9);
+    padding: 4px; border-radius: 999px;
+    border: 1px solid var(--surface-hover, #e2e8f0);
+  }
+  .suite-tab {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 18px; border-radius: 999px; border: none;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    background: transparent; color: var(--ink-secondary, #475569);
+    transition: all 160ms var(--ease-out, ease);
+    white-space: nowrap;
+  }
+  .suite-tab:hover { color: var(--ink, #1e293b); }
+  .suite-tab.active {
+    background: #ffffff; color: var(--accent, #1d6fe0);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.03);
+    font-weight: 700;
+  }
+  .suite-tab.active.market {
+    color: #0284c7;
+  }
+  .suite-tab.active.dual {
+    color: #7c3aed;
+  }
+
+  .topbar-right { display: flex; align-items: center; gap: 12px; }
+  .live-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 999px;
+    background: var(--ok-bg, #f0fdf4); color: var(--ok, #16a34a);
+    border: 1px solid #bbf7d0; font-size: 11px; font-weight: 700;
+    cursor: pointer; user-select: none;
+  }
+  .live-pill .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--ok, #16a34a);
+    animation: pulseDot 1.8s ease-in-out infinite;
+  }
+  @keyframes pulseDot { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(0.8); } }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 7px 14px; min-height: 36px; border-radius: var(--r-md, 10px);
+    font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: none;
+    transition: all var(--dur-fast, 120ms); border: 1px solid transparent;
+  }
+  .btn-outline {
+    background: var(--surface, #ffffff); color: var(--ink, #1e293b);
+    border-color: var(--surface-hover, #e2e8f0);
+  }
+  .btn-outline:hover { background: var(--surface-alt, #f1f5f9); border-color: #cbd5e1; }
+  .btn-primary {
+    background: var(--accent, #1d6fe0); color: #fff;
+    box-shadow: 0 1px 4px rgba(29, 111, 224, 0.25);
+  }
+  .btn-primary:hover { background: #165ab7; }
+
+  /* ── Hero Banner & Context ── */
+  .demo-hero {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    border-bottom: 1px solid var(--surface-hover, #e2e8f0);
+    padding: 28px 24px 24px;
+  }
+  .demo-hero-inner {
+    max-width: 1400px; margin: 0 auto;
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 24px; flex-wrap: wrap;
+  }
+  .hero-titles { max-width: 780px; }
+  .badge-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px;
+  }
+  .badge-tag.pol { background: #eff6ff; color: #1d6fe0; border: 1px solid #bfdbfe; }
+  .badge-tag.mkt { background: #f0fdf4; color: #0284c7; border: 1px solid #bae6fd; }
+  .badge-tag.cmp { background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; }
+
+  .hero-title {
+    font-size: 26px; font-weight: 800; color: #0f172a;
+    letter-spacing: -0.02em; line-height: 1.25; margin-bottom: 8px;
+  }
+  .hero-sub {
+    font-size: 14px; color: var(--ink-secondary, #475569);
+    line-height: 1.5;
+  }
+
+  .hero-actions-bar {
+    display: flex; align-items: center; gap: 10px; align-self: center; flex-wrap: wrap;
+  }
+
+  /* ── KPI Metric Cards Strip ── */
+  .kpi-strip {
+    max-width: 1400px; margin: 20px auto 0;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px;
+  }
+  @media (max-width: 1024px) { .kpi-strip { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 640px) { .kpi-strip { grid-template-columns: repeat(2, 1fr); } }
+
+  .kpi-card {
+    background: var(--surface, #ffffff);
+    border: 1px solid var(--surface-hover, #e2e8f0);
+    border-radius: 12px; padding: 14px 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    position: relative; overflow: hidden;
+    transition: transform 140ms ease, box-shadow 140ms ease;
+  }
+  .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+  .kpi-card::after {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: var(--accent, #1d6fe0);
+  }
+  .kpi-card.mkt::after { background: #0284c7; }
+  .kpi-card.ok::after { background: var(--ok, #16a34a); }
+  .kpi-card.warn::after { background: var(--warn, #f59e0b); }
+  .kpi-card.purple::after { background: #8b5cf6; }
+
+  .kpi-label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--ink-muted, #64748b); letter-spacing: 0.03em; margin-bottom: 4px; }
+  .kpi-value { font-size: 22px; font-weight: 800; color: #0f172a; line-height: 1.1; margin-bottom: 4px; }
+  .kpi-sub { font-size: 11px; color: var(--ink-muted, #64748b); display: flex; align-items: center; gap: 4px; }
+  .kpi-sub .pos { color: var(--ok, #16a34a); font-weight: 700; }
+  .kpi-sub .neg { color: var(--bad, #ef4444); font-weight: 700; }
+
+  /* ── Main Interactive Stage Layout ── */
+  .main-stage {
+    max-width: 1400px; margin: 24px auto 48px; padding: 0 24px;
+    display: grid; grid-template-columns: 420px 1fr; gap: 28px;
+    align-items: flex-start;
+  }
+  @media (max-width: 1100px) {
+    .main-stage { grid-template-columns: 1fr; }
+  }
+
+  /* ══════════════════════════════════════════
+     LEFT COLUMN: Realistic Apple Surveyor Device
+     ══════════════════════════════════════════ */
+  .device-column {
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .device-header-meta {
+    width: 100%; display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px; font-size: 12px; color: var(--ink-secondary, #475569);
+  }
+  .device-title { font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 6px; }
+
+  .iphone-frame {
+    width: 100%; max-width: 400px; min-height: 740px;
+    background: #ffffff;
+    border-radius: 40px;
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(0,0,0,0.06), 0 0 0 8px #0f172a;
+    display: flex; flex-direction: column; position: relative;
+    overflow: hidden; border: 4px solid #1e293b;
+  }
+  /* Dynamic Island / Notch */
+  .iphone-notch-bar {
+    background: #ffffff; height: 42px; display: flex; align-items: center;
+    justify-content: space-between; padding: 0 24px; font-size: 13px; font-weight: 700;
+    border-bottom: 1px solid #f1f5f9; position: relative;
+  }
+  .notch-island {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    width: 96px; height: 22px; background: #0f172a; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .notch-camera { width: 8px; height: 8px; border-radius: 50%; background: #1e293b; }
+
+  .phone-appbar {
+    padding: 10px 18px; background: #ffffff; border-bottom: 1px solid var(--surface-hover, #e2e8f0);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .phone-appbar-left { display: flex; align-items: center; gap: 8px; }
+  .phone-agent-avatar {
+    width: 30px; height: 30px; border-radius: 50%; background: #e0e7ff; color: #4338ca;
+    display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800;
+  }
+  .phone-agent-info { display: flex; flex-direction: column; line-height: 1.15; }
+  .phone-agent-name { font-size: 12px; font-weight: 700; }
+  .phone-agent-id { font-size: 10px; color: var(--ink-muted, #64748b); }
+
+  .phone-status-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700;
+    background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0;
+  }
+
+  /* Form Scroll Area */
+  .phone-scroll-body {
+    flex: 1; overflow-y: auto; padding: 16px 18px; max-height: 600px;
+  }
+  .form-lead { margin-bottom: 14px; }
+  .form-lead-tag { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent, #1d6fe0); }
+  .form-lead-title { font-size: 16px; font-weight: 800; color: #0f172a; margin-top: 2px; }
+  .form-lead-sub { font-size: 11px; color: var(--ink-muted, #64748b); margin-top: 2px; }
+
+  .survey-card-question {
+    background: #f8fafc; border: 1px solid var(--surface-hover, #e2e8f0);
+    border-radius: 12px; padding: 12px; margin-bottom: 12px;
+    transition: border-color 120ms ease;
+  }
+  .survey-card-question:focus-within {
+    border-color: var(--accent, #1d6fe0);
+    background: #ffffff;
+    box-shadow: 0 0 0 3px rgba(29, 111, 224, 0.08);
+  }
+  .q-label {
+    font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 8px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .q-req { color: #ef4444; font-size: 11px; font-weight: 800; }
+  .q-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 50%; background: #e2e8f0;
+    color: #475569; font-size: 10px; font-weight: 800; margin-right: 6px;
+  }
+
+  /* Input fields & pill options */
+  .option-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .opt-btn {
+    border: 1px solid #cbd5e1; background: #ffffff;
+    padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
+    color: #334155; cursor: pointer; transition: all 120ms;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .opt-btn:hover { background: #f1f5f9; border-color: #94a3b8; }
+  .opt-btn.selected {
+    background: var(--accent-bg, #eff6ff);
+    border-color: var(--accent, #1d6fe0);
+    color: var(--accent, #1d6fe0);
+    font-weight: 700;
+  }
+  /* Party specific selected styling */
+  .opt-btn.selected.cong { background: #f0fdf4; border-color: #16a34a; color: #16a34a; }
+  .opt-btn.selected.bjp { background: #fff7ed; border-color: #f97316; color: #ea580c; }
+  .opt-btn.selected.brs { background: #fdf2f8; border-color: #ec4899; color: #db2777; }
+  .opt-btn.selected.und { background: #f1f5f9; border-color: #64748b; color: #334155; }
+
+  .party-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .party-dot.cong { background: #16a34a; }
+  .party-dot.bjp { background: #f97316; }
+  .party-dot.brs { background: #ec4899; }
+  .party-dot.oth { background: #94a3b8; }
+  .party-dot.und { background: #64748b; }
+
+  .select-input, .text-input {
+    width: 100%; height: 38px; border: 1px solid #cbd5e1;
+    border-radius: 8px; padding: 0 10px; font-size: 12px;
+    background: #ffffff; color: #1e293b; font-family: inherit;
+  }
+  .select-input:focus, .text-input:focus {
+    outline: none; border-color: var(--accent, #1d6fe0);
+  }
+
+  /* Star rating */
+  .star-row { display: flex; gap: 6px; }
+  .star-btn {
+    background: transparent; border: none; font-size: 22px;
+    color: #cbd5e1; cursor: pointer; transition: transform 120ms;
+  }
+  .star-btn:hover, .star-btn.lit { color: #f59e0b; transform: scale(1.15); }
+
+  /* Price slider */
+  .slider-wrap { padding: 4px 0; }
+  .range-slider {
+    width: 100%; accent-color: var(--accent, #1d6fe0); cursor: pointer;
+  }
+  .slider-labels { display: flex; justify-content: space-between; font-size: 11px; color: #64748b; margin-top: 4px; font-weight: 600; }
+
+  /* Geo stamp chip */
+  .geo-stamp {
+    display: flex; align-items: center; justify-content: space-between;
+    background: #eff6ff; border: 1px dashed #93c5fd; border-radius: 8px;
+    padding: 8px 10px; font-size: 11px; color: #1d6fe0; margin-top: 6px;
+  }
+  .geo-stamp-coords { font-family: monospace; font-weight: 700; }
+
+  /* Submit action */
+  .phone-action-footer {
+    padding: 12px 18px 18px; background: #ffffff;
+    border-top: 1px solid var(--surface-hover, #e2e8f0);
+  }
+  .submit-btn {
+    width: 100%; height: 44px; border-radius: 12px;
+    background: var(--accent, #1d6fe0); color: #ffffff;
+    font-size: 14px; font-weight: 700; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    box-shadow: 0 4px 12px rgba(29, 111, 224, 0.3);
+    transition: all 140ms ease;
+  }
+  .submit-btn:hover { background: #165ab7; transform: translateY(-1px); }
+  .submit-btn:active { transform: scale(0.98); }
+
+  /* ══════════════════════════════════════════
+     RIGHT COLUMN: Live Command & Analytics Deck
+     ══════════════════════════════════════════ */
+  .deck-column {
+    background: #ffffff;
+    border: 1px solid var(--surface-hover, #e2e8f0);
+    border-radius: 16px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+
+  /* Sub-tab Navigation */
+  .deck-nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 20px; background: #f8fafc;
+    border-bottom: 1px solid var(--surface-hover, #e2e8f0);
+    flex-wrap: wrap; gap: 10px;
+  }
+  .deck-tabs { display: flex; gap: 4px; }
+  .deck-tab {
+    padding: 7px 14px; border-radius: 8px; border: none;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    background: transparent; color: var(--ink-secondary, #475569);
+    transition: all 120ms;
+  }
+  .deck-tab:hover { background: #e2e8f0; color: #1e293b; }
+  .deck-tab.active { background: #ffffff; color: var(--accent, #1d6fe0); font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+
+  .deck-nav-meta { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--ink-muted, #64748b); }
+  .sim-chip {
+    padding: 3px 8px; border-radius: 6px; background: #eff6ff; color: #1d6fe0;
+    font-weight: 700; font-family: monospace;
+  }
+
+  /* Deck Panels */
+  .deck-content { padding: 22px; }
+  .deck-panel { display: none; }
+  .deck-panel.active { display: block; }
+
+  /* Analytics Grid */
+  .analytics-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 900px) { .analytics-grid { grid-template-columns: 1fr; } }
+
+  .chart-box {
+    background: #f8fafc; border: 1px solid var(--surface-hover, #e2e8f0);
+    border-radius: 12px; padding: 16px;
+  }
+  .chart-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .chart-title { font-size: 13px; font-weight: 700; color: #0f172a; }
+  .chart-badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #e2e8f0; color: #475569; }
+
+  /* Stacked / Bar visualizations */
+  .bar-row {
+    margin-bottom: 10px;
+  }
+  .bar-info {
+    display: flex; justify-content: space-between; font-size: 12px; font-weight: 600;
+    color: #334155; margin-bottom: 4px;
+  }
+  .bar-track {
+    height: 10px; border-radius: 999px; background: #e2e8f0; overflow: hidden; display: flex;
+  }
+  .bar-fill { height: 100%; transition: width 400ms var(--ease-out, ease); }
+
+  /* Live Feed List (Twitter/X style) */
+  .feed-list { display: flex; flex-direction: column; gap: 10px; max-height: 540px; overflow-y: auto; padding-right: 4px; }
+  .feed-item {
+    background: #ffffff; border: 1px solid var(--surface-hover, #e2e8f0);
+    border-radius: 10px; padding: 12px 14px;
+    display: flex; gap: 12px; transition: transform 120ms ease, border-color 120ms ease;
+    animation: fadeInSlide 300ms ease;
+  }
+  @keyframes fadeInSlide { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+  .feed-item:hover { border-color: #cbd5e1; background: #fafafa; }
+  .feed-avatar {
+    width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+    background: #eff6ff; color: #1d6fe0; display: flex; align-items: center;
+    justify-content: center; font-weight: 800; font-size: 13px;
+  }
+  .feed-avatar.mkt { background: #f0fdf4; color: #0284c7; }
+  .feed-main { flex: 1; }
+  .feed-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .feed-title { font-size: 13px; font-weight: 700; color: #0f172a; }
+  .feed-time { font-size: 11px; color: var(--ink-muted, #64748b); font-family: monospace; }
+  .feed-desc { font-size: 12px; color: var(--ink-secondary, #475569); line-height: 1.4; margin-bottom: 6px; }
+  .feed-chips { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; }
+  .feed-chip {
+    padding: 2px 7px; border-radius: 4px; background: #f1f5f9; color: #475569; font-weight: 600;
+  }
+  .feed-chip.verified { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+  .feed-chip.flagged { background: #fef2f2; color: #ef4444; border: 1px solid #fecaca; }
+
+  /* Data Table */
+  .table-wrap { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 10px; }
+  .demo-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+  .demo-table th { background: #f8fafc; padding: 10px 14px; font-weight: 700; color: #475569; border-bottom: 1px solid #e2e8f0; }
+  .demo-table td { padding: 10px 14px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
+  .demo-table tr:hover td { background: #f8fafc; }
+
+  /* ── Comparative Dual Engine Matrix Section ── */
+  .comparison-section {
+    max-width: 1400px; margin: 32px auto 0; padding: 0 24px;
+  }
+  .comp-card {
+    background: #ffffff; border: 1px solid var(--surface-hover, #e2e8f0);
+    border-radius: 16px; padding: 28px; box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+  }
+  .comp-header { margin-bottom: 24px; text-align: center; }
+  .comp-header h3 { font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 6px; }
+  .comp-header p { font-size: 13px; color: var(--ink-secondary, #475569); }
+  .comp-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+  }
+  @media (max-width: 860px) { .comp-grid { grid-template-columns: 1fr; } }
+  .comp-pillar {
+    border-radius: 12px; padding: 20px; border: 1px solid #e2e8f0;
+    background: #f8fafc;
+  }
+  .comp-pillar.political { border-top: 4px solid #1d6fe0; }
+  .comp-pillar.market { border-top: 4px solid #0284c7; }
+  .pillar-title { font-size: 16px; font-weight: 800; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .pillar-list { list-style: none; display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+  .pillar-list li { font-size: 13px; color: #334155; display: flex; align-items: flex-start; gap: 8px; line-height: 1.4; }
+  .pillar-list li svg { width: 16px; height: 16px; color: #16a34a; flex-shrink: 0; margin-top: 2px; }
+
+  /* ── Toast notification ── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 200;
+    background: #0f172a; color: #ffffff; padding: 12px 20px;
+    border-radius: 10px; font-size: 13px; font-weight: 600;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    display: flex; align-items: center; gap: 10px;
+    transform: translateY(100px); opacity: 0; pointer-events: none;
+    transition: all 240ms var(--ease-out, ease);
+  }
+  .toast.show { transform: translateY(0); opacity: 1; pointer-events: auto; }
+  .toast-icon { color: #86efac; font-size: 16px; }
+
+  /* ── Footer ── */
+  .demo-footer {
+    margin-top: auto; padding: 28px 24px; background: #ffffff;
+    border-top: 1px solid var(--surface-hover, #e2e8f0);
+    font-size: 12px; color: var(--ink-muted, #64748b);
+  }
+  .footer-inner {
+    max-width: 1400px; margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 16px;
+  }
+  .footer-links { display: flex; gap: 16px; flex-wrap: wrap; }
+  .footer-links a { color: var(--ink-secondary, #475569); text-decoration: none; font-weight: 500; }
+  .footer-links a:hover { color: var(--accent, #1d6fe0); }
+</style>
+</head>
+<body>
+
+  <!-- ══════════ Sticky Navigation ══════════ -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <a href="landing.html" class="brand">
+        <div class="brand-glyph">◆</div>
+        <div class="brand-meta">
+          <span class="brand-title">Smart Survey X</span>
+          <span class="brand-sub">Platform Intelligence Demo</span>
+        </div>
+      </a>
+
+      <!-- Product Mode Switcher -->
+      <div class="suite-switcher" role="tablist">
+        <button type="button" class="suite-tab active" id="tab-political" onclick="switchSuite('political')">
+          🏛️ Political Product
+        </button>
+        <button type="button" class="suite-tab market" id="tab-market" onclick="switchSuite('market')">
+          🛒 Market Survey
+        </button>
+        <button type="button" class="suite-tab dual" id="tab-dual" onclick="switchSuite('dual')">
+          ⚡ Dual Engine Compare
+        </button>
+      </div>
+    </div>
+
+    <div class="topbar-right">
+      <div class="live-pill" id="liveToggleBtn" onclick="toggleLiveSim()" title="Click to pause/resume simulated surveyor intake">
+        <span class="dot"></span>
+        <span id="liveStatusText">Live Feed Active (3s)</span>
+      </div>
+      <button type="button" class="btn btn-outline" onclick="exportData('csv')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export CSV
+      </button>
+      <a href="landing.html" class="btn btn-primary">
+        Back to Overview ↗
+      </a>
+    </div>
+  </header>
+
+  <!-- ══════════ Demo Hero & Context ══════════ -->
+  <section class="demo-hero">
+    <div class="demo-hero-inner">
+      <div class="hero-titles">
+        <div class="badge-tag pol" id="heroBadge">
+          Electoral Intelligence & Voter Opinion Suite
+        </div>
+        <h1 class="hero-title" id="heroTitle">
+          Constituency Sentiment, Booth Profiling & Ground Intake
+        </h1>
+        <p class="hero-sub" id="heroSub">
+          Test the interactive surveyor handheld interface on the left and see live voting intention, booth geofences, and swing margin shifts populate the command console in real-time.
+        </p>
+      </div>
+
+      <div class="hero-actions-bar">
+        <button type="button" class="btn btn-outline" onclick="quickFillForm()">
+          ⚡ Quick Auto-Fill Form
+        </button>
+        <button type="button" class="btn btn-outline" onclick="resetDemoData()">
+          ↺ Reset Demo Data
+        </button>
+      </div>
+    </div>
+
+    <!-- KPI Metric Cards Strip -->
+    <div class="kpi-strip" id="kpiStrip">
+      <!-- Injected by JavaScript based on active suite -->
+    </div>
+  </section>
+
+  <!-- ══════════ Main Interactive Stage ══════════ -->
+  <main class="main-stage">
+
+    <!-- ── Left Column: Surveyor Handheld Simulation ── -->
+    <div class="device-column">
+      <div class="device-header-meta">
+        <span class="device-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+          Field Surveyor App View
+        </span>
+        <span class="mono" style="font-size: 11px; color: #16a34a; font-weight: 700;">● GPS LOCKED (±3m)</span>
+      </div>
+
+      <div class="iphone-frame">
+        <!-- Notch / Dynamic Island -->
+        <div class="iphone-notch-bar">
+          <span class="mono" id="phoneClock">12:30</span>
+          <div class="notch-island">
+            <div class="notch-camera"></div>
+          </div>
+          <span style="font-size: 11px;">5G ▮▮▮ 98%</span>
+        </div>
+
+        <!-- Phone In-App Bar -->
+        <div class="phone-appbar">
+          <div class="phone-appbar-left">
+            <div class="phone-agent-avatar" id="agentAvatar">RV</div>
+            <div class="phone-agent-info">
+              <span class="phone-agent-name" id="agentName">Rajesh Varma (Surveyor #882)</span>
+              <span class="phone-agent-id" id="agentLoc">Nizamabad Urban · Booth 142</span>
+            </div>
+          </div>
+          <span class="phone-status-pill">Offline Ready</span>
+        </div>
+
+        <!-- Dynamic Form Body -->
+        <form class="phone-scroll-body" id="surveyForm" onsubmit="event.preventDefault(); submitSurveyorResponse();">
+          <div class="form-lead">
+            <span class="form-lead-tag" id="formLeadTag">STAGE 1 · VOTER PROFILE</span>
+            <h2 class="form-lead-title" id="formLeadTitle">Door-to-Door Voter Interview</h2>
+            <p class="form-lead-sub" id="formLeadSub">Record voter preferences and key welfare impact accurately.</p>
+          </div>
+
+          <!-- Dynamic Questions Container -->
+          <div id="surveyQuestionsContainer">
+            <!-- Questions rendered by JS -->
+          </div>
+
+          <!-- Geofence & Audio proof indicator -->
+          <div class="geo-stamp">
+            <div>
+              <div style="font-size: 10px; font-weight: 700; text-transform: uppercase;">GEOFENCE VERIFIED</div>
+              <div class="geo-stamp-coords" id="geoCoords">18.6725° N, 78.0941° E</div>
+            </div>
+            <span style="font-size: 10px; background: #bfdbfe; color: #1e3a8a; padding: 2px 6px; border-radius: 4px; font-weight: 700;">
+              Booth 142 Boundary Match
+            </span>
+          </div>
+        </form>
+
+        <!-- Phone Action Footer -->
+        <div class="phone-action-footer">
+          <button type="button" class="submit-btn" onclick="submitSurveyorResponse()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            <span id="submitBtnText">Submit & Verify Response</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Right Column: Live Command & Analytics Deck ── -->
+    <div class="deck-column">
+      <div class="deck-nav">
+        <div class="deck-tabs">
+          <button type="button" class="deck-tab active" onclick="switchDeckTab('analytics', this)">
+            📊 Live Analytics & Charts
+          </button>
+          <button type="button" class="deck-tab" onclick="switchDeckTab('feed', this)">
+            ⚡ Real-Time Intake Feed
+          </button>
+          <button type="button" class="deck-tab" onclick="switchDeckTab('crosstab', this)">
+            📑 Raw Records & Cross-Tabs
+          </button>
+        </div>
+        <div class="deck-nav-meta">
+          <span>Simulation Speed:</span>
+          <span class="sim-chip">1 record / 3s</span>
+          <span style="color: #cbd5e1;">|</span>
+          <span id="totalSampleCounter" style="font-weight: 700; color: #0f172a;">48,290 sampled</span>
+        </div>
+      </div>
+
+      <div class="deck-content">
+        <!-- ── TAB 1: Analytics & Charts ── -->
+        <div class="deck-panel active" id="panel-analytics">
+          <div class="analytics-grid">
+            <!-- Main Distribution Chart -->
+            <div class="chart-box">
+              <div class="chart-header">
+                <span class="chart-title" id="mainChartTitle">Political Voting Intention (Vote Share %)</span>
+                <span class="chart-badge">Active Sample</span>
+              </div>
+              <div id="mainBarsContainer">
+                <!-- Injected by JS -->
+              </div>
+            </div>
+
+            <!-- Secondary Distribution Chart -->
+            <div class="chart-box">
+              <div class="chart-header">
+                <span class="chart-title" id="secondChartTitle">Top Deciding Issues</span>
+                <span class="chart-badge">High Impact</span>
+              </div>
+              <div id="secondBarsContainer">
+                <!-- Injected by JS -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Demographic Cross-Tab Strip -->
+          <div class="chart-box" style="margin-bottom: 20px;">
+            <div class="chart-header">
+              <span class="chart-title" id="crosstabTitle">Demographic Segmentation (Age & Urban/Rural Split)</span>
+              <span class="chart-badge">Weighted N=48,290</span>
+            </div>
+            <div id="demographicSegments">
+              <!-- Demographic split bars -->
+            </div>
+          </div>
+
+          <!-- Quality & Audit Health -->
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px;">
+              <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">GPS Polygons Matched</div>
+              <div style="font-size: 18px; font-weight: 800; color: #16a34a; margin-top: 4px;" id="metricGps">99.4%</div>
+              <div style="font-size: 11px; color: #64748b;">Within designated booth/store</div>
+            </div>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px;">
+              <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Avg. Interview Duration</div>
+              <div style="font-size: 18px; font-weight: 800; color: #0f172a; margin-top: 4px;" id="metricDuration">4m 18s</div>
+              <div style="font-size: 11px; color: #64748b;">No rapid fake submissions detected</div>
+            </div>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px;">
+              <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Data Integrity Score</div>
+              <div style="font-size: 18px; font-weight: 800; color: #1d6fe0; margin-top: 4px;" id="metricScore">98.9 / 100</div>
+              <div style="font-size: 11px; color: #16a34a;">AI voice & duplicate checks clean</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── TAB 2: Live Intake Feed (Twitter/X Style) ── -->
+        <div class="deck-panel" id="panel-feed">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <div style="font-size: 13px; font-weight: 700; color: #0f172a;">
+              Live Incoming Survey Intake Feed
+            </div>
+            <span style="font-size: 11px; color: #64748b;">Auto-refreshing live socket stream</span>
+          </div>
+
+          <div class="feed-list" id="feedList">
+            <!-- Stream items injected by JS -->
+          </div>
+        </div>
+
+        <!-- ── TAB 3: Cross-Tabs & Raw Records ── -->
+        <div class="deck-panel" id="panel-crosstab">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+            <div style="font-size: 13px; font-weight: 700; color: #0f172a;">
+              Verified Raw Response Ledger
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="tableSearch" placeholder="Search by surveyor, area, or tag…" class="text-input" style="width: 240px; height: 32px;" oninput="filterTable()" />
+              <button type="button" class="btn btn-outline" style="min-height: 32px; font-size: 11px;" onclick="exportData('csv')">Download CSV</button>
+              <button type="button" class="btn btn-outline" style="min-height: 32px; font-size: 11px;" onclick="exportData('json')">Download JSON</button>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="demo-table">
+              <thead>
+                <tr id="tableHeadRow">
+                  <!-- Injected by JS -->
+                </tr>
+              </thead>
+              <tbody id="tableBody">
+                <!-- Injected by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ══════════ Dual Engine Comparison Section ══════════ -->
+  <section class="comparison-section">
+    <div class="comp-card">
+      <div class="comp-header">
+        <span class="badge-tag cmp">One Unified Core Engine</span>
+        <h3>Why Smart Survey X Powers Both Political and Commercial Missions</h3>
+        <p>A single rock-solid infrastructure combining offline-first PWA resilience, automated fraud prevention, and real-time analytics.</p>
+      </div>
+
+      <div class="comp-grid">
+        <!-- Pillar 1: Political Product -->
+        <div class="comp-pillar political">
+          <div class="pillar-title">
+            <span style="font-size: 20px;">🏛️</span>
+            <span>Political Campaign Intelligence</span>
+          </div>
+          <p style="font-size: 12px; color: #64748b;">
+            Designed for high-stakes electoral campaigns, political strategists, party headquarters, and polling organizations.
+          </p>
+          <ul class="pillar-list">
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span><strong>Booth-Level Voter Profiling:</strong> Granular mapping of 1,000–1,500 voter polling booths with caste and community balance.</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span><strong>Swing & Fence-Sitter Radar:</strong> Identify undecided voters early with automated micro-targeted persuasion triggers.</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span><strong>Anti-Sabotage Field Verification:</strong> Strict GPS geofence containment prevents false data injection by rival operators.</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span><strong>Welfare Scheme Audit:</strong> Measure real beneficiary satisfaction for flagship state and central welfare policies.</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Pillar 2: Market Survey -->
+        <div class="comp-pillar market">
+          <div class="pillar-title">
+            <span style="font-size: 20px;">🛒</span>
+            <span>Enterprise Market & Consumer Research</span>
+          </div>
+          <p style="font-size: 12px; color: #64748b;">
+            Built for FMCG brands, market research agencies, retail chains, and product managers conducting consumer audits.
+          </p>
+          <ul class="pillar-list">
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span><strong>Van Westendorp Price Sensitivity:</strong> Real-time pricing elasticity to compute the optimal price point (OPP).</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span><strong>Retail Shelf & Mystery Audits:</strong> Photo capture and SKU barcode scans to verify planogram compliance and shelf share.</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span><strong>Net Promoter Score (NPS) Tracking:</strong> Multi-channel customer satisfaction and willingness-to-recommend segmentation.</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span><strong>Demographic Taste & Packaging Testing:</strong> Immediate feedback on prototype flavors, packaging, and advertising recall.</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ Global Toast ══════════ -->
+  <div class="toast" id="globalToast">
+    <span class="toast-icon">✓</span>
+    <span id="toastMessage">Response submitted & verified!</span>
+  </div>
+
+  <!-- ══════════ Footer ══════════ -->
+  <footer class="demo-footer">
+    <div class="footer-inner">
+      <div>
+        <strong>Smart Survey X Mock Suite</strong> · Political & Market Survey Engine Demo
+      </div>
+      <div class="footer-links">
+        <a href="landing.html">Landing Page</a>
+        <a href="whole.html">Unified Mock Prototype</a>
+        <a href="surveyor.html">Surveyor Surface</a>
+        <a href="admin-feed.html">Live Admin Feed</a>
+        <a href="total.html">Total App Mockup</a>
+        <a href="tokens.css">Design Tokens</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ══════════ Interactive Logic & Data Scripts ══════════ -->
+  <script>
+    /* ══════════════════════════════════════════════════════════
+       STATE & DATA REPOSITORIES
+       ══════════════════════════════════════════════════════════ */
+    let currentSuite = 'political'; // 'political' | 'market' | 'dual'
+    let liveSimTimer = null;
+    let isLiveActive = true;
+    let clockTimer = null;
+
+    // Political Dataset
+    const politicalData = {
+      title: "Constituency Sentiment, Booth Profiling & Ground Intake",
+      sub: "Test the interactive surveyor handheld interface on the left and see live voting intention, booth geofences, and swing margin shifts populate the command console in real-time.",
+      badge: "Electoral Intelligence & Voter Opinion Suite",
+      kpis: [
+        { label: "Sampled Voters", value: "48,290", sub: "+182 / hour", trend: "pos" },
+        { label: "Booth Coverage", value: "842 / 850", sub: "99.1% Covered", trend: "pos" },
+        { label: "Congress Lead", value: "41.8%", sub: "+4.3% Swing", trend: "pos" },
+        { label: "Undecided / Swing", value: "22.4%", sub: "Crucial decider", trend: "neg" },
+        { label: "Audit Health", value: "98.9%", sub: "Voice & GPS match", trend: "pos" }
+      ],
+      parties: [
+        { id: "cong", name: "Congress (INC)", pct: 41.8, count: 20185, color: "#16a34a" },
+        { id: "bjp", name: "BJP", pct: 31.2, count: 15066, color: "#f97316" },
+        { id: "brs", name: "BRS", pct: 18.6, count: 8982, color: "#ec4899" },
+        { id: "und", name: "Undecided / Swing", pct: 5.8, count: 2801, color: "#64748b" },
+        { id: "oth", name: "Others / Independent", pct: 2.6, count: 1256, color: "#94a3b8" }
+      ],
+      issues: [
+        { name: "Welfare Schemes & Direct Cash", pct: 36.4, color: "#1d6fe0" },
+        { name: "Youth Jobs & Employment", pct: 28.2, color: "#0284c7" },
+        { name: "Agriculture & Water Supply", pct: 19.5, color: "#16a34a" },
+        { name: "Price Rise & Inflation", pct: 11.4, color: "#f59e0b" },
+        { name: "Local Roads & Infrastructure", pct: 4.5, color: "#8b5cf6" }
+      ],
+      feed: [
+        { id: "SS-9102", surveyor: "Rajesh Varma", loc: "Booth 142 · Nizamabad Urban", vote: "Congress", issue: "Welfare Schemes", time: "just now", verified: true },
+        { id: "SS-9101", surveyor: "Sunita Reddy", loc: "Booth 89 · Armoor", vote: "BJP", issue: "Youth Jobs", time: "14s ago", verified: true },
+        { id: "SS-9100", surveyor: "K. Naveen", loc: "Booth 214 · Bodhan", vote: "BRS", issue: "Agriculture & Water", time: "38s ago", verified: true },
+        { id: "SS-9099", surveyor: "M. Anitha", loc: "Booth 73 · Nizamabad Rural", vote: "Undecided", issue: "Price Rise & Inflation", time: "1m ago", verified: true },
+        { id: "SS-9098", surveyor: "Venkat Rao", loc: "Booth 105 · Banswada", vote: "Congress", issue: "Welfare Schemes", time: "2m ago", verified: true }
+      ]
+    };
+
+    // Market Survey Dataset
+    const marketData = {
+      title: "Consumer Perception, Pricing Elasticity & Retail Audits",
+      sub: "Evaluate product prototypes, test price acceptability using Van Westendorp methodology, and monitor retail shelf execution in real time.",
+      badge: "Enterprise Market & FMCG Consumer Research",
+      kpis: [
+        { label: "Shoppers Polled", value: "24,150", sub: "+94 / hour", trend: "pos" },
+        { label: "Stores Audited", value: "1,420", sub: "Modern & Kirana", trend: "pos" },
+        { label: "Net Promoter Score", value: "+44", sub: "Strong Advocacy", trend: "pos" },
+        { label: "Target Product Share", value: "46.2%", sub: "+6.8% vs Rival", trend: "pos" },
+        { label: "Optimal Price", value: "₹149", sub: "Sweet Spot OPP", trend: "pos" }
+      ],
+      brands: [
+        { id: "our", name: "Brand Nova (Our Brand)", pct: 46.2, count: 11157, color: "#0284c7" },
+        { id: "rivalA", name: "Apex FMCG", pct: 27.5, count: 6641, color: "#f59e0b" },
+        { id: "rivalB", name: "PureLife Organics", pct: 16.8, count: 4057, color: "#10b981" },
+        { id: "store", name: "Store Private Label", pct: 6.5, count: 1570, color: "#8b5cf6" },
+        { id: "other", name: "Other Local Brands", pct: 3.0, count: 725, color: "#94a3b8" }
+      ],
+      purchaseDrivers: [
+        { name: "Taste & Sensory Appeal", pct: 41.5, color: "#0284c7" },
+        { name: "Eco Packaging & Clean Label", pct: 26.8, color: "#10b981" },
+        { name: "Competitive Price Point", pct: 18.2, color: "#f59e0b" },
+        { name: "Brand Trust & Advertising", pct: 9.4, color: "#8b5cf6" },
+        { name: "Store Shelf Prominence", pct: 4.1, color: "#ec4899" }
+      ],
+      feed: [
+        { id: "MS-4412", surveyor: "Priya Sharma", loc: "Spar Hypermarket · Banjara Hills", choice: "Brand Nova", rating: "5 Stars", time: "just now", verified: true },
+        { id: "MS-4411", surveyor: "Amit Verma", loc: "Ratnadeep Supermarket · Madhapur", choice: "Apex FMCG", rating: "4 Stars", time: "18s ago", verified: true },
+        { id: "MS-4410", surveyor: "Siddharth Rao", loc: "Local Kirana 44 · Secunderabad", choice: "Brand Nova", rating: "5 Stars", time: "42s ago", verified: true },
+        { id: "MS-4409", surveyor: "Deepa K.", loc: "Nature's Basket · Jubilee Hills", choice: "PureLife Organics", rating: "3 Stars", time: "1m ago", verified: true },
+        { id: "MS-4408", surveyor: "Rohan Das", loc: "More Megastore · Kukatpally", choice: "Brand Nova", rating: "4 Stars", time: "2m ago", verified: true }
+      ]
+    };
+
+    /* ══════════════════════════════════════════════════════════
+       INITIALIZATION
+       ══════════════════════════════════════════════════════════ */
+    window.addEventListener('DOMContentLoaded', () => {
+      startPhoneClock();
+      renderActiveSuite();
+      startLiveSimulator();
+    });
+
+    function startPhoneClock() {
+      function update() {
+        const d = new Date();
+        const hrs = String(d.getHours()).padStart(2, '0');
+        const mins = String(d.getMinutes()).padStart(2, '0');
+        const el = document.getElementById('phoneClock');
+        if (el) el.textContent = `${hrs}:${mins}`;
+      }
+      update();
+      clockTimer = setInterval(update, 10000);
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       SUITE SWITCHING LOGIC
+       ══════════════════════════════════════════════════════════ */
+    function switchSuite(mode) {
+      currentSuite = mode;
+      
+      // Update switcher buttons
+      document.querySelectorAll('.suite-tab').forEach(b => b.classList.remove('active'));
+      if (mode === 'political') document.getElementById('tab-political').classList.add('active');
+      else if (mode === 'market') document.getElementById('tab-market').classList.add('active');
+      else if (mode === 'dual') document.getElementById('tab-dual').classList.add('active');
+
+      renderActiveSuite();
+      showToast(mode === 'political' ? 'Switched to Political Intelligence Suite' : mode === 'market' ? 'Switched to Enterprise Market Survey Suite' : 'Viewing Dual Engine Comparison');
+    }
+
+    function renderActiveSuite() {
+      const isPol = currentSuite === 'political' || currentSuite === 'dual';
+      const isMkt = currentSuite === 'market';
+
+      // Update hero text
+      const heroBadge = document.getElementById('heroBadge');
+      const heroTitle = document.getElementById('heroTitle');
+      const heroSub = document.getElementById('heroSub');
+
+      if (currentSuite === 'political') {
+        heroBadge.className = 'badge-tag pol';
+        heroBadge.textContent = politicalData.badge;
+        heroTitle.textContent = politicalData.title;
+        heroSub.textContent = politicalData.sub;
+      } else if (currentSuite === 'market') {
+        heroBadge.className = 'badge-tag mkt';
+        heroBadge.textContent = marketData.badge;
+        heroTitle.textContent = marketData.title;
+        heroSub.textContent = marketData.sub;
+      } else {
+        heroBadge.className = 'badge-tag cmp';
+        heroBadge.textContent = 'Dual Intelligence Architecture';
+        heroTitle.textContent = 'Side-by-Side Political & Market Survey Engine';
+        heroSub.textContent = 'Explore how identical field resilience, anti-fraud GPS tracking, and real-time tabulation power both election campaigns and consumer market rollouts.';
+      }
+
+      // Render KPIs
+      renderKpis();
+
+      // Render Phone Surveyor Form
+      renderPhoneForm();
+
+      // Render Charts & Analytics
+      renderAnalyticsDeck();
+
+      // Render Raw Table
+      renderTable();
+    }
+
+    /* ── Render KPI Strip ── */
+    function renderKpis() {
+      const kpiStrip = document.getElementById('kpiStrip');
+      const items = (currentSuite === 'market') ? marketData.kpis : politicalData.kpis;
+      
+      kpiStrip.innerHTML = items.map(k => `
+        <div class="kpi-card ${currentSuite === 'market' ? 'mkt' : ''}">
+          <div class="kpi-label">${k.label}</div>
+          <div class="kpi-value">${k.value}</div>
+          <div class="kpi-sub">
+            <span class="${k.trend}">${k.sub}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    /* ── Render Handheld Surveyor Form ── */
+    function renderPhoneForm() {
+      const formContainer = document.getElementById('surveyQuestionsContainer');
+      const agentAvatar = document.getElementById('agentAvatar');
+      const agentName = document.getElementById('agentName');
+      const agentLoc = document.getElementById('agentLoc');
+      const formLeadTag = document.getElementById('formLeadTag');
+      const formLeadTitle = document.getElementById('formLeadTitle');
+      const formLeadSub = document.getElementById('formLeadSub');
+      const geoCoords = document.getElementById('geoCoords');
+      const submitBtnText = document.getElementById('submitBtnText');
+
+      if (currentSuite === 'political' || currentSuite === 'dual') {
+        agentAvatar.textContent = "RV";
+        agentAvatar.style.background = "#eff6ff";
+        agentAvatar.style.color = "#1d6fe0";
+        agentName.textContent = "Rajesh Varma (Surveyor #882)";
+        agentLoc.textContent = "Nizamabad Urban · Booth 142";
+        formLeadTag.textContent = "STAGE 1 · VOTER PROFILE";
+        formLeadTitle.textContent = "Door-to-Door Voter Interview";
+        formLeadSub.textContent = "Record voter preferences and key welfare impact accurately.";
+        geoCoords.textContent = "18.6725° N, 78.0941° E";
+        submitBtnText.textContent = "Submit & Verify Voter Record";
+
+        formContainer.innerHTML = `
+          <!-- Q1: AC & Booth Selection -->
+          <div class="survey-card-question">
+            <label class="q-label">
+              <span><span class="q-num">1</span> Assembly Constituency</span>
+              <span class="q-req">Required</span>
+            </label>
+            <select class="select-input" id="q_constituency">
+              <option value="Nizamabad Urban" selected>Nizamabad Urban (AC 17)</option>
+              <option value="Armoor">Armoor (AC 11)</option>
+              <option value="Bodhan">Bodhan (AC 12)</option>
+              <option value="Nizamabad Rural">Nizamabad Rural (AC 18)</option>
+              <option value="Banswada">Banswada (AC 13)</option>
+            </select>
+          </div>
+
+          <!-- Q2: Demographics -->
+          <div class="survey-card-question">
+            <label class="q-label">
+              <span><span class="q-num">2</span> Respondent Age & Locality</span>
+              <span class="q-req">Required</span>
+            </label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <select class="select-input" id="q_age">
+                <option value="18-25">18–25 (Youth First-time)</option>
+                <option value="26-40" selected>26–40 (Working Adult)</option>
+                <option value="41-60">41–60 (Senior Household)</option>
+                <option value="60+">60+ (Pensioner)</option>
+              </select>
+              <select class="select-input" id="q_locality">
+                <option value="Urban Core" selected>Urban Core Ward</option>
+                <option value="Semi-Urban">Semi-Urban</option>
+                <option value="Rural Hamlet">Rural Hamlet</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Q3: Deciding Issue -->
+          <div class="survey-card-question">
+            <label class="q-label">
+              <span><span class="q-num">3</span> Primary Deciding Issue</span>
+              <span class="q-req">Required</span>
+            </label>
+            <div class="option-pills" id="issuePills">
+              <button type="button" class="opt-btn selected" onclick="selectPill(this, 'issue')">Welfare Schemes</button>
+              <button type="button" class="opt-btn" onclick="selectPill(this, 'issue')">Youth Jobs</button>
+              <button type="button" class="opt-btn" onclick="selectPill(this, 'issue')">Agriculture & Water</button>
+              <button type="button" class="opt-btn" onclick="selectPill(this, 'issue')">Price Rise</button>
+              <button type="button" class="opt-btn" onclick="selectPill(this, 'issue')">Local Roads</button>
+            </div>
+            <input type="hidden" id="q_issue" value="Welfare Schemes" />
+          </div>
+
+          <!-- Q4: Voting Intention -->
+          <div class="survey-card-question">
+            <label class="q-label">
+              <span><span class="q-num">4</span> Voting Intention if Election Today</span>
+              <span class="q-req">Secret Ballot</span>
+            </label>
+            <div class="option-pills" id="partyPills" style="gap: 6px;">
+              <button type="button" class="opt-btn selected cong" onclick="selectPartyPill(this, 'Congress')">
+                <span class="party-dot cong"></span> Congress
+              </button>
+              <button type="button" class="opt-btn" onclick="selectPartyPill(this, 'BJP')">
+                <span class="party-dot bjp"></span> BJP
+              </button>
+              <button type="button" class="opt-btn" onclick="selectPartyPill(this, 'BRS')">
+                <span class="party-dot brs"></span> BRS
+              </button>
+              <button type="button" class="opt-btn" onclick="selectPartyPill(this, 'Undecided')">
+                <span class="party-dot und"></span> Undecided
+              </button>
+              <button type="button" class="opt-btn" onclick="selectPartyPill(this, 'Others')">
+                <span class="party-dot oth"></span> Others
+              </button>
+            </div>
+            <input type="hidden" id="q_party" value="Congress" />
+          </div>
+
+          <!-- Q5: Incumbent Governance Satisfaction -->
+          <div class="survey-card-question">
+            <label class="q-label">
+              <span><span class="q-num">5</span> Governance Satisfaction Rating</span>
+              <span id="starRatingLabel" style="font-weight: 800; color: #f59e0b;">4 / 5 (Satisfied)</span>
+            </label>
+            <div class="star-row">
+              <button type="button" class="star-btn lit" onclick="setStarRating(1)">★</button>
+              <button type="button" class="star-btn lit" onclick="setStarRating(2)">★</button>
+              <button type="button" class="star-btn lit" onclick="setStarRating(3)">★</button>
+              <button type="button" class="star-btn lit" onclick="setStarRating(4)">★</button>
+              <button type="button" class="star-btn" onclick="setStarRating(5)">★</button>
+            </div>
+            <input type="hidden" id="q_stars" value="4" />
+          </div>
+        `;
+      } else {
+        // Market Survey Form
+        agentAvatar.textContent = "PS";
+        agentAvatar.style.background = "#f0fdf4";
+        agentAvatar.style.color = "#0284c7";
+        agentName.textContent = "Priya Sharma (Retail Auditor #419)";
+        agentLoc.textContent = "Spar Hypermarket · Banjara Hills";
+        formLeadTag.textContent = "STAGE 1 · CONSUMER AUDIT";
+        formLeadTitle.textContent = "Shopper Taste & Packaging Test";
+        formLeadSub.textContent = "Evaluate consumer brand preference and price sensitivity.";
+        geoCoords.textContent = "17.4156° N, 78.4357° E";
+        submitBtnText.textContent = "Submit & Verify Consumer Audit";
+
+        formContainer.innerHTML = `
+          <!-- Q1: Retail Channel -->
+          <div class="survey-card-question">
+            <label class="q-label">
+              <span><span class="q-num">1</span> Retail Channel & Store Type</span>
+              <span class="q-req">Required</span>
+            </label>
+            <select class="select-input" id="q_channel">
+              <option value="Modern Trade Hypermarket" selected>Modern Trade Hypermarket (Spar / Lulu)</option>
+              <option value="Supermarket Chain">Supermarket Chain (Ratnadeep / More)</option>
+              <option value="Local Kirana Store">Local Kirana / High-Street Grocer</option>
+              <option value="Specialty Organic Store">Specialty Organic / Gourmet</option>
+            </select>
+          </div>
+
+          <!-- Q2: Brand Preference -->
+          <div class="survey-card-question">
+            <label class="q-label">
+              <span><span class="q-num">2</span> Preferred Brand Selection</span>
+              <span class="q-req">Required</span>
+            </label>
+            <div class="option-pills" id="brandPills">
+              <button type="button" class="opt-btn selected" onclick="selectBrandPill(this, 'Brand Nova')">Brand Nova (Our Brand)</button>
+              <button type="button" class="opt-btn" onclick="selectBrandPill(this, 'Apex FMCG')">Apex FMCG</button>
+              <button type="button" class="opt-btn" onclick="selectBrandPill(this, 'PureLife Organics')">PureLife</button>
+              <button type="button" class="opt-btn" onclick="selectBrandPill(this, 'Store Label')">Store Label</button>
+            </div>
+            <input type="hidden" id="q_brand" value="Brand Nova" />
+          </div>
+
+          <!-- Q3: Product Sensory & Packaging Score -->
+          <div class="survey-card-question">
+            <label class="q-label">
+              <span><span class="q-num">3</span> Sensory & Packaging Experience</span>
+              <span id="starRatingLabel" style="font-weight: 800; color: #f59e0b;">5 / 5 (Excellent)</span>
+            </label>
+            <div class="star-row">
+              <button type="button" class="star-btn lit" onclick="setStarRating(1)">★</button>
+              <button type="button" class="star-btn lit" onclick="setStarRating(2)">★</button>
+              <button type="button" class="star-btn lit" onclick="setStarRating(3)">★</button>
+              <button type="button" class="star-btn lit" onclick="setStarRating(4)">★</button>
+              <button type="button" class="star-btn lit" onclick="setStarRating(5)">★</button>
+            </div>
+            <input type="hidden" id="q_stars" value="5" />
+          </div>
+
+          <!-- Q4: Van Westendorp Price Test -->
+          <div class="survey-card-question">
+            <label class="q-label">
+              <span><span class="q-num">4</span> Price Acceptability (Van Westendorp)</span>
+              <span id="priceVal" style="font-weight: 800; color: #0284c7;">₹149 / unit</span>
+            </label>
+            <div class="slider-wrap">
+              <input type="range" min="79" max="249" step="10" value="149" class="range-slider" id="q_price" oninput="updatePriceLabel(this.value)" />
+              <div class="slider-labels">
+                <span>Too Cheap (₹79)</span>
+                <span>Optimal (₹149)</span>
+                <span>Expensive (₹249)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Q5: Purchase Intent -->
+          <div class="survey-card-question">
+            <label class="q-label">
+              <span><span class="q-num">5</span> Purchase Intention in Next 14 Days</span>
+              <span class="q-req">Required</span>
+            </label>
+            <div class="option-pills" id="intentPills">
+              <button type="button" class="opt-btn selected" onclick="selectPill(this, 'intent')">Definitely Buy</button>
+              <button type="button" class="opt-btn" onclick="selectPill(this, 'intent')">Probably Buy</button>
+              <button type="button" class="opt-btn" onclick="selectPill(this, 'intent')">Might Not Buy</button>
+            </div>
+            <input type="hidden" id="q_intent" value="Definitely Buy" />
+          </div>
+        `;
+      }
+    }
+
+    /* ── Form Interactive Helpers ── */
+    function selectPill(btn, group) {
+      btn.parentElement.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      const hidden = document.getElementById(`q_${group}`);
+      if (hidden) hidden.value = btn.textContent.trim();
+    }
+
+    function selectPartyPill(btn, party) {
+      const container = document.getElementById('partyPills');
+      container.querySelectorAll('.opt-btn').forEach(b => {
+        b.className = 'opt-btn';
+      });
+      btn.classList.add('selected');
+      if (party === 'Congress') btn.classList.add('cong');
+      else if (party === 'BJP') btn.classList.add('bjp');
+      else if (party === 'BRS') btn.classList.add('brs');
+      else if (party === 'Undecided') btn.classList.add('und');
+      document.getElementById('q_party').value = party;
+    }
+
+    function selectBrandPill(btn, brand) {
+      const container = document.getElementById('brandPills');
+      container.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      document.getElementById('q_brand').value = brand;
+    }
+
+    function setStarRating(num) {
+      const stars = document.querySelectorAll('.star-btn');
+      stars.forEach((s, idx) => {
+        if (idx < num) s.classList.add('lit');
+        else s.classList.remove('lit');
+      });
+      document.getElementById('q_stars').value = num;
+      const label = document.getElementById('starRatingLabel');
+      const text = num === 5 ? '5 / 5 (Outstanding)' : num === 4 ? '4 / 5 (Satisfied)' : num === 3 ? '3 / 5 (Neutral)' : num === 2 ? '2 / 5 (Poor)' : '1 / 5 (Very Dissatisfied)';
+      if (label) label.textContent = text;
+    }
+
+    function updatePriceLabel(val) {
+      const el = document.getElementById('priceVal');
+      if (el) el.textContent = `₹${val} / unit`;
+    }
+
+    /* ── Quick Auto-Fill Form ── */
+    function quickFillForm() {
+      if (currentSuite === 'political') {
+        const parties = ['Congress', 'BJP', 'BRS', 'Undecided'];
+        const randParty = parties[Math.floor(Math.random() * parties.length)];
+        const btns = document.querySelectorAll('#partyPills .opt-btn');
+        btns.forEach(b => {
+          if (b.textContent.includes(randParty)) selectPartyPill(b, randParty);
+        });
+        const rating = Math.floor(Math.random() * 3) + 3; // 3, 4, or 5
+        setStarRating(rating);
+      } else {
+        const brands = ['Brand Nova', 'Apex FMCG', 'PureLife Organics'];
+        const randBrand = brands[Math.floor(Math.random() * brands.length)];
+        const btns = document.querySelectorAll('#brandPills .opt-btn');
+        btns.forEach(b => {
+          if (b.textContent.includes(randBrand)) selectBrandPill(b, randBrand);
+        });
+        const price = [119, 139, 149, 159, 179][Math.floor(Math.random() * 5)];
+        const slider = document.getElementById('q_price');
+        if (slider) {
+          slider.value = price;
+          updatePriceLabel(price);
+        }
+      }
+      showToast('Form filled with randomized sample profile');
+    }
+
+    /* ── Handle Response Submission ── */
+    function submitSurveyorResponse() {
+      const isPol = currentSuite === 'political' || currentSuite === 'dual';
+      
+      let recordId, title, sub, tag;
+      if (isPol) {
+        const party = document.getElementById('q_party')?.value || 'Congress';
+        const issue = document.getElementById('q_issue')?.value || 'Welfare Schemes';
+        const ac = document.getElementById('q_constituency')?.value || 'Nizamabad Urban';
+        const age = document.getElementById('q_age')?.value || '26-40';
+        
+        recordId = 'SS-' + Math.floor(9200 + Math.random() * 800);
+        title = `Voter Intention: ${party} (${ac})`;
+        sub = `Deciding factor: ${issue} · Age: ${age} · Satisfaction: 4/5`;
+        tag = party;
+
+        // Update counts
+        const pObj = politicalData.parties.find(p => p.name.includes(party) || (party === 'Congress' && p.id === 'cong'));
+        if (pObj) {
+          pObj.count += 1;
+        }
+
+        // Add to feed
+        politicalData.feed.unshift({
+          id: recordId,
+          surveyor: "Rajesh Varma",
+          loc: ac + " · Booth 142",
+          vote: party,
+          issue: issue,
+          time: "just now",
+          verified: true
+        });
+
+      } else {
+        const brand = document.getElementById('q_brand')?.value || 'Brand Nova';
+        const price = document.getElementById('q_price')?.value || '149';
+        const channel = document.getElementById('q_channel')?.value || 'Modern Trade';
+        
+        recordId = 'MS-' + Math.floor(4500 + Math.random() * 500);
+        title = `Consumer Preference: ${brand}`;
+        sub = `Store: ${channel} · OPP: ₹${price} · Rating: 5 Stars`;
+        tag = brand;
+
+        const bObj = marketData.brands.find(b => b.name.includes(brand));
+        if (bObj) {
+          bObj.count += 1;
+        }
+
+        marketData.feed.unshift({
+          id: recordId,
+          surveyor: "Priya Sharma",
+          loc: "Spar Hypermarket · Banjara Hills",
+          choice: brand,
+          rating: "5 Stars",
+          time: "just now",
+          verified: true
+        });
+      }
+
+      // Refresh visuals
+      renderAnalyticsDeck();
+      renderFeed();
+      renderTable();
+      showToast(`Record #${recordId} submitted, GPS verified & synced!`);
+
+      // Micro-animation on submit button
+      const btn = document.querySelector('.submit-btn');
+      btn.style.transform = 'scale(0.95)';
+      setTimeout(() => btn.style.transform = 'scale(1)', 140);
+    }
+
+    /* ── Render Analytics & Charts ── */
+    function renderAnalyticsDeck() {
+      const isPol = currentSuite === 'political' || currentSuite === 'dual';
+      const mainTitle = document.getElementById('mainChartTitle');
+      const secondTitle = document.getElementById('secondChartTitle');
+      const mainContainer = document.getElementById('mainBarsContainer');
+      const secondContainer = document.getElementById('secondBarsContainer');
+      const demoContainer = document.getElementById('demographicSegments');
+      const totalCounter = document.getElementById('totalSampleCounter');
+
+      if (isPol) {
+        mainTitle.textContent = "Political Voting Intention (Vote Share %)";
+        secondTitle.textContent = "Top Deciding Issues (Priority %)";
+        
+        const total = politicalData.parties.reduce((acc, p) => acc + p.count, 0);
+        totalCounter.textContent = `${total.toLocaleString()} sampled`;
+
+        mainContainer.innerHTML = politicalData.parties.map(p => {
+          const pct = ((p.count / total) * 100).toFixed(1);
+          return `
+            <div class="bar-row">
+              <div class="bar-info">
+                <span><span class="party-dot ${p.id}"></span> ${p.name}</span>
+                <span class="mono">${pct}% (${p.count.toLocaleString()})</span>
+              </div>
+              <div class="bar-track">
+                <div class="bar-fill" style="width: ${pct}%; background: ${p.color};"></div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        secondContainer.innerHTML = politicalData.issues.map(i => `
+          <div class="bar-row">
+            <div class="bar-info">
+              <span>${i.name}</span>
+              <span class="mono">${i.pct}%</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width: ${i.pct}%; background: ${i.color};"></div>
+            </div>
+          </div>
+        `).join('');
+
+        demoContainer.innerHTML = `
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 11px;">
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+              <div style="font-weight: 700; color: #475569;">Youth 18–25</div>
+              <div style="font-size: 16px; font-weight: 800; color: #16a34a; margin: 4px 0;">44.2% INC</div>
+              <div style="color: #64748b;">Job promise impact</div>
+            </div>
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+              <div style="font-weight: 700; color: #475569;">Women Voters</div>
+              <div style="font-size: 16px; font-weight: 800; color: #16a34a; margin: 4px 0;">48.1% INC</div>
+              <div style="color: #64748b;">Free travel & gas scheme</div>
+            </div>
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+              <div style="font-weight: 700; color: #475569;">Urban Core</div>
+              <div style="font-size: 16px; font-weight: 800; color: #f97316; margin: 4px 0;">39.8% BJP</div>
+              <div style="color: #64748b;">National candidate pull</div>
+            </div>
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+              <div style="font-weight: 700; color: #475569;">Agrarian Rural</div>
+              <div style="font-size: 16px; font-weight: 800; color: #ec4899; margin: 4px 0;">31.2% BRS</div>
+              <div style="color: #64748b;">Rythu welfare recall</div>
+            </div>
+          </div>
+        `;
+      } else {
+        mainTitle.textContent = "Brand Market Consideration Share (%)";
+        secondTitle.textContent = "Primary Consumer Purchase Drivers (%)";
+
+        const total = marketData.brands.reduce((acc, b) => acc + b.count, 0);
+        totalCounter.textContent = `${total.toLocaleString()} sampled`;
+
+        mainContainer.innerHTML = marketData.brands.map(b => {
+          const pct = ((b.count / total) * 100).toFixed(1);
+          return `
+            <div class="bar-row">
+              <div class="bar-info">
+                <span>${b.name}</span>
+                <span class="mono">${pct}% (${b.count.toLocaleString()})</span>
+              </div>
+              <div class="bar-track">
+                <div class="bar-fill" style="width: ${pct}%; background: ${b.color};"></div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        secondContainer.innerHTML = marketData.purchaseDrivers.map(i => `
+          <div class="bar-row">
+            <div class="bar-info">
+              <span>${i.name}</span>
+              <span class="mono">${i.pct}%</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width: ${i.pct}%; background: ${i.color};"></div>
+            </div>
+          </div>
+        `).join('');
+
+        demoContainer.innerHTML = `
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 11px;">
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+              <div style="font-weight: 700; color: #475569;">Modern Trade</div>
+              <div style="font-size: 16px; font-weight: 800; color: #0284c7; margin: 4px 0;">52.4% Nova</div>
+              <div style="color: #64748b;">Endcap promotion pull</div>
+            </div>
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+              <div style="font-weight: 700; color: #475569;">Kirana General Trade</div>
+              <div style="font-size: 16px; font-weight: 800; color: #f59e0b; margin: 4px 0;">34.2% Apex</div>
+              <div style="color: #64748b;">Wholesale margin push</div>
+            </div>
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+              <div style="font-weight: 700; color: #475569;">Repeat Purchase</div>
+              <div style="font-size: 16px; font-weight: 800; color: #10b981; margin: 4px 0;">64.8% Trial</div>
+              <div style="color: #64748b;">High sensory loyalty</div>
+            </div>
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+              <div style="font-weight: 700; color: #475569;">Optimal Price Window</div>
+              <div style="font-size: 16px; font-weight: 800; color: #8b5cf6; margin: 4px 0;">₹139 – ₹159</div>
+              <div style="color: #64748b;">Van Westendorp OPP</div>
+            </div>
+          </div>
+        `;
+      }
+
+      renderFeed();
+    }
+
+    /* ── Render Feed List ── */
+    function renderFeed() {
+      const feedList = document.getElementById('feedList');
+      const isPol = currentSuite === 'political' || currentSuite === 'dual';
+      const items = isPol ? politicalData.feed : marketData.feed;
+
+      feedList.innerHTML = items.slice(0, 8).map(item => `
+        <div class="feed-item">
+          <div class="feed-avatar ${isPol ? '' : 'mkt'}">
+            ${isPol ? (item.vote.substring(0, 2).toUpperCase()) : (item.choice.substring(0, 2).toUpperCase())}
+          </div>
+          <div class="feed-main">
+            <div class="feed-top">
+              <span class="feed-title">${isPol ? item.vote : item.choice}</span>
+              <span class="feed-time">${item.time}</span>
+            </div>
+            <div class="feed-desc">
+              ${isPol ? `Respondent in <strong>${item.loc}</strong> prioritized <em>${item.issue}</em>.` : `Shopper in <strong>${item.loc}</strong> gave rating <em>${item.rating}</em>.`}
+            </div>
+            <div class="feed-chips">
+              <span class="feed-chip verified">✓ GPS Geofence Match</span>
+              <span class="feed-chip">${item.surveyor}</span>
+              <span class="feed-chip mono">${item.id}</span>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    /* ── Render Raw Records Table ── */
+    function renderTable() {
+      const isPol = currentSuite === 'political' || currentSuite === 'dual';
+      const headRow = document.getElementById('tableHeadRow');
+      const body = document.getElementById('tableBody');
+
+      if (isPol) {
+        headRow.innerHTML = `
+          <th>Record ID</th>
+          <th>Surveyor</th>
+          <th>Constituency & Booth</th>
+          <th>Voting Intention</th>
+          <th>Deciding Issue</th>
+          <th>Status</th>
+        `;
+        body.innerHTML = politicalData.feed.map(item => `
+          <tr>
+            <td class="mono font-bold">${item.id}</td>
+            <td>${item.surveyor}</td>
+            <td>${item.loc}</td>
+            <td><strong>${item.vote}</strong></td>
+            <td>${item.issue || 'Welfare'}</td>
+            <td><span class="feed-chip verified">Verified</span></td>
+          </tr>
+        `).join('');
+      } else {
+        headRow.innerHTML = `
+          <th>Record ID</th>
+          <th>Auditor</th>
+          <th>Store & Location</th>
+          <th>Brand Selected</th>
+          <th>Experience Rating</th>
+          <th>Status</th>
+        `;
+        body.innerHTML = marketData.feed.map(item => `
+          <tr>
+            <td class="mono font-bold">${item.id}</td>
+            <td>${item.surveyor}</td>
+            <td>${item.loc}</td>
+            <td><strong>${item.choice}</strong></td>
+            <td>${item.rating || '5 Stars'}</td>
+            <td><span class="feed-chip verified">Verified</span></td>
+          </tr>
+        `).join('');
+      }
+    }
+
+    function filterTable() {
+      const q = document.getElementById('tableSearch').value.toLowerCase();
+      const rows = document.querySelectorAll('#tableBody tr');
+      rows.forEach(r => {
+        r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    }
+
+    /* ── Deck Tab Switching ── */
+    function switchDeckTab(tabKey, btn) {
+      document.querySelectorAll('.deck-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.deck-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById(`panel-${tabKey}`).classList.add('active');
+    }
+
+    /* ── Real-Time Live Simulator ── */
+    function startLiveSimulator() {
+      if (liveSimTimer) clearInterval(liveSimTimer);
+      liveSimTimer = setInterval(() => {
+        if (!isLiveActive) return;
+        simulateIncomingRecord();
+      }, 3000);
+    }
+
+    function toggleLiveSim() {
+      isLiveActive = !isLiveActive;
+      const statusText = document.getElementById('liveStatusText');
+      const dot = document.querySelector('.live-pill .dot');
+      if (isLiveActive) {
+        statusText.textContent = "Live Feed Active (3s)";
+        dot.style.background = "#16a34a";
+        showToast("Live intake simulation resumed");
+      } else {
+        statusText.textContent = "Live Feed Paused";
+        dot.style.background = "#94a3b8";
+        showToast("Live intake simulation paused");
+      }
+    }
+
+    function simulateIncomingRecord() {
+      const isPol = currentSuite === 'political' || currentSuite === 'dual';
+      if (isPol) {
+        const parties = ["Congress", "BJP", "BRS", "Congress", "Undecided"];
+        const surveyors = ["Sunita Reddy", "K. Naveen", "M. Anitha", "Venkat Rao", "Kavita Rao"];
+        const booths = ["Booth 142 · Nizamabad", "Booth 89 · Armoor", "Booth 214 · Bodhan", "Booth 45 · Balkonda"];
+        const issues = ["Welfare Schemes", "Youth Jobs", "Agriculture & Water", "Price Rise"];
+        
+        const pChoice = parties[Math.floor(Math.random() * parties.length)];
+        const pObj = politicalData.parties.find(p => p.name.includes(pChoice) || (pChoice === 'Congress' && p.id === 'cong'));
+        if (pObj) pObj.count += 1;
+
+        politicalData.feed.unshift({
+          id: 'SS-' + Math.floor(9200 + Math.random() * 800),
+          surveyor: surveyors[Math.floor(Math.random() * surveyors.length)],
+          loc: booths[Math.floor(Math.random() * booths.length)],
+          vote: pChoice,
+          issue: issues[Math.floor(Math.random() * issues.length)],
+          time: "just now",
+          verified: true
+        });
+      } else {
+        const brands = ["Brand Nova", "Brand Nova", "Apex FMCG", "PureLife Organics"];
+        const stores = ["Spar · Banjara Hills", "Ratnadeep · Madhapur", "Kirana 88 · Secunderabad", "More · Kukatpally"];
+        const auditors = ["Priya Sharma", "Amit Verma", "Siddharth Rao", "Deepa K."];
+
+        const bChoice = brands[Math.floor(Math.random() * brands.length)];
+        const bObj = marketData.brands.find(b => b.name.includes(bChoice));
+        if (bObj) bObj.count += 1;
+
+        marketData.feed.unshift({
+          id: 'MS-' + Math.floor(4500 + Math.random() * 500),
+          surveyor: auditors[Math.floor(Math.random() * auditors.length)],
+          loc: stores[Math.floor(Math.random() * stores.length)],
+          choice: bChoice,
+          rating: (Math.random() > 0.3 ? "5 Stars" : "4 Stars"),
+          time: "just now",
+          verified: true
+        });
+      }
+
+      renderAnalyticsDeck();
+      renderTable();
+    }
+
+    /* ── Reset Demo Data ── */
+    function resetDemoData() {
+      politicalData.parties[0].count = 20185;
+      politicalData.parties[1].count = 15066;
+      politicalData.parties[2].count = 8982;
+      politicalData.parties[3].count = 2801;
+      politicalData.parties[4].count = 1256;
+
+      marketData.brands[0].count = 11157;
+      marketData.brands[1].count = 6641;
+      marketData.brands[2].count = 4057;
+      marketData.brands[3].count = 1570;
+      marketData.brands[4].count = 725;
+
+      renderAnalyticsDeck();
+      renderFeed();
+      renderTable();
+      showToast("Demo datasets successfully reset to baseline");
+    }
+
+    /* ── Data Export Functionality (CSV & JSON) ── */
+    function exportData(format) {
+      const isPol = currentSuite === 'political' || currentSuite === 'dual';
+      const filename = isPol ? `political_survey_samples_${Date.now()}` : `market_research_samples_${Date.now()}`;
+      const dataItems = isPol ? politicalData.feed : marketData.feed;
+
+      if (format === 'csv') {
+        let csvContent = "data:text/csv;charset=utf-8,";
+        if (isPol) {
+          csvContent += "Record_ID,Surveyor,Location,Vote_Intention,Primary_Issue,Status\n";
+          dataItems.forEach(d => {
+            csvContent += `"${d.id}","${d.surveyor}","${d.loc}","${d.vote}","${d.issue || ''}","Verified"\n`;
+          });
+        } else {
+          csvContent += "Record_ID,Auditor,Store_Location,Brand_Choice,Rating,Status\n";
+          dataItems.forEach(d => {
+            csvContent += `"${d.id}","${d.surveyor}","${d.loc}","${d.choice}","${d.rating || ''}","Verified"\n`;
+          });
+        }
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `${filename}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast(`Exported ${dataItems.length} records as CSV`);
+      } else {
+        const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataItems, null, 2));
+        const link = document.createElement("a");
+        link.setAttribute("href", jsonStr);
+        link.setAttribute("download", `${filename}.json`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast(`Exported JSON dataset`);
+      }
+    }
+
+    /* ── Toast Utility ── */
+    let toastTimeout;
+    function showToast(msg) {
+      const t = document.getElementById('globalToast');
+      const m = document.getElementById('toastMessage');
+      m.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        t.classList.remove('show');
+      }, 3000);
+    }
+  </script>
+</body>
+</html>

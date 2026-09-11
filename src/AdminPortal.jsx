@@ -21,6 +21,7 @@ import AdminLogin from './AdminLogin'
 import VerifiedBadge from './VerifiedBadge'
 import { PortalEmpty, PortalSkeleton } from './PortalUI'
 import AdminBell from './AdminBell'
+import useIdleTimeout from './hooks/useIdleTimeout'
 import './App.css'
 import './portal.css'
 
@@ -1189,6 +1190,12 @@ export default function AdminPortal({ superAdminOnly = false }) {
   }, [canPage, notify])
 
   const handleLogout = useCallback(async () => {
+    try {
+      localStorage.removeItem('esurvey_last_active')
+      localStorage.removeItem('esurvey_idle_logged_out')
+    } catch {
+      /* ignore */
+    }
     await logout()
     setUser(null)
     setStats(null)
@@ -1197,6 +1204,27 @@ export default function AdminPortal({ superAdminOnly = false }) {
     setPage('overview')
     notify('Logged out', 'ok')
   }, [notify])
+
+  const handleIdleLogout = useCallback(async () => {
+    try {
+      localStorage.setItem('esurvey_idle_logged_out', String(Date.now()))
+    } catch {
+      /* ignore */
+    }
+    await logout()
+    setUser(null)
+    setStats(null)
+    setItems([])
+    setSurveys([])
+    setPage('overview')
+    notify('Logged out due to 5 minutes of inactivity', 'error')
+  }, [notify])
+
+  useIdleTimeout({
+    onTimeout: handleIdleLogout,
+    timeoutMs: 5 * 60 * 1000,
+    enabled: Boolean(user && authReady),
+  })
 
   useEffect(() => {
     const onUnauthorized = (e) => {
@@ -1428,6 +1456,12 @@ export default function AdminPortal({ superAdminOnly = false }) {
           superAdminOnly={superAdminOnly}
           onToast={notify}
           onSuccess={(u) => {
+            try {
+              localStorage.removeItem('esurvey_idle_logged_out')
+              localStorage.setItem('esurvey_last_active', String(Date.now()))
+            } catch {
+              /* ignore */
+            }
             setUser(u)
             setPage('overview')
           }}

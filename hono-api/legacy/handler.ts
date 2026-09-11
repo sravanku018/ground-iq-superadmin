@@ -3798,6 +3798,16 @@ async function getMandalLookup(sqlFn: NonNullable<typeof sql>): Promise<Map<stri
   return lookup;
 }
 
+async function countAnalyticsRows(
+  sqlFn: NonNullable<typeof sql>,
+  scopeKeys: string[] | null,
+): Promise<number> {
+  const rows = scopeKeys
+    ? await sqlFn`SELECT COUNT(*)::int AS n FROM submissions WHERE payload->>'form_key' = ANY(${scopeKeys})`
+    : await sqlFn`SELECT COUNT(*)::int AS n FROM submissions`;
+  return (rows as { n: number }[])[0]?.n ?? 0;
+}
+
 async function loadAnalyticsRows(
   sqlFn: NonNullable<typeof sql>,
   limit = 500000,
@@ -4114,7 +4124,8 @@ async function buildAnalytics(
   }
   // period=total → leave dateFrom/dateTo as provided (or empty = all time)
 
-  const allRows = await loadAnalyticsRows(sqlFn, 500000, scopeKeys);
+  const rowCount = await countAnalyticsRows(sqlFn, scopeKeys);
+  const allRows = await loadAnalyticsRows(sqlFn, rowCount + 1000, scopeKeys);
 
   const statusCounts = {
     pending: allRows.filter((r) => r.status === "pending").length,
@@ -4932,8 +4943,8 @@ async function rawHandler(req: Request): Promise<Response> {
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.64",
-          versionCode: 20064,
+          version: "2.0.65",
+          versionCode: 20065,
           minSupportedVersionCode: 20000,
           apkUrl: `https://${req.headers.get("x-forwarded-host") || url.hostname}/api/app.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
@@ -11400,7 +11411,9 @@ async function rawHandler(req: Request): Promise<Response> {
           .toLowerCase();
         const asTe = langQ === "te" || langQ === "telugu" || langQ === "te-in";
 
-        const allRows = await loadAnalyticsRows(sql, 500000, await adminFormKeyScope(sql, me));
+        const scope = await adminFormKeyScope(sql, me);
+        const rowCount = await countAnalyticsRows(sql, scope);
+        const allRows = await loadAnalyticsRows(sql, rowCount + 1000, scope);
         let rows = allRows;
         if (statusQ !== "all") rows = rows.filter((r) => r.status === statusQ);
         if (dateFrom) rows = rows.filter((r) => dayKey(r.created_at) >= dateFrom);

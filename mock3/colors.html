@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Colors & Themes — Light Mode Combination</title>
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-family: var(--font); }
+  body { background: var(--bg); color: var(--ink); min-height: 100vh; padding: var(--sp-6); display: flex; justify-content: center; flex-wrap: wrap; gap: var(--sp-5); }
+
+  .page-head { width: 100%; max-width: 1060px; margin: 0 auto var(--sp-5); }
+  .page-head h1 { font-size: var(--fs-xl); font-weight: var(--fw-bold); }
+  .page-head p { font-size: var(--fs-sm); color: var(--ink-muted); margin-top: 2px; }
+  .page-head .tags { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .page-head .tag { font-size: 10px; font-weight: var(--fw-bold); padding: 3px 8px; border-radius: var(--r-sm); background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border); }
+
+  .card { background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-sm); max-width: 500px; width: 100%; }
+  .card.wide { max-width: 1060px; }
+  .card h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); margin-bottom: var(--sp-1); }
+  .card .csub { font-size: var(--fs-xs); color: var(--ink-muted); margin-bottom: var(--sp-4); }
+
+  /* ── Swatch grid ── */
+  .swatch-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .swatch-row:last-child { margin-bottom: 0; }
+  .swatch { flex: 1; min-width: 86px; border-radius: 10px; border: 1px solid var(--surface-hover); overflow: hidden; }
+  .swatch .chip-color { height: 44px; }
+  .swatch .chip-meta { padding: 6px 8px; background: var(--surface); }
+  .swatch .chip-meta .nm { font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-secondary); }
+  .swatch .chip-meta .hx { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; color: var(--ink-muted); }
+  .swatch.tall .chip-color { height: 54px; }
+
+  /* pair row (fill + tint) */
+  .pair { display: flex; align-items: stretch; gap: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--surface-hover); margin-bottom: 8px; }
+  .pair .fill { flex: 1.2; padding: 10px 12px; color: #fff; font-size: 11px; font-weight: 800; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+  .pair .fill .hx { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; font-weight: 600; opacity: .85; }
+  .pair .tint { flex: 1; padding: 10px 12px; font-size: 11px; font-weight: 800; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+  .pair .tint .hx { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; font-weight: 600; opacity: .8; }
+
+  /* ── Combination previews ── */
+  .combo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--sp-4); width: 100%; }
+  .combo { border: 1px solid var(--surface-hover); border-radius: var(--r-md); overflow: hidden; }
+  .combo .combo-head { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); padding: 8px 12px; background: var(--surface-alt); border-bottom: 1px solid var(--surface-hover); }
+
+  /* a · Field card */
+  .f-hero { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff; padding: 14px 16px; }
+  .f-hero .eyebrow { font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
+  .f-hero h4 { font-size: 15px; margin: 3px 0; }
+  .f-hero .sub { font-size: 11px; color: #94a3b8; }
+  .f-pills { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .f-pill { background: rgba(5,150,105,.22); color: #6ee7b7; border-radius: 999px; padding: 3px 10px; font-size: 10px; font-weight: 700; }
+  .f-body { padding: 12px 16px 14px; background: var(--surface); }
+  .f-chiprow { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .f-chip { font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+  .f-cta { width: 100%; min-height: 40px; background: #059669; color: #fff; border: none; border-radius: 10px; font-size: 12.5px; font-weight: 700; box-shadow: 0 2px 8px rgba(5,150,105,.3); }
+
+  /* b · Portal strip */
+  .p-body { padding: 14px 16px; background: var(--surface); }
+  .p-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .p-kpi { border: 1px solid #dadce0; border-radius: 8px; padding: 8px 10px; }
+  .p-kpi b { display: block; font-size: 15px; color: #202124; }
+  .p-kpi span { font-size: 9px; color: #5f6368; font-weight: 600; }
+  .p-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .p-btn { display: inline-flex; align-items: center; gap: 4px; border-radius: 8px; font-size: 11px; font-weight: 600; padding: 6px 12px; border: 1px solid #dadce0; background: #fff; color: #3c4043; }
+  .p-btn.primary { background: #1a73e8; color: #fff; border-color: #1a73e8; box-shadow: 0 1px 2px rgba(26,115,232,.2); }
+  .p-btn.danger { background: #fce8e6; color: #c5221f; border-color: #fad2cf; }
+  .p-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; padding: 3px 8px; border-radius: 999px; background: #e8f0fe; color: #1967d2; border: 1px solid #d2e3fc; }
+
+  /* c · QA review row */
+  .qa-body { padding: 12px 16px 14px; background: var(--surface); }
+  .qa-top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .qa-av { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg,#34d399,#059669); color: #fff; display: grid; place-items: center; font-size: 10px; font-weight: 800; flex-shrink: 0; }
+  .qa-name { font-size: 12px; font-weight: 700; }
+  .qa-loc { font-size: 10px; color: var(--ink-muted); }
+  .qa-status { margin-left: auto; font-size: 10px; font-weight: 800; padding: 3px 10px; border-radius: 999px; }
+  .party-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; padding: 4px 10px; border-radius: 999px; margin-right: 6px; }
+  .party-pill .dot { width: 8px; height: 8px; border-radius: 3px; }
+
+  /* dark inset */
+  .dark-inset { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border: 1px solid rgba(56,189,248,.4); border-radius: 12px; padding: 12px 14px; color: #f8fafc; display: flex; gap: 10px; align-items: flex-start; }
+  .dark-inset .ico { width: 30px; height: 30px; border-radius: 8px; background: rgba(56,189,248,.15); display: grid; place-items: center; font-size: 15px; flex-shrink: 0; }
+  .dark-inset .t { font-size: 12px; font-weight: 700; color: #38bdf8; }
+  .dark-inset .b { font-size: 11px; color: #cbd5e1; margin-top: 2px; line-height: 1.45; }
+
+  /* Notes */
+  .notes { width: 100%; max-width: 1060px; margin: var(--sp-5) auto 0; padding: var(--sp-4); background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); }
+  .notes h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); margin-bottom: var(--sp-3); }
+  .notes .principle { display: flex; gap: 8px; margin-bottom: var(--sp-3); font-size: var(--fs-sm); color: var(--ink-secondary); line-height: 1.5; }
+  .notes .principle .tag { background: var(--accent-bg); color: var(--accent); border-radius: var(--r-sm); padding: 1px 7px; font-size: 10px; font-weight: var(--fw-bold); white-space: nowrap; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>Colors & Themes — Light Mode Combination</h1>
+  <p>The whole light-mode system on one page: neutral ramps, the two brand accents (field emerald · portal blue), the shipped party palette with its bg tints, status colors — and the three combinations that actually ship together.</p>
+  <div class="tags">
+    <span class="tag">[G] ONE SYSTEM</span>
+    <span class="tag">[G] FILL + TINT PAIRS</span>
+    <span class="tag">[A] CONTRAST FIRST</span>
+    <span class="tag">tokens.css · App.css · portal.css</span>
+  </div>
+</div>
+
+<!-- ═══ Neutrals ═══ -->
+<div class="card">
+  <h3>Neutrals — surfaces & ink</h3>
+  <div class="csub">One grey ramp drives everything. Surfaces step lighter as they rise; ink steps darker as it matters.</div>
+  <div class="swatch-row">
+    <div class="swatch"><div class="chip-color" style="background:#f8fafc"></div><div class="chip-meta"><div class="nm">bg</div><div class="hx">#f8fafc</div></div></div>
+    <div class="swatch"><div class="chip-color" style="background:#f1f5f9"></div><div class="chip-meta"><div class="nm">surface-alt</div><div class="hx">#f1f5f9</div></div></div>
+    <div class="swatch"><div class="chip-color" style="background:#e2e8f0"></div><div class="chip-meta"><div class="nm">surface-hover</div><div class="hx">#e2e8f0</div></div></div>
+    <div class="swatch"><div class="chip-color" style="background:#ffffff;border-bottom:1px solid #e2e8f0"></div><div class="chip-meta"><div class="nm">surface</div><div class="hx">#ffffff</div></div></div>
+  </div>
+  <div class="swatch-row">
+    <div class="swatch tall"><div class="chip-color" style="background:#0f172a"></div><div class="chip-meta"><div class="nm">ink</div><div class="hx">#0f172a</div></div></div>
+    <div class="swatch tall"><div class="chip-color" style="background:#475569"></div><div class="chip-meta"><div class="nm">ink-secondary</div><div class="hx">#475569</div></div></div>
+    <div class="swatch tall"><div class="chip-color" style="background:#64748b"></div><div class="chip-meta"><div class="nm">ink-muted</div><div class="hx">#64748b</div></div></div>
+    <div class="swatch tall"><div class="chip-color" style="background:#94a3b8"></div><div class="chip-meta"><div class="nm">ink-faint</div><div class="hx">#94a3b8</div></div></div>
+  </div>
+</div>
+
+<!-- ═══ Brand accents ═══ -->
+<div class="card">
+  <h3>Brand accents — two skins, one grammar</h3>
+  <div class="csub">Field app speaks emerald (App.css); portal speaks Google blue (portal.css). Same job, same rules — never mix the two skins on one surface.</div>
+  <div class="swatch-row">
+    <div class="swatch tall"><div class="chip-color" style="background:#059669"></div><div class="chip-meta"><div class="nm">field · accent</div><div class="hx">#059669</div></div></div>
+    <div class="swatch tall"><div class="chip-color" style="background:#047857"></div><div class="chip-meta"><div class="nm">hover</div><div class="hx">#047857</div></div></div>
+    <div class="swatch tall"><div class="chip-color" style="background:#065f46"></div><div class="chip-meta"><div class="nm">active</div><div class="hx">#065f46</div></div></div>
+    <div class="swatch tall"><div class="chip-color" style="background:#ecfdf5"></div><div class="chip-meta"><div class="nm">accent-light</div><div class="hx">#ecfdf5</div></div></div>
+  </div>
+  <div class="swatch-row">
+    <div class="swatch tall"><div class="chip-color" style="background:#1a73e8"></div><div class="chip-meta"><div class="nm">portal · primary</div><div class="hx">#1a73e8</div></div></div>
+    <div class="swatch tall"><div class="chip-color" style="background:#1557b0"></div><div class="chip-meta"><div class="nm">hover</div><div class="hx">#1557b0</div></div></div>
+    <div class="swatch tall"><div class="chip-color" style="background:#e8f0fe"></div><div class="chip-meta"><div class="nm">tint</div><div class="hx">#e8f0fe</div></div></div>
+    <div class="swatch tall"><div class="chip-color" style="background:#dadce0"></div><div class="chip-meta"><div class="nm">border</div><div class="hx">#dadce0</div></div></div>
+  </div>
+</div>
+
+<!-- ═══ Party triad ═══ -->
+<div class="card">
+  <h3>Party palette — fill + tint pairs (shipped)</h3>
+  <div class="csub">Latest App.css values. Every political color ships as a pair: the fill for bars/dots, the tint for pills, chips and selected states. Grey Others was retired for indigo.</div>
+  <div class="pair"><div class="fill" style="background:#16a34a">Congress<span class="hx">#16a34a</span></div><div class="tint" style="background:#f0fdf4;color:#15803d">tint · congress-bg<span class="hx">#f0fdf4</span></div></div>
+  <div class="pair"><div class="fill" style="background:#ea580c">BJP<span class="hx">#ea580c</span></div><div class="tint" style="background:#fff7ed;color:#c2410c">tint · bjp-bg<span class="hx">#fff7ed</span></div></div>
+  <div class="pair"><div class="fill" style="background:#db2777">BRS<span class="hx">#db2777</span></div><div class="tint" style="background:#fdf2f8;color:#be185d">tint · brs-bg<span class="hx">#fdf2f8</span></div></div>
+  <div class="pair"><div class="fill" style="background:#6366f1">Others<span class="hx">#6366f1</span></div><div class="tint" style="background:#eef2ff;color:#4f46e5">tint · others-bg<span class="hx">#eef2ff</span></div></div>
+  <div class="pair" style="margin-bottom:0"><div class="fill" style="background:#64748b">Undecided<span class="hx">#64748b</span></div><div class="tint" style="background:#f8fafc;color:#475569">tint · undecided-bg<span class="hx">#f8fafc</span></div></div>
+</div>
+
+<!-- ═══ Status ═══ -->
+<div class="card">
+  <h3>Status — ok · warn · danger</h3>
+  <div class="csub">Review QA and sync states share the same fill + tint discipline. Color is never the only encoding — every status also carries an icon and a word.</div>
+  <div class="pair"><div class="fill" style="background:#059669">✓ Confirmed / ok<span class="hx">#059669</span></div><div class="tint" style="background:#ecfdf5;color:#047857">tint · ok-bg<span class="hx">#ecfdf5</span></div></div>
+  <div class="pair"><div class="fill" style="background:#f59e0b">⏳ Pending / warn<span class="hx">#f59e0b</span></div><div class="tint" style="background:#fffbeb;color:#b45309">tint · warn-bg<span class="hx">#fffbeb</span></div></div>
+  <div class="pair" style="margin-bottom:0"><div class="fill" style="background:#ef4444">✕ Rejected / danger<span class="hx">#ef4444</span></div><div class="tint" style="background:#fef2f2;color:#b91c1c">tint · danger-bg<span class="hx">#fef2f2</span></div></div>
+</div>
+
+<!-- ═══ Combinations that ship ═══ -->
+<div class="card wide">
+  <h3>Combinations that ship</h3>
+  <div class="csub">The three surfaces where the palettes meet in light mode. This is the combination the whole system is tuned for: white surfaces, slate ink, one accent per lens, political color only where it means a party.</div>
+  <div class="combo-grid">
+
+    <!-- a · Field -->
+    <div class="combo">
+      <div class="combo-head">Field app · Apple lens — dark hero inset + emerald on white</div>
+      <div class="f-hero">
+        <div class="eyebrow">Today · Rangareddy</div>
+        <h4>14 of 20 responses</h4>
+        <div class="sub">Synced 2 min ago · offline-safe queue empty</div>
+        <div class="f-pills"><span class="f-pill">✓ GPS locked</span><span class="f-pill">⇅ 0 pending</span></div>
+      </div>
+      <div class="f-body">
+        <div class="f-chiprow">
+          <span class="f-chip" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;">● Congress · 38%</span>
+          <span class="f-chip" style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;">● BJP · 28%</span>
+          <span class="f-chip" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;">Undecided · 12%</span>
+        </div>
+        <button class="f-cta">Continue collecting →</button>
+      </div>
+    </div>
+
+    <!-- b · Portal -->
+    <div class="combo">
+      <div class="combo-head">Client Admin portal · Google lens — blue on white, red tint danger</div>
+      <div class="p-body">
+        <div class="p-kpis">
+          <div class="p-kpi"><b>6,214</b><span>Confirmed</span></div>
+          <div class="p-kpi"><b>18</b><span>Surveyors</span></div>
+          <div class="p-kpi"><b style="color:#16a34a">Congress</b><span>Lead party</span></div>
+        </div>
+        <div class="p-actions">
+          <button class="p-btn primary">Export CSV</button>
+          <button class="p-btn">Refresh</button>
+          <button class="p-btn danger">Delete project</button>
+          <span class="p-chip">District: Rangareddy ✕</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- c · Review row -->
+    <div class="combo">
+      <div class="combo-head">Data review · party tints + status pairs on one card</div>
+      <div class="qa-body">
+        <div class="qa-top">
+          <div class="qa-av">SP</div>
+          <div>
+            <div class="qa-name">Sunita Patel</div>
+            <div class="qa-loc">Medchal · Kukatpally AC · 2 min ago</div>
+          </div>
+          <span class="qa-status" style="background:#fffbeb;color:#b45309;">⏳ Pending</span>
+        </div>
+        <div>
+          <span class="party-pill" style="background:#fff7ed;color:#c2410c;"><span class="dot" style="background:#ea580c"></span>BJP</span>
+          <span class="party-pill" style="background:#fef2f2;color:#b91c1c;"><span class="dot" style="background:#ef4444"></span>Negative</span>
+          <span class="party-pill" style="background:#f1f5f9;color:#475569;"><span class="dot" style="background:#64748b"></span>Water supply</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Dark inset ═══ -->
+<div class="card wide">
+  <h3>Dark lives inside light mode — as an inset, not a theme</h3>
+  <div class="csub">The app ships light-only. Dark slate appears only as intentional insets: the update sheet, the field hero, empty-state art. Same rule everywhere: slate gradient + sky border + one glowing accent.</div>
+  <div class="dark-inset">
+    <div class="ico">🚀</div>
+    <div style="flex:1;">
+      <div class="t">Update Available (v2.0.66) <span style="font-size:10px;font-weight:600;color:#94a3b8;background:rgba(148,163,184,.2);border-radius:5px;padding:2px 6px;margin-left:6px;">Current: v2.0.65</span></div>
+      <div class="b">#0f172a → #1e293b gradient · border rgba(56,189,248,.4) · accent #38bdf8 · text #f8fafc/#cbd5e1</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Notes ═══ -->
+<div class="notes">
+  <h3>Doctrine: Light Mode, Combined</h3>
+  <div class="principle">
+    <span class="tag">[G] ONE GREY RAMP</span>
+    <span>bg → surface-alt → surface-hover → surface on the way up; ink → secondary → muted → faint on the way down. Borders are always the ramp, never new greys — #e2e8f0 in the field, #dadce0 only inside the portal skin.</span>
+  </div>
+  <div class="principle">
+    <span class="tag">[G] FILL + TINT, ALWAYS A PAIR</span>
+    <span>Every semantic color ships with its background tint — party colors, ok/warn/danger, accents. Fills mark data; tints mark surfaces. A tint without its fill is decoration; a fill without its tint has no selected state.</span>
+  </div>
+  <div class="principle">
+    <span class="tag">[A] POLITICAL COLOR MEANS A PARTY</span>
+    <span>Congress green, BJP deep saffron #ea580c, BRS deep pink #db2777, Others indigo #6366f1 — used only where the number is a party. Everything else stays neutral. TDP yellow stays dropped: its lightness can't pass on white.</span>
+  </div>
+  <div class="principle">
+    <span class="tag">[A] DARK IS AN INSET, NOT A THEME</span>
+    <span>Light mode is the only theme. Dark slate gradients (#0f172a → #1e293b) are reserved for focus moments — the update nudge, the field hero — with a sky border and a single glowing accent so they feel deliberate, not broken.</span>
+  </div>
+</div>
+
+</body>
+</html>

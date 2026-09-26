@@ -1663,7 +1663,7 @@ export default function FieldCollectScreen({
           return (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '4px 0 10px' }}>
-                <span style={{ fontSize: 13, fontWeight: 'bold', color: '#00e599' }}>
+                <span style={{ fontSize: 13, fontWeight: 'bold', color: '#059669' }}>
                   ☑️ {displayLang === 'te' ? `గరిష్టంగా ${max} ఎంపికలు ఎంచుకోండి` : `Select up to ${max} answers`}:
                 </span>
                 <span className="pill ok" style={{ fontSize: 11, padding: '2px 8px' }}>
@@ -1687,9 +1687,9 @@ export default function FieldCollectScreen({
                         padding: '12px 18px',
                         fontSize: 15,
                         borderRadius: 16,
-                        border: sel ? '2px solid #00e599' : '1px solid rgba(255,255,255,0.15)',
+                        border: sel ? '2px solid #059669' : '1px solid rgba(255,255,255,0.15)',
                         background: sel ? 'rgba(0, 229, 153, 0.22)' : 'rgba(255,255,255,0.06)',
-                        color: sel ? '#00e599' : '#f8fafc',
+                        color: sel ? '#059669' : '#f8fafc',
                       }}
                       onClick={() => toggleOpt(opt)}
                     >

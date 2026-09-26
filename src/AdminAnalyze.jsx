@@ -24,12 +24,8 @@ function thisMonthStr() {
 }
 
 function pickFirstSurveyKey(items) {
-  const list = Array.isArray(items) ? items : []
-  const real = list.filter((s) => {
-    const k = String(s?.form_key || '')
-    return k && k !== 'default' && k !== 'legacy'
-  })
-  return String((real[0] || list[0])?.form_key || '')
+  void items
+  return ''
 }
 
 export default function AdminAnalyzeScreen({ onToast }) {
@@ -93,28 +89,20 @@ export default function AdminAnalyzeScreen({ onToast }) {
         if (periodVal === 'month') baseScope.month = monthVal
 
         const qParams = Object.fromEntries(Object.entries(qFilters).filter(([, v]) => v))
-        if (!surveyVal) {
-          setBoard(null)
-          setItems([])
-          setSummary(null)
-          setAnalytics(null)
-          return
-        }
-
         const [analyze, list, charts] = await Promise.all([
           getAdminAnalyze({
             ...baseScope,
-            survey: surveyVal,
+            survey: surveyVal || undefined,
             completeness: completenessVal === 'all' ? undefined : completenessVal,
             source: sourceVal === 'all' ? undefined : sourceVal,
             ...qParams,
           }),
-          listSubmissions(300, 'all', {
+          listSubmissions(5000, 'all', {
             period: periodVal,
             day: periodVal === 'day' ? dayVal : undefined,
             month: periodVal === 'month' ? monthVal : undefined,
             user: userVal,
-            survey: surveyVal,
+            survey: surveyVal || undefined,
             district: districtVal || undefined,
             constituency: constituencyVal || undefined,
             completeness: completenessVal === 'all' ? '' : completenessVal,
@@ -143,7 +131,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
             day: periodVal === 'day' ? dayVal : undefined,
             month: periodVal === 'month' ? monthVal : undefined,
             user: userVal,
-            survey: surveyVal,
+            survey: surveyVal || undefined,
             district: districtVal || undefined,
             constituency: constituencyVal || undefined,
             completeness: completenessVal === 'all' ? 'all' : completenessVal,
@@ -186,15 +174,9 @@ export default function AdminAnalyzeScreen({ onToast }) {
       .then((d) => {
         const items = d.items || []
         setSurveys(items)
-        const key = pickFirstSurveyKey(items)
-        if (key) {
-          setSurvey(key)
-          return load({ survey: key })
-        }
-        return undefined
+        return load({ survey: '' })
       })
       .catch(() => {})
-    // load on first survey pick — not all-surveys
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -312,10 +294,11 @@ export default function AdminAnalyzeScreen({ onToast }) {
                 }
               }}
             >
-              {surveys.length === 0 ? <option value="">Select survey</option> : null}
+              <option value="">All surveys</option>
               {surveys.map((s) => (
                 <option key={s.id} value={s.form_key}>
                   {s.title}
+                  {s.form_key === 'legacy' ? ' · Excel import' : ''}
                 </option>
               ))}
             </select>

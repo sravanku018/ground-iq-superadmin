@@ -1803,7 +1803,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                     background: '#ffffff',
                     border: '1px solid #e2e8f0',
                     marginBottom: 10,
-                    borderColor: justCreated ? '#00e599' : '#e2e8f0',
+                    borderColor: justCreated ? '#059669' : '#e2e8f0',
                     boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                   }}
                 >
@@ -1814,7 +1814,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                         <img
                           src={u.photo}
                           alt=""
-                          style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', border: '2px solid #00e599', flexShrink: 0 }}
+                          style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', border: '2px solid #059669', flexShrink: 0 }}
                         />
                       ) : (
                         <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#f1f5f9', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -2209,7 +2209,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                     <img
                       src={profileUser.photo}
                       alt="Profile"
-                      style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', border: '2px solid #00e599' }}
+                      style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', border: '2px solid #059669' }}
                     />
                   ) : (
                     <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -2423,7 +2423,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       <span style={{ display: 'block', fontSize: 10, color: '#64748b', marginBottom: 4, fontWeight: 'bold' }}>Front Side</span>
                       {profileUser.aadhaar_front ? (
                         <a href={profileUser.aadhaar_front} target="_blank" rel="noreferrer">
-                          <img src={profileUser.aadhaar_front} alt="Aadhaar Front" style={{ width: '100%', height: 75, objectFit: 'cover', borderRadius: 6, border: '1px solid #00e599', marginBottom: 4 }} />
+                          <img src={profileUser.aadhaar_front} alt="Aadhaar Front" style={{ width: '100%', height: 75, objectFit: 'cover', borderRadius: 6, border: '1px solid #059669', marginBottom: 4 }} />
                         </a>
                       ) : (
                         <div style={{ height: 60, background: '#f1f5f9', borderRadius: 6, border: '1px dashed #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 11, marginBottom: 4 }}>
@@ -2444,7 +2444,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       <span style={{ display: 'block', fontSize: 10, color: '#64748b', marginBottom: 4, fontWeight: 'bold' }}>Back Side</span>
                       {profileUser.aadhaar_back ? (
                         <a href={profileUser.aadhaar_back} target="_blank" rel="noreferrer">
-                          <img src={profileUser.aadhaar_back} alt="Aadhaar Back" style={{ width: '100%', height: 75, objectFit: 'cover', borderRadius: 6, border: '1px solid #00e599', marginBottom: 4 }} />
+                          <img src={profileUser.aadhaar_back} alt="Aadhaar Back" style={{ width: '100%', height: 75, objectFit: 'cover', borderRadius: 6, border: '1px solid #059669', marginBottom: 4 }} />
                         </a>
                       ) : (
                         <div style={{ height: 60, background: '#f1f5f9', borderRadius: 6, border: '1px dashed #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 11, marginBottom: 4 }}>

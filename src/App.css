@@ -3072,12 +3072,6 @@ textarea:focus,
   background: var(--warn, #f59e0b);
   animation: spin 0.7s linear infinite;
 }
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 /* ── Surveyor Profile (Mock 3 Apple Craft Lens) ── */
 .prof {
   text-align: center;
@@ -3172,3 +3166,18 @@ textarea:focus,
   border-color: rgba(5, 150, 105, 0.3);
 }
 
+
+/* ── Accessibility: respect reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Mobile web: allow pinch-zoom but stop iOS input focus-zoom ── */
+@media (pointer: coarse) {
+  input, select, textarea { font-size: 16px; }
+}

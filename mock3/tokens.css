@@ -26,12 +26,17 @@
   --accent-border:#bfdbfe;
   --accent-light: #dbeafe;
 
-  /* ── Party palette (validated on #ffffff) ── */
-  --party-congress:  #16a34a;
-  --party-bjp:       #f97316;
-  --party-brs:       #ec4899;
-  --party-others:    #94a3b8;
-  --party-undecided: #64748b;
+  /* ── Party palette (shipped App.css values · each fill ships with a bg tint) ── */
+  --party-congress:       #16a34a;
+  --party-congress-bg:    #f0fdf4;
+  --party-bjp:            #ea580c;
+  --party-bjp-bg:         #fff7ed;
+  --party-brs:            #db2777;
+  --party-brs-bg:         #fdf2f8;
+  --party-others:         #6366f1;
+  --party-others-bg:      #eef2ff;
+  --party-undecided:      #64748b;
+  --party-undecided-bg:   #f8fafc;
 
   /* ── Status ── */
   --ok:    #16a34a;

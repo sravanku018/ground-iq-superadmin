@@ -1174,3 +1174,21 @@
   0%, 100% { opacity: 1; transform: scale(1); }
   50%       { opacity: 0.4; transform: scale(0.75); }
 }
+
+/* ── Accessibility: respect reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Mobile web: dynamic viewport height (iOS toolbar) + input focus-zoom guard ── */
+@supports (height: 100dvh) {
+  .portal-shell { min-height: 100dvh; }
+}
+@media (pointer: coarse) {
+  .portal-main input, .portal-main select, .portal-main textarea { font-size: 16px; }
+}

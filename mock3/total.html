@@ -280,6 +280,25 @@
   .admin-head h2 { font-size: var(--fs-xl); font-weight: var(--fw-bold); }
   .admin-head .subtitle { font-size: var(--fs-sm); color: var(--ink-muted); }
 
+  /* ── Survey scope bar (latest: All surveys is the default, incl. legacy Excel) ── */
+  .scope-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3);
+    background: var(--surface); border: 1px solid var(--surface-hover);
+    border-radius: var(--r-lg); padding: var(--sp-3) var(--sp-4);
+    box-shadow: var(--shadow-sm); margin-bottom: var(--sp-5);
+  }
+  .scope-bar .scope-label { font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--ink-secondary); }
+  .scope-bar select {
+    font: inherit; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--ink);
+    background: var(--surface-alt); border: 1px solid var(--surface-hover);
+    border-radius: var(--r-md); padding: 8px 12px; cursor: pointer;
+  }
+  .scope-bar select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+  .scope-note { font-size: var(--fs-xs); color: var(--ink-muted); }
+  .scope-note strong { color: var(--ink-secondary); }
+  .scope-swap { animation: scopeSwap .28s var(--ease-out); }
+  @keyframes scopeSwap { 0% { opacity: .25; transform: translateY(3px); } 100% { opacity: 1; transform: none; } }
+
   /* ── KPI strip ── */
   .kpi-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-3); margin-bottom: var(--sp-5); }
   .kpi {
@@ -749,25 +768,28 @@
   <div class="admin-head">
     <div>
       <h2>Dashboard</h2>
-      <div class="subtitle">2,225 confirmed · charts & maps</div>
+      <div class="subtitle" id="dash-subtitle">2,225 confirmed · charts & maps</div>
     </div>
-    <button class="pc-btn primary" style="padding:6px 16px;">Refresh</button>
-  </div>
+      <button class="pc-btn primary" style="padding:6px 16px;">Refresh</button>
+    </div>
 
-  <!-- KPI strip -->
-  <div class="kpi-strip">
-    <div class="kpi"><strong>2,225</strong><span>Confirmed</span></div>
-    <div class="kpi"><strong>18</strong><span>Surveyors</span></div>
-    <div class="kpi"><strong>Congress</strong><span>Lead party</span></div>
-    <div class="kpi"><strong>Roads</strong><span>Top issue</span></div>
-  </div>
+    <!-- Survey scope · dynamic: select VALUE starts empty (= all surveys), tick a survey to re-render -->
+    <div class="scope-bar">
+      <span class="scope-label">Survey</span>
+      <select id="surveyScope" onchange="setSurveyScope(this.value)">
+        <option value="" selected>All surveys</option>
+        <option value="prepoll">Telangana Pre-Poll 2026 · 214 web</option>
+        <option value="baseline">Constituency Baseline</option>
+        <option value="excel">Nov 2023 Door-to-Door · Excel import</option>
+      </select>
+      <span class="scope-note" id="scopeNote"><strong>Showing every survey</strong> (including Excel/legacy). Pick one survey to narrow.</span>
+    </div>
+
+    <!-- KPI strip -->
+  <div class="kpi-strip" id="kpi-strip"></div>
 
   <!-- Insights -->
-  <div class="insight-row">
-    <div class="insight">🏆 Congress leads with 38% across all districts</div>
-    <div class="insight">📍 Rangareddy has most responses (312)</div>
-    <div class="insight">🔧 Roads & water supply dominate issues</div>
-  </div>
+  <div class="insight-row" id="insight-row"></div>
 
   <!-- Charts grid -->
   <div class="chart-grid">
@@ -775,26 +797,14 @@
     <div class="chart-card">
       <h3>Party preference</h3>
       <div class="chart-sub">Horizontal bar · validated palette</div>
-      <div class="hbar">
-        <div class="hbar-row"><span class="hbar-label">Congress</span><div class="hbar-track"><div class="hbar-fill" style="width:38%;background:var(--party-congress);"></div></div><span class="hbar-val">38%</span></div>
-        <div class="hbar-row"><span class="hbar-label">BJP</span><div class="hbar-track"><div class="hbar-fill" style="width:28%;background:var(--party-bjp);"></div></div><span class="hbar-val">28%</span></div>
-        <div class="hbar-row"><span class="hbar-label">BRS</span><div class="hbar-track"><div class="hbar-fill" style="width:22%;background:var(--party-brs);"></div></div><span class="hbar-val">22%</span></div>
-        <div class="hbar-row"><span class="hbar-label">Others</span><div class="hbar-track"><div class="hbar-fill" style="width:8%;background:var(--party-others);"></div></div><span class="hbar-val">8%</span></div>
-        <div class="hbar-row"><span class="hbar-label">Undecided</span><div class="hbar-track"><div class="hbar-fill" style="width:4%;background:var(--party-undecided);"></div></div><span class="hbar-val">4%</span></div>
-      </div>
+      <div class="hbar" id="party-bars"></div>
     </div>
 
     <!-- Top districts -->
     <div class="chart-card">
       <h3>Top districts</h3>
       <div class="chart-sub">Tap a bar to filter</div>
-      <div class="hbar">
-        <div class="hbar-row"><span class="hbar-label">Rangareddy</span><div class="hbar-track"><div class="hbar-fill" style="width:100%;background:var(--accent);"></div></div><span class="hbar-val">312</span></div>
-        <div class="hbar-row"><span class="hbar-label">Nizamabad</span><div class="hbar-track"><div class="hbar-fill" style="width:65%;background:var(--accent);"></div></div><span class="hbar-val">203</span></div>
-        <div class="hbar-row"><span class="hbar-label">Hanumakonda</span><div class="hbar-track"><div class="hbar-fill" style="width:60%;background:var(--accent);"></div></div><span class="hbar-val">189</span></div>
-        <div class="hbar-row"><span class="hbar-label">Khammam</span><div class="hbar-track"><div class="hbar-fill" style="width:60%;background:var(--accent);"></div></div><span class="hbar-val">189</span></div>
-        <div class="hbar-row"><span class="hbar-label">Medchal</span><div class="hbar-track"><div class="hbar-fill" style="width:50%;background:var(--accent);"></div></div><span class="hbar-val">156</span></div>
-      </div>
+      <div class="hbar" id="top-districts"></div>
     </div>
 
     <!-- Party × District stacked -->
@@ -808,13 +818,7 @@
         <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-secondary);"><span style="width:10px;height:10px;border-radius:2px;background:var(--party-others);"></span>Others</span>
         <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-secondary);"><span style="width:10px;height:10px;border-radius:2px;background:var(--party-undecided);"></span>Undecided</span>
       </div>
-      <div class="stacked">
-        <div class="stacked-row"><span class="stacked-label">Rangareddy</span><div class="stacked-track"><div class="stacked-seg" style="width:36%;background:var(--party-congress);"></div><div class="stacked-seg" style="width:28%;background:var(--party-bjp);"></div><div class="stacked-seg" style="width:21%;background:var(--party-brs);"></div><div class="stacked-seg" style="width:10%;background:var(--party-others);"></div><div class="stacked-seg" style="width:5%;background:var(--party-undecided);"></div></div></div>
-        <div class="stacked-row"><span class="stacked-label">Nizamabad</span><div class="stacked-track"><div class="stacked-seg" style="width:27%;background:var(--party-congress);"></div><div class="stacked-seg" style="width:38%;background:var(--party-bjp);"></div><div class="stacked-seg" style="width:16%;background:var(--party-brs);"></div><div class="stacked-seg" style="width:13%;background:var(--party-others);"></div><div class="stacked-seg" style="width:6%;background:var(--party-undecided);"></div></div></div>
-        <div class="stacked-row"><span class="stacked-label">Hanumakonda</span><div class="stacked-track"><div class="stacked-seg" style="width:31%;background:var(--party-congress);"></div><div class="stacked-seg" style="width:35%;background:var(--party-bjp);"></div><div class="stacked-seg" style="width:18%;background:var(--party-brs);"></div><div class="stacked-seg" style="width:10%;background:var(--party-others);"></div><div class="stacked-seg" style="width:6%;background:var(--party-undecided);"></div></div></div>
-        <div class="stacked-row"><span class="stacked-label">Khammam</span><div class="stacked-track"><div class="stacked-seg" style="width:46%;background:var(--party-congress);"></div><div class="stacked-seg" style="width:16%;background:var(--party-bjp);"></div><div class="stacked-seg" style="width:35%;background:var(--party-brs);"></div><div class="stacked-seg" style="width:2%;background:var(--party-others);"></div><div class="stacked-seg" style="width:1%;background:var(--party-undecided);"></div></div></div>
-        <div class="stacked-row"><span class="stacked-label">Medchal</span><div class="stacked-track"><div class="stacked-seg" style="width:38%;background:var(--party-congress);"></div><div class="stacked-seg" style="width:30%;background:var(--party-bjp);"></div><div class="stacked-seg" style="width:26%;background:var(--party-brs);"></div><div class="stacked-seg" style="width:4%;background:var(--party-others);"></div><div class="stacked-seg" style="width:2%;background:var(--party-undecided);"></div></div></div>
-      </div>
+      <div class="stacked" id="stacked"></div>
     </div>
   </div>
 
@@ -919,6 +923,104 @@
 </div><!-- panel-admin -->
 
 <script>
+  // ── Dynamic survey filter · key '' (EMPTY select) = all surveys merged ──
+  const PC = { congress: '#16a34a', bjp: '#ea580c', brs: '#db2777', others: '#6366f1', undecided: '#64748b' };
+  const DASH_SETS = {
+    '': {
+      title: 'all surveys',
+      subtitle: '2,225 confirmed · charts & maps',
+      kpis: [['2,225', 'Confirmed'], ['18', 'Surveyors'], ['Congress', 'Lead party'], ['Roads', 'Top issue']],
+      insights: ['🏆 Congress leads with 38% across all districts', '📍 Rangareddy has most responses (312)', '🔧 Roads & water supply dominate issues'],
+      parties: [['Congress', 38, PC.congress], ['BJP', 28, PC.bjp], ['BRS', 22, PC.brs], ['Others', 8, PC.others], ['Undecided', 4, PC.undecided]],
+      districts: [['Rangareddy', 312, 100], ['Nizamabad', 203, 65], ['Hanumakonda', 189, 61], ['Khammam', 189, 61], ['Medchal', 156, 50]],
+      stacked: [
+        ['Rangareddy', [36, 28, 21, 10, 5]],
+        ['Nizamabad', [27, 38, 16, 13, 6]],
+        ['Hanumakonda', [31, 35, 18, 10, 6]],
+        ['Khammam', [46, 16, 35, 2, 1]],
+        ['Medchal', [38, 30, 26, 4, 2]]
+      ]
+    },
+    'prepoll': {
+      title: 'Telangana Pre-Poll 2026 · 214 web',
+      subtitle: '842 confirmed · live field + 214 web',
+      kpis: [['842', 'Confirmed'], ['12', 'Surveyors'], ['Congress', 'Lead party'], ['Roads', 'Top issue']],
+      insights: ['🏆 Congress leads Pre-Poll with 41%', '📍 Rangareddy has most responses (168)', '🔧 Roads dominate — 31% of answers'],
+      parties: [['Congress', 41, PC.congress], ['BJP', 33, PC.bjp], ['BRS', 19, PC.brs], ['Others', 4, PC.others], ['Undecided', 3, PC.undecided]],
+      districts: [['Rangareddy', 168, 100], ['Medchal', 121, 72], ['Nizamabad', 104, 62], ['Hanumakonda', 98, 58], ['Khammam', 87, 52]],
+      stacked: [
+        ['Rangareddy', [44, 31, 17, 5, 3]],
+        ['Nizamabad', [36, 38, 18, 5, 3]],
+        ['Hanumakonda', [39, 36, 17, 5, 3]],
+        ['Khammam', [43, 28, 21, 5, 3]],
+        ['Medchal', [45, 29, 18, 5, 3]]
+      ]
+    },
+    'baseline': {
+      title: 'Constituency Baseline',
+      subtitle: '631 confirmed · 9-surveyor baseline wave',
+      kpis: [['631', 'Confirmed'], ['9', 'Surveyors'], ['BRS', 'Lead party'], ['Irrigation', 'Top issue']],
+      insights: ['🏆 BRS leads the baseline wave with 36%', '📍 Warangal (R) has most responses (141)', '💧 Irrigation tops the issues — 27%'],
+      parties: [['Congress', 33, PC.congress], ['BJP', 23, PC.bjp], ['BRS', 36, PC.brs], ['Others', 5, PC.others], ['Undecided', 3, PC.undecided]],
+      districts: [['Warangal (R)', 141, 100], ['Nizamabad', 118, 84], ['Rangareddy', 112, 79], ['Karimnagar', 96, 68], ['Hanumakonda', 84, 60]],
+      stacked: [
+        ['Rangareddy', [40, 22, 28, 6, 4]],
+        ['Nizamabad', [30, 36, 24, 6, 4]],
+        ['Hanumakonda', [31, 34, 26, 5, 4]],
+        ['Khammam', [33, 24, 36, 4, 3]],
+        ['Warangal (R)', [26, 23, 41, 6, 4]]
+      ]
+    },
+    'excel': {
+      title: 'Nov 2023 Door-to-Door · Excel import',
+      subtitle: '1,384 confirmed · legacy import · 2k+ rows',
+      kpis: [['1,384', 'Confirmed'], ['6', 'Surveyors'], ['BRS', 'Lead party'], ['Farm loan waiver', 'Top issue']],
+      insights: ['🏆 BRS led Nov 2023 with 41%', '📍 Warangal (R) has most records (268)', '🌾 Farm loan waiver dominated — 33%'],
+      parties: [['Congress', 34, PC.congress], ['BJP', 17, PC.bjp], ['BRS', 41, PC.brs], ['Others', 4, PC.others], ['Undecided', 4, PC.undecided]],
+      districts: [['Warangal (R)', 268, 100], ['Rangareddy', 234, 87], ['Medchal', 186, 69], ['Khammam', 172, 64], ['Nizamabad', 158, 59]],
+      stacked: [
+        ['Rangareddy', [38, 19, 36, 3, 4]],
+        ['Nizamabad', [32, 22, 38, 4, 4]],
+        ['Hanumakonda', [33, 18, 42, 3, 4]],
+        ['Khammam', [30, 17, 47, 2, 4]],
+        ['Warangal (R)', [27, 16, 50, 3, 4]]
+      ]
+    }
+  };
+
+  function renderDash(v) {
+    const S = DASH_SETS[v] || DASH_SETS[''];
+    document.getElementById('dash-subtitle').textContent = S.subtitle;
+    document.getElementById('kpi-strip').innerHTML = S.kpis.map(([v2, l]) =>
+      `<div class="kpi"><strong>${v2}</strong><span>${l}</span></div>`).join('');
+    document.getElementById('insight-row').innerHTML = S.insights.map(t =>
+      `<div class="insight">${t}</div>`).join('');
+    document.getElementById('party-bars').innerHTML = S.parties.map(([n, pct, hex]) =>
+      `<div class="hbar-row"><span class="hbar-label">${n}</span><div class="hbar-track"><div class="hbar-fill" style="width:${pct}%;background:${hex};"></div></div><span class="hbar-val">${pct}%</span></div>`).join('');
+    document.getElementById('top-districts').innerHTML = S.districts.map(([n, val, w]) =>
+      `<div class="hbar-row"><span class="hbar-label">${n}</span><div class="hbar-track"><div class="hbar-fill" style="width:${w}%;background:var(--accent);"></div></div><span class="hbar-val">${val}</span></div>`).join('');
+    document.getElementById('stacked').innerHTML = S.stacked.map(([n, segs]) =>
+      `<div class="stacked-row"><span class="stacked-label">${n}</span><div class="stacked-track">${segs.map((p, i) =>
+        `<div class="stacked-seg" style="width:${p}%;background:var(--party-${['congress','bjp','brs','others','undecided'][i]});"></div>`).join('')}</div></div>`).join('');
+  }
+
+  function setSurveyScope(v) {
+    const S = DASH_SETS[v] || DASH_SETS[''];
+    document.getElementById('scopeNote').innerHTML = v === ''
+      ? '<strong>Showing every survey</strong> (including Excel/legacy). Pick one survey to narrow.'
+      : `Showing only <strong>${S.title}</strong>. Tick “All surveys” to widen.`;
+    renderDash(v);
+    ['kpi-strip', 'insight-row', 'party-bars', 'top-districts', 'stacked'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('scope-swap');
+      void el.offsetWidth;
+      el.classList.add('scope-swap');
+    });
+  }
+
+  renderDash('');
+
   function showRole(role) {
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));

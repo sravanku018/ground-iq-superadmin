@@ -140,7 +140,7 @@ export default function PublicWebFill({ formKey, fillToken }) {
   }, [heading])
 
   return (
-    <div className="portal-shell" style={{ minHeight: '100vh', padding: 24 }}>
+    <div className="portal-shell" style={{ padding: 24 }}>
       <div style={{ maxWidth: 640, margin: '0 auto' }}>
         <p className="eyebrow">{companyName ? `${companyName} · Web Survey` : 'Public Web Survey'}</p>
         <h1 style={{ fontSize: 26, margin: '0 0 8px', lineHeight: 1.25, color: '#0f172a' }}>

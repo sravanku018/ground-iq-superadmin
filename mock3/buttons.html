@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Buttons — One Motion Language</title>
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-family: var(--font); }
+  body { background: var(--bg); color: var(--ink); min-height: 100vh; padding: var(--sp-6); display: flex; justify-content: center; flex-wrap: wrap; gap: var(--sp-5); }
+
+  .page-head { width: 100%; max-width: 960px; margin: 0 auto var(--sp-5); }
+  .page-head h1 { font-size: var(--fs-xl); font-weight: var(--fw-bold); }
+  .page-head p { font-size: var(--fs-sm); color: var(--ink-muted); margin-top: 2px; }
+  .page-head .tags { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .page-head .tag { font-size: 10px; font-weight: var(--fw-bold); padding: 3px 8px; border-radius: var(--r-sm); background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border); }
+
+  .card { background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-sm); max-width: 460px; width: 100%; }
+  .card h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); margin-bottom: var(--sp-1); }
+  .card .csub { font-size: var(--fs-xs); color: var(--ink-muted); margin-bottom: var(--sp-4); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: var(--sp-3); }
+  .row:last-child { margin-bottom: 0; }
+  .row-label { width: 100%; font-size: 10px; font-weight: var(--fw-bold); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: -2px; }
+
+  /* ══════════ FIELD APP BUTTONS (App.css .btn — emerald system) ══════════ */
+  .f-btn {
+    min-height: 44px; padding: 11px 16px;
+    border: 1.5px solid var(--surface-hover); border-radius: 12px;
+    background: var(--surface); color: var(--ink);
+    font: inherit; font-size: 14px; font-weight: var(--fw-bold);
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    cursor: pointer; white-space: nowrap;
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
+  }
+  .f-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,.08); border-color: var(--accent-border); }
+  .f-btn:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+  .f-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .f-btn.primary { background: #059669; border-color: transparent; color: #000; }
+  .f-btn.primary:hover:not(:disabled) { background: #047857; }
+  .f-btn.ghost { background: transparent; }
+  .f-btn.danger { background: #ef4444; border-color: transparent; color: #fff; }
+  .f-btn.small { min-height: 34px; padding: 5px 10px; font-size: 12px; border-radius: 8px; }
+  .f-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .f-btn.loading { pointer-events: none; }
+  .f-btn .spin { width: 14px; height: 14px; border: 2px solid rgba(0,0,0,.25); border-top-color: #000; border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 52px survey CTA */
+  .f-cta { width: 100%; min-height: 52px; background: #059669; color: #fff; border: none; border-radius: 12px; font-size: 15px; font-weight: var(--fw-bold); cursor: pointer; box-shadow: 0 2px 10px rgba(5,150,105,.3); transition: transform var(--dur-fast) var(--ease-out); }
+  .f-cta:active { transform: scale(.98); }
+
+  /* Review trio — act-actions grid (Reject / Confirm & next / Flag) */
+  .act-actions { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 8px; }
+  .act-actions .f-btn { width: 100%; min-height: 44px; padding: 10px 8px; border-radius: 22px; font-size: 14px; }
+
+  /* QA nav — 80px back + flex main */
+  .qa-nav { display: flex; gap: 8px; }
+  .qa-nav .f-btn { min-height: 46px; border-radius: 12px; font-weight: var(--fw-bold); font-size: 15px; }
+  .qa-nav .f-btn:first-child { flex: 0 0 auto; width: 80px; }
+  .qa-nav .f-btn:last-child:not(:first-child) { flex: 1; }
+
+  /* Option pill (survey answer) */
+  .opt-btn { width: 100%; min-height: 48px; border: 2px solid var(--surface-hover); border-radius: 12px; background: var(--surface); font-size: 14px; font-weight: var(--fw-medium); color: var(--ink); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all var(--dur-fast) var(--ease-out); }
+  .opt-btn:active { transform: scale(.97); }
+  .opt-btn .swatch { width: 10px; height: 10px; border-radius: 3px; }
+  .opt-btn.selected { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); font-weight: var(--fw-bold); }
+
+  /* Next-btn pill */
+  .next-btn { flex: 1; min-height: 46px; background: #059669; color: #fff; border: none; border-radius: 999px; font-size: 14px; font-weight: var(--fw-bold); cursor: pointer; box-shadow: 0 2px 8px rgba(5,150,105,.3); }
+  .next-btn:active { transform: scale(.98); }
+
+  /* ══════════ PORTAL BUTTONS (portal.css — Google system) ══════════ */
+  .p-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 8px; font-size: 13px; font-weight: var(--fw-semibold); padding: 8px 16px; border: 1px solid #dadce0; background: #fff; color: #3c4043; cursor: pointer; transition: all 140ms ease; line-height: 1.25; }
+  .p-btn:hover { background: #f8f9fa; border-color: #bdc1c6; color: #202124; }
+  .p-btn.primary { background: #1a73e8; color: #fff; border-color: #1a73e8; box-shadow: 0 1px 2px rgba(26,115,232,.2); }
+  .p-btn.primary:hover { background: #1557b0; border-color: #1557b0; box-shadow: 0 2px 6px rgba(26,115,232,.3); }
+  .p-btn.danger { background: #fce8e6; color: #c5221f; border-color: #fad2cf; }
+  .p-btn.danger:hover { background: #c5221f; color: #fff; border-color: #c5221f; }
+  .p-btn.small { padding: 5px 12px; font-size: 12px; border-radius: 6px; }
+
+  /* ══════════ CHIPS & MICRO ══════════ */
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: var(--fw-medium); padding: 4px 6px 4px 10px; border-radius: var(--r-pill); background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border); }
+  .chip button { border: none; background: none; cursor: pointer; color: var(--accent); font-weight: var(--fw-bold); width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+  .chip button:hover { background: var(--accent-border); }
+  .chip.ghost { background: var(--surface-alt); color: var(--ink-muted); border-color: var(--surface-hover); cursor: pointer; }
+  .mini-btn { font-size: var(--fs-xs); font-weight: var(--fw-bold); padding: 5px 12px; border-radius: var(--r-sm); border: 1px solid var(--accent-border); background: var(--accent-bg); color: var(--accent); cursor: pointer; }
+
+  /* Notes */
+  .notes { width: 100%; max-width: 960px; margin: var(--sp-5) auto 0; padding: var(--sp-4); background: var(--surface); border: 1px solid var(--surface-hover); border-radius: var(--r-lg); }
+  .notes h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); margin-bottom: var(--sp-3); }
+  .notes .principle { display: flex; gap: 8px; margin-bottom: var(--sp-3); font-size: var(--fs-sm); color: var(--ink-secondary); line-height: 1.5; }
+  .notes .principle .tag { background: var(--accent-bg); color: var(--accent); border-radius: var(--r-sm); padding: 1px 7px; font-size: 10px; font-weight: var(--fw-bold); white-space: nowrap; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>Buttons — One Motion Language</h1>
+  <p>Mirrors the shipped system: field app emerald buttons (App.css .btn) and portal Google buttons (portal.css). Same motion everywhere — hover lifts 1px, active settles, focus rings 2px emerald.</p>
+  <div class="tags">
+    <span class="tag">[G] ONE SYSTEM</span>
+    <span class="tag">[T] TACTILE</span>
+    <span class="tag">[A] 44px TOUCH TARGET</span>
+    <span class="tag">App.css .btn · portal.css .btn</span>
+  </div>
+</div>
+
+<!-- ══════════ FIELD APP ══════════ -->
+<div class="card">
+  <h3>Field app — emerald system</h3>
+  <div class="csub">Surveyor app (App.css). Primary is black-on-emerald — high contrast on Indian daylight screens. Buttons never force width:100%; context decides.</div>
+
+  <div class="row">
+    <span class="row-label">Variants</span>
+    <button class="f-btn primary">Confirm & next</button>
+    <button class="f-btn">Save draft</button>
+    <button class="f-btn ghost">Cancel</button>
+    <button class="f-btn danger">Delete draft</button>
+  </div>
+  <div class="row">
+    <span class="row-label">Sizes & states</span>
+    <button class="f-btn small primary">Small primary</button>
+    <button class="f-btn small">Small</button>
+    <button class="f-btn" disabled>Disabled</button>
+    <button class="f-btn primary loading" id="loadDemo" onclick="demoLoading(this)"><span class="spin" style="display:none"></span><span>Sync now</span></button>
+  </div>
+  <div class="row">
+    <span class="row-label">Survey CTA · 52px full-width</span>
+    <button class="f-cta">Submit responses →</button>
+  </div>
+</div>
+
+<!-- ══════════ REVIEW ACTIONS ══════════ -->
+<div class="card">
+  <h3>QA review actions</h3>
+  <div class="csub">The one-two-three of data review (act-actions + qa-nav). Confirm & next is always the wide middle button — thumbs land there.</div>
+
+  <div class="row" style="margin-bottom:10px;">
+    <span class="row-label">act-actions · pill trio</span>
+    <div class="act-actions" style="width:100%">
+      <button class="f-btn" onclick="demoToast('Rejected — back to queue')">✕ Reject</button>
+      <button class="f-btn primary" onclick="demoToast('Confirmed — next record loaded')">✓ Confirm & next</button>
+      <button class="f-btn ghost" onclick="demoToast('Flagged for proof validation')">⚑ Flag</button>
+    </div>
+  </div>
+  <div class="row" style="margin-bottom:10px;">
+    <span class="row-label">qa-nav · 80px back + main</span>
+    <div class="qa-nav" style="width:100%">
+      <button class="f-btn">←</button>
+      <button class="f-btn primary">Looks right — next</button>
+    </div>
+  </div>
+  <div class="row">
+    <span class="row-label">Answer option pills</span>
+    <div style="width:100%;display:flex;flex-direction:column;gap:8px;">
+      <button class="opt-btn selected" onclick="pickOpt(this)"><span class="swatch" style="background:#16a34a"></span>Congress</button>
+      <button class="opt-btn" onclick="pickOpt(this)"><span class="swatch" style="background:#f97316"></span>BJP</button>
+    </div>
+  </div>
+  <div class="row">
+    <button class="next-btn">Next →</button>
+  </div>
+</div>
+
+<!-- ══════════ PORTAL ══════════ -->
+<div class="card">
+  <h3>Portal — Google system</h3>
+  <div class="csub">Client Admin web (portal.css). White-on-blue primary; destructive starts as a red tint and fills solid on hover — a two-step read.</div>
+
+  <div class="row">
+    <span class="row-label">Variants</span>
+    <button class="p-btn primary">Export CSV</button>
+    <button class="p-btn">Refresh</button>
+    <button class="p-btn danger">Delete project</button>
+  </div>
+  <div class="row">
+    <span class="row-label">Small (tables, rows)</span>
+    <button class="p-btn small primary">Approve</button>
+    <button class="p-btn small">Profile</button>
+    <button class="p-btn small danger">Remove</button>
+  </div>
+  <div class="row">
+    <span class="row-label">Chips & micro actions</span>
+    <span class="chip">District: Rangareddy <button title="Remove filter" onclick="demoToast('Filter cleared')">✕</button></span>
+    <button class="chip ghost">+ Add filter</button>
+    <button class="mini-btn">Pick survey</button>
+  </div>
+</div>
+
+<!-- ══════════ Notes ══════════ -->
+<div class="notes">
+  <h3>Doctrine: One Motion Language</h3>
+  <div class="principle">
+    <span class="tag">[G] ONE SYSTEM</span>
+    <span>Two skins, one grammar: field = emerald #059669 with black text on primary (daylight contrast); portal = Google #1a73e8 white-on-blue. Both share the same hover lift, active settle, and 2px focus ring.</span>
+  </div>
+  <div class="principle">
+    <span class="tag">[A] 44px MINIMUM</span>
+    <span>Every touchable button is ≥44px tall (small = 34px, pointer-only portal rows excepted). Focus-visible always shows the outline — keyboard and switch users never lose the button.</span>
+  </div>
+  <div class="principle">
+    <span class="tag">[T] TACTILE, NOT LOUD</span>
+    <span>Hover lifts 1px with a soft shadow; active presses back down. No scale jumps, no color strobe. Disabled = 50% opacity, cursor changes, handlers stay bound so screen readers announce why.</span>
+  </div>
+  <div class="principle">
+    <span class="tag">[A] DESTRUCTIVE = DANGER + CONFIRM</span>
+    <span>Delete draft, End survey, Remove project never fire on a single tap — danger buttons route through the confirm dialog (see modals.html). Portal danger tints first, fills solid on hover.</span>
+  </div>
+</div>
+
+<script>
+  function demoLoading(btn) {
+    const spin = btn.querySelector('.spin');
+    const label = btn.querySelector('span:last-child');
+    spin.style.display = 'inline-block';
+    label.textContent = 'Syncing…';
+    setTimeout(() => {
+      spin.style.display = 'none';
+      label.textContent = 'Synced ✓';
+      setTimeout(() => { label.textContent = 'Sync now'; }, 1400);
+    }, 1600);
+  }
+  function demoToast(msg) { console.log('toast:', msg); }
+  function pickOpt(btn) {
+    btn.parentElement.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+  }
+</script>
+</body>
+</html>

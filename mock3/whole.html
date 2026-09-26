@@ -205,6 +205,25 @@
   .card { background: var(--surface, #ffffff); border: 1px solid var(--surface-hover, #e2e8f0); border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); margin-bottom: 16px; }
   .card h3 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
   .card .csub { font-size: 11px; color: var(--ink-muted, #64748b); margin-bottom: 16px; }
+
+  /* ── Survey scope bar (latest: empty filter = all surveys, incl. legacy Excel) ── */
+  .scope-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+    background: var(--surface, #ffffff); border: 1px solid var(--surface-hover, #e2e8f0);
+    border-radius: 12px; padding: 12px 16px; margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .scope-bar .scope-label { font-size: 12px; font-weight: 700; color: var(--ink-secondary, #475569); }
+  .scope-bar select {
+    font: inherit; font-size: 13px; font-weight: 600; color: var(--ink, #1e293b);
+    background: var(--surface-alt, #f1f5f9); border: 1px solid var(--surface-hover, #e2e8f0);
+    border-radius: 8px; padding: 8px 12px; cursor: pointer;
+  }
+  .scope-bar select:focus { outline: none; border-color: var(--accent, #1d6fe0); box-shadow: 0 0 0 3px var(--accent-light, #dbeafe); }
+  .scope-note { font-size: 12px; color: var(--ink-muted, #64748b); }
+  .scope-note strong { color: var(--ink-secondary, #475569); }
+  .scope-swap { animation: scopeSwap .28s var(--ease-out, ease-out); }
+  @keyframes scopeSwap { 0% { opacity: .25; transform: translateY(3px); } 100% { opacity: 1; transform: none; } }
   .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   @media (max-width: 960px) { .chart-grid { grid-template-columns: 1fr; } .admin-shell { grid-template-columns: 1fr; } }
 
@@ -390,9 +409,9 @@
                 <div class="q-text">Which party do you support?</div>
                 <div class="options">
                   <button class="opt-btn party-congress selected" onclick="selectParty(this)"><span class="swatch" style="background:#16a34a"></span>Congress</button>
-                  <button class="opt-btn party-bjp" onclick="selectParty(this)"><span class="swatch" style="background:#f97316"></span>BJP</button>
-                  <button class="opt-btn party-brs" onclick="selectParty(this)"><span class="swatch" style="background:#ec4899"></span>BRS</button>
-                  <button class="opt-btn party-others" onclick="selectParty(this)"><span class="swatch" style="background:#94a3b8"></span>Others</button>
+                  <button class="opt-btn party-bjp" onclick="selectParty(this)"><span class="swatch" style="background:#ea580c"></span>BJP</button>
+                  <button class="opt-btn party-brs" onclick="selectParty(this)"><span class="swatch" style="background:#db2777"></span>BRS</button>
+                  <button class="opt-btn party-others" onclick="selectParty(this)"><span class="swatch" style="background:#6366f1"></span>Others</button>
                   <button class="opt-btn party-undecided" onclick="selectParty(this)"><span class="swatch" style="background:#64748b"></span>Undecided</button>
                 </div>
               </div>
@@ -515,10 +534,21 @@
 
         <!-- Analyze -->
         <div id="v-analyze" class="admin-view">
+          <!-- Survey scope · dynamic: value starts EMPTY (= all surveys), tick a survey to re-render the report -->
+          <div class="scope-bar">
+            <span class="scope-label">Survey</span>
+            <select id="surveyScope" onchange="setSurveyScope(this.value)">
+              <option value="" selected>All surveys</option>
+              <option value="pulse">Telangana Pulse — Live Field</option>
+              <option value="baseline">Pre-Poll Baseline — Live Field</option>
+              <option value="excel">Nov 2023 Door-to-Door · Excel import</option>
+            </select>
+            <span class="scope-note" id="scopeNote"><strong>Showing every survey</strong> (including Excel/legacy). Pick one survey to narrow.</span>
+          </div>
           <div class="kpi-grid">
-            <div class="kpi"><div class="v tnum">4,026</div><div class="l">In this report</div></div>
-            <div class="kpi"><div class="v" style="color:#16a34a">Congress</div><div class="l">Lead party · 33.2%</div></div>
-            <div class="kpi"><div class="v">Roads</div><div class="l">Top issue · 28%</div></div>
+            <div class="kpi"><div class="v tnum" id="kpi-total-v">6,214</div><div class="l" id="kpi-total-l">In this report · all surveys</div></div>
+            <div class="kpi"><div class="v" id="kpi-lead-v" style="color:#16a34a">Congress</div><div class="l" id="kpi-lead-l">Lead party · 33.8%</div></div>
+            <div class="kpi"><div class="v" id="kpi-issue-v">Roads</div><div class="l" id="kpi-issue-l">Top issue · 28%</div></div>
           </div>
           <div class="chart-grid">
             <div class="card">
@@ -561,7 +591,7 @@
             <div class="cc-top"><span class="cc-name">Acme Research</span><span class="cc-pills"><span class="p">▤ 2 projects</span><span class="p">👥 2 admins</span></span></div>
             <div class="cc-meta">Members: Priya N (@priya), Ravi T (@ravi)</div>
           </div>
-          <div class="company-card" style="border-left-color:#f97316">
+          <div class="company-card" style="border-left-color:#ea580c">
             <div class="cc-top"><span class="cc-name">Deccan Insights</span><span class="cc-pills"><span class="p">▤ 1 project</span><span class="p">👥 1 admin</span></span></div>
             <div class="cc-meta">Members: Kiran M (@kiran)</div>
           </div>
@@ -620,29 +650,107 @@
 <div id="toast"></div>
 
 <script>
-  const PARTIES = [
-    { name: 'Congress', hex: '#16a34a', total: 1335 },
-    { name: 'BJP', hex: '#f97316', total: 1267 },
-    { name: 'BRS', hex: '#ec4899', total: 999 },
-    { name: 'Others', hex: '#94a3b8', total: 224 },
-    { name: 'Undecided', hex: '#64748b', total: 120 }
-  ];
-
-  const DISTRICTS = [
-    { d: 'Adilabad', total: 328, leadHex: '#f97316' },
-    { d: 'Nizamabad', total: 482, leadHex: '#f97316' },
-    { d: 'Karimnagar', total: 490, leadHex: '#f97316' },
-    { d: 'Warangal (R)', total: 466, leadHex: '#ec4899' },
-    { d: 'Rangareddy', total: 800, leadHex: '#16a34a' },
-    { d: 'Medchal', total: 537, leadHex: '#16a34a' },
-    { d: 'Hanumakonda', total: 495, leadHex: '#f97316' },
-    { d: 'Khammam', total: 428, leadHex: '#16a34a' }
-  ];
+  // ── Per-survey datasets · key '' (EMPTY select) = all surveys merged ──
+  const SURVEY_SETS = {
+    '': {
+      title: 'all surveys',
+      total: 6214,
+      lead: { name: 'Congress', hex: '#16a34a', share: 33.8 },
+      issue: { name: 'Roads', share: 28 },
+      parties: [
+        { name: 'Congress', hex: '#16a34a', total: 2072 },
+        { name: 'BJP', hex: '#ea580c', total: 1967 },
+        { name: 'BRS', hex: '#db2777', total: 1542 },
+        { name: 'Others', hex: '#6366f1', total: 344 },
+        { name: 'Undecided', hex: '#64748b', total: 208 }
+      ],
+      districts: [
+        { d: 'Adilabad', total: 508, leadHex: '#ea580c' },
+        { d: 'Nizamabad', total: 744, leadHex: '#ea580c' },
+        { d: 'Karimnagar', total: 756, leadHex: '#ea580c' },
+        { d: 'Warangal (R)', total: 718, leadHex: '#db2777' },
+        { d: 'Rangareddy', total: 1232, leadHex: '#16a34a' },
+        { d: 'Medchal', total: 827, leadHex: '#16a34a' },
+        { d: 'Hanumakonda', total: 763, leadHex: '#ea580c' },
+        { d: 'Khammam', total: 666, leadHex: '#16a34a' }
+      ]
+    },
+    'pulse': {
+      title: 'Telangana Pulse — Live Field',
+      total: 1846,
+      lead: { name: 'Congress', hex: '#16a34a', share: 36.2 },
+      issue: { name: 'Roads', share: 31 },
+      parties: [
+        { name: 'Congress', hex: '#16a34a', total: 668 },
+        { name: 'BJP', hex: '#ea580c', total: 554 },
+        { name: 'BRS', hex: '#db2777', total: 426 },
+        { name: 'Others', hex: '#6366f1', total: 118 },
+        { name: 'Undecided', hex: '#64748b', total: 80 }
+      ],
+      districts: [
+        { d: 'Adilabad', total: 122, leadHex: '#ea580c' },
+        { d: 'Nizamabad', total: 216, leadHex: '#ea580c' },
+        { d: 'Karimnagar', total: 222, leadHex: '#ea580c' },
+        { d: 'Warangal (R)', total: 204, leadHex: '#db2777' },
+        { d: 'Rangareddy', total: 412, leadHex: '#16a34a' },
+        { d: 'Medchal', total: 268, leadHex: '#16a34a' },
+        { d: 'Hanumakonda', total: 231, leadHex: '#ea580c' },
+        { d: 'Khammam', total: 171, leadHex: '#16a34a' }
+      ]
+    },
+    'baseline': {
+      title: 'Pre-Poll Baseline — Live Field',
+      total: 1980,
+      lead: { name: 'BRS', hex: '#db2777', share: 35.9 },
+      issue: { name: 'Irrigation', share: 27 },
+      parties: [
+        { name: 'Congress', hex: '#16a34a', total: 653 },
+        { name: 'BJP', hex: '#ea580c', total: 455 },
+        { name: 'BRS', hex: '#db2777', total: 711 },
+        { name: 'Others', hex: '#6366f1', total: 92 },
+        { name: 'Undecided', hex: '#64748b', total: 69 }
+      ],
+      districts: [
+        { d: 'Adilabad', total: 114, leadHex: '#ea580c' },
+        { d: 'Nizamabad', total: 298, leadHex: '#ea580c' },
+        { d: 'Karimnagar', total: 276, leadHex: '#db2777' },
+        { d: 'Warangal (R)', total: 341, leadHex: '#db2777' },
+        { d: 'Rangareddy', total: 342, leadHex: '#16a34a' },
+        { d: 'Medchal', total: 226, leadHex: '#16a34a' },
+        { d: 'Hanumakonda', total: 219, leadHex: '#ea580c' },
+        { d: 'Khammam', total: 164, leadHex: '#db2777' }
+      ]
+    },
+    'excel': {
+      title: 'Nov 2023 Door-to-Door · Excel import',
+      total: 2188,
+      lead: { name: 'BRS', hex: '#db2777', share: 41.2 },
+      issue: { name: 'Farm loan waiver', share: 33 },
+      parties: [
+        { name: 'Congress', hex: '#16a34a', total: 746 },
+        { name: 'BJP', hex: '#ea580c', total: 381 },
+        { name: 'BRS', hex: '#db2777', total: 901 },
+        { name: 'Others', hex: '#6366f1', total: 84 },
+        { name: 'Undecided', hex: '#64748b', total: 76 }
+      ],
+      districts: [
+        { d: 'Adilabad', total: 168, leadHex: '#ea580c' },
+        { d: 'Nizamabad', total: 262, leadHex: '#ea580c' },
+        { d: 'Karimnagar', total: 248, leadHex: '#db2777' },
+        { d: 'Warangal (R)', total: 328, leadHex: '#db2777' },
+        { d: 'Rangareddy', total: 431, leadHex: '#16a34a' },
+        { d: 'Medchal', total: 281, leadHex: '#16a34a' },
+        { d: 'Hanumakonda', total: 243, leadHex: '#db2777' },
+        { d: 'Khammam', total: 227, leadHex: '#db2777' }
+      ]
+    }
+  };
+  let activeSet = SURVEY_SETS[''];
 
   let FEED = [
     { id: '63', name: 'Rajesh Kumar', rinit: 'AR', respondent: 'Anjali Reddy', dem: 'Female · 35', loc: 'Rangareddy · Maheshwaram AC', time: '2 min ago', party: 'Congress', partyColor: '#16a34a', sent: 'Positive', sc: '#16a34a', issue: 'Roads', status: 'confirmed', slabel: 'Confirmed', phone: '+91 98490 •••21', aadhaar: 'XXXX XXXX 4417' },
-    { id: '58', name: 'Sunita Patel', rinit: 'IK', respondent: 'Ibrahim Khan', dem: 'Male · 42', loc: 'Medchal · Kukatpally AC', time: 'syncing…', party: 'BJP', partyColor: '#f97316', sent: 'Neutral', sc: '#f59e0b', issue: 'Water supply', status: 'pending', slabel: 'Pending', phone: '+91 90000 •••73', aadhaar: 'XXXX XXXX 9021' },
-    { id: '62', name: 'Amit Kumar', rinit: 'SY', respondent: 'Suresh Yadav', dem: 'Male · 28', loc: 'Hanumakonda · Warangal West AC', time: '5 min ago', party: 'BRS', partyColor: '#ec4899', sent: 'Negative', sc: '#ef4444', issue: 'Drainage', status: 'confirmed', slabel: 'Confirmed', phone: '+91 79955 •••08', aadhaar: 'XXXX XXXX 3390' },
+    { id: '58', name: 'Sunita Patel', rinit: 'IK', respondent: 'Ibrahim Khan', dem: 'Male · 42', loc: 'Medchal · Kukatpally AC', time: 'syncing…', party: 'BJP', partyColor: '#ea580c', sent: 'Neutral', sc: '#f59e0b', issue: 'Water supply', status: 'pending', slabel: 'Pending', phone: '+91 90000 •••73', aadhaar: 'XXXX XXXX 9021' },
+    { id: '62', name: 'Amit Kumar', rinit: 'SY', respondent: 'Suresh Yadav', dem: 'Male · 28', loc: 'Hanumakonda · Warangal West AC', time: '5 min ago', party: 'BRS', partyColor: '#db2777', sent: 'Negative', sc: '#ef4444', issue: 'Drainage', status: 'confirmed', slabel: 'Confirmed', phone: '+91 79955 •••08', aadhaar: 'XXXX XXXX 3390' },
     { id: '60', name: 'Lakshmi Menon', rinit: 'FB', respondent: 'Fatima Begum', dem: 'Female · 55', loc: 'Nizamabad · Bodhan AC', time: '8 min ago', party: 'Congress', partyColor: '#16a34a', sent: 'Positive', sc: '#16a34a', issue: 'Healthcare', status: 'rejected', slabel: 'Rejected', phone: '+91 88012 •••55', aadhaar: 'not present' }
   ];
 
@@ -676,7 +784,7 @@
   function renderTileMap() {
     const el = document.getElementById('tilemap');
     if (!el) return;
-    el.innerHTML = DISTRICTS.map(r => `
+    el.innerHTML = activeSet.districts.map(r => `
       <div class="tile" style="background:#dbeafe;color:#1e3a8a">
         <div class="tn">${r.d}</div>
         <div>
@@ -690,9 +798,9 @@
   function renderPartyBars() {
     const el = document.getElementById('party-bars');
     if (!el) return;
-    const max = Math.max(...PARTIES.map(p => p.total));
-    const grand = PARTIES.reduce((s, p) => s + p.total, 0);
-    el.innerHTML = PARTIES.map(p => {
+    const max = Math.max(...activeSet.parties.map(p => p.total));
+    const grand = activeSet.parties.reduce((s, p) => s + p.total, 0);
+    el.innerHTML = activeSet.parties.map(p => {
       const w = (p.total / max * 100);
       const pct = (p.total / grand * 100).toFixed(1);
       return `
@@ -706,6 +814,38 @@
         </div>
       `;
     }).join('');
+  }
+
+  function renderAnalyzeKpis() {
+    const totalV = document.getElementById('kpi-total-v');
+    if (!totalV) return;
+    totalV.textContent = activeSet.total.toLocaleString();
+    document.getElementById('kpi-total-l').textContent = 'In this report · ' + activeSet.title;
+    const leadV = document.getElementById('kpi-lead-v');
+    leadV.textContent = activeSet.lead.name;
+    leadV.style.color = activeSet.lead.hex;
+    document.getElementById('kpi-lead-l').textContent = 'Lead party · ' + activeSet.lead.share + '%';
+    document.getElementById('kpi-issue-v').textContent = activeSet.issue.name;
+    document.getElementById('kpi-issue-l').textContent = 'Top issue · ' + activeSet.issue.share + '%';
+  }
+
+  // Dynamic filter: select VALUE starts '' (= all surveys). Ticking a survey re-renders the report.
+  function setSurveyScope(v) {
+    activeSet = SURVEY_SETS[v] || SURVEY_SETS[''];
+    const note = document.getElementById('scopeNote');
+    note.innerHTML = activeSet === SURVEY_SETS['']
+      ? '<strong>Showing every survey</strong> (including Excel/legacy). Pick one survey to narrow.'
+      : `Showing only <strong>${activeSet.title}</strong>. Tick “All surveys” to widen.`;
+    renderAnalyzeKpis();
+    renderTileMap();
+    renderPartyBars();
+    ['kpi-total-v','kpi-lead-v','kpi-issue-v','tilemap','party-bars'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('scope-swap');
+      void el.offsetWidth;
+      el.classList.add('scope-swap');
+    });
   }
 
   function renderFeeds() {

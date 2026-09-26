@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Smart Survey X — Model Logo</title>
+<style>
+  :root{
+    --green:#34d399; --green-deep:#059669; --ink:#0f172a; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#eef2f7;color:var(--ink);min-height:100vh;padding:40px 20px 64px}
+  .wrap{max-width:920px;margin:0 auto}
+  .meta{font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#94a3b8;text-align:center;margin-bottom:10px}
+  h1{font-size:22px;font-weight:800;letter-spacing:-.02em;text-align:center;margin-bottom:32px}
+
+  /* ── Hero: dark stage, big mark ── */
+  .hero{background:radial-gradient(120% 140% at 50% 0%,#14213d 0%,#0b1220 60%,#090f1a 100%);border-radius:24px;padding:56px 32px;display:flex;flex-direction:column;align-items:center;gap:22px;box-shadow:0 20px 50px rgba(2,6,23,.35);border:1px solid #1e293b}
+  .hero-tile{width:132px;height:132px;border-radius:32px;background:linear-gradient(140deg,#4ade80 0%,#10b981 45%,#059669 100%);display:flex;align-items:center;justify-content:center;box-shadow:0 18px 44px rgba(16,185,129,.38),inset 0 1px 0 rgba(255,255,255,.35)}
+  .hero-tile svg{width:92px;height:92px;color:#fff;filter:drop-shadow(0 3px 6px rgba(6,78,59,.45))}
+  .hero-name{color:#f8fafc;font-size:26px;font-weight:800;letter-spacing:-.03em;text-align:center}
+  .hero-name small{display:block;font-size:12px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:#6ee7b7;margin-top:5px}
+  .hero-word{color:#94a3b8;font-size:12.5px;max-width:430px;text-align:center;line-height:1.6}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:22px}
+  .card{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:20px;box-shadow:0 2px 6px rgba(15,23,42,.05)}
+  .card h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+
+  /* lockups */
+  .lockup{display:flex;align-items:center;gap:12px}
+  .lockup.dark-pad{background:#0f172a;border-radius:12px;padding:14px 16px}
+  .l-tile{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#34d399,#059669);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 3px 8px rgba(5,150,105,.3)}
+  .l-tile svg{width:32px;height:32px;color:#fff}
+  .l-tile.blue{background:linear-gradient(135deg,#60a5fa,#1d6fe0)}
+  .l-name{font-size:15px;font-weight:800;letter-spacing:-.01em}
+  .l-sub{font-size:11px;color:var(--muted);font-weight:600;margin-top:1px}
+  .dark-pad .l-name{color:#f8fafc}
+  .dark-pad .l-sub{color:#94a3b8}
+  .stack{display:flex;flex-direction:column;gap:14px}
+
+  /* sizes strip */
+  .sizes{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap}
+  .sz{display:flex;flex-direction:column;align-items:center;gap:6px}
+  .sz small{font-size:10px;color:#94a3b8;font-weight:700}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:99px;padding:5px 12px;font-size:11.5px;font-weight:700;color:#334155}
+  .chip svg{width:16px;height:16px}
+
+  .mono-tiles{display:flex;gap:14px;flex-wrap:wrap}
+  .m-tile{width:56px;height:56px;border-radius:14px;display:flex;align-items:center;justify-content:center}
+  .m-tile svg{width:38px;height:38px}
+  .m-tile.dark{background:#0f172a}
+  .m-tile.dark svg{color:#f8fafc}
+  .m-tile.light{background:#f1f5f9;border:1px solid #e2e8f0}
+  .m-tile.light svg{color:#0f172a}
+  .m-tile.green svg{color:#059669}
+
+  .note{margin-top:26px;text-align:center;font-size:11.5px;color:#94a3b8}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="meta">mock3 · concept only — not wired into the app</p>
+  <h1>Smart Survey X — Model Logo</h1>
+
+  <!-- ═══ HERO ═══ -->
+  <section class="hero">
+    <div class="hero-tile">
+      <!-- mark: map pin with punched-out check -->
+      <svg viewBox="0 0 48 48" fill="none" aria-label="Pin-check mark">
+        <path d="M24 4.5c7.9 0 14.2 6.2 14.2 14 0 10.6-14.2 25-14.2 25S9.8 29.1 9.8 18.5c0-7.8 6.3-14 14.2-14z" fill="currentColor"/>
+        <path d="M16.8 18.6l5 5 9.6-10.2" stroke="#0ea47a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="hero-name">Smart Survey X<small>Verified field operations</small></div>
+    <p class="hero-word">The mark is a <strong style="color:#cbd5e1">map pin</strong> with a <strong style="color:#cbd5e1">verified check</strong> carved through it — where the data comes from, plus the QA stamp the platform guarantees. One glyph, readable from favicon to billboards.</p>
+  </section>
+
+  <div class="grid">
+    <!-- Lockups -->
+    <div class="card">
+      <h3>Wordmark lockups</h3>
+      <div class="stack">
+        <div class="lockup">
+          <div class="l-tile"><svg viewBox="0 0 48 48" fill="none"><path d="M24 4.5c7.9 0 14.2 6.2 14.2 14 0 10.6-14.2 25-14.2 25S9.8 29.1 9.8 18.5c0-7.8 6.3-14 14.2-14z" fill="currentColor"/><path d="M16.8 18.6l5 5 9.6-10.2" stroke="#0ea47a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div><div class="l-name">Smart Survey X</div><div class="l-sub">Field app · green mark</div></div>
+        </div>
+        <div class="lockup">
+          <div class="l-tile blue"><svg viewBox="0 0 48 48" fill="none"><path d="M24 4.5c7.9 0 14.2 6.2 14.2 14 0 10.6-14.2 25-14.2 25S9.8 29.1 9.8 18.5c0-7.8 6.3-14 14.2-14z" fill="currentColor"/><path d="M16.8 18.6l5 5 9.6-10.2" stroke="#2563eb" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div><div class="l-name">Smart Survey X</div><div class="l-sub">Admin portal · blue mark</div></div>
+        </div>
+        <div class="lockup dark-pad">
+          <div class="l-tile"><svg viewBox="0 0 48 48" fill="none"><path d="M24 4.5c7.9 0 14.2 6.2 14.2 14 0 10.6-14.2 25-14.2 25S9.8 29.1 9.8 18.5c0-7.8 6.3-14 14.2-14z" fill="currentColor"/><path d="M16.8 18.6l5 5 9.6-10.2" stroke="#0ea47a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div><div class="l-name">Smart Survey X</div><div class="l-sub">On dark surfaces</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sizes -->
+    <div class="card">
+      <h3>Size testing</h3>
+      <div class="sizes">
+        <div class="sz"><div class="tile-sm" style="background:linear-gradient(135deg,#34d399,#059669);border-radius:14px;width:56px;height:56px;display:flex;align-items:center;justify-content:center"><svg width="40" height="40" viewBox="0 0 48 48" fill="none"><path d="M24 4.5c7.9 0 14.2 6.2 14.2 14 0 10.6-14.2 25-14.2 25S9.8 29.1 9.8 18.5c0-7.8 6.3-14 14.2-14z" fill="#fff"/><path d="M16.8 18.6l5 5 9.6-10.2" stroke="#0ea47a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><small>56</small></div>
+        <div class="sz"><div style="background:linear-gradient(135deg,#34d399,#059669);border-radius:10px;width:40px;height:40px;display:flex;align-items:center;justify-content:center"><svg width="29" height="29" viewBox="0 0 48 48" fill="none"><path d="M24 4.5c7.9 0 14.2 6.2 14.2 14 0 10.6-14.2 25-14.2 25S9.8 29.1 9.8 18.5c0-7.8 6.3-14 14.2-14z" fill="#fff"/><path d="M16.8 18.6l5 5 9.6-10.2" stroke="#0ea47a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><small>40</small></div>
+        <div class="sz"><div style="background:linear-gradient(135deg,#34d399,#059669);border-radius:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center"><svg width="21" height="21" viewBox="0 0 48 48" fill="none"><path d="M24 4.5c7.9 0 14.2 6.2 14.2 14 0 10.6-14.2 25-14.2 25S9.8 29.1 9.8 18.5c0-7.8 6.3-14 14.2-14z" fill="#fff"/><path d="M16.8 18.6l5 5 9.6-10.2" stroke="#0ea47a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><small>28</small></div>
+        <div class="sz"><div style="background:linear-gradient(135deg,#34d399,#059669);border-radius:4px;width:20px;height:20px;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 48 48" fill="none"><path d="M24 4.5c7.9 0 14.2 6.2 14.2 14 0 10.6-14.2 25-14.2 25S9.8 29.1 9.8 18.5c0-7.8 6.3-14 14.2-14z" fill="#fff"/><path d="M16.8 18.6l5 5 9.6-10.2" stroke="#0ea47a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><small>20</small></div>
+        <div class="sz"><div style="background:linear-gradient(135deg,#34d399,#059669);border-radius:3px;width:16px;height:16px;display:flex;align-items:center;justify-content:center"><svg width="13" height="13" viewBox="0 0 48 48" fill="none"><path d="M24 4.5c7.9 0 14.2 6.2 14.2 14 0 10.6-14.2 25-14.2 25S9.8 29.1 9.8 18.5c0-7.8 6.3-14 14.2-14z" fill="#fff"/><path d="M16.8 18.6l5 5 9.6-10.2" stroke="#0ea47a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><small>16</small></div>
+      </div>
+    </div>
+
+    <!-- Monochrome -->
+    <div class="card">
+      <h3>Monochrome fallback</h3>
+      <div class="mono-tiles">
+        <div class="m-tile dark"><svg viewBox="0 0 48 48" fill="none"><path d="M24 4.5c7.9 0 14.2 6.2 14.2 14 0 10.6-14.2 25-14.2 25S9.8 29.1 9.8 18.5c0-7.8 6.3-14 14.2-14z" fill="currentColor"/><path d="M16.8 18.6l5 5 9.6-10.2" stroke="#0f172a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="m-tile light"><svg viewBox="0 0 48 48" fill="none"><path d="M24 4.5c7.9 0 14.2 6.2 14.2 14 0 10.6-14.2 25-14.2 25S9.8 29.1 9.8 18.5c0-7.8 6.3-14 14.2-14z" fill="currentColor"/><path d="M16.8 18.6l5 5 9.6-10.2" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="m-tile light green"><svg viewBox="0 0 48 48" fill="none"><path d="M24 4.5c7.9 0 14.2 6.2 14.2 14 0 10.6-14.2 25-14.2 25S9.8 29.1 9.8 18.5c0-7.8 6.3-14 14.2-14z" fill="currentColor"/><path d="M16.8 18.6l5 5 9.6-10.2" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+      <div style="margin-top:14px"><span class="chip"><svg viewBox="0 0 48 48" fill="none"><path d="M24 4.5c7.9 0 14.2 6.2 14.2 14 0 10.6-14.2 25-14.2 25S9.8 29.1 9.8 18.5c0-7.8 6.3-14 14.2-14z" fill="#059669"/><path d="M16.8 18.6l5 5 9.6-10.2" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>223 responses · on track</span></div>
+    </div>
+
+    <!-- Palette -->
+    <div class="card">
+      <h3>Palette</h3>
+      <div class="stack" style="gap:10px">
+        <div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:9px;background:#059669"></div><div><div style="font-size:12.5px;font-weight:700">Verified Green</div><div style="font-size:11px;color:var(--muted)">#059669 · field app primary</div></div></div>
+        <div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:9px;background:#34d399"></div><div><div style="font-size:12.5px;font-weight:700">Live Mint</div><div style="font-size:11px;color:var(--muted)">#34d399 · tile highlight</div></div></div>
+        <div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:9px;background:#1d6fe0"></div><div><div style="font-size:12.5px;font-weight:700">Portal Blue</div><div style="font-size:11px;color:var(--muted)">#1d6fe0 · admin surfaces</div></div></div>
+        <div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:9px;background:#0f172a"></div><div><div style="font-size:12.5px;font-weight:700">Ink</div><div style="font-size:11px;color:var(--muted)">#0f172a · dark stage &amp; mono</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>Why this mark</h3>
+    <ul style="margin:0;padding-left:18px;font-size:13px;color:#334155;line-height:1.75">
+      <li><strong>Pin</strong> = field collection — every response is geo-tagged on the ground.</li>
+      <li><strong>Check</strong> = the verification promise (QA: confirm / reject / flag).</li>
+      <li>Single continuous glyph → stays crisp at 16px favicon and on the Android launcher.</li>
+      <li>Two-color system: green tile for the field app, blue tile for the admin portal — same mark, clear roles.</li>
+    </ul>
+  </div>
+
+  <p class="note">Model only — lives in mock3. Say the word and I'll wire it into favicon, login screens, topbar and portal.</p>
+</div>
+</body>
+</html>

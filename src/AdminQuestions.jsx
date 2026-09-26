@@ -408,7 +408,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
           : (q.optionsText || '').split(',').map((s) => s.trim()).filter(Boolean)
 
         return (
-          <div key={q._uid || `qi-${i}`} className="card" style={{ marginBottom: 14, borderLeft: '4px solid #00e599' }}>
+          <div key={q._uid || `qi-${i}`} className="card" style={{ marginBottom: 14, borderLeft: '4px solid #059669' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span className="pill ok" style={{ fontSize: 11, fontWeight: 'bold' }}>
                 Q{i + 1} · {type.toUpperCase().replace('_', ' ')}
@@ -556,7 +556,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                   onChange={(e) => updateQ(i, { required: e.target.checked })}
                   disabled={isFrozen || !canEdit}
                 />
-                <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#00e599' : '#e2e8f0' }}>
+                <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#059669' : '#e2e8f0' }}>
                   {q.required ? <><Icon name="check" size={12} /> Required (surveyor must answer)</> : 'Optional'}
                 </span>
               </label>
@@ -627,7 +627,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
               ) : type === 'abc' ? (
                 <div style={{ display: 'flex', gap: 8 }}>
                   {['A', 'B', 'C', 'D'].map((letter, idx) => (
-                    <span key={letter} style={{ background: ['#00e599', '#38bdf8', '#a78bfa', '#f472b6'][idx], color: '#111', padding: '6px 16px', borderRadius: 16, fontWeight: 'bold' }}>
+                    <span key={letter} style={{ background: ['#059669', '#38bdf8', '#a78bfa', '#f472b6'][idx], color: '#111', padding: '6px 16px', borderRadius: 16, fontWeight: 'bold' }}>
                       {letter}
                     </span>
                   ))}

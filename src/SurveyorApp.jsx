@@ -986,7 +986,7 @@ function SurveyorProfileScreen({
                   textAlign: 'left',
                   padding: '10px 12px',
                   borderRadius: 10,
-                  border: selected ? '2px solid #00e599' : '1px solid #e2e8f0',
+                  border: selected ? '2px solid #059669' : '1px solid #e2e8f0',
                   background: selected ? 'rgba(0,229,153,0.08)' : '#fff',
                   cursor: 'pointer',
                   display: 'flex',
@@ -999,7 +999,7 @@ function SurveyorProfileScreen({
                     width: 16,
                     height: 16,
                     borderRadius: '50%',
-                    border: selected ? '5px solid #00e599' : '2px solid #cbd5e1',
+                    border: selected ? '5px solid #059669' : '2px solid #cbd5e1',
                     boxSizing: 'border-box',
                   }}
                 />

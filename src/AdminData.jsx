@@ -17,12 +17,8 @@ import { getDisplayLang } from './prefs'
 import { slugQuestionKey } from './questionKey'
 
 function pickFirstSurveyKey(items) {
-  const list = Array.isArray(items) ? items : []
-  const real = list.filter((s) => {
-    const k = String(s?.form_key || '')
-    return k && k !== 'default' && k !== 'legacy'
-  })
-  return String((real[0] || list[0])?.form_key || '')
+  void items
+  return ''
 }
 
 /**
@@ -125,8 +121,6 @@ export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
         .then((d) => {
           const items = d.items || []
           setSurveys(items)
-          const key = pickFirstSurveyKey(items)
-          if (key) setSurvey((cur) => cur || key)
         })
         .catch(() => {}),
     )
@@ -137,7 +131,7 @@ export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
     try {
       const [summary, analytics] = await Promise.all([
         getGeoSummary(),
-        survey ? getAnalytics({ survey }).catch(() => null) : Promise.resolve(null),
+        getAnalytics(survey ? { survey } : {}).catch(() => null),
       ])
       setGeo(summary)
       setMapAnalytics(analytics)
@@ -446,10 +440,11 @@ export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
                     <label className="field compact">
                       <span>By survey</span>
                       <select value={survey} onChange={(e) => setSurvey(e.target.value)}>
-                        {surveys.length === 0 ? <option value="">Select survey</option> : null}
+                        <option value="">All surveys</option>
                         {surveys.map((s) => (
                           <option key={s.id} value={s.form_key}>
                             {s.title}
+                            {s.form_key === 'legacy' ? ' · Excel import' : ''}
                           </option>
                         ))}
                       </select>
@@ -620,10 +615,11 @@ export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
                     }
                   }}
                 >
-                  {surveys.length === 0 ? <option value="">Select survey</option> : null}
+                  <option value="">All surveys</option>
                   {surveys.map((s) => (
                     <option key={s.id} value={s.form_key}>
-                      {s.title} {s.surveyor_names ? `(👥 ${s.surveyor_names})` : ''}
+                      {s.title} {s.form_key === 'legacy' ? '· Excel' : ''}{' '}
+                      {s.surveyor_names ? `(👥 ${s.surveyor_names})` : ''}
                     </option>
                   ))}
                 </select>

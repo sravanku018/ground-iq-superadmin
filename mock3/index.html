@@ -241,11 +241,15 @@
   <p>Apple surveyor surface · Google design system · Twitter sync & feeds · Validated 5-party palette · Sample Telangana data</p>
   <nav style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
     <a href="demo.html" style="font-size:12px;color:#0284c7;text-decoration:none;padding:4px 10px;border:1px solid #7dd3fc;border-radius:20px;background:#f0f9ff;font-weight:700;">★ Political & Market Survey Demo</a>
+    <a href="directions.html" style="font-size:12px;color:#7c3aed;text-decoration:none;padding:4px 10px;border:1px solid #ddd6fe;border-radius:20px;background:#f5f3ff;font-weight:700;">⚡ Design Directions</a>
+    <a href="simple.html" style="font-size:12px;color:#047857;text-decoration:none;padding:4px 10px;border:1px solid #a7f3d0;border-radius:20px;background:#ecfdf5;font-weight:700;">🌿 Simple Mode — for laymen</a>
     <a href="surveyor.html" style="font-size:12px;color:#1d6fe0;text-decoration:none;padding:4px 10px;border:1px solid #bfdbfe;border-radius:20px;background:#eff6ff;">Apple → Surveyor Surface</a>
     <a href="admin-feed.html" style="font-size:12px;color:#1d6fe0;text-decoration:none;padding:4px 10px;border:1px solid #bfdbfe;border-radius:20px;background:#eff6ff;">Twitter → Admin Feed</a>
     <a href="tokens.css" style="font-size:12px;color:#1d6fe0;text-decoration:none;padding:4px 10px;border:1px solid #bfdbfe;border-radius:20px;background:#eff6ff;">Google → Design Tokens</a>
+    <a href="colors.html" style="font-size:12px;color:#1d6fe0;text-decoration:none;padding:4px 10px;border:1px solid #bfdbfe;border-radius:20px;background:#eff6ff;">🎨 Colors &amp; Themes</a>
     <a href="whole.html" style="font-size:12px;color:#7c3aed;text-decoration:none;padding:4px 10px;border:1px solid #ddd6fe;border-radius:20px;background:#f5f3ff;">Whole Product Mock</a>
     <a href="total.html" style="font-size:12px;color:#7c3aed;text-decoration:none;padding:4px 10px;border:1px solid #ddd6fe;border-radius:20px;background:#f5f3ff;">Total App Mockup</a>
+    <a href="logo.html" style="font-size:12px;color:#b45309;text-decoration:none;padding:4px 10px;border:1px solid #fde68a;border-radius:20px;background:#fffbeb;">🎨 Model Logo</a>
   </nav>
   <nav style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
     <span style="font-size:11px;color:#94a3b8;font-weight:700;align-self:center;">DOCTRINE COMPONENTS:</span>
@@ -256,6 +260,8 @@
     <a href="toggle-pill.html" style="font-size:11px;color:#059669;text-decoration:none;padding:3px 8px;border:1px solid #bbf7d0;border-radius:16px;background:#f0fdf4;">[G] TogglePill</a>
     <a href="credentials.html" style="font-size:11px;color:#059669;text-decoration:none;padding:3px 8px;border:1px solid #bbf7d0;border-radius:16px;background:#f0fdf4;">[A] CredentialsCard</a>
     <a href="period-table.html" style="font-size:11px;color:#059669;text-decoration:none;padding:3px 8px;border:1px solid #bbf7d0;border-radius:16px;background:#f0fdf4;">[G] PeriodTable</a>
+    <a href="buttons.html" style="font-size:11px;color:#059669;text-decoration:none;padding:3px 8px;border:1px solid #bbf7d0;border-radius:16px;background:#f0fdf4;">[G] Buttons</a>
+    <a href="modals.html" style="font-size:11px;color:#059669;text-decoration:none;padding:3px 8px;border:1px solid #bbf7d0;border-radius:16px;background:#f0fdf4;">[T] Modals &amp; Sheets</a>
   </nav>
 </div>
 
@@ -286,11 +292,11 @@
 <div class="notes">
   <strong>Palette (validated on #ffffff surface):</strong>
   <ul>
-    <li><span style="color:#16a34a">■</span> Congress — <code>#16a34a</code> (green, pass 4.6:1)</li>
-    <li><span style="color:#f97316">■</span> BJP — <code>#f97316</code> (saffron, deepened, pass 3.1:1 on white via pill)</li>
-    <li><span style="color:#ec4899">■</span> BRS — <code>#ec4899</code> (pink, pass 3.2:1)</li>
-    <li><span style="color:#94a3b8">■</span> Others — <code>#94a3b8</code> (neutral grey, intentional)</li>
-    <li><span style="color:#64748b">■</span> Undecided — <code>#64748b</code> (slate, intentional)</li>
+    <li><span style="color:#16a34a">■</span> Congress — <code>#16a34a</code> (green, pass 4.6:1 · tint <code>#f0fdf4</code>)</li>
+    <li><span style="color:#ea580c">■</span> BJP — <code>#ea580c</code> (deep saffron · tint <code>#fff7ed</code>)</li>
+    <li><span style="color:#db2777">■</span> BRS — <code>#db2777</code> (deep pink · tint <code>#fdf2f8</code>)</li>
+    <li><span style="color:#6366f1">■</span> Others — <code>#6366f1</code> (indigo · tint <code>#eef2ff</code>)</li>
+    <li><span style="color:#64748b">■</span> Undecided — <code>#64748b</code> (slate · tint <code>#f8fafc</code>)</li>
   </ul>
   <strong>Design rationale:</strong>
   <ul>
@@ -302,12 +308,12 @@
 </div>
 
 <script>
-  // ── Validated 5-party palette ──
+  // ── Shipped party palette (App.css) ──
   const PARTIES = [
     { name: 'Congress',  hex: '#16a34a' },
-    { name: 'BJP',       hex: '#f97316' },
-    { name: 'BRS',       hex: '#ec4899' },
-    { name: 'Others',    hex: '#94a3b8' },
+    { name: 'BJP',       hex: '#ea580c' },
+    { name: 'BRS',       hex: '#db2777' },
+    { name: 'Others',    hex: '#6366f1' },
     { name: 'Undecided', hex: '#64748b' },
   ];
   const PARTY_MAP = Object.fromEntries(PARTIES.map(p => [p.name, p.hex]));

@@ -131,7 +131,7 @@ function QuestionEditor({
           : (q.optionsText || '').split(',').map((s) => s.trim()).filter(Boolean)
 
         return (
-          <div key={q._uid || `qi-${i}`} className="card" style={{ marginBottom: 14, borderLeft: '4px solid #00e599' }}>
+          <div key={q._uid || `qi-${i}`} className="card" style={{ marginBottom: 14, borderLeft: '4px solid #059669' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span className="pill ok" style={{ fontSize: 11, fontWeight: 'bold' }}>
                 Q{i + 1} · {type.toUpperCase().replace('_', ' ')}
@@ -253,7 +253,7 @@ function QuestionEditor({
                   checked={!!q.required}
                   onChange={(e) => updateQ(i, { required: e.target.checked })}
                 />
-                <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#00e599' : '#e2e8f0' }}>
+                <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#059669' : '#e2e8f0' }}>
                   {q.required ? '✓ Required (surveyor must answer)' : 'Optional'}
                 </span>
               </label>
@@ -293,7 +293,7 @@ function QuestionEditor({
               ) : type === 'abc' ? (
                 <div style={{ display: 'flex', gap: 8 }}>
                   {['A', 'B', 'C', 'D'].map((letter, idx) => (
-                    <span key={letter} style={{ background: ['#00e599', '#38bdf8', '#a78bfa', '#f472b6'][idx], color: '#111', padding: '6px 16px', borderRadius: 16, fontWeight: 'bold' }}>
+                    <span key={letter} style={{ background: ['#059669', '#38bdf8', '#a78bfa', '#f472b6'][idx], color: '#111', padding: '6px 16px', borderRadius: 16, fontWeight: 'bold' }}>
                       {letter}
                     </span>
                   ))}
@@ -965,7 +965,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
           </div>
         )}
 
-        <div className="card" style={{ marginBottom: 12, borderLeft: '4px solid #00e599' }}>
+        <div className="card" style={{ marginBottom: 12, borderLeft: '4px solid #059669' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <span style={{ fontSize: 12, color: '#059669', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               <Icon name="lock" size={11} /> Project Name (Locked / Non-Editable)
@@ -1258,7 +1258,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
       style={{
         marginBottom: 10,
         padding: 14,
-        borderLeft: `4px solid ${sharedProject ? '#7c3aed' : '#00e599'}`,
+        borderLeft: `4px solid ${sharedProject ? '#7c3aed' : '#059669'}`,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

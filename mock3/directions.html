@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Design Directions — Three Ways Out of the Dead End</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e8eaee; color: #1a1d21; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 32px 20px 64px; }
+
+  .intro { max-width: 1240px; margin: 0 auto 28px; }
+  .intro h1 { font-size: 24px; font-weight: 800; letter-spacing: -.02em; }
+  .intro p { font-size: 13.5px; color: #5b6472; margin-top: 6px; max-width: 760px; line-height: 1.6; }
+  .intro .today { margin-top: 16px; background: #fff; border: 1px solid #dfe3e8; border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .intro .today .tag { font-size: 10px; font-weight: 800; letter-spacing: .1em; color: #8a93a3; }
+  .intro .today .mini { font-size: 12px; font-weight: 700; color: #1d6fe0; background: #eff6ff; border: 1px solid #bfdbfe; padding: 4px 12px; border-radius: 999px; }
+  .intro .today .mini.n { background: #f1f5f9; border-color: #e2e8f0; color: #64748b; }
+  .intro .today span.where { font-size: 12.5px; color: #5b6472; }
+
+  .dir-label { max-width: 1240px; margin: 34px auto 10px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .dir-label .letter { font-size: 13px; font-weight: 800; color: #fff; background: #1a1d21; border-radius: 6px; padding: 3px 9px; }
+  .dir-label h2 { font-size: 18px; font-weight: 800; letter-spacing: -.01em; }
+  .dir-label p { font-size: 12.5px; color: #5b6472; }
+
+  .frame { max-width: 1240px; margin: 0 auto; border-radius: 14px; overflow: hidden; box-shadow: 0 12px 40px rgba(15,23,42,.14); }
+
+  /* ════════════════ A · LEDGER — editorial light ════════════════ */
+  .ledger { background: #f7f5f0; color: #14120e; font-family: Georgia, 'Times New Roman', serif; padding: 34px 38px 30px; }
+  .ledger .rule { border: none; border-top: 1px solid #d8d3c8; margin: 14px 0; }
+  .ledger .rule-heavy { border-top: 3px double #c9c2b2; }
+  .ledger .mast { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .ledger .mast .kicker { font-style: italic; font-size: 13px; color: #6d675b; }
+  .ledger .mast .date { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #6d675b; }
+  .ledger h3.masthead { font-size: 34px; font-weight: 700; letter-spacing: -.015em; line-height: 1.05; margin-top: 4px; }
+  .ledger h3.masthead em { font-style: italic; color: #1f3a5f; }
+  .ledger .cols { display: grid; grid-template-columns: 1.15fr 1fr 1.1fr; gap: 30px; margin-top: 8px; }
+  .ledger .bignum .lbl { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: #6d675b; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 700; }
+  .ledger .bignum .v { font-size: 76px; line-height: .95; font-weight: 700; letter-spacing: -.02em; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .ledger .bignum .delta { font-size: 13px; margin-top: 8px; font-style: italic; color: #1f3a5f; }
+  .ledger .plabel { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: #6d675b; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 700; margin-bottom: 12px; }
+  .ledger .prow { display: grid; grid-template-columns: 92px 1fr 52px; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid #e7e2d6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  .ledger .prow .pn { font-size: 12.5px; font-weight: 700; color: #14120e; display: flex; align-items: center; gap: 7px; }
+  .ledger .prow .pn i { width: 9px; height: 9px; display: inline-block; }
+  .ledger .prow .bar { height: 8px; background: #e7e2d6; position: relative; }
+  .ledger .prow .bar b { position: absolute; inset: 0 auto 0 0; }
+  .ledger .prow .pv { font-size: 12.5px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; color: #45403a; }
+  .ledger table { width: 100%; border-collapse: collapse; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  .ledger th { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: #6d675b; text-align: left; padding: 0 0 8px; border-bottom: 2px solid #14120e; font-weight: 700; }
+  .ledger td { font-size: 12.5px; padding: 8px 0; border-bottom: 1px solid #e7e2d6; color: #45403a; }
+  .ledger td.rank { font-family: Georgia, serif; font-size: 15px; font-weight: 700; color: #14120e; width: 30px; }
+  .ledger td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: #14120e; }
+  .ledger .foot { font-size: 11.5px; font-style: italic; color: #6d675b; margin-top: 14px; }
+
+  /* ════════════════ B · OPS — dark console ════════════════ */
+  .ops { background: #0a0e14; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 22px 24px 26px; }
+  .ops .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+  .ops .statusbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-bottom: 14px; border-bottom: 1px solid #1c2836; }
+  .ops .live { display: flex; align-items: center; gap: 7px; font-size: 11px; letter-spacing: .12em; color: #34d399; font-weight: 700; }
+  .ops .live .led { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 8px #34d399; }
+  .ops .stat { font-size: 11px; color: #7d8ea3; }
+  .ops .stat b { color: #e6edf3; font-weight: 700; }
+  .ops .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; margin-top: 16px; }
+  .ops .panel { background: #101722; border: 1px solid #1c2836; border-radius: 4px; padding: 14px 16px; position: relative; overflow: hidden; }
+  .ops .panel::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, #22d3ee, transparent); opacity: .6; }
+  .ops .panel h5 { font-size: 10px; letter-spacing: .16em; color: #7d8ea3; font-weight: 700; margin-bottom: 10px; }
+  .ops .big { font-size: 42px; font-weight: 800; letter-spacing: -.02em; line-height: 1; color: #22d3ee; text-shadow: 0 0 24px rgba(34,211,238,.35); font-variant-numeric: tabular-nums; }
+  .ops .big small { font-size: 14px; color: #7d8ea3; font-weight: 600; margin-left: 6px; }
+  .ops .delta { display: inline-block; margin-top: 8px; font-size: 11px; color: #34d399; background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.3); border-radius: 3px; padding: 2px 7px; }
+  .ops .gauge { display: flex; height: 22px; border-radius: 3px; overflow: hidden; margin: 6px 0 12px; }
+  .ops .gauge span { height: 100%; }
+  .ops .gauge-legend { display: flex; flex-wrap: wrap; gap: 10px; }
+  .ops .gauge-legend span { font-size: 10.5px; color: #7d8ea3; display: flex; align-items: center; gap: 5px; }
+  .ops .gauge-legend i { width: 8px; height: 8px; border-radius: 2px; }
+  .ops .drow { display: grid; grid-template-columns: 1fr 84px 44px; align-items: center; gap: 10px; padding: 6.5px 0; border-bottom: 1px solid #141c29; font-size: 12px; }
+  .ops .drow:last-child { border-bottom: none; }
+  .ops .drow .dn { color: #c9d5e3; }
+  .ops .drow .track { height: 5px; background: #141c29; border-radius: 2px; overflow: hidden; }
+  .ops .drow .track b { display: block; height: 100%; background: linear-gradient(90deg, #0ea5e9, #22d3ee); }
+  .ops .drow .dv { text-align: right; color: #7d8ea3; font-variant-numeric: tabular-nums; }
+  .ops .qrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #141c29; font-size: 12px; }
+  .ops .qrow:last-child { border-bottom: none; }
+  .ops .qrow .led { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .ops .qrow .who { color: #e6edf3; font-weight: 600; }
+  .ops .qrow .what { color: #7d8ea3; }
+  .ops .qrow .tm { margin-left: auto; color: #4d5f75; font-size: 11px; }
+  .ops .span3 { grid-column: span 3; } .ops .span4 { grid-column: span 4; } .ops .span6 { grid-column: span 6; } .ops .span12 { grid-column: span 12; }
+  @media (max-width: 900px) { .ops .span3, .ops .span4, .ops .span6 { grid-column: span 12; } }
+
+  /* ════════════════ C · PULSE — warm friendly ════════════════ */
+  .pulse { background: #fdf6ef; color: #2d2a26; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 30px 32px 32px; }
+  .pulse .hello { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+  .pulse .hello .hi { font-size: 24px; font-weight: 800; letter-spacing: -.02em; }
+  .pulse .hello .hi span { color: #c2410c; }
+  .pulse .hello .sub { font-size: 13px; color: #8a7f72; margin-top: 4px; }
+  .pulse .hello .chip { font-size: 12px; font-weight: 700; color: #c2410c; background: #ffe8dc; border-radius: 999px; padding: 7px 16px; }
+  .pulse .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 16px; }
+  .pulse .stat-card { background: #fff; border-radius: 22px; padding: 18px 20px; box-shadow: 0 6px 20px rgba(151, 106, 60, .1); }
+  .pulse .stat-card .v { font-size: 32px; font-weight: 800; letter-spacing: -.02em; }
+  .pulse .stat-card .v small { font-size: 13px; color: #8a7f72; font-weight: 700; margin-left: 4px; }
+  .pulse .stat-card .l { font-size: 12px; color: #8a7f72; font-weight: 600; margin-top: 3px; }
+  .pulse .stat-card .v.warm { color: #c2410c; }
+  .pulse .panel { background: #fff; border-radius: 22px; padding: 18px 20px; box-shadow: 0 6px 20px rgba(151,106,60,.1); }
+  .pulse .panel h5 { font-size: 13px; font-weight: 800; margin-bottom: 12px; }
+  .pulse .prow { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .pulse .prow:last-child { margin-bottom: 0; }
+  .pulse .prow .pn { width: 86px; font-size: 12.5px; font-weight: 700; flex-shrink: 0; }
+  .pulse .prow .track { flex: 1; height: 18px; background: #f6ede3; border-radius: 999px; overflow: hidden; }
+  .pulse .prow .track b { display: block; height: 100%; border-radius: 999px; }
+  .pulse .prow .pv { width: 44px; text-align: right; font-size: 12.5px; font-weight: 800; font-variant-numeric: tabular-nums; color: #6b6156; }
+  .pulse .two-col { display: grid; grid-template-columns: 1.2fr 1fr; gap: 14px; }
+  @media (max-width: 860px) { .pulse .two-col { grid-template-columns: 1fr; } .pulse .stats { grid-template-columns: 1fr; } }
+  .pulse .feedrow { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 2px solid #faf1e7; }
+  .pulse .feedrow:last-child { border-bottom: none; }
+  .pulse .feedrow .av { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #fff; flex-shrink: 0; }
+  .pulse .feedrow .who { font-size: 13px; font-weight: 700; }
+  .pulse .feedrow .what { font-size: 11.5px; color: #8a7f72; margin-top: 1px; }
+  .pulse .feedrow .st { margin-left: auto; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 999px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div class="intro">
+  <h1>Design Directions — three ways out of the dead end</h1>
+  <p>Same dashboard, same real data — three genuinely different design languages. Today every mock reads as one grey-admin skin; these break the mold in structure, typography and color, not just tint. Pick a lane and the suite gets re-skinned in it.</p>
+  <div class="today">
+    <span class="tag">WHERE WE ARE TODAY</span>
+    <span class="mini">Slate cards</span>
+    <span class="mini">#1d6fe0 blue</span>
+    <span class="mini n">11–12px everything</span>
+    <span class="mini n">Rounded pills</span>
+    <span class="where">— competent, but every page looks the same. That's the dead end.</span>
+  </div>
+</div>
+
+<!-- ════════════════════════ A · LEDGER ════════════════════════ -->
+<div class="dir-label">
+  <span class="letter">A</span>
+  <h2>Ledger — election-night editorial</h2>
+  <p>Paper, serif headlines, hairline rules, one enormous number. Data as journalism — authority without dashboard chrome.</p>
+</div>
+<div class="frame">
+<section class="ledger">
+  <div class="mast">
+    <div class="kicker">The Ground Report — Telangana Field Panel</div>
+    <div class="date">All Surveys · Incl. Excel Import · 26 Sep 2026</div>
+  </div>
+  <hr class="rule rule-heavy">
+  <div class="cols">
+    <div class="bignum">
+      <div class="lbl">Responses on record</div>
+      <div class="v">6,214</div>
+      <div class="delta">▲ 214 since yesterday — strongest day this week</div>
+      <hr class="rule">
+      <div class="lbl" style="margin-bottom:10px;">Editor's note</div>
+      <div style="font-size:13.5px; line-height:1.65; color:#45403a;">Congress holds a five-point lead, but Nizamabad and Karimnagar remain contested. Undecided voters shrank to 3.4% — the field is tightening.</div>
+    </div>
+    <div>
+      <div class="plabel">Party preference · share</div>
+      <div class="prow"><span class="pn"><i style="background:#16a34a"></i>Congress</span><span class="bar"><b style="width:33.8%;background:#16a34a"></b></span><span class="pv">33.8</span></div>
+      <div class="prow"><span class="pn"><i style="background:#ea580c"></i>BJP</span><span class="bar"><b style="width:32.1%;background:#ea580c"></b></span><span class="pv">32.1</span></div>
+      <div class="prow"><span class="pn"><i style="background:#db2777"></i>BRS</span><span class="bar"><b style="width:25.1%;background:#db2777"></b></span><span class="pv">25.1</span></div>
+      <div class="prow"><span class="pn"><i style="background:#6366f1"></i>Others</span><span class="bar"><b style="width:5.6%;background:#6366f1"></b></span><span class="pv">5.6</span></div>
+      <div class="prow"><span class="pn"><i style="background:#64748b"></i>Undecided</span><span class="bar"><b style="width:3.4%;background:#64748b"></b></span><span class="pv">3.4</span></div>
+      <div class="foot">Shares of 6,133 party-answered records.</div>
+    </div>
+    <div>
+      <div class="plabel">Districts · by volume</div>
+      <table>
+        <tr><th></th><th>District</th><th style="text-align:right;">Resp.</th></tr>
+        <tr><td class="rank">1.</td><td>Rangareddy</td><td class="num">1,232</td></tr>
+        <tr><td class="rank">2.</td><td>Medchal</td><td class="num">827</td></tr>
+        <tr><td class="rank">3.</td><td>Hanumakonda</td><td class="num">763</td></tr>
+        <tr><td class="rank">4.</td><td>Karimnagar</td><td class="num">756</td></tr>
+        <tr><td class="rank">5.</td><td>Nizamabad</td><td class="num">744</td></tr>
+      </table>
+      <div class="foot">Full table of 8 districts inside.</div>
+    </div>
+  </div>
+  <hr class="rule">
+  <div class="foot" style="margin-top:0;">Verified 4,026 · pending 63 · rejected 31 — QA ledger maintained by the Client Admin desk.</div>
+</section>
+</div>
+
+<!-- ════════════════════════ B · OPS ════════════════════════ -->
+<div class="dir-label">
+  <span class="letter">B</span>
+  <h2>Ops — mission-control console</h2>
+  <p>Dark, dense, mono-labeled, glowing data. For the admin who lives in the numbers all day — everything one glance away.</p>
+</div>
+<div class="frame">
+<section class="ops">
+  <div class="statusbar mono">
+    <span class="live"><span class="led"></span>LIVE</span>
+    <span class="stat">SCOPE <b>ALL SURVEYS</b> + EXCEL IMPORT</span>
+    <span class="stat">SYNC <b>2s AGO</b></span>
+    <span class="stat">SURVEYORS <b>18 ACTIVE</b></span>
+    <span class="stat" style="margin-left:auto;">v2.0.65</span>
+  </div>
+  <div class="grid">
+    <div class="panel span3">
+      <h5>INTAKE · 24H</h5>
+      <div class="big">214<small>+18%</small></div>
+      <span class="delta">▲ best day this week</span>
+    </div>
+    <div class="panel span3">
+      <h5>QA QUEUE</h5>
+      <div class="big" style="color:#f59e0b;text-shadow:0 0 24px rgba(245,158,11,.3);">63</div>
+      <span class="delta" style="color:#22d3ee;background:rgba(34,211,238,.08);border-color:rgba(34,211,238,.3);">oldest 41m</span>
+    </div>
+    <div class="panel span6">
+      <h5>PARTY SPLIT · STATEWIDE</h5>
+      <div class="gauge">
+        <span style="width:33.8%;background:#16a34a"></span>
+        <span style="width:32.1%;background:#ea580c"></span>
+        <span style="width:25.1%;background:#db2777"></span>
+        <span style="width:5.6%;background:#6366f1"></span>
+        <span style="width:3.4%;background:#64748b"></span>
+      </div>
+      <div class="gauge-legend mono">
+        <span><i style="background:#16a34a"></i>INC 33.8</span>
+        <span><i style="background:#ea580c"></i>BJP 32.1</span>
+        <span><i style="background:#db2777"></i>BRS 25.1</span>
+        <span><i style="background:#6366f1"></i>OTH 5.6</span>
+        <span><i style="background:#64748b"></i>UND 3.4</span>
+      </div>
+    </div>
+    <div class="panel span6">
+      <h5>DISTRICT THROUGHPUT</h5>
+      <div class="drow"><span class="dn">Rangareddy</span><span class="track"><b style="width:100%"></b></span><span class="dv">1,232</span></div>
+      <div class="drow"><span class="dn">Medchal</span><span class="track"><b style="width:67%"></b></span><span class="dv">827</span></div>
+      <div class="drow"><span class="dn">Karimnagar</span><span class="track"><b style="width:61%"></b></span><span class="dv">756</span></div>
+      <div class="drow"><span class="dn">Hanumakonda</span><span class="track"><b style="width:62%"></b></span><span class="dv">763</span></div>
+    </div>
+    <div class="panel span6">
+      <h5>REVIEW QUEUE · OLDEST FIRST</h5>
+      <div class="qrow"><span class="led" style="background:#f59e0b"></span><span class="who">Sunita Patel</span><span class="what mono">BJP · Neutral · Water supply · 78%</span><span class="tm mono">41m</span></div>
+      <div class="qrow"><span class="led" style="background:#f59e0b"></span><span class="who">Venu Rao</span><span class="what mono">INC · Positive · Roads · 92%</span><span class="tm mono">27m</span></div>
+      <div class="qrow"><span class="led" style="background:#ef4444"></span><span class="who">Lakshmi Menon</span><span class="what mono">45% — missing photo</span><span class="tm mono">8m</span></div>
+    </div>
+  </div>
+</section>
+</div>
+
+<!-- ════════════════════════ C · PULSE ════════════════════════ -->
+<div class="dir-label">
+  <span class="letter">C</span>
+  <h2>Pulse — warm team morning</h2>
+  <p>Cream, terracotta, big soft cards, a greeting instead of a title. For admins who check the survey like a newspaper over coffee.</p>
+</div>
+<div class="frame">
+<section class="pulse">
+  <div class="hello">
+    <div>
+      <div class="hi">Good morning, Priya <span>☀</span></div>
+      <div class="sub">214 new responses overnight — your team is ahead of pace.</div>
+    </div>
+    <span class="chip">All surveys · incl. Excel</span>
+  </div>
+  <div class="stats">
+    <div class="stat-card"><div class="v">6,214</div><div class="l">responses on record</div></div>
+    <div class="stat-card"><div class="v warm">214</div><div class="l">new since yesterday ↗</div></div>
+    <div class="stat-card"><div class="v">63 <small>to review</small></div><div class="l">oldest waiting 41 min</div></div>
+  </div>
+  <div class="two-col">
+    <div class="panel">
+      <h5>How the state leans</h5>
+      <div class="prow"><span class="pn">Congress</span><span class="track"><b style="width:33.8%;background:#16a34a"></b></span><span class="pv">33.8%</span></div>
+      <div class="prow"><span class="pn">BJP</span><span class="track"><b style="width:32.1%;background:#ea580c"></b></span><span class="pv">32.1%</span></div>
+      <div class="prow"><span class="pn">BRS</span><span class="track"><b style="width:25.1%;background:#db2777"></b></span><span class="pv">25.1%</span></div>
+      <div class="prow"><span class="pn">Others</span><span class="track"><b style="width:5.6%;background:#6366f1"></b></span><span class="pv">5.6%</span></div>
+    </div>
+    <div class="panel">
+      <h5>Latest from the field</h5>
+      <div class="feedrow">
+        <div class="av" style="background:linear-gradient(135deg,#fbbf24,#ea580c)">SP</div>
+        <div><div class="who">Sunita Patel</div><div class="what">BJP · Water supply · Kukatpally AC</div></div>
+        <span class="st" style="background:#fffbeb;color:#b45309;">Pending</span>
+      </div>
+      <div class="feedrow">
+        <div class="av" style="background:linear-gradient(135deg,#34d399,#059669)">RK</div>
+        <div><div class="who">Rajesh Kumar</div><div class="what">Congress · Roads · Maheshwaram AC</div></div>
+        <span class="st" style="background:#f0fdf4;color:#15803d;">Confirmed</span>
+      </div>
+      <div class="feedrow">
+        <div class="av" style="background:linear-gradient(135deg,#f472b6,#db2777)">LM</div>
+        <div><div class="who">Lakshmi Menon</div><div class="what">Missing photo · 45% complete</div></div>
+        <span class="st" style="background:#fef2f2;color:#b91c1c;">Rejected</span>
+      </div>
+    </div>
+  </div>
+</section>
+</div>
+
+</body>
+</html>

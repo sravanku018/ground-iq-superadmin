@@ -34,7 +34,7 @@ const PARTY_COLORS = {
 }
 
 const PALETTE = [
-  '#00e599',
+  '#059669',
   '#38bdf8',
   '#a78bfa',
   '#f472b6',
@@ -49,20 +49,10 @@ const PALETTE = [
 ]
 
 function pickFirstSurveyKey(items) {
-  const list = Array.isArray(items) ? items : []
-  const real = list.filter((s) => {
-    const k = String(s?.form_key || '')
-    return k && k !== 'default' && k !== 'legacy'
-  })
-  const withData = real.find((s) => {
-    const n =
-      (Number(s.submissions) || 0) +
-      (Number(s.web_submissions) || 0) +
-      (Number(s.field_submissions) || 0) +
-      (Number(s.pending) || 0)
-    return n > 0
-  })
-  return String((withData || real[0] || list[0])?.form_key || '')
+  // Empty = all surveys, including legacy Excel (2k+ rows). Do not auto-pick
+  // a small live form or the report hides most results.
+  void items
+  return ''
 }
 
 function colorFor(name, i = 0) {
@@ -430,8 +420,8 @@ const Timeline = memo(function Timeline({ data }) {
       <AreaChart data={data} margin={{ left: 0, right: 8, top: 10, bottom: 0 }}>
         <defs>
           <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#00e599" stopOpacity={0.45} />
-            <stop offset="100%" stopColor="#00e599" stopOpacity={0.02} />
+            <stop offset="0%" stopColor="#059669" stopOpacity={0.45} />
+            <stop offset="100%" stopColor="#059669" stopOpacity={0.02} />
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -447,7 +437,7 @@ const Timeline = memo(function Timeline({ data }) {
         <Area
           type="monotone"
           dataKey="count"
-          stroke="#00e599"
+          stroke="#059669"
           fill="url(#volGrad)"
           strokeWidth={2}
           name="Responses"
@@ -603,8 +593,6 @@ export default function DashboardScreen({ onToast }) {
         .then((d) => {
           const items = d.items || []
           setSurveys(items)
-          const key = pickFirstSurveyKey(items)
-          if (key) setFilters((f) => (f.survey ? f : { ...f, survey: key }))
         })
         .catch(() => {}),
     )
@@ -651,10 +639,9 @@ export default function DashboardScreen({ onToast }) {
   }, [filters, onToast])
 
   useEffect(() => {
-    if (!filters.survey) return undefined
     const t = setTimeout(load, 180)
     return () => clearTimeout(t)
-  }, [load, filters.survey])
+  }, [load])
 
   const clearFilters = useCallback(
     () =>
@@ -1649,10 +1636,11 @@ export default function DashboardScreen({ onToast }) {
                   setFilters((f) => ({ ...drop, ...f, survey }))
                 }}
               >
-                {surveys.length === 0 ? <option value="">Select survey</option> : null}
+                <option value="">All surveys</option>
                 {surveys.map((s) => (
                   <option key={s.id} value={s.form_key}>
                     {s.title}
+                    {s.form_key === 'legacy' ? ' · Excel import' : ''}
                     {Number(s.web_submissions) > 0 ? ` · ${Number(s.web_submissions)} web` : ''}
                   </option>
                 ))}
@@ -1690,7 +1678,7 @@ export default function DashboardScreen({ onToast }) {
             </label>
             {!filters.survey && (
               <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
-                Pick a survey first to load its surveyors.
+                Showing every survey (including Excel/legacy). Pick one survey to narrow.
               </p>
             )}
           </div>

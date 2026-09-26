@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Simple Mode — a layman's dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(180deg, #fdfbf7 0%, #f6f3ee 100%);
+    color: #26221c; min-height: 100vh; padding: 28px 18px 56px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  /* ── Greeting ── */
+  .hello { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+  .hello .face { width: 52px; height: 52px; border-radius: 18px; background: linear-gradient(135deg, #34d399, #059669); display: grid; place-items: center; font-size: 24px; color: #fff; box-shadow: 0 8px 20px rgba(5,150,105,.25); flex-shrink: 0; }
+  .hello h1 { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+  .hello p { font-size: 14px; color: #7c7263; margin-top: 2px; line-height: 1.45; }
+
+  /* ── Big friendly cards ── */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; }
+  @media (max-width: 720px) { .cards { grid-template-columns: 1fr; } }
+  .card { background: #fff; border-radius: 22px; padding: 20px 22px; box-shadow: 0 4px 18px rgba(120, 96, 60, .08); }
+  .card .emoji { font-size: 22px; }
+  .card .big { font-size: 34px; font-weight: 800; letter-spacing: -.02em; margin-top: 8px; font-variant-numeric: tabular-nums; transition: color .4s; }
+  .card .big small { font-size: 14px; font-weight: 700; color: #9a8f7e; margin-left: 4px; }
+  .card .lbl { font-size: 13.5px; color: #7c7263; font-weight: 600; margin-top: 3px; line-height: 1.4; }
+  .card.hi .big { color: #059669; }
+  .card.need { background: linear-gradient(135deg, #fff7ed, #ffffff); border: 1.5px solid #fed7aa; }
+  .card.need .big { color: #c2410c; }
+  .card .go { display: inline-block; margin-top: 12px; background: #c2410c; color: #fff; font-size: 13px; font-weight: 700; border: none; border-radius: 999px; padding: 9px 18px; cursor: pointer; box-shadow: 0 4px 12px rgba(194,65,12,.25); transition: transform .15s; }
+  .card .go:active { transform: scale(.96); }
+
+  /* ── Who is winning ── */
+  .race-card { background: #fff; border-radius: 22px; padding: 22px 24px; box-shadow: 0 4px 18px rgba(120, 96, 60, .08); margin-bottom: 14px; }
+  .race-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .race-head h2 { font-size: 18px; font-weight: 800; letter-spacing: -.01em; }
+  .race-head .scope { font-size: 13px; color: #9a8f7e; font-weight: 600; }
+
+  /* segmented filter — big, thumb-friendly */
+  .seg { display: flex; background: #f1ece3; border-radius: 16px; padding: 4px; gap: 4px; margin-bottom: 20px; overflow-x: auto; }
+  .seg button { flex: 1; min-height: 44px; border: none; background: transparent; border-radius: 12px; font: inherit; font-size: 13.5px; font-weight: 700; color: #7c7263; cursor: pointer; white-space: nowrap; padding: 0 16px; transition: all .25s cubic-bezier(.16,1,.3,1); }
+  .seg button.on { background: #fff; color: #26221c; box-shadow: 0 2px 8px rgba(120,96,60,.14); }
+
+  .race-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .race-row:last-child { margin-bottom: 0; }
+  .race-row .pn { width: 104px; font-size: 14.5px; font-weight: 700; flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
+  .race-row .pn i { width: 12px; height: 12px; border-radius: 4px; flex-shrink: 0; }
+  .race-row .track { flex: 1; height: 26px; background: #f1ece3; border-radius: 999px; overflow: hidden; }
+  .race-row .fill { display: block; height: 100%; border-radius: 999px; transition: width .6s cubic-bezier(.16,1,.3,1), background .4s; }
+  .race-row .pv { width: 56px; text-align: right; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .race-caption { font-size: 13px; color: #9a8f7e; margin-top: 14px; line-height: 1.5; }
+  .race-caption b { color: #26221c; }
+
+  /* ── Needs your OK ── */
+  .ok-card { background: #fff; border-radius: 22px; padding: 22px 24px; box-shadow: 0 4px 18px rgba(120,96,60,.08); margin-bottom: 14px; }
+  .ok-card h2 { font-size: 18px; font-weight: 800; margin-bottom: 4px; }
+  .ok-card .sub { font-size: 13.5px; color: #9a8f7e; margin-bottom: 16px; }
+  .ok-item { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 2px solid #f6f1e8; flex-wrap: wrap; }
+  .ok-item:last-of-type { border-bottom: none; }
+  .ok-item .av { width: 46px; height: 46px; border-radius: 15px; display: grid; place-items: center; font-size: 15px; font-weight: 800; color: #fff; flex-shrink: 0; }
+  .ok-item .who { flex: 1; min-width: 150px; }
+  .ok-item .who .nm { font-size: 15px; font-weight: 700; }
+  .ok-item .who .wt { font-size: 12.5px; color: #9a8f7e; margin-top: 1px; }
+  .ok-item .btns { display: flex; gap: 8px; }
+  .ok-item .btns button { font: inherit; font-size: 13.5px; font-weight: 700; min-height: 40px; padding: 0 16px; border-radius: 12px; cursor: pointer; transition: transform .15s, background .3s; }
+  .ok-item .btns button:active { transform: scale(.95); }
+  .ok-item .yes { background: #059669; color: #fff; border: none; box-shadow: 0 3px 10px rgba(5,150,105,.22); }
+  .ok-item .look { background: #fff; color: #5b5344; border: 1.5px solid #e5ddcf; }
+  .ok-more { margin-top: 14px; width: 100%; font: inherit; font-size: 14px; font-weight: 700; color: #c2410c; background: #fff7ed; border: 1.5px dashed #fdba74; border-radius: 14px; padding: 13px; cursor: pointer; transition: background .2s; }
+  .ok-more:hover { background: #ffefd9; }
+
+  /* ── Plain footer sentence ── */
+  .plain { background: linear-gradient(135deg, #ecfdf5, #f0fdfa); border: 1.5px solid #bbf7d0; border-radius: 22px; padding: 18px 22px; font-size: 15px; line-height: 1.6; color: #14532d; }
+  .plain b { font-weight: 800; }
+
+  /* smooth number pulse when a segment is ticked */
+  .pulse { animation: pop .35s cubic-bezier(.16,1,.3,1); }
+  @keyframes pop { 0% { transform: scale(.97); opacity: .55; } 100% { transform: scale(1); opacity: 1; } }
+
+  .demo-note { margin-top: 26px; text-align: center; font-size: 12px; color: #a89c8a; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hello">
+    <div class="face">🌿</div>
+    <div>
+      <h1>Good morning, Priya</h1>
+      <p id="hello-line">Your team collected <b>2,225 answers</b>. Here is the picture in one look.</p>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="emoji">📋</div>
+      <div class="big"><span id="num-total">2,225</span></div>
+      <div class="lbl" id="lbl-total">answers collected — <b>+214 today</b></div>
+    </div>
+    <div class="card hi">
+      <div class="emoji">🏆</div>
+      <div class="big" id="num-lead">Congress</div>
+      <div class="lbl" id="lbl-lead">is ahead with <b id="lead-pct">38%</b> of choices</div>
+    </div>
+    <div class="card need">
+      <div class="emoji">👀</div>
+      <div class="big"><span id="num-wait">63</span> <small>waiting</small></div>
+      <div class="lbl">answers need your OK</div>
+      <button class="go" onclick="document.getElementById('ok-card').scrollIntoView({behavior:'smooth'})">Review them →</button>
+    </div>
+  </div>
+
+  <div class="race-card">
+    <div class="race-head">
+      <h2>Who is ahead?</h2>
+      <span class="scope" id="race-scope">all surveys together</span>
+    </div>
+    <div class="seg" id="seg">
+      <button class="on" data-k="">All answers</button>
+      <button data-k="prepoll">Pre-Poll 2026</button>
+      <button data-k="baseline">Baseline</button>
+      <button data-k="excel">Old records</button>
+    </div>
+    <div id="race"></div>
+    <div class="race-caption" id="race-caption"><b>Everything combined</b> — the new field surveys and the old 2023 records, counted together.</div>
+  </div>
+
+  <div class="ok-card" id="ok-card">
+    <h2>Waiting for your OK</h2>
+    <div class="sub">Check the answer, then tap. Wrong ones go back to the surveyor.</div>
+    <div class="ok-item">
+      <div class="av" style="background:linear-gradient(135deg,#fbbf24,#ea580c)">SP</div>
+      <div class="who">
+        <div class="nm">Sunita Patel · BJP, "Neutral"</div>
+        <div class="wt">Medchal · photo ✓ · voice ✓ · 78% done</div>
+      </div>
+      <div class="btns">
+        <button class="yes" onclick="okTap(this,'Approved ✓')">Looks good</button>
+        <button class="look" onclick="okTap(this,'Opened 👀')">Open</button>
+      </div>
+    </div>
+    <div class="ok-item">
+      <div class="av" style="background:linear-gradient(135deg,#34d399,#059669)">RK</div>
+      <div class="who">
+        <div class="nm">Rajesh Kumar · Congress, "Positive"</div>
+        <div class="wt">Rangareddy · photo ✓ · voice ✓ · 92% done</div>
+      </div>
+      <div class="btns">
+        <button class="yes" onclick="okTap(this,'Approved ✓')">Looks good</button>
+        <button class="look" onclick="okTap(this,'Opened 👀')">Open</button>
+      </div>
+    </div>
+    <button class="ok-more" id="ok-more">61 more waiting — open the list</button>
+  </div>
+
+  <div class="plain" id="plain-line">
+    💡 <b>In plain words:</b> out of every 100 people asked, <b>38 pick Congress</b>, 28 pick BJP and 22 pick BRS. Only 4 are still undecided — people have made up their minds.
+  </div>
+
+  <p class="demo-note">Simple mode · one look, plain words, big taps · filter changes glide — nothing jumps, nothing to learn<br>mock only — lives in mock3/simple.html</p>
+</div>
+
+<script>
+  // ── Plain-language datasets · '' = everything together ──
+  const SETS = {
+    '': {
+      hello: 'Your team collected <b>2,225 answers</b>. Here is the picture in one look.',
+      total: 2225, totalLbl: 'answers collected — <b>+214 today</b>',
+      leadName: 'Congress', leadPct: 38, leadLbl: 'is ahead with <b>38%</b> of choices',
+      wait: 63, moreTxt: '61 more waiting — open the list',
+      scopeTxt: 'all surveys together',
+      caption: '<b>Everything combined</b> — the new field surveys and the old 2023 records, counted together.',
+      plain: '💡 <b>In plain words:</b> out of every 100 people asked, <b>38 pick Congress</b>, 28 pick BJP and 22 pick BRS. Only 4 are still undecided — people have made up their minds.',
+      race: [['Congress', 38, '#16a34a'], ['BJP', 28, '#ea580c'], ['BRS', 22, '#db2777'], ['Others', 8, '#6366f1'], ['Undecided', 4, '#94a3b8']]
+    },
+    prepoll: {
+      hello: 'Pre-Poll 2026 has <b>842 answers</b> so far, 214 of them from web links.',
+      total: 842, totalLbl: 'answers so far — <b>214 from web links</b>',
+      leadName: 'Congress', leadPct: 41, leadLbl: 'is ahead with <b>41%</b> of choices',
+      wait: 24, moreTxt: '22 more waiting — open the list',
+      scopeTxt: 'Pre-Poll 2026 only',
+      caption: '<b>Pre-Poll 2026 only</b> — the live survey running right now, field + web.',
+      plain: '💡 <b>In plain words:</b> in the current survey, <b>41 in every 100 pick Congress</b>, 33 pick BJP and 19 pick BRS. Congress is pulling ahead.',
+      race: [['Congress', 41, '#16a34a'], ['BJP', 33, '#ea580c'], ['BRS', 19, '#db2777'], ['Others', 4, '#6366f1'], ['Undecided', 3, '#94a3b8']]
+    },
+    baseline: {
+      hello: 'The Baseline wave has <b>631 answers</b> from 9 surveyors.',
+      total: 631, totalLbl: 'answers collected — <b>baseline wave</b>',
+      leadName: 'BRS', leadPct: 36, leadLbl: 'is ahead with <b>36%</b> of choices',
+      wait: 17, moreTxt: '15 more waiting — open the list',
+      scopeTxt: 'Baseline wave only',
+      caption: '<b>Baseline wave only</b> — the starting picture before the main survey.',
+      plain: '💡 <b>In plain words:</b> at the start, <b>36 in every 100 picked BRS</b>, 33 picked Congress and 23 picked BJP. BRS began in front.',
+      race: [['Congress', 33, '#16a34a'], ['BJP', 23, '#ea580c'], ['BRS', 36, '#db2777'], ['Others', 5, '#6366f1'], ['Undecided', 3, '#94a3b8']]
+    },
+    excel: {
+      hello: 'The old 2023 records hold <b>1,384 answers</b> from door-to-door visits.',
+      total: 1384, totalLbl: 'old answers — <b>2023 door-to-door</b>',
+      leadName: 'BRS', leadPct: 41, leadLbl: 'was ahead then with <b>41%</b>',
+      wait: 22, moreTxt: '20 more waiting — open the list',
+      scopeTxt: 'old 2023 records only',
+      caption: '<b>Old records only</b> — the 2023 door-to-door survey, brought in from Excel.',
+      plain: '💡 <b>In plain words:</b> back in 2023, <b>41 in every 100 picked BRS</b>, 34 picked Congress and 17 picked BJP. Compare it with today to see the swing.',
+      race: [['Congress', 34, '#16a34a'], ['BJP', 17, '#ea580c'], ['BRS', 41, '#db2777'], ['Others', 4, '#6366f1'], ['Undecided', 4, '#94a3b8']]
+    }
+  };
+
+  // race bars are built once and only glide — that's the "seamless" part
+  const raceEl = document.getElementById('race');
+  raceEl.innerHTML = SETS[''].race.map(([n, pct, hex]) => `
+    <div class="race-row">
+      <span class="pn"><i style="background:${hex}"></i>${n}</span>
+      <span class="track"><span class="fill" style="width:${pct}%;background:${hex}"></span></span>
+      <span class="pv">${pct}%</span>
+    </div>`).join('');
+
+  function countUp(el, to) {
+    const from = parseInt(el.dataset.v || el.textContent.replace(/,/g, ''), 10) || 0;
+    el.dataset.v = to;
+    const t0 = performance.now(), dur = 550;
+    const step = (t) => {
+      const p = Math.min((t - t0) / dur, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(from + (to - from) * eased).toLocaleString();
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  function pick(k, btn) {
+    const S = SETS[k];
+    document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b === btn));
+    document.getElementById('hello-line').innerHTML = S.hello;
+    countUp(document.getElementById('num-total'), S.total);
+    document.getElementById('lbl-total').innerHTML = S.totalLbl;
+    const lead = document.getElementById('num-lead');
+    lead.textContent = S.leadName;
+    lead.classList.remove('pulse'); void lead.offsetWidth; lead.classList.add('pulse');
+    document.getElementById('lead-pct').textContent = S.leadPct + '%';
+    document.getElementById('lbl-lead').innerHTML = S.leadLbl;
+    countUp(document.getElementById('num-wait'), S.wait);
+    document.getElementById('ok-more').textContent = S.moreTxt;
+    document.getElementById('race-scope').textContent = S.scopeTxt;
+    document.getElementById('race-caption').innerHTML = S.caption;
+    document.getElementById('plain-line').innerHTML = S.plain;
+    S.race.forEach(([n, pct, hex], i) => {
+      const row = raceEl.children[i];
+      row.querySelector('.fill').style.width = pct + '%';
+      row.querySelector('.fill').style.background = hex;
+      row.querySelector('.pv').textContent = pct + '%';
+    });
+  }
+
+  document.getElementById('seg').addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (btn) pick(btn.dataset.k, btn);
+  });
+
+  function okTap(btn, msg) {
+    btn.textContent = msg;
+    btn.disabled = true;
+    btn.style.opacity = '.6';
+  }
+</script>
+</body>
+</html>

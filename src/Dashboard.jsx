@@ -49,10 +49,7 @@ const PALETTE = [
 ]
 
 function pickFirstSurveyKey(items) {
-  // Empty = all surveys, including legacy Excel (2k+ rows). Do not auto-pick
-  // a small live form or the report hides most results.
-  void items
-  return ''
+  return items[0]?.form_key || ''
 }
 
 function colorFor(name, i = 0) {
@@ -659,6 +656,8 @@ export default function DashboardScreen({ onToast }) {
         .then((d) => {
           const items = d.items || []
           setSurveys(items)
+          const first = pickFirstSurveyKey(items)
+          if (first) setFilters((f) => (f.survey ? f : { ...f, survey: first }))
         })
         .catch(() => {}),
     )
@@ -742,6 +741,8 @@ export default function DashboardScreen({ onToast }) {
     for (const [k, v] of Object.entries(filters)) {
       if (!v) continue
       if (k === 'day' || k === 'month') continue
+      // Survey scope is no longer an optional filter, so it gets no remove chip
+      if (k === 'survey') continue
       if (k === 'period' && v === 'total') continue
       if (k === 'period') {
         chips.push({
@@ -1680,7 +1681,7 @@ export default function DashboardScreen({ onToast }) {
                   setFilters((f) => ({ ...drop, ...f, survey }))
                 }}
               >
-                <option value="">All surveys</option>
+                {surveys.length === 0 && <option value="">No surveys yet</option>}
                 {surveys.map((s) => (
                   <option key={s.id} value={s.form_key}>
                     {s.title}

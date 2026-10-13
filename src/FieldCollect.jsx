@@ -9,7 +9,7 @@ import {
   blobToDataUrl,
   AUDIO_SAMPLE_RATE,
 } from './mediaOptimize'
-import { slugQuestionKey } from './questionKey'
+import { multiMaxChoices, slugQuestionKey } from './questionKey'
 
 function mapAnswersToQuestions(answers, questions) {
   const src = answers || {}
@@ -1635,7 +1635,7 @@ export default function FieldCollectScreen({
     return (qq.type === 'multi_select' || qq.type === 'multi') ? (
       <div style={{ marginTop: 6 }}>
         {(() => {
-          const max = Math.max(1, Number(qq.max_choices) || 2)
+          const max = multiMaxChoices(qq)
           const raw = answers[qq.id]
           const currentList = Array.isArray(raw)
             ? raw
@@ -1646,25 +1646,26 @@ export default function FieldCollectScreen({
             ? qq.options
             : ['Option 1', 'Option 2', 'Option 3', 'Option 4']
 
+          const atCap = currentList.length >= max
+
           const toggleOpt = (opt) => {
-            let next
             if (currentList.includes(opt)) {
-              next = currentList.filter((o) => o !== opt)
-            } else {
-              if (max > 0 && currentList.length >= max) {
-                next = [...currentList.slice(currentList.length - (max - 1)), opt]
-              } else {
-                next = [...currentList, opt]
-              }
+              chooseAnswer(qq.id, currentList.filter((o) => o !== opt))
+              return
             }
-            chooseAnswer(qq.id, next)
+            if (atCap) return
+            chooseAnswer(qq.id, [...currentList, opt])
           }
 
           return (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '4px 0 10px' }}>
                 <span style={{ fontSize: 13, fontWeight: 'bold', color: '#059669' }}>
-                  ☑️ {displayLang === 'te' ? `గరిష్టంగా ${max} ఎంపికలు ఎంచుకోండి` : `Select up to ${max} answers`}:
+                  ☑️{' '}
+                  {displayLang === 'te'
+                    ? `గరిష్టంగా ${max} ఎంపికలు ఎంచుకోండి`
+                    : `Select up to ${max} answers`}
+                  :
                 </span>
                 <span className="pill ok" style={{ fontSize: 11, padding: '2px 8px' }}>
                   {currentList.length} / {max} {displayLang === 'te' ? 'ఎంపికైంది' : 'selected'}
@@ -1687,6 +1688,7 @@ export default function FieldCollectScreen({
                         padding: '12px 18px',
                         fontSize: 15,
                         borderRadius: 16,
+                        opacity: !sel && atCap ? 0.4 : 1,
                         border: sel ? '2px solid #059669' : '1px solid rgba(255,255,255,0.15)',
                         background: sel ? 'rgba(0, 229, 153, 0.22)' : 'rgba(255,255,255,0.06)',
                         color: sel ? '#059669' : '#f8fafc',

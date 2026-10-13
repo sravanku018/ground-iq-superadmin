@@ -166,6 +166,7 @@ export default function ReviewQAScreen({
         })
       }
       setSurveys(items)
+      setSurvey((cur) => cur || items[0]?.form_key || '')
     }).catch(() => {})
   }, [])
 
@@ -517,7 +518,7 @@ export default function ReviewQAScreen({
         <label className="field compact" style={{ marginTop: 10 }}>
           <span>By survey</span>
           <select value={survey} onChange={(e) => setSurvey(e.target.value)}>
-            <option value="">All surveys</option>
+            {!survey && <option value="" disabled>Not filtered by survey</option>}
             {surveys.map((s) => (
               <option key={s.id} value={s.form_key}>
                 {s.title}

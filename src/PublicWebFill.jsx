@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getPublicWebSurvey, submitPublicWebSurvey } from './api'
-import { slugQuestionKey } from './questionKey'
+import { multiMaxChoices, slugQuestionKey } from './questionKey'
 import './App.css'
 import './portal.css'
 
@@ -200,7 +200,7 @@ export default function PublicWebFill({ formKey, fillToken }) {
               const teOpts = Array.isArray(q.options_te) ? q.options_te : []
               const val = answers[id] ?? ''
               const label = te && q.label_te ? q.label_te : q.label || 'Question'
-              const max = Math.max(1, Number(q.max_choices) || 2)
+              const max = multiMaxChoices(q)
 
               return (
                 <div key={id || i} id={`web-q-${id}`} className="card" style={{ marginBottom: 12 }}>
@@ -219,25 +219,26 @@ export default function PublicWebFill({ formKey, fillToken }) {
                             : []
                         const multiOpts = opts.length > 0 ? opts : ['Option 1', 'Option 2', 'Option 3', 'Option 4']
 
+                        const atCap = currentList.length >= max
+
                         const toggle = (opt) => {
-                          let next
                           if (currentList.includes(opt)) {
-                            next = currentList.filter((o) => o !== opt)
-                          } else {
-                            if (max > 0 && currentList.length >= max) {
-                              next = [...currentList.slice(currentList.length - (max - 1)), opt]
-                            } else {
-                              next = [...currentList, opt]
-                            }
+                            setAns(id, currentList.filter((o) => o !== opt))
+                            return
                           }
-                          setAns(id, next)
+                          if (atCap) return
+                          setAns(id, [...currentList, opt])
                         }
 
                         return (
                           <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                               <span style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>
-                                {te ? `☑️ గరిష్టంగా ${max} ఎంపికలను ఎంచుకోండి:` : `☑️ Select up to ${max} answers:`}
+                                ☑️{' '}
+                                {te
+                                  ? `గరిష్టంగా ${max} ఎంపికలను ఎంచుకోండి`
+                                  : `Select up to ${max} answers`}
+                                :
                               </span>
                               <span className="pill ok" style={{ fontSize: 11, padding: '2px 8px' }}>
                                 {currentList.length} / {max} {te ? 'ఎంపికయ్యాయి' : 'selected'}
@@ -259,6 +260,7 @@ export default function PublicWebFill({ formKey, fillToken }) {
                                       fontWeight: 'bold',
                                       padding: '6px 14px',
                                       borderRadius: 16,
+                                      opacity: !sel && atCap ? 0.4 : 1,
                                     }}
                                     onClick={() => toggle(opt)}
                                   >

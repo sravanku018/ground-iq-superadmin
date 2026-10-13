@@ -4,7 +4,14 @@ import { getQuestions, getSurvey, listSurveys, saveQuestions, updateSurvey } fro
 import OptionPills from './OptionPills'
 import { CategoryField, CategoryPanel } from './QuestionCategory'
 import QuestionTelugu, { fillTeluguFromEnglish } from './QuestionTelugu'
-import { canTeluguQuestions, isQuestionVisible, labelPatch, nextQuestionId, teluguFields } from './questionKey'
+import {
+  canTeluguQuestions,
+  isQuestionVisible,
+  labelPatch,
+  multiMaxChoices,
+  nextQuestionId,
+  teluguFields,
+} from './questionKey'
 
 const EMPTY_Q = {
   id: '',
@@ -250,7 +257,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
           label: String(q.label || '').trim() || `Question ${qIndex}`,
           type: String(q.type || 'text'),
           options: finalOptions,
-          max_choices: (q.type === 'multi_select' || q.type === 'multi') ? (q.max_choices !== undefined ? Number(q.max_choices) : 2) : undefined,
+          max_choices: (q.type === 'multi_select' || q.type === 'multi') ? multiMaxChoices(q) : undefined,
           required: !!q.required,
           visible: q.visible !== false,
           speak: String(q.speak || q.label || '').trim(),
@@ -454,7 +461,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                 style={{ fontWeight: 'bold' }}
                 disabled={isFrozen || !canEdit}
               >
-                <option value="multi_select">☑️ Multiple Select (Choose up to 2 answers / Multi-Pick)</option>
+                <option value="multi_select">☑️ Multiple Select (Choose up to 5 answers / Multi-Pick)</option>
                 <option value="choice">🔘 Single Choice (One-Answer Pill)</option>
                 <option value="range">🔢 Numeric Range Buttons (e.g. 10-20, 21-30, 31-40, 50+)</option>
                 <option value="yesno">✓ Yes / ✕ No Buttons (Green & Red)</option>
@@ -476,18 +483,18 @@ export default function AdminQuestionsScreen({ onToast, user }) {
 
             {(type === 'multi_select' || type === 'multi') && (
               <label className="field" style={{ marginTop: 8 }}>
-                <span>Max allowed selections (Default: 2 answers)</span>
+                <span>Max allowed selections (default 2 · up to 5)</span>
                 <select
-                  value={q.max_choices || 2}
+                  value={multiMaxChoices(q)}
                   onChange={(e) => updateQ(i, { max_choices: Number(e.target.value) || 2 })}
                   disabled={isFrozen || !canEdit}
                   style={{ fontWeight: 'bold' }}
                 >
+                  <option value={1}>Pick 1 answer</option>
                   <option value={2}>Pick up to 2 answers (Standard)</option>
                   <option value={3}>Pick up to 3 answers</option>
                   <option value={4}>Pick up to 4 answers</option>
                   <option value={5}>Pick up to 5 answers</option>
-                  <option value={0}>Any number of answers (Unlimited)</option>
                 </select>
               </label>
             )}
@@ -582,7 +589,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
               {type === 'multi_select' || type === 'multi' ? (
                 <div>
                   <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 'bold', color: '#059669' }}>
-                    ☑️ Select up to {q.max_choices || 2} answers (Multiple Choice):
+                    ☑️ Select up to {multiMaxChoices(q)} answers (Multiple Choice):
                   </p>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {(currentOpts.length > 0 ? currentOpts : ['Option 1', 'Option 2', 'Option 3', 'Option 4']).map((opt, idx) => {

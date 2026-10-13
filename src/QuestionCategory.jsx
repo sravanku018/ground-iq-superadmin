@@ -143,7 +143,11 @@ export function CategoryField({ value = '', onChange, onToast, disabled = false 
             onChange(next)
           }}
         >
-          <option value="">— Uncategorized —</option>
+          {!value && (
+            <option value="" disabled>
+              {categories.length ? 'Choose a category' : 'Create a category first'}
+            </option>
+          )}
           {stale && <option value={value}>{value} (deleted or renamed)</option>}
           {names.map((n) => (
             <option key={n} value={n}>

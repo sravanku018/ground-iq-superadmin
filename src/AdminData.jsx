@@ -121,6 +121,7 @@ export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
         .then((d) => {
           const items = d.items || []
           setSurveys(items)
+          setSurvey(items[0]?.form_key || '')
         })
         .catch(() => {}),
     )
@@ -440,7 +441,7 @@ export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
                     <label className="field compact">
                       <span>By survey</span>
                       <select value={survey} onChange={(e) => setSurvey(e.target.value)}>
-                        <option value="">All surveys</option>
+                        <option value="" disabled>All surveys (map only)</option>
                         {surveys.map((s) => (
                           <option key={s.id} value={s.form_key}>
                             {s.title}
@@ -615,7 +616,9 @@ export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
                     }
                   }}
                 >
-                  <option value="">All surveys</option>
+                  <option value="" disabled>
+                    Select a survey
+                  </option>
                   {surveys.map((s) => (
                     <option key={s.id} value={s.form_key}>
                       {s.title} {s.form_key === 'legacy' ? '· Excel' : ''}{' '}
@@ -875,7 +878,7 @@ export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
               type="button"
               className="btn primary"
               style={{ marginTop: 12 }}
-              disabled={exporting || exportingMedia}
+              disabled={exporting || exportingMedia || !survey}
               onClick={doExport}
             >
               {exporting
@@ -888,7 +891,7 @@ export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
               type="button"
               className="btn"
               style={{ marginTop: 8 }}
-              disabled={exporting || exportingMedia}
+              disabled={exporting || exportingMedia || !survey}
               onClick={async () => {
                 setExportingMedia(true)
                 try {

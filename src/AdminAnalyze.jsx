@@ -174,7 +174,9 @@ export default function AdminAnalyzeScreen({ onToast }) {
       .then((d) => {
         const items = d.items || []
         setSurveys(items)
-        return load({ survey: '' })
+        const first = items[0]?.form_key || ''
+        setSurvey(first)
+        return load({ survey: first })
       })
       .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -294,7 +296,7 @@ export default function AdminAnalyzeScreen({ onToast }) {
                 }
               }}
             >
-              <option value="">All surveys</option>
+              {surveys.length === 0 && <option value="">No surveys yet</option>}
               {surveys.map((s) => (
                 <option key={s.id} value={s.form_key}>
                   {s.title}

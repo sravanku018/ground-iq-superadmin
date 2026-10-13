@@ -9,6 +9,15 @@ export function slugQuestionKey(label) {
     .slice(0, 64)
 }
 
+/**
+ * Answer cap for a multi_select question · 1–5, default 2.
+ * Absent, blank or out-of-range values fall back to 2 so old surveys behave as before.
+ */
+export function multiMaxChoices(q) {
+  const n = Math.floor(Number(q?.max_choices))
+  return n >= 1 && n <= 5 ? n : 2
+}
+
 /** Safely parse questions array from array, JSON string, or nested JSON string. */
 export function parseQuestionsArray(raw) {
   if (Array.isArray(raw)) return raw

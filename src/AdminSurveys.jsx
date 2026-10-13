@@ -16,7 +16,14 @@ import {
 import CopyWebFillLink from './components/CopyWebFillLink'
 import { CategoryField, CategoryPanel } from './QuestionCategory'
 import QuestionTelugu, { fillTeluguFromEnglish } from './QuestionTelugu'
-import { canTeluguQuestions, isQuestionVisible, labelPatch, nextQuestionId, teluguFields } from './questionKey'
+import {
+  canTeluguQuestions,
+  isQuestionVisible,
+  labelPatch,
+  multiMaxChoices,
+  nextQuestionId,
+  teluguFields,
+} from './questionKey'
 
 function isFrozenSurvey(s) {
   if (!s) return false
@@ -396,6 +403,9 @@ function cleanQuestions(questions) {
       label: String(q.label || '').trim() || `Question ${idx + 1}`,
       type: String(q.type || 'text'),
       options: finalOptions,
+      ...(q.type === 'multi_select' || q.type === 'multi'
+        ? { max_choices: multiMaxChoices(q) }
+        : {}),
       required: !!q.required,
       visible: q.visible !== false,
       speak: String(q.speak || q.label || '').trim(),

@@ -202,6 +202,72 @@ const EmptyChart = memo(function EmptyChart({ label = 'No data for current filte
   return <div className="chart-empty">{label}</div>
 })
 
+/**
+ * One chart card per question. When the survey tags questions with categories the cards
+ * are grouped under collapsible headers; untagged surveys render the flat list unchanged.
+ */
+const QuestionChartsBlock = memo(function QuestionChartsBlock({ questions = [], order = [], lang }) {
+  const [closed, setClosed] = useState(() => ({}))
+
+  const card = (q) => {
+    const counts = rowsFromSurveyQuestion(q)
+    const isMeter = q.type === 'meter' || q.type === 'tapometer'
+    const pieOk = !isMeter && chartShouldUsePie(counts)
+    return (
+      <ChartCard key={q.id} title={questionFilterTitle(q, lang)} subtitle="Every option for this question">
+        {isMeter ? (
+          <MeterChart q={q} rows={counts} lang={lang} />
+        ) : pieOk ? (
+          <InteractivePie data={counts} lang={lang} />
+        ) : (
+          <HBar data={counts} lang={lang} />
+        )}
+      </ChartCard>
+    )
+  }
+
+  if (!questions.some((q) => q.category)) return questions.map(card)
+
+  const buckets = new Map()
+  for (const q of questions) {
+    const name = String(q.category || '')
+    if (!buckets.has(name)) buckets.set(name, [])
+    buckets.get(name).push(q)
+  }
+  const names = [...order.filter((n) => buckets.has(n))]
+  for (const n of buckets.keys()) if (!names.includes(n) && n) names.push(n)
+  if (buckets.has('')) names.push('')
+
+  const out = []
+  for (const name of names) {
+    const items = buckets.get(name) || []
+    if (!items.length) continue
+    const isOpen = !closed[name]
+    out.push(
+      <div
+        key={`group-${name}`}
+        className="chart-card"
+        style={{ gridColumn: '1 / -1', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}
+      >
+        <button
+          type="button"
+          className="btn small"
+          onClick={() => setClosed((prev) => ({ ...prev, [name]: isOpen }))}
+          aria-expanded={isOpen}
+        >
+          {isOpen ? '▾' : '▸'}
+        </button>
+        <strong style={{ fontSize: 15 }}>{name || 'Uncategorized'}</strong>
+        <span className="muted" style={{ fontSize: 12 }}>
+          {items.length} question{items.length === 1 ? '' : 's'}
+        </span>
+      </div>,
+    )
+    if (isOpen) out.push(...items.map(card))
+  }
+  return out
+})
+
 /** Super-set / Sub-set dual bars */
 const ContrastBars = memo(function ContrastBars({ data }) {
   if (!data?.length) return <EmptyChart label="Apply a filter to see Subset vs Rest" />
@@ -1523,6 +1589,7 @@ export default function DashboardScreen({ onToast }) {
                 ...cq,
                 id: fq.id,
                 type: cq.type || fq.type,
+                category: cq.category || fq.category,
                 authored: cq.authored || fq.authored || fq.options || cq.options,
                 options: fq.options?.length ? fq.options : cq.options,
                 options_te: fq.options_te || cq.options_te,
@@ -1537,37 +1604,14 @@ export default function DashboardScreen({ onToast }) {
             for (const cq of fromCharts) {
               if (!seen.has(cq.id)) merged.push(cq)
             }
-            return merged.filter((q) => q.visible !== false)
-          })().map((q) => {
-            const counts = rowsFromSurveyQuestion(q)
-            const isMeter = q.type === 'meter' || q.type === 'tapometer'
-            const pieOk = !isMeter && chartShouldUsePie(counts)
             return (
-            <ChartCard
-              key={q.id}
-              title={questionFilterTitle(q, filterLang)}
-              subtitle="Every option for this question"
-            >
-              {isMeter ? (
-                <MeterChart
-                  q={q}
-                  rows={counts}
-                  lang={filterLang}
-                />
-              ) : pieOk ? (
-                <InteractivePie
-                  data={counts}
-                  lang={filterLang}
-                />
-              ) : (
-                <HBar
-                  data={counts}
-                  lang={filterLang}
-                />
-              )}
-            </ChartCard>
+              <QuestionChartsBlock
+                questions={merged.filter((q) => q.visible !== false)}
+                order={(charts?.questionCategories || []).map((c) => c.name)}
+                lang={filterLang}
+              />
             )
-          })}
+          })()}
 
           <ChartCard title="Top constituencies" subtitle="By response count" tall>
             <HBar data={charts?.byConstituency} lang={filterLang} />

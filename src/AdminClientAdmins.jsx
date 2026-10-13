@@ -63,6 +63,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
   const [maxSvInputs, setMaxSvInputs] = useState({})
   const [maxSrInputs, setMaxSrInputs] = useState({})
   const [maxRecInputs, setMaxRecInputs] = useState({})
+  const [maxCatInputs, setMaxCatInputs] = useState({})
   /** Draft feature checkmarks per admin id — saved with Save all */
   const [powerDrafts, setPowerDrafts] = useState({})
   const [companyNames, setCompanyNames] = useState([])
@@ -131,6 +132,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
     setMaxSvInputs((m) => ({ ...m, [id]: Number(u.max_surveys) || 0 }))
     setMaxSrInputs((m) => ({ ...m, [id]: Number(u.max_surveyors) || 0 }))
     setMaxRecInputs((m) => ({ ...m, [id]: Number(u.max_records) || 0 }))
+    setMaxCatInputs((m) => ({ ...m, [id]: Number(u.max_categories ?? 5) }))
   }
 
   const setPowerCheck = (u, key, checked) => {
@@ -166,16 +168,22 @@ export default function AdminClientAdminsScreen({ onToast }) {
       const svRaw = maxSvInputs[id] ?? maxSvInputs[u.id] ?? u.max_surveys
       const srRaw = maxSrInputs[id] ?? maxSrInputs[u.id] ?? u.max_surveyors
       const recRaw = maxRecInputs[id] ?? maxRecInputs[u.id] ?? u.max_records
+      const catRaw = maxCatInputs[id] ?? maxCatInputs[u.id] ?? u.max_categories
       const qVal = Math.max(0, Math.min(100000, Number(qRaw) || 0))
       const svVal = Math.max(0, Math.min(100000, Number(svRaw) || 0))
       const srVal = Math.max(0, Math.min(100000, Number(srRaw) || 0))
       const recVal = Math.max(0, Math.min(10_000_000, Number(recRaw) || 0))
+      // 0 = unlimited; the column default is 5, so an absent value keeps 5 rather than 0.
+      const catVal = catRaw === undefined || catRaw === null || catRaw === ''
+        ? 5
+        : Math.max(0, Math.min(1000, Number(catRaw) || 0))
 
       const body = {
         max_questions_per_survey: qVal,
         max_surveys: svVal,
         max_surveyors: srVal,
         max_records: recVal,
+        max_categories: catVal,
         // Always send every power key so partial drafts cannot wipe others
         ...Object.fromEntries(POWER_DEFS.map((p) => [p.key, !!powers[p.key]])),
       }
@@ -209,6 +217,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
         max_surveys: savedUser.max_surveys ?? body.max_surveys,
         max_surveyors: savedUser.max_surveyors ?? body.max_surveyors,
         max_records: savedUser.max_records ?? body.max_records,
+        max_categories: savedUser.max_categories ?? body.max_categories,
         username: savedUser.username || u.username,
         name: savedUser.name || u.name,
         company_name:
@@ -226,6 +235,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
       setMaxSvInputs((m) => ({ ...m, [id]: merged.max_surveys ?? 0 }))
       setMaxSrInputs((m) => ({ ...m, [id]: merged.max_surveyors ?? 0 }))
       setMaxRecInputs((m) => ({ ...m, [id]: merged.max_records ?? 0 }))
+      setMaxCatInputs((m) => ({ ...m, [id]: merged.max_categories ?? 5 }))
       setEdit({
         username: merged.username || '',
         name: merged.name || '',
@@ -790,6 +800,31 @@ export default function AdminClientAdminsScreen({ onToast }) {
                               }))
                             }
                             style={{ width: 110, padding: '6px 8px' }}
+                          />
+                        </div>
+                      </label>
+                      <label className="field compact" style={{ margin: 0 }}>
+                        <span>
+                          Max question categories (0 = unlimited) ·{' '}
+                          {u.max_categories > 0 ? `${u.max_categories} allowed` : '∞ allowed'}
+                        </span>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="1000"
+                            value={
+                              maxCatInputs[Number(u.id)] != null
+                                ? maxCatInputs[Number(u.id)]
+                                : (u.max_categories ?? 5)
+                            }
+                            onChange={(e) =>
+                              setMaxCatInputs((m) => ({
+                                ...m,
+                                [Number(u.id)]: Math.max(0, Number(e.target.value) || 0),
+                              }))
+                            }
+                            style={{ width: 90, padding: '6px 8px' }}
                           />
                         </div>
                       </label>

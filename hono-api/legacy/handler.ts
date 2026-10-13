@@ -977,6 +977,7 @@ const NUM_FIELDS = [
   "max_surveys",
   "max_surveyors",
   "max_records",
+  "max_categories",
 ] as const;
 
 const USER_COLUMNS = [
@@ -1808,6 +1809,8 @@ async function ensureSchema(): Promise<void> {
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveys INTEGER NOT NULL DEFAULT 0`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_surveyors INTEGER NOT NULL DEFAULT 0`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_records INTEGER NOT NULL DEFAULT 0`,
+    // Question categories a Client Admin may create. 0 = unlimited, like the other max_* grants.
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_categories INTEGER NOT NULL DEFAULT 5`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_secret TEXT`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS target_quota INTEGER NOT NULL DEFAULT 0`,
@@ -1837,6 +1840,18 @@ async function ensureSchema(): Promise<void> {
       )
     `,
     () => sql`CREATE INDEX IF NOT EXISTS idx_app_users_company ON app_users(company_id)`,
+    // Question categories: each Client Admin / company owns its own vocabulary.
+    () => sql`
+      CREATE TABLE IF NOT EXISTS question_categories (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        company_id INT,
+        created_by INT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `,
+    // Unnamed tenant bucket keeps the uniqueness rule per company.
+    () => sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_question_categories_tenant_name ON question_categories (COALESCE(company_id, -1), LOWER(name))`,
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS created_by INT`,
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS display_lang TEXT NOT NULL DEFAULT 'en'`,
     () => sql`ALTER TABLE survey_form ADD COLUMN IF NOT EXISTS voice_required BOOLEAN NOT NULL DEFAULT FALSE`,
@@ -4188,6 +4203,7 @@ async function buildAnalytics(
     label: string;
     label_te: string;
     type: string;
+    category: string;
     visible: boolean;
     options: string[];
     authored: string[];
@@ -4304,6 +4320,7 @@ async function buildAnalytics(
           label: String(q.label || "").trim() || "Question",
           label_te: String(q.label_te || "").trim(),
           type,
+          category: String(q.category || "").trim(),
           visible: q.visible !== false,
           options: opts,
           authored,
@@ -4514,6 +4531,7 @@ async function buildAnalytics(
     label_en: q.label,
     label_te: q.label_te || "",
     type: q.type,
+    category: q.category,
     visible: q.visible,
     options: q.options,
     authored: q.authored,
@@ -4726,6 +4744,7 @@ async function buildAnalytics(
         label_en: q.label,
         label_te: q.label_te || "",
         type: q.type,
+        category: q.category,
         visible: q.visible,
         options: q.options,
         authored: q.authored,
@@ -4843,6 +4862,20 @@ async function buildAnalytics(
           }${contrastParty[0].delta}pp`
           : "Apply a filter to compare Subset vs Superset/Rest",
     },
+    // Category order for the dashboard: first appearance across the survey's questions.
+    questionCategories: (() => {
+      const order: string[] = [];
+      const counts = new Map<string, number>();
+      for (const q of surveyQuestions) {
+        if (!q.visible || !q.category) continue;
+        if (!counts.has(q.category)) {
+          counts.set(q.category, 0);
+          order.push(q.category);
+        }
+        counts.set(q.category, (counts.get(q.category) || 0) + 1);
+      }
+      return order.map((name) => ({ name, question_count: counts.get(name) || 0 }));
+    })(),
     charts: {
       byParty,
       byDistrict,
@@ -4887,6 +4920,141 @@ function redispatch(req: Request, pathAndQuery: string, method?: string, body?: 
     duplex: "half",
   });
   return rawHandler(next);
+}
+
+// ── Question categories (owned by each Client Admin, limited by Super Admin) ──
+
+type QuestionCategory = {
+  id: number;
+  name: string;
+  company_id: number | null;
+  created_by: number | null;
+  created_at: string;
+};
+
+/** A company's admins share one vocabulary; an admin without a company owns theirs alone. */
+function categoryTenantOf(me: { id: unknown; company_id: unknown }): {
+  companyId: number | null;
+  adminId: number;
+} {
+  const cid = Number(me.company_id);
+  return {
+    companyId: Number.isFinite(cid) && cid > 0 ? cid : null,
+    adminId: Number(me.id),
+  };
+}
+
+async function listOwnedCategories(
+  sqlFn: NonNullable<typeof sql>,
+  tenant: { companyId: number | null; adminId: number },
+): Promise<QuestionCategory[]> {
+  const rows =
+    tenant.companyId != null
+      ? await sqlFn`
+          SELECT id, name, company_id, created_by, created_at
+          FROM question_categories WHERE company_id = ${tenant.companyId}
+        `.catch(() => [])
+      : await sqlFn`
+          SELECT id, name, company_id, created_by, created_at
+          FROM question_categories
+          WHERE company_id IS NULL AND created_by = ${tenant.adminId}
+        `.catch(() => []);
+  return (rows as QuestionCategory[]).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+
+/** What the caller may tag questions with. Super Admin browses every tenant's list. */
+async function listVisibleCategories(
+  sqlFn: NonNullable<typeof sql>,
+  me: { id: unknown; company_id: unknown; role: string },
+): Promise<QuestionCategory[]> {
+  if (me.role === "super_admin") {
+    const rows = await sqlFn`
+      SELECT id, name, company_id, created_by, created_at FROM question_categories
+    `.catch(() => []);
+    return (rows as QuestionCategory[]).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  }
+  return listOwnedCategories(sqlFn, categoryTenantOf(me));
+}
+
+/** Surveys of the tenant that owns a category — the blast radius for a rename. */
+async function surveysForCategoryTenant(
+  sqlFn: NonNullable<typeof sql>,
+  tenant: { companyId: number | null; adminId: number },
+): Promise<{ id: number; questions: unknown }[]> {
+  const rows =
+    tenant.companyId != null
+      ? await sqlFn`
+          SELECT id, questions FROM survey_form WHERE company_id = ${tenant.companyId}
+        `.catch(() => [])
+      : await sqlFn`
+          SELECT id, questions FROM survey_form WHERE created_by = ${tenant.adminId}
+        `.catch(() => []);
+  return rows as { id: number; questions: unknown }[];
+}
+
+/** Only Super Admin, or an admin of the owning company / the creating admin, may edit a row. */
+function canTouchCategory(
+  me: { id: unknown; company_id: unknown; role: string },
+  cat: QuestionCategory,
+): boolean {
+  if (me.role === "super_admin") return true;
+  const mine = categoryTenantOf(me);
+  const cid = Number(cat.company_id);
+  if (Number.isFinite(cid) && cid > 0) return mine.companyId === cid;
+  return mine.companyId == null && Number(cat.created_by) === mine.adminId;
+}
+
+/** Question tags per category name across the tenant's surveys (single pass). */
+async function categoryUseCounts(
+  sqlFn: NonNullable<typeof sql>,
+  tenant: { companyId: number | null; adminId: number },
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  for (const f of await surveysForCategoryTenant(sqlFn, tenant)) {
+    for (const q of parseQuestionsArray(f.questions) as Record<string, unknown>[]) {
+      const name = String(q.category ?? "").trim().toLowerCase();
+      if (!name) continue;
+      counts.set(name, (counts.get(name) || 0) + 1);
+    }
+  }
+  return counts;
+}
+
+/** Questions in the tenant's surveys still tagged with this category name. */
+async function countCategoryUse(
+  sqlFn: NonNullable<typeof sql>,
+  tenant: { companyId: number | null; adminId: number },
+  name: string,
+): Promise<number> {
+  return (await categoryUseCounts(sqlFn, tenant)).get(name.toLowerCase()) || 0;
+}
+
+/** Rewrite one category tag across the tenant's surveys. Idempotent, so a partial
+ *  rename can be retried. Answers stay keyed by question id, so no submission data moves. */
+async function retagCategoryInTenant(
+  sqlFn: NonNullable<typeof sql>,
+  tenant: { companyId: number | null; adminId: number },
+  fromName: string,
+  toName: string,
+): Promise<number> {
+  const fromLower = fromName.toLowerCase();
+  let touched = 0;
+  for (const f of await surveysForCategoryTenant(sqlFn, tenant)) {
+    const list = parseQuestionsArray(f.questions) as Record<string, unknown>[];
+    let changed = false;
+    const next = list.map((q) => {
+      if (String(q.category ?? "").trim().toLowerCase() !== fromLower) return q;
+      changed = true;
+      return { ...q, category: toName };
+    });
+    if (!changed) continue;
+    await sqlFn`
+      UPDATE survey_form SET questions = ${JSON.stringify(next)}::jsonb, updated_at = NOW()
+      WHERE id = ${f.id}
+    `.catch(() => null);
+    touched += 1;
+  }
+  return touched;
 }
 
 // ── Router ────────────────────────────────────────────────
@@ -4943,8 +5111,8 @@ async function rawHandler(req: Request): Promise<Response> {
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.66",
-          versionCode: 20066,
+          version: "2.0.67",
+          versionCode: 20067,
           minSupportedVersionCode: 20000,
           apkUrl: `https://${req.headers.get("x-forwarded-host") || url.hostname}/api/app.apk`,
           apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
@@ -4989,7 +5157,8 @@ async function rawHandler(req: Request): Promise<Response> {
                COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                COALESCE(max_surveys, 0) AS max_surveys,
                COALESCE(max_surveyors, 0) AS max_surveyors,
-               COALESCE(max_records, 0) AS max_records
+               COALESCE(max_records, 0) AS max_records,
+               COALESCE(max_categories, 5) AS max_categories
         FROM app_users WHERE LOWER(username) = ${username} LIMIT 1
       `.catch(async () =>
         await sql`
@@ -5123,6 +5292,7 @@ async function rawHandler(req: Request): Promise<Response> {
           max_surveys: Number(uu.max_surveys) || 0,
           max_surveyors: Number(uu.max_surveyors) || 0,
           max_records: Number(uu.max_records) || 0,
+          max_categories: Number(uu.max_categories) || 0,
         },
         expires_at: expires.toISOString(),
         access:
@@ -5652,7 +5822,8 @@ async function rawHandler(req: Request): Promise<Response> {
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                    COALESCE(max_surveys, 0) AS max_surveys,
                    COALESCE(max_surveyors, 0) AS max_surveyors,
-                   COALESCE(max_records, 0) AS max_records
+                   COALESCE(max_records, 0) AS max_records,
+                   COALESCE(max_categories, 5) AS max_categories
             FROM app_users
             ORDER BY id
           `.catch(async () =>
@@ -5662,7 +5833,7 @@ async function rawHandler(req: Request): Promise<Response> {
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
                      FALSE AS can_assign_surveyors,
                      FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey, FALSE AS can_record_voice, FALSE AS can_translate_telugu,
-                     0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records
+                     0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records, 5 AS max_categories
               FROM app_users ORDER BY id
             `
           )
@@ -5685,7 +5856,8 @@ async function rawHandler(req: Request): Promise<Response> {
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                    COALESCE(max_surveys, 0) AS max_surveys,
                    COALESCE(max_surveyors, 0) AS max_surveyors,
-                   COALESCE(max_records, 0) AS max_records
+                   COALESCE(max_records, 0) AS max_records,
+                   COALESCE(max_categories, 5) AS max_categories
             FROM app_users
             WHERE (id = ${me.id} OR created_by = ${me.id})
             ORDER BY id
@@ -5696,7 +5868,7 @@ async function rawHandler(req: Request): Promise<Response> {
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
                      FALSE AS can_assign_surveyors,
                      FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey, FALSE AS can_record_voice, FALSE AS can_translate_telugu,
-                     0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records
+                     0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records, 5 AS max_categories
               FROM app_users
               WHERE (id = ${me.id} OR created_by = ${me.id})
               ORDER BY id
@@ -5816,6 +5988,7 @@ async function rawHandler(req: Request): Promise<Response> {
           max_surveys: Number(r.max_surveys) || 0,
           max_surveyors: Number(r.max_surveyors) || 0,
           max_records: Number(r.max_records) || 0,
+          max_categories: Number(r.max_categories ?? 5),
           // Alias for Client Admin allocation UI
           record_count: surveyor_record_count,
           surveys: assignedForUser,
@@ -5899,6 +6072,10 @@ async function rawHandler(req: Request): Promise<Response> {
       const maxRecordsCreate = canSuper
         ? Math.max(0, Math.min(Number(body.max_records) || 0, 10_000_000))
         : 0;
+      // 0 = unlimited; only Super Admin may grant it, and the default is the 5-category allowance.
+      const maxCategoriesCreate = canSuper && body.max_categories !== undefined
+        ? Math.max(0, Math.min(Number(body.max_categories) || 0, 1000))
+        : 5;
       // Surveyor cap: a Client Admin may only create surveyors up to the Super-Admin-set
       // max_surveyors (0 = unlimited). Ownership is tracked via created_by.
       if (role === "surveyor" && me.role !== "super_admin") {
@@ -5923,9 +6100,9 @@ async function rawHandler(req: Request): Promise<Response> {
           }
         }
         const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, company_name, company_id, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, can_translate_telugu, max_questions_per_survey, max_surveys, max_surveyors, max_records, created_by)
-          VALUES (${username}, ${password_hash}, ${name}, ${finalCompanyName}, ${companyId}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canAssignSurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${canWebSurvey}, ${canRecordVoice}, ${canTranslateTeluguGrant}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${maxRecordsCreate}, ${me.id})
-          RETURNING id, username, display_name, company_name, company_id, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, can_translate_telugu, max_questions_per_survey, max_surveys, max_surveyors, max_records
+          INSERT INTO app_users (username, password_hash, display_name, company_name, company_id, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, can_translate_telugu, max_questions_per_survey, max_surveys, max_surveyors, max_records, max_categories, created_by)
+          VALUES (${username}, ${password_hash}, ${name}, ${finalCompanyName}, ${companyId}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canAssignSurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${canWebSurvey}, ${canRecordVoice}, ${canTranslateTeluguGrant}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${maxRecordsCreate}, ${maxCategoriesCreate}, ${me.id})
+          RETURNING id, username, display_name, company_name, company_id, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, can_translate_telugu, max_questions_per_survey, max_surveys, max_surveyors, max_records, max_categories
         `;
         const u = inserted[0] as Record<string, unknown>;
 
@@ -5949,6 +6126,7 @@ async function rawHandler(req: Request): Promise<Response> {
           max_surveys: maxSurveysCreate,
           max_surveyors: maxSurveyorsCreate,
           max_records: maxRecordsCreate,
+          max_categories: maxCategoriesCreate,
         });
         return json({
           user: {
@@ -6461,6 +6639,10 @@ async function rawHandler(req: Request): Promise<Response> {
         body.max_records !== undefined && me.role === "super_admin"
           ? Math.max(0, Math.min(Number(body.max_records) || 0, 10_000_000))
           : Number((ex as Record<string, unknown>).max_records) || 0;
+      const nextMaxCategories =
+        body.max_categories !== undefined && me.role === "super_admin"
+          ? Math.max(0, Math.min(Number(body.max_categories) || 0, 1000))
+          : Number((ex as Record<string, unknown>).max_categories ?? 5);
       // Grant-based powers — only Super Admin grants/revokes them (least privilege)
       const POWER_KEYS = [
         "can_manage_questions",
@@ -6530,9 +6712,10 @@ async function rawHandler(req: Request): Promise<Response> {
               max_questions_per_survey = ${nextMaxQuestionsPerSurvey},
               max_surveys = ${nextMaxSurveys},
               max_surveyors = ${nextMaxSurveyors},
-              max_records = ${nextMaxRecords}
+              max_records = ${nextMaxRecords},
+              max_categories = ${nextMaxCategories}
           WHERE id = ${id}
-          RETURNING id, username, display_name, company_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, can_translate_telugu, max_questions_per_survey, max_surveys, max_surveyors, max_records
+          RETURNING id, username, display_name, company_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, can_translate_telugu, max_questions_per_survey, max_surveys, max_surveyors, max_records, max_categories
         `;
       } catch (e) {
         const msg = (e as Error).message || "";
@@ -6575,6 +6758,7 @@ async function rawHandler(req: Request): Promise<Response> {
         body.max_surveys !== undefined ||
         body.max_surveyors !== undefined ||
         body.max_records !== undefined ||
+        body.max_categories !== undefined ||
         POWER_KEYS.some((k) => body[k] !== undefined);
       if (adminChanged && isAdmin) {
         logAudit(me, "user_update", "user", id, {
@@ -6620,6 +6804,7 @@ async function rawHandler(req: Request): Promise<Response> {
           max_surveys: Number(u.max_surveys) || 0,
           max_surveyors: Number(u.max_surveyors) || 0,
           max_records: Number(u.max_records) || nextMaxRecords || 0,
+          max_categories: Number(u.max_categories ?? 5),
         },
         password_changed: passwordChanged,
         username_changed: nextUsername !== ex.username,
@@ -6762,6 +6947,124 @@ async function rawHandler(req: Request): Promise<Response> {
         const status = Number((e as { status?: number }).status) || 502;
         return json({ error: (e as Error).message || "Translate failed" }, status);
       }
+    }
+
+    // ── Question categories: the admin's own vocabulary for tagging questions ──
+    if (path === "/api/question-categories" && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const categories = await listVisibleCategories(sql, me)
+      const owned = await listOwnedCategories(sql, categoryTenantOf(me))
+      // Usage counts only make sense inside one tenant's surveys.
+      const counts = me.role === "super_admin"
+        ? null
+        : await categoryUseCounts(sql, categoryTenantOf(me));
+      return json({
+        categories: categories.map((c) => ({
+          ...c,
+          question_count: counts ? counts.get(String(c.name).toLowerCase()) || 0 : undefined,
+        })),
+        limit: me.role === "super_admin" ? 0 : Number(me.max_categories) || 0,
+        used: owned.length,
+      });
+    }
+
+    if (path === "/api/question-categories" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const body = await readBody(req);
+      const name = String(body.name ?? "").replace(/\s+/g, " ").trim();
+      if (!name) return json({ error: "Category name required" }, 400);
+      if (name.length > 40) {
+        return json({ error: "Category name must be 40 characters or fewer" }, 400);
+      }
+      const tenant = categoryTenantOf(me);
+      const owned = await listOwnedCategories(sql, tenant);
+      if (owned.some((c) => String(c.name).toLowerCase() === name.toLowerCase())) {
+        return json({ error: `You already have a category called "${name}"` }, 409);
+      }
+      // max_categories = 0 is unlimited, same convention as max_surveys / max_records.
+      const limit = me.role === "super_admin" ? 0 : Number(me.max_categories) || 0;
+      if (limit > 0 && owned.length >= limit) {
+        return json({
+          error: `Category limit reached (${owned.length} of ${limit}). Ask Super Admin to raise it, or delete a category you are not using.`,
+        }, 403);
+      }
+      const rows = await sql`
+        INSERT INTO question_categories (name, company_id, created_by)
+        VALUES (${name}, ${tenant.companyId}, ${me.id})
+        ON CONFLICT DO NOTHING
+        RETURNING id, name, company_id, created_by, created_at
+      `.catch(() => []);
+      const cat = (rows as QuestionCategory[])[0];
+      if (!cat) return json({ error: `You already have a category called "${name}"` }, 409);
+      logAudit(me, "question_category_create", "question_category", cat.id, {
+        name,
+        company_id: tenant.companyId,
+      });
+      return json({ category: cat }, 201);
+    }
+
+    if (path.startsWith("/api/question-categories/") && method === "PUT") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const id = Number(path.split("/")[3]);
+      const rows = await sql`
+        SELECT id, name, company_id, created_by, created_at FROM question_categories WHERE id = ${id}
+      `.catch(() => []);
+      const cat = (rows as QuestionCategory[])[0];
+      if (!cat) return json({ error: "Not found" }, 404);
+      if (!canTouchCategory(me, cat)) return json({ error: "Not allowed" }, 403);
+      const body = await readBody(req);
+      const name = String(body.name ?? cat.name).replace(/\s+/g, " ").trim();
+      if (!name) return json({ error: "Category name required" }, 400);
+      if (name.length > 40) {
+        return json({ error: "Category name must be 40 characters or fewer" }, 400);
+      }
+      const tenant = { companyId: cat.company_id, adminId: Number(cat.created_by) };
+      const renamed = name.toLowerCase() !== String(cat.name).toLowerCase();
+      if (renamed) {
+        try {
+          await sql`UPDATE question_categories SET name = ${name} WHERE id = ${id}`;
+        } catch {
+          return json({ error: `That tenant already has a category called "${name}"` }, 409);
+        }
+        const surveysTagged = await retagCategoryInTenant(sql, tenant, String(cat.name), name);
+        logAudit(me, "question_category_rename", "question_category", id, {
+          from: cat.name,
+          to: name,
+          surveys_tagged: surveysTagged,
+        });
+      } else {
+        logAudit(me, "question_category_update", "question_category", id, { name });
+      }
+      return json({ ok: true, category: { ...cat, name } });
+    }
+
+    if (path.startsWith("/api/question-categories/") && method === "DELETE") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+      const id = Number(path.split("/")[3]);
+      const rows = await sql`
+        SELECT id, name, company_id, created_by, created_at FROM question_categories WHERE id = ${id}
+      `.catch(() => []);
+      const cat = (rows as QuestionCategory[])[0];
+      if (!cat) return json({ error: "Not found" }, 404);
+      if (!canTouchCategory(me, cat)) return json({ error: "Not allowed" }, 403);
+      const tenant = { companyId: cat.company_id, adminId: Number(cat.created_by) };
+      const inUse = await countCategoryUse(sql, tenant, String(cat.name));
+      if (inUse > 0) {
+        return json(
+          { error: `"${cat.name}" is still on ${inUse} question${inUse === 1 ? "" : "s"}. Retag them first.` },
+          409,
+        );
+      }
+      await sql`DELETE FROM question_categories WHERE id = ${id}`.catch(() => null);
+      logAudit(me, "question_category_delete", "question_category", id, {
+        name: cat.name,
+        company_id: cat.company_id,
+      });
+      return json({ ok: true });
     }
 
     if (path === "/api/question-bank" && method === "GET") {
@@ -9319,6 +9622,25 @@ async function rawHandler(req: Request): Promise<Response> {
             return json({ error: `Duplicate question id "${qid}" — each question needs a unique id` }, 422);
           }
           seenIds.add(qid);
+        }
+        // A question may only carry a category the caller's tenant owns, so a
+        // rename or delete can never leave surveys tagged with a dead name.
+        const wantedCats = new Set(
+          (body.questions as Record<string, unknown>[])
+            .map((q) => String(q.category ?? "").trim())
+            .filter(Boolean),
+        );
+        if (wantedCats.size) {
+          const allowed = new Set(
+            (await listVisibleCategories(sql, me)).map((c) => String(c.name).toLowerCase()),
+          );
+          for (const name of wantedCats) {
+            if (!allowed.has(name.toLowerCase())) {
+              return json({
+                error: `Unknown question category "${name}" — create it under Categories first`,
+              }, 422);
+            }
+          }
         }
         await sql`
           UPDATE survey_form SET questions = ${JSON.stringify(body.questions)}::jsonb, updated_at = NOW()

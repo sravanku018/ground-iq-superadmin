@@ -843,7 +843,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                 style={{
                   fontSize: 12,
                   fontWeight: 600,
-                  color: '#1d6fe0',
+                  color: '#1a73e8',
                   background: '#eff6ff',
                   border: '1px solid #bfdbfe',
                   borderRadius: 6,
@@ -947,7 +947,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                       style={{
                         border: '1px solid #bfdbfe',
                         background: status === 'pending' ? '#eff6ff' : '#ffffff',
-                        color: '#1d6fe0',
+                        color: '#1a73e8',
                         fontSize: 12,
                         fontWeight: 600,
                         borderRadius: 6,
@@ -1532,7 +1532,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
 
       <aside className="portal-sidebar" aria-label="Main navigation">
         <div className="side-brand">
-          <span style={{ color: '#1d6fe0' }}>✦</span> Smart Survey X
+          <span style={{ color: '#1a73e8' }}>✦</span> Smart Survey X
           <span className="role-tag">{isSuper ? 'Super Admin' : 'Client Admin'}</span>
         </div>
         <nav className="portal-nav">

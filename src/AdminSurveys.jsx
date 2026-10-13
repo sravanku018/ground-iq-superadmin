@@ -14,6 +14,7 @@ import {
   updateSurvey,
 } from './api'
 import CopyWebFillLink from './components/CopyWebFillLink'
+import { CategoryField, CategoryPanel } from './QuestionCategory'
 import QuestionTelugu, { fillTeluguFromEnglish } from './QuestionTelugu'
 import { canTeluguQuestions, isQuestionVisible, labelPatch, nextQuestionId, teluguFields } from './questionKey'
 
@@ -35,6 +36,7 @@ const EMPTY_Q = {
   required: false,
   visible: true,
   speak: '',
+  category: '',
 }
 
 const defaultOptionsForType = (t) => {
@@ -180,6 +182,12 @@ function QuestionEditor({
                 <option value="age">🔢 Age / Numeric Field</option>
               </select>
             </label>
+
+            <CategoryField
+              value={q.category || ''}
+              onChange={(name) => updateQ(i, { category: name })}
+              onToast={onToast}
+            />
 
             {hasOptions && (
               <div style={{ marginTop: 10, background: 'rgba(15,23,42,0.05)', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 }}>
@@ -358,7 +366,7 @@ function QuestionEditor({
 
 function cleanQuestions(questions) {
   const used = new Set()
-  return (questions || []).map((q) => {
+  return (questions || []).map((q, idx) => {
     const optsFromText =
       q.optionsText != null
         ? String(q.optionsText)
@@ -391,6 +399,7 @@ function cleanQuestions(questions) {
       required: !!q.required,
       visible: q.visible !== false,
       speak: String(q.speak || q.label || '').trim(),
+      category: String(q.category || '').trim(),
       ...teluguFields(q),
     }
   })
@@ -1208,6 +1217,8 @@ export default function AdminSurveysScreen({ onToast, user }) {
           </div>
           )}
         </div>
+
+        {!liveFrozen && <CategoryPanel onToast={onToast} />}
 
         <QuestionEditor
           questions={detail.questions || []}

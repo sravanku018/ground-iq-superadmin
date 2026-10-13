@@ -272,6 +272,31 @@ export function copyQuestionBank(id, opts = {}) {
   })
 }
 
+/** Question categories — the Client Admin's own vocabulary for tagging questions */
+export function listQuestionCategories() {
+  return request('/api/question-categories')
+}
+
+export function createQuestionCategory(name) {
+  return request('/api/question-categories', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+}
+
+export function renameQuestionCategory(id, name) {
+  return request(`/api/question-categories/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+}
+
+export function deleteQuestionCategory(id) {
+  return request(`/api/question-categories/${id}`, { method: 'DELETE' })
+}
+
 /** Seat-limit upgrade requests (BR-006 / FR-USR-10) */
 export function getSeatRequests() {
   return request('/api/seat-limit-requests')

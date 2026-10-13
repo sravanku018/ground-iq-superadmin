@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /home/sravan/Downloads/neondbapp && find . -maxdepth 2 -name \"handler*.ts\" -o -maxdepth 2 -name \"*.mjs\" -not -path \"./node_modules/*\" | head -30)",
+      "Bash(cd /home/sravan/Downloads/neondbapp && ls -la hono-api 2>/dev/null | head -30; echo \"=== find handler ===\"; find . -name \"handler*.ts\" -not -path \"./node_modules/*\" -not -path \"./android/*\" 2>/dev/null | head)",
+      "Bash(cd /home/sravan/Downloads/neondbapp/hono-api/legacy && ls -la && wc -l handler.ts 2>/dev/null)",
+      "Bash(cd /home/sravan/Downloads/neondbapp && cat README.md | head -40; echo \"=== deno.json ===\"; cat hono-api/deno.json; echo \"=== main.ts ===\"; cat hono-api/main.ts)",
+      "Bash(cd /home/sravan/Downloads/neondbapp && grep -rn \"docx\\\\|survey_reports\\\\|question_categories\" --include=\"*.ts\" --include=\"*.js\" --include=\"*.jsx\" --include=\"*.json\" -l . 2>/dev/null | grep -v node_modules | head -20)",
+      "Bash(cd /home/sravan/Downloads/neondbapp && find . -iname \"*integrated*\" -not -path \"./node_modules/*\" -not -path \"./android/*\" 2>/dev/null | head -20; echo \"=== downloads/uploads ===\"; ls -la /home/sravan/Downloads/ 2>/dev/null | grep -i \"handler\\\\|integrat\" | head -20)",
+      "Bash(grep -E \"^\\\\s+at file\" /tmp/check1.txt | sed 's/:[0-9]*:[0-9]*$//' | sort | uniq -c | sort -rn | head -20; echo \"=== new-code errors ===\"; grep -B4 \"handler.ts:49[0-9][0-9]\\\\|handler.ts:50[0-9][0-9]\\\\|handler.ts:6[89][0-9][0-9]\\\\|handler.ts:70[0-9][0-9]\" /tmp/check1.txt | grep -E \"TS|at file\" | head -40)",
+      "Bash(cd /tmp && python3 -c \"\nimport re\ndef locs\\(p\\):\n    t=open\\(p,encoding='utf-8',errors='replace'\\).read\\(\\).splitlines\\(\\)\n    out=[]\n    cur=None\n    for i,l in enumerate\\(t\\):\n        m=re.match\\(r'\\\\s*\\(TS\\\\d+\\)\\\\s+\\\\[ERROR\\\\]:',l\\)\n        if m: cur=m.group\\(1\\)\n        m2=re.search\\(r'legacy/handler\\\\.ts:\\(\\\\d+\\):\\(\\\\d+\\)',l\\)\n        if m2 and cur: out.append\\(\\(int\\(m2.group\\(1\\)\\),cur,l.strip\\(\\)[:90]\\)\\)\n    return out\nb=locs\\('base_check.txt'\\); n=locs\\('check1.txt'\\)\nprint\\('base',len\\(b\\),'new',len\\(n\\)\\)\nbs=set\\(x[1] for x in b\\)\nnew=[x for x in n if x[0]>4000]\nprint\\('--- errors in new-code line ranges ---'\\)\nfor ln,code,snip in n:\n    if 4900<=ln<=5040 or 6790<=ln<=6910: print\\(ln,code,snip\\)\n\"\n)",
+      "Bash(deno check --no-lock --reload legacy/handler.ts 2>&1 | tail -c 4000 | sed 's/\\\\x1b\\\\[[0-9;]*m//g' | tail -20; echo \"---COUNT---\"; deno check --no-lock legacy/handler.ts 2>&1 | sed 's/\\\\x1b\\\\[[0-9;]*m//g' | grep -c \"^TS\")",
+      "Bash(cd /home/sravan/Downloads/neondbapp/hono-api && deno check --no-lock --reload legacy/handler.ts 2>&1 | sed 's/\\\\x1b\\\\[[0-9;]*m//g' > /tmp/check2.txt; grep -c \"TS\" /tmp/check2.txt; tail -3 /tmp/check2.txt)",
+      "Bash(cd /home/sravan/Downloads/neondbapp && for f in src/Dashboard.jsx src/AdminSurveys.jsx src/AdminQuestions.jsx src/QuestionCategory.jsx src/api.js; do npx esbuild --loader=jsx --outfile=/dev/null \"$f\" 2>&1 | head -8 | sed \"s|^|$f: |\"; done)",
+      "Bash(ls -a \"/home/sravan/Downloads/vps\" 2>&1 | head -40)",
+      "Bash(sleep 4; echo \"health: $\\(curl -sk -m 25 -w ' [%{http_code}]' https://162.35.96.65.sslip.io/api/health\\)\"; echo \"GET /api/question-categories \\(no token\\): $\\(curl -sk -m 25 -o /tmp/qc.txt -w '%{http_code}' https://162.35.96.65.sslip.io/api/question-categories\\) -> $\\(cat /tmp/qc.txt\\)\"; echo \"POST /api/question-categories \\(no token\\): $\\(curl -sk -m 25 -X POST -H 'Content-Type: application/json' -d '{\"name\":\"Probe\"}' -o /tmp/qc2.txt -w '%{http_code}' https://162.35.96.65.sslip.io/api/question-categories\\) -> $\\(cat /tmp/qc2.txt\\)\")"
+    ]
+  }
+}

@@ -20,8 +20,8 @@
   --ink-muted:    #64748b;
   --ink-faint:    #94a3b8;
 
-  /* ── Accent (ink-blue, derived) ── */
-  --accent:       #1d6fe0;
+  /* ── Accent (portal blue · shared with portal.css) ── */
+  --accent:       #1a73e8;
   --accent-bg:    #eff6ff;
   --accent-border:#bfdbfe;
   --accent-light: #dbeafe;

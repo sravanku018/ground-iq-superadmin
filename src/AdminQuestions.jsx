@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Icon from './Icons'
 import { getQuestions, getSurvey, listSurveys, saveQuestions, updateSurvey } from './api'
 import OptionPills from './OptionPills'
+import { CategoryField, CategoryPanel } from './QuestionCategory'
 import QuestionTelugu, { fillTeluguFromEnglish } from './QuestionTelugu'
 import { canTeluguQuestions, isQuestionVisible, labelPatch, nextQuestionId, teluguFields } from './questionKey'
 
@@ -13,6 +14,7 @@ const EMPTY_Q = {
   required: false,
   visible: true,
   speak: '',
+  category: '',
 }
 
 const defaultOptionsForType = (t) => {
@@ -252,6 +254,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
           required: !!q.required,
           visible: q.visible !== false,
           speak: String(q.speak || q.label || '').trim(),
+          category: String(q.category || '').trim(),
           ...teluguFields(q),
         }
       })
@@ -393,6 +396,8 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       </div>
       )}
 
+      {!isFrozen && canEdit && <CategoryPanel onToast={onToast} />}
+
       {canTelugu && questions.length > 0 && (
         <div style={{ marginBottom: 12 }}>
           <button type="button" className="btn small" disabled={isFrozen || translatingAll || !canEdit} onClick={() => void translateAll()}>
@@ -461,6 +466,13 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                 <option value="age">🔢 Age / Numeric Field</option>
               </select>
             </label>
+
+            <CategoryField
+              value={q.category || ''}
+              onChange={(name) => updateQ(i, { category: name })}
+              onToast={onToast}
+              disabled={isFrozen || !canEdit}
+            />
 
             {(type === 'multi_select' || type === 'multi') && (
               <label className="field" style={{ marginTop: 8 }}>

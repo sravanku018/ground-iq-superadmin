@@ -14,7 +14,8 @@
       "Bash(cd /home/sravan/Downloads/neondbapp && for f in src/Dashboard.jsx src/AdminSurveys.jsx src/AdminQuestions.jsx src/QuestionCategory.jsx src/api.js; do npx esbuild --loader=jsx --outfile=/dev/null \"$f\" 2>&1 | head -8 | sed \"s|^|$f: |\"; done)",
       "Bash(ls -a \"/home/sravan/Downloads/vps\" 2>&1 | head -40)",
       "Bash(sleep 4; echo \"health: $\\(curl -sk -m 25 -w ' [%{http_code}]' https://162.35.96.65.sslip.io/api/health\\)\"; echo \"GET /api/question-categories \\(no token\\): $\\(curl -sk -m 25 -o /tmp/qc.txt -w '%{http_code}' https://162.35.96.65.sslip.io/api/question-categories\\) -> $\\(cat /tmp/qc.txt\\)\"; echo \"POST /api/question-categories \\(no token\\): $\\(curl -sk -m 25 -X POST -H 'Content-Type: application/json' -d '{\"name\":\"Probe\"}' -o /tmp/qc2.txt -w '%{http_code}' https://162.35.96.65.sslip.io/api/question-categories\\) -> $\\(cat /tmp/qc2.txt\\)\")",
-      "Bash(cd /home/sravan/Downloads/neondbapp && npm run build 2>&1 | tail -4)"
+      "Bash(cd /home/sravan/Downloads/neondbapp && npm run build 2>&1 | tail -4)",
+      "Bash(KEY=\"$HOME/Downloads/vps oracle/id_ed25519\"\nSSH=\\(ssh -i \"$KEY\" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=12 root@162.35.96.65\\)\ntimeout 45 \"${SSH[@]}\" 'echo CONNECT_OK; uptime -s; uptime; date' 2>&1 | tail -20\necho \"exit=$?\")"
     ]
   }
 }

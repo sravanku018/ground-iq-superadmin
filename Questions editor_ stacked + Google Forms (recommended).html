@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Questions editor: stacked + Google Forms (recommended)</title>
+<style>
+:root { --bg:#f8fafc; --surface:#ffffff; --text:#0f172a; --muted:#64748b; --border:#e2e8f0; --accent:#059669; color-scheme:light; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0b1120; --surface:#111827; --text:#e5e7eb; --muted:#94a3b8; --border:#1f2937; color-scheme:dark; } }
+:root[data-theme="dark"] { --bg:#0b1120; --surface:#111827; --text:#e5e7eb; --muted:#94a3b8; --border:#1f2937; color-scheme:dark; }
+* { box-sizing:border-box; }
+body { margin:0; padding:20px 16px; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+.screen { max-width:900px; margin:0 auto; display:grid; gap:12px; }
+.note { font-size:12px; color:var(--muted); }
+.screen-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+.screen-head h2 { margin:0; font-size:20px; }
+.muted { color:var(--muted); font-size:13px; margin:0; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+.field { display:grid; gap:6px; font-size:12px; font-weight:600; color:var(--muted); }
+.field input, .field select, .field textarea { height:36px; padding:0 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font:inherit; font-weight:400; font-size:14px; width:100%; min-width:0; }
+.btn { height:34px; padding:0 14px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text); font:inherit; font-size:13px; font-weight:600; cursor:pointer; }
+.btn:disabled { opacity:.45; cursor:not-allowed; }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+.btn.small { height:30px; padding:0 10px; font-size:12px; }
+.btn.danger { background:#dc2626; border-color:#dc2626; color:#fff; }
+.pill { display:inline-block; padding:2px 10px; border-radius:999px; font-size:11px; font-weight:700; background:var(--border); color:var(--text); }
+.pill.ok { background:#059669; color:#fff; }
+.pill.warn { background:#d97706; color:#fff; }
+.chip { padding:6px 12px; border-radius:16px; border:1px solid var(--border); background:var(--surface); color:var(--text); font:inherit; font-size:12px; cursor:pointer; }
+.chip.selected { background:#38bdf8; border-color:#38bdf8; color:#111; font-weight:700; }
+.grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.span2 { grid-column:1/-1; }
+.q { background:var(--surface); border:1px solid var(--border); border-left:4px solid #059669; border-radius:12px; overflow:hidden; }
+.q.is-off { border-left-color:#94a3b8; }
+.q-head { display:flex; align-items:center; gap:12px; padding:12px 14px; cursor:pointer; }
+.q-head:hover { background:var(--bg); }
+.num { width:28px; height:28px; border-radius:8px; background:var(--border); display:grid; place-items:center; font-weight:700; font-size:12px; flex:none; }
+.q-title { flex:1; min-width:0; display:grid; gap:4px; }
+.q-title strong { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tags { display:flex; gap:6px; flex-wrap:wrap; }
+.chev { color:var(--muted); transition:transform .15s; }
+.chev.open { transform:rotate(90deg); }
+.q-body { padding:4px 16px 16px; display:grid; gap:14px; border-top:1px solid var(--border); }
+.opts-box { margin-top:4px; background:rgba(15,23,42,.05); border:1px solid var(--border); border-radius:8px; padding:12px; display:grid; gap:8px; }
+.preview { background:rgba(15,23,42,.05); border:1px solid var(--border); border-radius:8px; padding:12px; display:grid; gap:8px; }
+.preview-label { font-size:11px; font-weight:700; color:#38bdf8; }
+.row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.toggle { display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:700; cursor:pointer; padding:6px 10px; border-radius:8px; border:1px solid var(--border); }
+.quota { font-size:12px; color:var(--muted); display:grid; gap:4px; min-width:150px; }
+.quota .bar { height:6px; border-radius:999px; background:var(--border); overflow:hidden; }
+.quota .bar span { display:block; height:100%; background:#059669; }
+.quota.full .bar span { background:#dc2626; }
+.cat-panel { display:grid; gap:10px; }
+.cat-row { display:flex; gap:8px; align-items:center; }
+.cat-row input { flex:1; height:34px; padding:0 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font:inherit; }
+.banner { padding:10px 14px; border-radius:10px; border:1px solid rgba(217,119,6,.5); background:rgba(217,119,6,.1); font-size:13px; }
+.toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); background:#0f172a; color:#fff; padding:8px 14px; border-radius:8px; font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; }
+.toast.show { opacity:1; }
+@media (max-width:640px) { .grid2 { grid-template-columns:1fr; } }
+
+.screen { max-width:1080px; }
+.split{display:grid;grid-template-columns:240px minmax(0,1fr) 260px;gap:12px;align-items:start}
+.qlist{display:grid;gap:6px}
+.li{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:13px;cursor:pointer}
+.li.on{border-color:#059669;box-shadow:inset 3px 0 0 #059669}
+.li-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.num{width:24px;height:24px;font-size:11px}
+.phone-col{position:sticky;top:12px;display:grid;gap:6px}
+.phone-frame{border:8px solid #0f172a;border-radius:28px;padding:16px 12px;background:#fff;color:#0f172a;min-height:280px;display:grid;gap:10px;align-content:start}
+.ph-q{font-weight:700;font-size:15px}
+.tbl-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:12px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px;min-width:760px}
+.tbl th,.tbl td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;vertical-align:middle}
+.tbl th{font-size:12px;color:var(--muted)}
+.tbl tr.on td{background:rgba(5,150,105,.08)}
+.tbl input:not([type=checkbox]), .tbl select{height:30px;border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:6px;padding:0 6px;font:inherit;width:100%;min-width:120px}
+.acts{white-space:nowrap}
+.drawer{display:grid;gap:12px;margin-top:4px}
+.group{display:grid;gap:10px}
+.group-h{display:flex;gap:10px;align-items:center;padding:6px 2px;border-bottom:2px solid #38bdf8}
+.wiz{display:grid;gap:12px}
+.wiz-n{font-size:12px;font-weight:700;color:var(--muted)}
+.wiz-bar{height:6px;border-radius:999px;background:var(--border);overflow:hidden}
+.wiz-bar span{display:block;height:100%;background:#059669}
+@media (max-width:800px){ .split{grid-template-columns:1fr} .phone-col{position:static} }
+
+.screen { max-width:900px; }
+.mix-list { display:grid; gap:8px; }
+.mix-row { display:flex; align-items:center; gap:8px; width:100%; text-align:left; padding:10px 12px; border:1px solid var(--border); border-left:4px solid #059669; border-radius:10px; background:var(--surface); color:var(--text); font:inherit; font-size:13px; cursor:pointer; }
+.mix-row:hover { background:var(--bg); }
+.mix-row.is-off { border-left-color:#94a3b8; }
+.mix-t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.mix-card { background:var(--surface); border:1px solid var(--border); border-left:5px solid #38bdf8; border-radius:12px; overflow:hidden; }
+.mix-head { display:flex; gap:10px; align-items:center; padding:12px 14px; border-bottom:1px solid var(--border); }
+.mix-head .mix-t { font-size:15px; }
+.mix-body { padding:14px; display:grid; gap:14px; }
+.mix-foot { display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid var(--border); background:var(--bg); }
+.chev { color:var(--muted); }
+.num { width:24px; height:24px; font-size:11px; }
+</style></head>
+<body>
+<div class="screen" id="app"></div>
+<div class="toast" id="toast"></div>
+<script>
+
+
+const TYPES = [
+  ['multi_select','Multiple select'],['choice','Single choice'],['range','Numeric range'],['yesno','Yes / No'],
+  ['sentiment_text','Text + sentiment'],['abc','A · B · C · D'],['sentiment','Sentiment scale'],['meter','Sentiment meter'],
+  ['text','Open text'],['age','Age / number'],
+];
+const OPT = new Set(['choice','multi_select','yesno','abc','sentiment','sentiment_text','range','age']);
+const DEF = {
+  yesno:['Yes','No'], abc:['A','B','C','D'], sentiment:['Positive','Neutral','Negative'],
+  sentiment_text:['Positive','Neutral','Negative'], range:['10-20','21-30','31-40','41-50','50+'],
+  age:['10-20','21-30','31-40','41-50','50+'], choice:['Option 1','Option 2','Option 3'],
+  multi_select:['Option 1','Option 2','Option 3','Option 4'],
+};
+const PILL_COLORS = ['#059669','#38bdf8','#a78bfa','#f472b6'];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const typeLabel = t => (TYPES.find(x => x[0] === t) || [0, t])[1];
+
+const S = {
+  allotted: 12, otherUsed: 3, saved: false,
+  surveyTitle: 'Assembly Survey 2026', lang: 'en', canEdit: true, frozen: false,
+  categories: ['Demographics','Voting intent'],
+  openIds: {}, creating: null, nextId: 100,
+  questions: [
+    { uid:'a', label:'What is your age group?', speak:'Ask respondent their age bracket', type:'range', options:DEF.range, required:true, visible:true, category:'Demographics', maxChoices:2 },
+    { uid:'b', label:'Which issues matter most to you?', speak:'Ask which issues matter', type:'multi_select', options:['Jobs','Water','Roads','Health'], required:false, visible:true, category:'Voting intent', maxChoices:2 },
+    { uid:'c', label:'Are you satisfied with local services?', speak:'', type:'yesno', options:['Yes','No'], required:true, visible:true, category:'' },
+    { uid:'d', label:'Any other comments?', speak:'', type:'text', options:[], required:false, visible:false, category:'' },
+  ],
+};
+const find = uid => S.questions.find(q => q.uid === uid);
+const isOpen = uid => S.openIds[uid] !== false;
+
+function toast(msg, kind) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.background = kind === 'error' ? '#dc2626' : '#0f172a';
+  t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function optionPills(q) {
+  const opts = q.options && q.options.length ? q.options : [];
+  if (q.type === 'multi_select') return `<div class="row">${opts.map((o,i)=>`<span class="pill" style="background:#38bdf8;color:#111;padding:5px 12px;border-radius:16px;font-size:12px">${esc(o)}</span>`).join('')}</div>`;
+  if (q.type === 'abc') return `<div class="row">${['A','B','C','D'].map((l,i)=>`<span style="background:${PILL_COLORS[i]};color:#111;padding:6px 16px;border-radius:16px;font-weight:700">${l}</span>`).join('')}</div>`;
+  return '';
+}
+
+function preview(q) {
+  const opts = q.options && q.options.length ? q.options : (DEF[q.type] || []);
+  const t = q.type;
+  if (t === 'yesno') return `<div class="row"><button class="btn" style="background:#059669;color:#fff;font-weight:700;padding:8px 20px;border:0">✓ Yes</button><button class="btn" style="background:#dc2626;color:#fff;font-weight:700;padding:8px 20px;border:0">✕ No</button></div>`;
+  if (t === 'sentiment' || t === 'sentiment_text') return `${t==='sentiment_text' ? '<input readonly placeholder="Open text response…" style="width:100%;margin-bottom:8px">' : ''}<div class="row"><span style="background:#059669;color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700">Positive</span><span style="background:#d97706;color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700">Neutral</span><span style="background:#dc2626;color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700">Negative</span></div>`;
+  if (t === 'abc') return optionPills(q);
+  if (t === 'meter') return `<input type="range" min="1" max="100" readonly style="width:100%;accent-color:#059669"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>1% negative</span><span>50% neutral</span><span>100% positive</span></div>`;
+  if (t === 'multi_select') return optionPills(q);
+  if (opts.length) return `<div class="row">${opts.map(o=>`<span style="background:#38bdf8;color:#111;padding:5px 12px;border-radius:16px;font-size:12px;font-weight:700">${esc(o)}</span>`).join('')}</div>`;
+  return `<input readonly placeholder="Surveyor types answer here…" style="width:100%">`;
+}
+
+function catField(q) {
+  if (S.creating === q.uid) return `<label class="field"><span>Category</span><div class="cat-row"><input id="newcat" placeholder="e.g. Demographics" maxlength="40"><button class="btn small primary" data-act="createcat" data-uid="${q.uid}">Create</button><button class="btn small" data-act="cancelcat">Cancel</button></div></label>`;
+  const opts = S.categories.map(c => `<option value="${esc(c)}"${q.category===c?' selected':''}>${esc(c)}</option>`).join('');
+  const stale = q.category && !S.categories.includes(q.category) ? `<option selected value="${esc(q.category)}">${esc(q.category)} (deleted or renamed)</option>` : '';
+  const ph = !q.category ? `<option value="" disabled selected>${S.categories.length ? 'Choose a category' : 'Create a category first'}</option>` : '';
+  return `<label class="field"><span>Category</span><select data-act="cat" data-uid="${q.uid}" ${S.frozen||!S.canEdit?'disabled':''}>${ph}${stale}${opts}<option value="__new__">+ New category…</option></select></label>`;
+}
+
+function card(q, i) {
+  const open = isOpen(q.uid);
+  const hasOpts = OPT.has(q.type);
+  const optText = (q.options && q.options.length ? q.options : DEF[q.type] || []).join(', ');
+  const locked = S.frozen || !S.canEdit;
+  return `<article class="q${q.visible?'':' is-off'}" id="q-${q.uid}">
+    <header class="q-head" data-act="toggle" data-uid="${q.uid}">
+      <span class="num">${i+1}</span>
+      <div class="q-title"><strong>${q.label ? esc(q.label) : '<em class="muted">Untitled question</em>'}</strong>
+        <div class="tags"><span class="pill">${esc(typeLabel(q.type))}</span>
+        ${q.category ? `<span class="pill" style="background:#38bdf8;color:#111">${esc(q.category)}</span>` : ''}
+        ${q.required ? '<span class="pill ok">Required</span>' : ''}
+        ${!q.visible ? '<span class="pill">Hidden</span>' : ''}</div></div>
+      <button class="btn small danger" data-act="del" data-uid="${q.uid}" ${locked?'disabled':''}>Delete</button>
+      <span class="chev${open?' open':''}">▸</span>
+    </header>
+    ${open ? `<div class="q-body">
+      <div class="grid2">
+        <label class="field span2"><span>Question</span><input data-act="label" data-uid="${q.uid}" value="${esc(q.label)}" placeholder="Type the question" ${locked?'disabled':''}></label>
+        <label class="field span2"><span>Voice prompt (spoken by surveyor)</span><input data-act="speak" data-uid="${q.uid}" value="${esc(q.speak)}" placeholder="Ask respondent" ${locked?'disabled':''}></label>
+        <label class="field"><span>Question type</span><select data-act="type" data-uid="${q.uid}" ${locked?'disabled':''}>${TYPES.map(([v,l])=>`<option value="${v}"${q.type===v?' selected':''}>${esc(l)}</option>`).join('')}</select></label>
+        ${catField(q)}
+        ${q.type==='multi_select' ? `<label class="field span2"><span>Maximum selections</span><select data-act="max" data-uid="${q.uid}" ${locked?'disabled':''}>${[1,2,3,4,5].map(n=>`<option value="${n}"${q.maxChoices===n?' selected':''}>${n===1?'Pick 1 answer':'Pick up to '+n+' answers'}</option>`).join('')}</select></label>` : ''}
+      </div>
+      ${hasOpts ? `<div class="opts-box"><label class="field"><span>Answer options (comma-separated)</span><input data-act="opts" data-uid="${q.uid}" value="${esc(optText)}" placeholder="Option 1, Option 2" ${locked?'disabled':''}></label></div>` : ''}
+      <div class="row">
+        <label class="toggle" style="color:${q.visible?'#059669':'#64748b'};border-color:${q.visible?'#059669':'var(--border)'}"><input type="checkbox" data-act="visible" data-uid="${q.uid}" ${q.visible?'checked':''} ${locked?'disabled':''}>${q.visible?'Visible on dashboard':'Hidden on dashboard'}</label>
+        <label class="toggle" style="color:${q.required?'#059669':'#64748b'};border-color:${q.required?'#059669':'var(--border)'}"><input type="checkbox" data-act="required" data-uid="${q.uid}" ${q.required?'checked':''} ${locked?'disabled':''}>${q.required?'Required':'Optional'}</label>
+      </div>
+      <div class="preview"><span class="preview-label">Surveyor preview</span>${preview(q)}</div>
+    </div>` : ''}
+  </article>`;
+}
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el || el.disabled) return;
+  const act = el.dataset.act, uid = el.dataset.uid;
+  if (['INPUT','SELECT','OPTION','LABEL'].includes(e.target.tagName) && act !== 'toggle') return;
+  if (act === 'toggle') { if (e.target.closest('[data-act="del"]')) return; S.openIds[uid] = !isOpen(uid); render(); }
+  else if (act === 'del') { e.stopPropagation(); S.questions = S.questions.filter(q=>q.uid!==uid); toast('Question deleted'); render(); }
+  else if (act === 'add') {
+    if (S.otherUsed + S.questions.length >= S.allotted) return toast(`Quota reached: ${S.allotted} allotted`, 'error');
+    const u = 'n' + (S.nextId++);
+    S.questions.push({ uid:u, label:'', speak:'', type:'text', options:[], required:false, visible:true, category:'' });
+    S.openIds[u] = true; S.sel = u; render();
+    setTimeout(() => document.getElementById('q-'+u)?.scrollIntoView({behavior:'smooth', block:'center'}), 50);
+  }
+  else if (act === 'createcat') {
+    const name = (document.getElementById('newcat').value || '').replace(/\s+/g,' ').trim();
+    if (!name) return;
+    if (S.categories.some(c=>c.toLowerCase()===name.toLowerCase())) return toast('That category already exists', 'error');
+    S.categories.push(name); find(uid).category = name; S.creating = null; toast(`Created “${name}”`); render();
+  }
+  else if (act === 'cancelcat') { S.creating = null; render(); }
+  else if (act === 'save') { S.saved = true; toast('Saved (preview only)'); render(); setTimeout(()=>{S.saved=false;render();}, 1500); }
+  else if (act === 'lang') { S.lang = el.dataset.val; render(); }
+});
+
+document.addEventListener('change', e => {
+  const el = e.target, act = el.dataset.act, uid = el.dataset.uid;
+  if (!act) return;
+  if (act === 'cat') { if (el.value === '__new__') { S.creating = uid; render(); setTimeout(()=>document.getElementById('newcat')?.focus(), 0); return; } find(uid).category = el.value; render(); }
+  else if (act === 'type') { const q = find(uid); q.type = el.value; q.options = DEF[el.value] || []; render(); }
+  else if (act === 'max') { find(uid).maxChoices = Number(el.value); render(); }
+  else if (act === 'visible') { find(uid).visible = el.checked; render(); }
+  else if (act === 'required') { find(uid).required = el.checked; render(); }
+  else if (act === 'opts') { find(uid).options = el.value.split(',').map(s=>s.trim()).filter(Boolean); render(); }
+});
+document.addEventListener('input', e => {
+  const el = e.target, act = el.dataset.act, uid = el.dataset.uid;
+  if (act === 'label') { find(uid).label = el.value; const h = el.closest('.q')?.querySelector('.q-title strong'); if (h) h.textContent = el.value || 'Untitled question'; }
+  if (act === 'speak') find(uid).speak = el.value;
+});
+document.addEventListener('keydown', e => {
+  if (e.target.id === 'newcat' && e.key === 'Enter') { e.preventDefault(); document.querySelector('[data-act="createcat"]')?.click(); }
+  if (e.target.id === 'newcat' && e.key === 'Escape') { S.creating = null; render(); }
+});
+
+
+function toggles(q){
+  const dis = (S.frozen || !S.canEdit) ? 'disabled' : '';
+  return `<label class="toggle" style="color:${q.visible?'#059669':'#64748b'};border-color:${q.visible?'#059669':'var(--border)'}"><input type="checkbox" data-act="visible" data-uid="${q.uid}" ${q.visible?'checked':''} ${dis}>${q.visible?'Visible on dashboard':'Hidden on dashboard'}</label><label class="toggle" style="color:${q.required?'#059669':'#64748b'};border-color:${q.required?'#059669':'var(--border)'}"><input type="checkbox" data-act="required" data-uid="${q.uid}" ${q.required?'checked':''} ${dis}>${q.required?'Required':'Optional'}</label>`;
+}
+function editorFields(q){
+  const hasOpts = OPT.has(q.type);
+  const optText = (q.options && q.options.length ? q.options : DEF[q.type] || []).join(', ');
+  const dis = (S.frozen || !S.canEdit) ? 'disabled' : '';
+  return `<div class="grid2">
+    <label class="field span2"><span>Question</span><input data-act="label" data-uid="${q.uid}" value="${esc(q.label)}" placeholder="Type the question" ${dis}></label>
+    <label class="field span2"><span>Voice prompt (spoken by surveyor)</span><input data-act="speak" data-uid="${q.uid}" value="${esc(q.speak)}" placeholder="Ask respondent" ${dis}></label>
+    <label class="field"><span>Question type</span><select data-act="type" data-uid="${q.uid}" ${dis}>${TYPES.map(([v,l])=>`<option value="${v}"${q.type===v?' selected':''}>${esc(l)}</option>`).join('')}</select></label>
+    ${catField(q)}
+    ${q.type==='multi_select' ? `<label class="field span2"><span>Maximum selections</span><select data-act="max" data-uid="${q.uid}" ${dis}>${[1,2,3,4,5].map(n=>`<option value="${n}"${q.maxChoices===n?' selected':''}>${n===1?'Pick 1 answer':'Pick up to '+n+' answers'}</option>`).join('')}</select></label>` : ''}
+  </div>
+  ${hasOpts ? `<div class="opts-box"><label class="field"><span>Answer options (comma-separated)</span><input data-act="opts" data-uid="${q.uid}" value="${esc(optText)}" placeholder="Option 1, Option 2" ${dis}></label></div>` : ''}
+  <div class="row" style="margin-top:4px">${toggles(q)}</div>
+  <div class="preview"><span class="preview-label">Surveyor preview</span>${preview(q)}</div>`;
+}
+function tblCat(q){
+  const opts = S.categories.map(c=>`<option value="${esc(c)}"${q.category===c?' selected':''}>${esc(c)}</option>`).join('');
+  return `<select data-act="cat" data-uid="${q.uid}" ${S.frozen||!S.canEdit?'disabled':''}><option value="">—</option>${opts}<option value="__new__">+ New…</option></select>`;
+}
+function topHTML(){
+  const used = S.otherUsed + S.questions.length;
+  const full = used >= S.allotted;
+  const pct = Math.min(100, Math.round(used / S.allotted * 100));
+  const locked = S.frozen || !S.canEdit;
+  return `<header class="screen-head">
+    <div><h2>Questions</h2><p class="muted">Edit a survey. Surveyors get changes after you save.</p></div>
+    <div class="row">
+      <div class="quota ${full?'full':''}"><span><strong style="color:var(--text)">${used}</strong> / ${S.allotted} questions</span><div class="bar"><span style="width:${pct}%"></span></div></div>
+      <button class="btn primary" data-act="save" ${locked?'disabled':''}>${S.saved ? '✓ Saved' : 'Save & push to app'}</button>
+    </div>
+  </header>
+  ${S.frozen ? `<div class="banner">Frozen. Responses exist. Adding, deleting, and editing questions is disabled.</div>` : ''}
+  <section class="card"><div class="grid2">
+    <label class="field"><span>Survey</span><select><option>Assembly Survey 2026</option><option>Ward Feedback</option></select></label>
+    <label class="field"><span>Form title</span><input value="${esc(S.surveyTitle)}" ${locked?'disabled':''}></label>
+  </div>
+  <div class="row" style="margin-top:12px"><span class="muted">Display language</span>
+    <button class="chip ${S.lang==='en'?'selected':''}" data-act="lang" data-val="en">English</button>
+    <button class="chip ${S.lang==='te'?'selected':''}" data-act="lang" data-val="te">తెలుగు</button></div></section>
+  <section class="card cat-panel">
+    <div><strong>Question categories</strong> <span class="muted">${S.categories.length} created · grouped on the dashboard</span></div>
+    <div class="row">${S.categories.map(c=>`<span class="pill" style="background:#38bdf8;color:#111">${esc(c)}</span>`).join('') || '<span class="muted">None yet. Create one on any question.</span>'}</div>
+  </section>
+  <div class="row"><button class="btn primary" data-act="add" ${full||locked?'disabled':''}>+ Add question</button><span class="muted">${S.questions.length} question${S.questions.length===1?'':'s'}</span></div>`;
+}
+const $app = document.getElementById('app');
+
+
+
+
+function render(){
+  if (!find(S.sel)) S.sel = S.questions[0] && S.questions[0].uid;
+  const dis = (S.frozen || !S.canEdit) ? 'disabled' : '';
+  const full = S.otherUsed + S.questions.length >= S.allotted;
+  const rows = S.questions.map((q,i)=>{
+    if (q.uid === S.sel) return `<article class="mix-card">
+      <header class="mix-head"><span class="num">${i+1}</span><strong class="mix-t">${esc(q.label) || 'Untitled question'}</strong><span class="chev">▾</span></header>
+      <div class="mix-body">${editorFields(q)}</div>
+      <footer class="mix-foot"><button class="btn small" data-act="copy" data-uid="${q.uid}" ${dis||(full?'disabled':'')}>Copy</button><button class="btn small danger" data-act="del" data-uid="${q.uid}" ${dis}>Delete</button></footer></article>`;
+    return `<button class="mix-row${q.visible?'':' is-off'}" data-act="select" data-uid="${q.uid}">
+      <span class="num">${i+1}</span><span class="mix-t">${esc(q.label) || 'Untitled question'}</span>
+      <span class="pill">${esc(typeLabel(q.type))}</span>
+      ${q.category ? `<span class="pill" style="background:#38bdf8;color:#111">${esc(q.category)}</span>` : ''}
+      ${q.required ? '<span class="pill ok">Req</span>' : ''}<span class="chev">▸</span></button>`;
+  }).join('');
+  $app.innerHTML = topHTML() + `<div class="mix-list">${rows || '<section class="card"><p class="muted">No questions yet. Add one to start.</p></section>'}</div>
+    <div class="row"><button class="btn primary" data-act="add" ${dis||(full?'disabled':'')}>+ Add question</button></div>`;
+}
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act="select"],[data-act="copy"]');
+  if (!el) return;
+  if (el.dataset.act === 'select') { S.sel = el.dataset.uid; render(); return; }
+  const i = S.questions.findIndex(x => x.uid === el.dataset.uid);
+  if (i < 0) return;
+  if (S.otherUsed + S.questions.length >= S.allotted) return toast(`Quota reached: ${S.allotted} allotted`, 'error');
+  const copy = JSON.parse(JSON.stringify(S.questions[i]));
+  copy.uid = 'n' + (S.nextId++);
+  S.questions.splice(i + 1, 0, copy);
+  S.sel = copy.uid;
+  S.openIds[copy.uid] = true;
+  toast('Question copied');
+  render();
+});
+render();
+
+</script>
+</body></html>

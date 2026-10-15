@@ -50,6 +50,8 @@ export default function AdminQuestionsScreen({ onToast, user }) {
   const [displayLang, setDisplayLang] = useState('en')
   const [translatingAll, setTranslatingAll] = useState(false)
   const [currentSurvey, setCurrentSurvey] = useState(null)
+  // Which question is expanded. View-only, never saved.
+  const [activeIndex, setActiveIndex] = useState(0)
   const originalLabelsRef = useRef(new Map())
 
   const load = useCallback(async () => {
@@ -133,6 +135,20 @@ export default function AdminQuestionsScreen({ onToast, user }) {
     load()
   }, [load])
 
+  // On load / survey switch the first question is active.
+  useEffect(() => {
+    setActiveIndex(0)
+  }, [surveyId])
+
+  // Keep exactly one active row: default to the first, clamp if the list shrank.
+  useEffect(() => {
+    setActiveIndex((cur) => {
+      if (questions.length === 0) return null
+      if (cur == null || cur >= questions.length) return 0
+      return cur
+    })
+  }, [questions.length])
+
   function updateQ(i, patch) {
     setQuestions((list) => list.map((q, idx) => (idx === i ? { ...q, ...patch } : q)))
   }
@@ -164,6 +180,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       onToast?.(`Total question quota reached: ${totalQuestionsUsed} of ${maxQs} questions allotted across surveys are used`, 'error')
       return
     }
+    setActiveIndex(questions.length) // new last index — view only
     setQuestions((list) => [
       ...list,
       {
@@ -182,6 +199,12 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       return
     }
     setQuestions((list) => list.filter((_, idx) => idx !== i))
+    setActiveIndex((cur) => {
+      if (cur == null) return cur
+      if (i < cur) return cur - 1 // a row above collapsed the active one up
+      if (i === cur) return Math.max(0, i - 1) // deleted the active one → the one above
+      return cur
+    })
   }
 
   async function translateAll() {
@@ -295,32 +318,63 @@ export default function AdminQuestionsScreen({ onToast, user }) {
     )
   }
 
+  const isAppSurvey = Boolean(
+    (currentSurvey?.surveyors || []).length > 0 ||
+    (isSuperAdmin && !surveyId) ||
+    currentSurvey?.isApp
+  )
+
+  const addBtn = (
+    <button type="button" className="btn primary" onClick={addQ} disabled={isFrozen || !canEdit || (maxQs > 0 && totalQuestionsUsed >= maxQs)}>
+      + Add Question
+    </button>
+  )
+
+  const saveBtn = (
+    <button type="button" className="btn primary" onClick={save} disabled={isFrozen || saving || !canEdit} title={isFrozen ? 'Questionnaire is locked because this survey has active submissions' : undefined}>
+      {isFrozen ? (
+        <><Icon name="lock" size={12} /> {isAppSurvey ? 'Save & push to app (Locked)' : 'Save questions (Locked)'}</>
+      ) : saving ? (
+        isAppSurvey ? 'Saving & Pushing…' : 'Saving…'
+      ) : (
+        <><Icon name="check" size={12} /> {isAppSurvey ? 'Save & push to app' : 'Save questions'}</>
+      )}
+    </button>
+  )
+
   return (
     <div className="screen">
-      <header className="screen-head">
-        <h2>{isSuperAdmin ? 'Super Admin · Questions' : 'Client Admin · Questions'}</h2>
-        <p>Pick a {isSuperAdmin ? 'project' : 'survey'} · edit here · surveyor app loads automatically after unlock</p>
+      {/* 1 · Header */}
+      <header className="screen-head row">
+        <div>
+          <h2>{isSuperAdmin ? 'Super Admin · Questions' : 'Client Admin · Questions'}</h2>
+          <p>Pick a {isSuperAdmin ? 'project' : 'survey'} · edit here · surveyor app loads automatically after unlock</p>
+        </div>
+        {(isSuperAdmin || surveyId) && (
+          <div className="mix-head-actions">
+            {maxQs > 0 && (
+              <div
+                className={`mix-quota${totalQuestionsUsed >= maxQs ? ' full' : ''}`}
+                title="Questions used by Client Admin / Total questions allotted by Super Admin"
+              >
+                <span><strong>{totalQuestionsUsed}</strong> / {maxQs} questions</span>
+                <div className="mix-bar">
+                  <span style={{ width: `${Math.min(100, Math.round((totalQuestionsUsed / maxQs) * 100))}%` }} />
+                </div>
+              </div>
+            )}
+            {saveBtn}
+          </div>
+        )}
       </header>
 
+      {/* 2 · Banners */}
       {isFrozen && (
-        <div
-          className="card"
-          style={{
-            marginBottom: 12,
-            border: '1px solid rgba(239, 68, 68, 0.4)',
-            background: 'rgba(239, 68, 68, 0.08)',
-            padding: '12px 14px',
-            fontSize: 13,
-            color: '#991b1b',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-          }}
-        >
+        <div className="mix-banner danger">
           <Icon name="lock" size={15} />
           <div>
             <strong>Questionnaire is frozen ({surveySubmissions} submitted response{surveySubmissions === 1 ? '' : 's'}).</strong>
-            <div style={{ fontSize: 12, marginTop: 2, color: '#b91c1c' }}>
+            <div className="mix-banner-sub">
               Editing, adding, deleting, and saving questions is disabled to preserve the integrity of existing survey responses.
             </div>
           </div>
@@ -328,30 +382,25 @@ export default function AdminQuestionsScreen({ onToast, user }) {
       )}
 
       {!canEdit && (
-        <div
-          className="card"
-          style={{
-            marginBottom: 12,
-            border: '1px solid rgba(217,119,6,0.5)',
-            background: 'rgba(217,119,6,0.08)',
-            padding: '12px 14px',
-            fontSize: 13,
-          }}
-        >
-          <Icon name="lock" size={13} /> <strong>Survey questions are read-only for you.</strong> Editing is locked until the
-          Super Admin grants your account <strong>Survey questions</strong> power (Surveyors → your
-          profile).
+        <div className="mix-banner warn">
+          <Icon name="lock" size={13} />
+          <div>
+            <strong>Survey questions are read-only for you.</strong> Editing is locked until the Super Admin grants your
+            account <strong>Survey questions</strong> power (Surveyors → your profile).
+          </div>
         </div>
       )}
 
       {!isSuperAdmin && surveys.length === 0 && (
-        <div className="card" style={{ marginBottom: 12, padding: '14px 16px' }}>
-          <p style={{ margin: 0 }}>
-            No surveys yet. Create one under <strong>Surveys</strong>, then edit its questions here.
-          </p>
-          <p className="muted" style={{ margin: '8px 0 0', fontSize: 12 }}>
-            The platform “Field Survey” form is not available in Client Admin.
-          </p>
+        <div className="mix-banner plain">
+          <div>
+            <p style={{ margin: 0 }}>
+              No surveys yet. Create one under <strong>Surveys</strong>, then edit its questions here.
+            </p>
+            <p className="muted" style={{ margin: '8px 0 0', fontSize: 12 }}>
+              The platform “Field Survey” form is not available in Client Admin.
+            </p>
+          </div>
         </div>
       )}
 
@@ -405,12 +454,22 @@ export default function AdminQuestionsScreen({ onToast, user }) {
 
       {!isFrozen && canEdit && <CategoryPanel onToast={onToast} />}
 
-      {canTelugu && questions.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <button type="button" className="btn small" disabled={isFrozen || translatingAll || !canEdit} onClick={() => void translateAll()}>
-            {translatingAll ? 'Translating all…' : 'Auto-translate all questions + options'}
-          </button>
+      {/* 5 · Toolbar */}
+      {(isSuperAdmin || surveyId) && (
+        <div className="mix-toolbar">
+          {addBtn}
+          <span className="mix-count">{questions.length} question{questions.length === 1 ? '' : 's'}</span>
+          {canTelugu && questions.length > 0 && (
+            <button type="button" className="btn small" disabled={isFrozen || translatingAll || !canEdit} onClick={() => void translateAll()}>
+              {translatingAll ? 'Translating all…' : 'Auto-translate all questions + options'}
+            </button>
+          )}
         </div>
+      )}
+      {/* 6 · Question list */}
+      <div className="mix-list">
+      {questions.length === 0 && (isSuperAdmin || surveyId) && (
+        <p className="muted" style={{ margin: 0 }}>No questions yet. Add one to start.</p>
       )}
       {questions.map((q, i) => {
         const type = q.type || 'text'
@@ -418,17 +477,34 @@ export default function AdminQuestionsScreen({ onToast, user }) {
         const currentOpts = Array.isArray(q.options) && q.options.length > 0
           ? q.options
           : (q.optionsText || '').split(',').map((s) => s.trim()).filter(Boolean)
+        const hidden = !isQuestionVisible(q)
+
+        if (i !== activeIndex) {
+          return (
+            <button
+              key={q._uid || `qi-${i}`}
+              type="button"
+              className={`mix-row${hidden ? ' is-off' : ''}`}
+              onClick={() => setActiveIndex(i)}
+            >
+              <span className="mix-num">{i + 1}</span>
+              <span className="mix-t">{q.label || 'Untitled question'}</span>
+              <span className="mix-pill">{type.toUpperCase().replace('_', ' ')}</span>
+              {q.category ? <span className="mix-pill cat">{q.category}</span> : null}
+              {q.required ? <span className="mix-pill req">Req</span> : null}
+              <span className="mix-chev">▸</span>
+            </button>
+          )
+        }
 
         return (
-          <div key={q._uid || `qi-${i}`} className="card" style={{ marginBottom: 14, borderLeft: '4px solid #059669' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span className="pill ok" style={{ fontSize: 11, fontWeight: 'bold' }}>
-                Q{i + 1} · {type.toUpperCase().replace('_', ' ')}
-              </span>
-              <button type="button" className="btn small danger" onClick={() => removeQ(i)} disabled={isFrozen || !canEdit}>
-                Delete Q{i + 1}
-              </button>
-            </div>
+          <article key={q._uid || `qi-${i}`} className="mix-card">
+            <header className="mix-head">
+              <span className="mix-num">{i + 1}</span>
+              <strong className="mix-t">{q.label || 'Untitled question'}</strong>
+              <span className="mix-chev">▾</span>
+            </header>
+            <div className="mix-body">
 
             <label className="field">
               <span>{displayLang === 'te' ? 'English question text' : 'Question'}</span>
@@ -678,47 +754,24 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                 <input readOnly placeholder="Surveyor types answer here…" style={{ width: '100%' }} />
               )}
             </div>
-          </div>
+            </div>
+            <footer className="mix-foot">
+              <button type="button" className="btn small danger" onClick={() => removeQ(i)} disabled={isFrozen || !canEdit}>
+                Delete Q{i + 1}
+              </button>
+            </footer>
+          </article>
         )
       })}
+      </div>
 
-      {(isSuperAdmin || surveyId) && (() => {
-        const isAppSurvey = Boolean(
-          (currentSurvey?.surveyors || []).length > 0 ||
-          (isSuperAdmin && !surveyId) ||
-          currentSurvey?.isApp
-        )
-        return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-            <button type="button" className="btn primary" onClick={addQ} disabled={isFrozen || !canEdit || (maxQs > 0 && totalQuestionsUsed >= maxQs)}>
-              + Add Question
-            </button>
-            <button type="button" className="btn primary" onClick={save} disabled={isFrozen || saving || !canEdit} title={isFrozen ? 'Questionnaire is locked because this survey has active submissions' : undefined}>
-              {isFrozen ? (
-                <><Icon name="lock" size={12} /> {isAppSurvey ? 'Save & push to app (Locked)' : 'Save questions (Locked)'}</>
-              ) : saving ? (
-                isAppSurvey ? 'Saving & Pushing…' : 'Saving…'
-              ) : (
-                <><Icon name="check" size={12} /> {isAppSurvey ? 'Save & push to app' : 'Save questions'}</>
-              )}
-            </button>
-            {maxQs > 0 && (
-              <span
-                className="pill"
-                title="No. of questions used by Client Admin / Total questions allotted"
-                style={{
-                  background: totalQuestionsUsed >= maxQs ? '#fef2f2' : 'rgba(0, 229, 153, 0.12)',
-                  color: totalQuestionsUsed >= maxQs ? '#dc2626' : '#047857',
-                  fontWeight: 700,
-                  fontSize: 12,
-                }}
-              >
-                📝 Total survey questions created: {totalQuestionsUsed} / Allotted by Super Admin: {maxQs}
-              </span>
-            )}
-          </div>
-        )
-      })()}
+      {/* 7 · Footer */}
+      {(isSuperAdmin || surveyId) && (
+        <div className="mix-toolbar">
+          {addBtn}
+          {saveBtn}
+        </div>
+      )}
     </div>
   )
 }

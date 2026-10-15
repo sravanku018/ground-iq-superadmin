@@ -34,6 +34,20 @@ const defaultOptionsForType = (t) => {
   return []
 }
 
+/**
+ * A survey's questions are frozen once it is live or has responses.
+ * Mirrors `isFrozenSurvey` in AdminSurveys.jsx so both question editors agree.
+ */
+function isFrozenSurvey(s) {
+  if (!s) return false
+  if (s.frozen || s.ended || s.ended_at) return true
+  if (s.web_link?.token) return true
+  if (Number(s.web_submissions) > 0 || Number(s.field_submissions) > 0 || Number(s.submissions) > 0) return true
+  if (Number(s.surveyors) > 0) return true
+  if (Array.isArray(s.surveyors) && s.surveyors.length > 0) return true
+  return false
+}
+
 export default function AdminQuestionsScreen({ onToast, user }) {
   const isSuperAdmin = user?.role === 'super_admin'
   // Survey-question editing power — Super Admin grants it (least privilege)
@@ -168,8 +182,12 @@ export default function AdminQuestionsScreen({ onToast, user }) {
     .reduce((sum, s) => sum + (Number(s.question_count) || 0), 0)
   const totalQuestionsUsed = otherSurveysQuestionsCount + questions.length
 
-  const surveySubmissions = surveys.find((s) => String(s.id) === String(surveyId))?.submissions || 0
-  const isFrozen = surveySubmissions > 0
+  const selectedSurvey = surveys.find((s) => String(s.id) === String(surveyId)) || null
+  const surveySubmissions = selectedSurvey?.submissions || 0
+  // Freeze using the same rule as the Surveys tab — a live/assigned/ended survey
+  // (or one with web/field/total responses) locks its questions.
+  const isFrozen =
+    isFrozenSurvey(selectedSurvey) || (surveyId ? isFrozenSurvey(currentSurvey) : false)
 
   function addQ() {
     if (isFrozen) {
@@ -373,7 +391,11 @@ export default function AdminQuestionsScreen({ onToast, user }) {
         <div className="mix-banner danger">
           <Icon name="lock" size={15} />
           <div>
-            <strong>Questionnaire is frozen ({surveySubmissions} submitted response{surveySubmissions === 1 ? '' : 's'}).</strong>
+            <strong>
+              {surveySubmissions > 0
+                ? `Questionnaire is frozen (${surveySubmissions} submitted response${surveySubmissions === 1 ? '' : 's'}).`
+                : 'Questionnaire is frozen.'}
+            </strong>
             <div className="mix-banner-sub">
               Editing, adding, deleting, and saving questions is disabled to preserve the integrity of existing survey responses.
             </div>
@@ -492,7 +514,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
               <span className="mix-pill">{type.toUpperCase().replace('_', ' ')}</span>
               {q.category ? <span className="mix-pill cat">{q.category}</span> : null}
               {q.required ? <span className="mix-pill req">Req</span> : null}
-              <span className="mix-chev">▸</span>
+              <span className="mix-chev">▾</span>
             </button>
           )
         }
@@ -502,7 +524,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
             <header className="mix-head">
               <span className="mix-num">{i + 1}</span>
               <strong className="mix-t">{q.label || 'Untitled question'}</strong>
-              <span className="mix-chev">▾</span>
+              <span className="mix-chev is-open">▴</span>
             </header>
             <div className="mix-body">
 

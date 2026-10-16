@@ -1542,24 +1542,24 @@ export default function AdminPortal({ superAdminOnly = false }) {
         </div>
         <nav className="portal-nav">
           <div className="side-section-label">MONITORING</div>
-          <button className={`side-sub ${page === 'overview' ? 'active' : ''}`} onClick={() => goPage('overview')}>📊 Dashboard</button>
-          <button className={`side-sub ${['analyze', 'report', 'upload', 'data'].includes(page) ? 'active' : ''}`} onClick={() => goPage('analyze')}>📈 Analyze &amp; Export</button>
-          <button className={`side-sub ${page === 'review' ? 'active' : ''}`} onClick={() => goPage('review')}>✅ Review QA</button>
+          <button className={`side-sub ${page === 'overview' ? 'active' : ''}`} onClick={() => goPage('overview')}><Icon name="grid" size={18} />Dashboard</button>
+          <button className={`side-sub ${['analyze', 'report', 'upload', 'data'].includes(page) ? 'active' : ''}`} onClick={() => goPage('analyze')}><Icon name="chartUp" size={18} />Analyze &amp; Export</button>
+          <button className={`side-sub ${page === 'review' ? 'active' : ''}`} onClick={() => goPage('review')}><Icon name="clipboardCheck" size={18} />Review QA</button>
 
           <div className="side-section-label" style={{ marginTop: 14 }}>SETUP &amp; TEAM</div>
-          <button className={`side-sub ${page === 'users' ? 'active' : ''}`} onClick={() => goPage('users')}>👥 Surveyors &amp; Quotas</button>
-          <button className={`side-sub ${['surveys', 'questions', 'bank'].includes(page) ? 'active' : ''}`} onClick={() => goPage('surveys')}>📋 Surveys &amp; Forms</button>
+          <button className={`side-sub ${page === 'users' ? 'active' : ''}`} onClick={() => goPage('users')}><Icon name="users" size={18} />Surveyors &amp; Quotas</button>
+          <button className={`side-sub ${['surveys', 'questions', 'bank'].includes(page) ? 'active' : ''}`} onClick={() => goPage('surveys')}><Icon name="clipboard" size={18} />Surveys &amp; Forms</button>
           {(isSuper || canPage('web')) && (
-            <button className={`side-sub ${page === 'web' ? 'active' : ''}`} onClick={() => goPage('web')}>🌐 Web survey</button>
+            <button className={`side-sub ${page === 'web' ? 'active' : ''}`} onClick={() => goPage('web')}><Icon name="globe" size={18} />Web survey</button>
           )}
-          <button className={`side-sub ${page === 'profile' ? 'active' : ''}`} onClick={() => goPage('profile')}>🏢 Organization</button>
+          <button className={`side-sub ${page === 'profile' ? 'active' : ''}`} onClick={() => goPage('profile')}><Icon name="building" size={18} />Organization</button>
 
           {isSuper && (
             <>
               <div className="side-section-label" style={{ marginTop: 14 }}>GOVERNANCE</div>
-              <button className={`side-sub ${page === 'companies' ? 'active' : ''}`} onClick={() => goPage('companies')}>🏢 Companies</button>
-              <button className={`side-sub ${page === 'admins' ? 'active' : ''}`} onClick={() => goPage('admins')}>🛡️ Client Admins</button>
-              <button className={`side-sub ${page === 'audit' || page === 'seats' ? 'active' : ''}`} onClick={() => goPage('audit')}>💺 Seats &amp; Audit</button>
+              <button className={`side-sub ${page === 'companies' ? 'active' : ''}`} onClick={() => goPage('companies')}><Icon name="building" size={18} />Companies</button>
+              <button className={`side-sub ${page === 'admins' ? 'active' : ''}`} onClick={() => goPage('admins')}><Icon name="shield" size={18} />Client Admins</button>
+              <button className={`side-sub ${page === 'audit' || page === 'seats' ? 'active' : ''}`} onClick={() => goPage('audit')}><Icon name="chair" size={18} />Seats &amp; Audit</button>
             </>
           )}
         </nav>
@@ -1588,7 +1588,12 @@ export default function AdminPortal({ superAdminOnly = false }) {
             onClick={() => void loadPortal()}
             disabled={loadingData}
           >
-            {loadingData ? 'Refreshing…' : '🔄 Refresh Data'}
+            <Icon
+              name="refresh"
+              size={14}
+              style={loadingData ? { animation: 'spin 1s linear infinite' } : undefined}
+            />
+            {loadingData ? 'Refreshing…' : 'Refresh Data'}
           </button>
           <button
             type="button"
@@ -1617,11 +1622,11 @@ export default function AdminPortal({ superAdminOnly = false }) {
             </span>
           </button>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '4px 0 8px' }}>
-            <a className="portal-link" href={fieldAppUrl()} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12 }} title="Open surveyor app / PWA in browser">
-              📱 PWA App ↗
+            <a className="portal-link" href={fieldAppUrl()} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }} title="Open surveyor app / PWA in browser">
+              <Icon name="smartphone" size={14} />PWA App ↗
             </a>
-            <a className="portal-link" href={apkDownloadUrl()} target="_blank" rel="noreferrer" style={{ fontSize: 12 }} title="Download Android APK">
-              🤖 Download APK ↗
+            <a className="portal-link" href={apkDownloadUrl()} target="_blank" rel="noreferrer" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }} title="Download Android APK">
+              <Icon name="download" size={14} />Download APK ↗
             </a>
           </div>
           <button type="button" className="btn small danger" onClick={handleLogout}>

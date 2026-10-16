@@ -145,6 +145,21 @@ const paths = {
   ),
   // Two stacked rules — "Menu" (used by the mobile bottom nav).
   menuLines: <path d="M8 9h8M6 15h12" />,
+  // Wireframe globe — "Web survey" (used by the portal sidebar).
+  globe: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3.2 9.5h17.6M3.2 14.5h17.6" />
+      <path d="M12 3c2.6 2.7 3.9 5.7 3.9 9s-1.3 6.3-3.9 9c-2.6-2.7-3.9-5.7-3.9-9S9.4 5.7 12 3z" />
+    </>
+  ),
+  // Circular arrow — "Refresh" (used by the portal sidebar).
+  refresh: (
+    <>
+      <path d="M20.5 15a9 9 0 1 1-2.1-9.4L20.5 9" />
+      <path d="M20.5 4v5h-5" />
+    </>
+  ),
   chevronUp: <path d="M6 15l6-6 6 6" />,
   chevronDown: <path d="M6 9l6 6 6-6" />,
   key: (

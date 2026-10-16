@@ -190,17 +190,24 @@
 }
 
 .side-sub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   border: none;
   background: none;
   width: 100%;
   text-align: left;
   cursor: pointer;
-  padding: 7px 10px;
-  border-radius: 6px;
+  padding: 9px 10px;
+  border-radius: 10px;
   font-size: 13px;
   font-weight: 500;
   color: #475569;
-  transition: all 120ms;
+  transition: background-color 120ms, color 120ms;
+}
+
+.side-sub .icon {
+  flex: none;
 }
 
 .side-sub:hover {
@@ -208,10 +215,11 @@
   color: #0f172a;
 }
 
+/* Same selected treatment as the mobile bottom nav: soft blue pill. */
 .side-sub.active {
-  background: #eff6ff;
-  color: #4f7dc6;
-  font-weight: 700;
+  background: #e8eefc;
+  color: #1d4ed8;
+  font-weight: 600;
 }
 
 

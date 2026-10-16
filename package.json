@@ -14,6 +14,7 @@
     "build": "vite build",
     "build:apk": "npm run version:sync && vite build && npx cap sync android && cd android && ./gradlew assembleDebug && cp app/build/outputs/apk/debug/app-debug.apk ../ElectionSurvey-debug.apk && cp app/build/outputs/apk/debug/app-debug.apk ~/Downloads/ElectionSurvey-debug.apk",
     "publish:apk": "node scripts/publish-apk.mjs",
+    "release": "node scripts/release.mjs",
     "build:apk:release": "npm run version:sync && vite build && npx cap sync android && cd android && ./gradlew assembleRelease && cp app/build/outputs/apk/release/app-release.apk ../ElectionSurvey-release.apk && cp app/build/outputs/apk/release/app-release.apk ~/Downloads/ElectionSurvey-release.apk",
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",

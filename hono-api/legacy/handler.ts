@@ -1658,7 +1658,7 @@ function logAudit(
       ${action},
       ${entityType || null},
       ${entityId != null ? String(entityId) : null},
-      ${JSON.stringify(meta || {})}::jsonb
+      ${meta || {}}::jsonb
     )
   `.catch((e) => console.error("AUDIT LOG FAILED:", (e as Error)?.message || e));
 }
@@ -11039,7 +11039,7 @@ async function rawHandler(req: Request): Promise<Response> {
           ${dataB64},
           ${publicUrl || null},
           ${provider},
-          ${JSON.stringify(meta)}::jsonb
+          ${meta}::jsonb
         )
         RETURNING id, kind, mime, url, storage, created_at
       `.catch(async () =>
@@ -11050,7 +11050,7 @@ async function rawHandler(req: Request): Promise<Response> {
             ${kind},
             ${mime},
             ${dataB64 || (publicUrl ? `url:${publicUrl}` : "")},
-            ${JSON.stringify(meta)}::jsonb
+            ${meta}::jsonb
           )
           RETURNING id, kind, mime, created_at
         `

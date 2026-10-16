@@ -1,6 +1,6 @@
 {
   "appId": "com.groundiq.electionsurvey",
-  "appName": "Election Survey",
+  "appName": "Smart Survey X",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",
@@ -8,12 +8,12 @@
   },
   "android": {
     "allowMixedContent": true,
-    "backgroundColor": "#0b0f14"
+    "backgroundColor": "#f8fafc"
   },
   "plugins": {
     "SplashScreen": {
       "launchShowDuration": 1200,
-      "backgroundColor": "#0b0f14",
+      "backgroundColor": "#ffffff",
       "showSpinner": false
     }
   }

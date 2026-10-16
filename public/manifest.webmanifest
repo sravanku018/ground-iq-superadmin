@@ -4,7 +4,7 @@
   "description": "Smart Survey X — make surveys better, digitally.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0b0f14",
+  "background_color": "#ffffff",
   "theme_color": "#4f7dc6",
   "orientation": "portrait",
   "icons": [

@@ -1633,7 +1633,12 @@ async function listAdminInbox(
       )
     ORDER BY a.id DESC
     LIMIT 50
-  `.catch(() => []);
+  `.catch((e) => {
+    // Never swallow silently again: this returning [] is what made a broken
+    // audit_log look like "no notifications" instead of an error.
+    console.error("admin inbox query failed:", (e as Error)?.message || e);
+    return [];
+  });
 }
 
 function logAudit(
@@ -6896,6 +6901,12 @@ async function rawHandler(req: Request): Promise<Response> {
             }
           };
           send({ type: "hello", after: lastId });
+          // Submission ids already streamed on THIS connection, across both
+          // sources. Audit rows and pending-web rows describe the same event but
+          // key it differently (`evt-<auditId>` vs `web-sub-<submissionId>`), so
+          // the browser can't dedupe them — without this the same notice shows
+          // twice, which is why the list endpoint dedupes the same way.
+          const sentSubIds = new Set<string>();
           const tick = async () => {
             const rows = await listAdminInbox(sql, me, lastId);
             const list = (rows as Record<string, unknown>[]).slice().reverse();
@@ -6903,7 +6914,24 @@ async function rawHandler(req: Request): Promise<Response> {
               const seq = Number(r.id) || 0;
               if (seq <= lastId) continue;
               lastId = seq;
-              send({ type: "item", item: mapInboxRow(r) });
+              const item = mapInboxRow(r);
+              const subId = (item as { submissionId?: unknown }).submissionId;
+              if (subId != null) sentSubIds.add(String(subId));
+              send({ type: "item", item });
+            }
+            // The list endpoint also merges listPendingWebNotices(), read straight
+            // from the submissions table. Stream that source too: when audit_log
+            // loses or rejects the web backfill, the audit query above silently
+            // returns nothing and the bell would never hear about new web
+            // responses until a full reload. Rows that DO have an audit row are
+            // already in sentSubIds, so on a healthy database this sends nothing.
+            // (lastId above stays an audit id — web items never advance it.)
+            const web = await listPendingWebNotices(sql, me).catch(() => []);
+            for (const item of web as Record<string, unknown>[]) {
+              const key = String(item.submissionId ?? item.id ?? "");
+              if (!key || sentSubIds.has(key)) continue;
+              sentSubIds.add(key);
+              send({ type: "item", item });
             }
           };
           void tick();

@@ -1727,7 +1727,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           className={`portal-tab-btn ${page === 'overview' ? 'active' : ''}`}
           onClick={() => goPage('overview')}
         >
-          <span className="portal-tab-icon">📊</span>
+          <span className="portal-tab-icon"><Icon name="grid" size={22} /></span>
           <span className="portal-tab-label">Overview</span>
         </button>
 
@@ -1736,7 +1736,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           className={`portal-tab-btn ${['surveys', 'questions', 'bank', 'web'].includes(page) ? 'active' : ''}`}
           onClick={() => goPage('surveys')}
         >
-          <span className="portal-tab-icon">📋</span>
+          <span className="portal-tab-icon"><Icon name="clipboard" size={22} /></span>
           <span className="portal-tab-label">Surveys</span>
         </button>
 
@@ -1745,7 +1745,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           className={`portal-tab-btn ${['analyze', 'report', 'upload', 'data'].includes(page) ? 'active' : ''}`}
           onClick={() => goPage('analyze')}
         >
-          <span className="portal-tab-icon">📈</span>
+          <span className="portal-tab-icon"><Icon name="chartUp" size={22} /></span>
           <span className="portal-tab-label">Analytics</span>
         </button>
 
@@ -1755,7 +1755,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           onClick={() => goPage('review')}
         >
           <span className="portal-tab-icon" style={{ position: 'relative' }}>
-            ✅
+            <Icon name="clipboardCheck" size={22} />
             {(Number(stats?.pending) || 0) > 0 ? (
               <span className="portal-tab-badge">
                 {Number(stats.pending) > 99 ? '99+' : stats.pending}
@@ -1770,7 +1770,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           className={`portal-tab-btn ${page === 'users' ? 'active' : ''}`}
           onClick={() => goPage('users')}
         >
-          <span className="portal-tab-icon">👥</span>
+          <span className="portal-tab-icon"><Icon name="users" size={22} /></span>
           <span className="portal-tab-label">Surveyors</span>
         </button>
 
@@ -1779,7 +1779,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           className={`portal-tab-btn ${navOpen ? 'active' : ''}`}
           onClick={() => setNavOpen((o) => !o)}
         >
-          <span className="portal-tab-icon">☰</span>
+          <span className="portal-tab-icon"><Icon name="menuLines" size={22} /></span>
           <span className="portal-tab-label">Menu</span>
         </button>
       </nav>

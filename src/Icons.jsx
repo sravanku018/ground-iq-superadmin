@@ -127,6 +127,24 @@ const paths = {
       <rect x="13" y="13" width="8" height="8" rx="1.5" />
     </>
   ),
+  // Bar chart with a rising trend line — "Analytics" (used by the mobile bottom nav).
+  chartUp: (
+    <>
+      <path d="M4 20v-5M9 20v-3M14 20v-6M19 20v-9" />
+      <path d="M3 10l5-4 4 3 8-6" />
+      <path d="M17 3h3v3" />
+    </>
+  ),
+  // Clipboard with a tick — "Review" (used by the mobile bottom nav).
+  clipboardCheck: (
+    <>
+      <rect x="6" y="4" width="12" height="17" rx="2" />
+      <path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" />
+      <path d="M9.5 13.5l2 2 4-4.5" />
+    </>
+  ),
+  // Two stacked rules — "Menu" (used by the mobile bottom nav).
+  menuLines: <path d="M8 9h8M6 15h12" />,
   chevronUp: <path d="M6 15l6-6 6 6" />,
   chevronDown: <path d="M6 9l6 6 6-6" />,
   key: (

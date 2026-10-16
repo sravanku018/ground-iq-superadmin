@@ -388,7 +388,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                           </span>
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          <strong>{Number(ca.allocated) > 0 ? Number(ca.allocated).toLocaleString() : '∞'}</strong>
+                          <strong>{Number(ca.allocated || 0).toLocaleString()}</strong>
                         </td>
                         <td style={{ textAlign: 'right' }}>
                           <span style={{ color: Number(ca.web_allocated) > 0 ? '#1d4ed8' : '#64748b', fontWeight: 600 }}>
@@ -422,7 +422,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                               {Number(ca.field_remaining).toLocaleString()}
                             </span>
                           ) : (
-                            <span className="muted">∞</span>
+                            <span className="muted">0</span>
                           )}
                         </td>
                         <td style={{ textAlign: 'center' }}>
@@ -576,7 +576,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <div style={{ padding: '6px 12px', borderRadius: 8, background: '#f8fafc', border: '1px solid #e2e8f0', textAlign: 'center' }}>
                   <span style={{ fontSize: 11, color: '#64748b', display: 'block', fontWeight: 600 }}>Allocated</span>
-                  <strong style={{ fontSize: 14, color: '#0f172a' }}>{allotCap > 0 ? allotCap.toLocaleString() : '∞'}</strong>
+                  <strong style={{ fontSize: 14, color: '#0f172a' }}>{allotCap.toLocaleString()}</strong>
                 </div>
                 <div style={{ padding: '6px 12px', borderRadius: 8, background: '#eff6ff', border: '1px solid #bfdbfe', textAlign: 'center' }}>
                   <span style={{ fontSize: 11, color: '#1d4ed8', display: 'block', fontWeight: 600 }}>Allocated for Web</span>
@@ -584,7 +584,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                 </div>
                 <div style={{ padding: '6px 12px', borderRadius: 8, background: '#eef3fb', border: '1px solid #bfdbfe', textAlign: 'center' }}>
                   <span style={{ fontSize: 11, color: '#3f6cbe', display: 'block', fontWeight: 600 }}>Remaining for Field</span>
-                  <strong style={{ fontSize: 14, color: '#223f75' }}>{fieldLeft != null ? fieldLeft.toLocaleString() : '∞'}</strong>
+                  <strong style={{ fontSize: 14, color: '#223f75' }}>{fieldLeft != null ? fieldLeft.toLocaleString() : '0'}</strong>
                 </div>
                 <div style={{ padding: '6px 12px', borderRadius: 8, background: rejectedTotal > 0 ? '#fef2f2' : '#f8fafc', border: `1px solid ${rejectedTotal > 0 ? '#fecaca' : '#e2e8f0'}`, textAlign: 'center' }}>
                   <span style={{ fontSize: 11, color: rejectedTotal > 0 ? '#b91c1c' : '#64748b', display: 'block', fontWeight: 600 }}>Rejected</span>
@@ -730,10 +730,10 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
 
             <div style={{ marginTop: 10, padding: '8px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: 12 }}>
               <span className="muted">
-                Total Allocated: <strong>{allotCap > 0 ? allotCap.toLocaleString() : '∞'}</strong> · Web Reserved: <strong>{webReserved.toLocaleString()}</strong> · Field Used: <strong>{fieldUsed.toLocaleString()}</strong> · Rejected: <strong style={{ color: rejectedTotal > 0 ? '#dc2626' : undefined }}>{rejectedTotal.toLocaleString()}</strong>
+                Total Allocated: <strong>{allotCap.toLocaleString()}</strong> · Web Reserved: <strong>{webReserved.toLocaleString()}</strong> · Field Used: <strong>{fieldUsed.toLocaleString()}</strong> · Rejected: <strong style={{ color: rejectedTotal > 0 ? '#dc2626' : undefined }}>{rejectedTotal.toLocaleString()}</strong>
               </span>
               <span style={{ color: '#3f6cbe', fontWeight: 700 }}>
-                Remaining for Field: {fieldLeft != null ? fieldLeft.toLocaleString() : '∞'} records
+                Remaining for Field: {fieldLeft != null ? fieldLeft.toLocaleString() : '0'} records
               </span>
             </div>
           </div>
@@ -1022,17 +1022,17 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         <div className="card" style={{ marginBottom: 20 }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>My allocation</h3>
           <p className="csub" style={{ margin: '2px 0 14px', fontSize: 12, color: '#64748b' }}>
-            Records &amp; features granted by Super Admin (0 = unlimited)
+            Records &amp; features granted by Super Admin
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
-              Surveys <strong>{surveyBreak.length || Number(stats?.surveys_count) || 0} / {Number(user?.max_surveys) > 0 ? user.max_surveys : '∞'}</strong>
+              Surveys <strong>{surveyBreak.length || Number(stats?.surveys_count) || 0} / {Number(user?.max_surveys || 0)}</strong>
             </span>
             <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
-              Surveyors <strong>{surveyorCount || Number(stats?.surveyors_count) || 0} / {Number(user?.max_surveyors) > 0 ? user.max_surveyors : '∞'}</strong>
+              Surveyors <strong>{surveyorCount || Number(stats?.surveyors_count) || 0} / {Number(user?.max_surveyors || 0)}</strong>
             </span>
             <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
-              Total survey questions created <strong>{totalQuestionsUsed} / Allotted {Number(user?.max_questions_per_survey) > 0 ? user.max_questions_per_survey : '∞'}</strong>
+              Total survey questions created <strong>{totalQuestionsUsed} / Allotted {Number(user?.max_questions_per_survey || 0)}</strong>
             </span>
             <span className="chip" style={{ background: '#f0fdf4', border: '1px solid #dcfce7', color: '#16a34a', fontSize: 12, fontWeight: 600 }}>
               Confirmed <strong>{confirmedTotal.toLocaleString()}</strong>
@@ -1041,7 +1041,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
               Rejected <strong>{rejectedTotal.toLocaleString()}</strong>
             </span>
             <span className="chip" style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#1e293b', fontSize: 12, fontWeight: 600 }}>
-              Records <strong>{allSubmitted.toLocaleString()} / {allotCap > 0 ? allotCap.toLocaleString() : '∞'}</strong>
+              Records <strong>{allSubmitted.toLocaleString()} / {allotCap.toLocaleString()}</strong>
             </span>
           </div>
         </div>

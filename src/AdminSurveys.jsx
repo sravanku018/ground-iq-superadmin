@@ -1532,7 +1532,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
                         </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <strong>{Number(ca.allocated) > 0 ? Number(ca.allocated).toLocaleString() : '∞'}</strong>
+                        <strong>{Number(ca.allocated || 0).toLocaleString()}</strong>
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <span style={{ color: Number(ca.web_allocated) > 0 ? '#1d4ed8' : '#64748b', fontWeight: 600 }}>
@@ -1566,7 +1566,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
                             {Number(ca.field_remaining).toLocaleString()}
                           </span>
                         ) : (
-                          <span className="muted">∞</span>
+                          <span className="muted">0</span>
                         )}
                       </td>
                       <td style={{ textAlign: 'center' }}>

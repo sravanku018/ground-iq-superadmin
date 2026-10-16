@@ -467,7 +467,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
               autoComplete="off"
             />
           </label>
-          <label className="field compact" title="Total questions this Client Admin may create across their surveys (0 = unlimited)">
+          <label className="field compact" title="Total questions this Client Admin may create across their surveys">
             <span>Questions allotted</span>
             <input
               type="number"
@@ -478,7 +478,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
               style={{ width: 120 }}
             />
           </label>
-          <label className="field compact" title="Field records this Client Admin may collect (0 = unlimited)">
+          <label className="field compact" title="Field records this Client Admin may collect">
             <span>Max field records</span>
             <input
               type="number"
@@ -497,7 +497,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
           New admins start with <strong>no powers</strong> (least privilege) and unverified —
           grant powers in the profile below; only Super Admin can verify a Client Admin.
           Limits start at <strong>{DEFAULT_MAX_QUESTIONS} questions</strong> and{' '}
-          <strong>{DEFAULT_MAX_RECORDS} field records</strong> (0 = unlimited) — change them
+          <strong>{DEFAULT_MAX_RECORDS} field records</strong> — change them
           here or in the profile below any time.
         </p>
         {created && (
@@ -541,10 +541,10 @@ export default function AdminClientAdminsScreen({ onToast }) {
                     )}
                     {u.active !== false && (
                       <span className="meta" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                        <span className="pill" title="Surveys created / allocated" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="clipboard" size={11} /> surveys {u.survey_count ?? 0} / {u.max_surveys > 0 ? u.max_surveys : '∞'} allocated</span>
-                        <span className="pill" title="Total survey questions created by Client Admin / No of questions allotted by Super Admin">📝 questions created {u.question_count ?? 0} / allotted {u.max_questions_per_survey > 0 ? u.max_questions_per_survey : '∞'}</span>
-                        <span className="pill" title="Surveyors created / allocated" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="users" size={11} /> surveyors {u.surveyor_count ?? 0} / {u.max_surveyors > 0 ? u.max_surveyors : '∞'} allocated</span>
-                        <span className="pill" title="Field records submitted / Super Admin record limit">🗃 records {u.surveyor_record_count ?? u.record_count ?? 0} / {u.max_records > 0 ? u.max_records : '∞'} allocated</span>
+                        <span className="pill" title="Surveys created / allocated" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="clipboard" size={11} /> surveys {u.survey_count ?? 0} / {Number(u.max_surveys || 0)} allocated</span>
+                        <span className="pill" title="Total survey questions created by Client Admin / No of questions allotted by Super Admin">📝 questions created {u.question_count ?? 0} / allotted {Number(u.max_questions_per_survey || 0)}</span>
+                        <span className="pill" title="Surveyors created / allocated" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="users" size={11} /> surveyors {u.surveyor_count ?? 0} / {Number(u.max_surveyors || 0)} allocated</span>
+                        <span className="pill" title="Field records submitted / Super Admin record limit">🗃 records {u.surveyor_record_count ?? u.record_count ?? 0} / {Number(u.max_records || 0)} allocated</span>
                       </span>
                     )}
                   </span>
@@ -744,9 +744,9 @@ export default function AdminClientAdminsScreen({ onToast }) {
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>
-                          Questions allotted (0 = unlimited) ·{' '}
+                          Questions allotted ·{' '}
                           <strong style={{ color: '#4f7dc6' }}>{u.question_count ?? 0}</strong> created /{' '}
-                          allotted {u.max_questions_per_survey > 0 ? u.max_questions_per_survey : '∞'}
+                          allotted {Number(u.max_questions_per_survey || 0)}
                         </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input
@@ -770,9 +770,9 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       </label>
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>
-                          Max surveys they can create (0 = unlimited) ·{' '}
+                          Max surveys they can create ·{' '}
                           <strong style={{ color: '#4f7dc6' }}>{u.survey_count ?? 0}</strong> created /{' '}
-                          {u.max_surveys > 0 ? u.max_surveys : '∞'} allocated
+                          {Number(u.max_surveys || 0)} allocated
                         </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input
@@ -796,9 +796,9 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       </label>
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>
-                          Max surveyors (0 = unlimited) ·{' '}
+                          Max surveyors ·{' '}
                           <strong style={{ color: '#4f7dc6' }}>{u.surveyor_count ?? 0}</strong> created /{' '}
-                          {u.max_surveyors > 0 ? u.max_surveyors : '∞'} allocated
+                          {Number(u.max_surveyors || 0)} allocated
                         </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input
@@ -822,11 +822,11 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       </label>
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>
-                          Max field records (0 = unlimited) ·{' '}
+                          Max field records ·{' '}
                           <strong style={{ color: '#4f7dc6' }}>
                             {u.surveyor_record_count ?? u.record_count ?? 0}
                           </strong>{' '}
-                          of {u.max_records > 0 ? `${Number(u.max_records).toLocaleString()} used` : '∞ allocated'}
+                          of {Number(u.max_records || 0).toLocaleString()} allocated
                         </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input
@@ -850,8 +850,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       </label>
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>
-                          Max question categories (0 = unlimited) ·{' '}
-                          {u.max_categories > 0 ? `${u.max_categories} allowed` : '∞ allowed'}
+                          Max question categories ·{' '}
+                          {Number(u.max_categories || 0)} allowed
                         </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input
@@ -876,7 +876,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                     </div>
                     <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
                       Caps are enforced server-side when this admin creates surveyors, surveys,
-                      edits surveys, or when surveyors submit field records. 0 = unlimited.
+                      edits surveys, or when surveyors submit field records.
                     </p>
 
                     {/* Save features + limits immediately under the controls */}

@@ -16,7 +16,7 @@ import {
   RadialBarChart,
   RadialBar,
 } from 'recharts'
-import { getAnalytics, getStoredUser } from './api'
+import { getAnalytics, listSurveys } from './api'
 import SurveyMap from './SurveyMap'
 import { getDisplayLang, setDisplayLang } from './prefs'
 import PeriodTable from './components/PeriodTable'
@@ -47,6 +47,14 @@ const PALETTE = [
   '#f59e0b',
   '#e879f9',
 ]
+
+const SOURCE_LABELS = { web: 'Web (incl. pending)', field: 'Field (confirmed)' }
+
+/** Local calendar day (YYYY-MM-DD). toISOString() is UTC, so it shows the wrong day before 05:30 IST. */
+function localDay() {
+  const d = new Date()
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+}
 
 function pickFirstSurveyKey(items) {
   return items[0]?.form_key || ''
@@ -203,21 +211,22 @@ const EmptyChart = memo(function EmptyChart({ label = 'No data for current filte
  * One chart card per question. When the survey tags questions with categories the cards
  * are grouped under collapsible headers; untagged surveys render the flat list unchanged.
  */
-const QuestionChartsBlock = memo(function QuestionChartsBlock({ questions = [], order = [], lang }) {
+const QuestionChartsBlock = memo(function QuestionChartsBlock({ questions = [], order = [], lang, onPick }) {
   const [closed, setClosed] = useState(() => ({}))
 
   const card = (q) => {
     const counts = rowsFromSurveyQuestion(q)
+    const pick = (_, name) => onPick?.(q.id, name)
     const isMeter = q.type === 'meter' || q.type === 'tapometer'
     const pieOk = !isMeter && chartShouldUsePie(counts)
     return (
       <ChartCard key={q.id} title={questionFilterTitle(q, lang)} subtitle="Every option for this question">
         {isMeter ? (
-          <MeterChart q={q} rows={counts} lang={lang} />
+          <MeterChart q={q} rows={counts} lang={lang} onSelect={pick} />
         ) : pieOk ? (
-          <InteractivePie data={counts} lang={lang} />
+          <InteractivePie data={counts} lang={lang} onSelect={pick} />
         ) : (
-          <HBar data={counts} lang={lang} />
+          <HBar data={counts} lang={lang} onSelect={pick} />
         )}
       </ChartCard>
     )
@@ -266,14 +275,14 @@ const QuestionChartsBlock = memo(function QuestionChartsBlock({ questions = [], 
 })
 
 /** Super-set / Sub-set dual bars */
-const ContrastBars = memo(function ContrastBars({ data }) {
+const ContrastBars = memo(function ContrastBars({ data, lang = 'en' }) {
   if (!data?.length) return <EmptyChart label="Apply a filter to see Subset vs Rest" />
   return (
     <div className="contrast-list">
       {data.slice(0, 10).map((d) => (
         <div key={d.name} className="contrast-row">
           <div className="contrast-head">
-            <span className="contrast-name">{shown(d)}</span>
+            <span className="contrast-name">{shown(d, '', lang)}</span>
             <span
               className={`contrast-delta ${d.delta > 0 ? 'up' : d.delta < 0 ? 'down' : ''}`}
             >
@@ -368,9 +377,9 @@ const InteractivePie = memo(function InteractivePie({ data, onSelect, selectKey,
             const text = lang === 'te' ? row?.label || v : row?.name || v
             const n = row?.value
             return (
-            <span style={{ color: '#94a3b8', fontSize: 11 }}>
-              {n != null ? `${text} (${n})` : text}
-            </span>
+              <span style={{ color: '#94a3b8', fontSize: 11 }}>
+                {n != null ? `${text} (${n})` : text}
+              </span>
             )
           }}
         />
@@ -379,7 +388,7 @@ const InteractivePie = memo(function InteractivePie({ data, onSelect, selectKey,
   )
 })
 
-const HBar = memo(function HBar({ data, onSelect, selectKey, extra, activeName, colorKey, lang = 'en' }) {
+const HBar = memo(function HBar({ data, onSelect, selectKey, extra, activeName, lang = 'en' }) {
   if (!data?.length) return <EmptyChart />
   const height = Math.max(200, data.length * 28 + 40)
   return (
@@ -412,7 +421,7 @@ const HBar = memo(function HBar({ data, onSelect, selectKey, extra, activeName, 
           {data.map((d, i) => (
             <Cell
               key={d.name}
-              fill={colorKey ? colorFor(d.name, i) : colorFor(d.name, i)}
+              fill={colorFor(d.name, i)}
               opacity={activeName && activeName !== d.name ? 0.3 : 1}
             />
           ))}
@@ -422,7 +431,7 @@ const HBar = memo(function HBar({ data, onSelect, selectKey, extra, activeName, 
   )
 })
 
-const StackedParty = memo(function StackedParty({ matrix, onSelect, selectKey, extra }) {
+const StackedParty = memo(function StackedParty({ matrix, onSelect, selectKey, extra, lang = 'en' }) {
   if (!matrix?.rows?.length) return <EmptyChart />
   const data = matrix.rows.slice(0, 10)
   const cols = (matrix.columns || []).filter(
@@ -442,7 +451,7 @@ const StackedParty = memo(function StackedParty({ matrix, onSelect, selectKey, e
           stroke="#94a3b8"
           fontSize={11}
           tickLine={false}
-          tickFormatter={tickShown(data, 'en')}
+          tickFormatter={tickShown(data, lang)}
         />
         <Tooltip
           contentStyle={tipStyle}
@@ -451,7 +460,7 @@ const StackedParty = memo(function StackedParty({ matrix, onSelect, selectKey, e
           formatter={(value, name) => [value, matrix.column_labels?.[name] || name]}
           labelFormatter={(v) => {
             const row = data.find((d) => d.name === v)
-            return row?.label || v
+            return lang === 'te' ? row?.label || v : v
           }}
         />
         <Legend
@@ -607,7 +616,6 @@ const RadialIssues = memo(function RadialIssues({ data, onClick, lang = 'en' }) 
 })
 
 export default function DashboardScreen({ onToast }) {
-  // Field stays confirmed+complete. Pending web fills are included (source=web to check only web).
   const [filters, setFilters] = useState({
     district: '',
     party: '',
@@ -616,57 +624,54 @@ export default function DashboardScreen({ onToast }) {
     constituency: '',
     user: '',
     survey: '',
-    source: '', // '' all · web · field
-    period: 'total', // total | today | day | month
-    day: new Date().toISOString().slice(0, 10),
-    month: new Date().toISOString().slice(0, 7),
+    source: '',
+    period: 'total',
+    day: localDay(),
+    month: localDay().slice(0, 7),
   })
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [surveys, setSurveys] = useState([])
-  const [boardTab, setBoardTab] = useState('day') // day | month | surveyor | geo
+  const [tableTab, setTableTab] = useState('day')
   const [filterLang, setFilterLang] = useState(getDisplayLang)
+  const [moreOpen, setMoreOpen] = useState(false)
+
   const setFilterLangPersist = useCallback((lang) => {
     setFilterLang(setDisplayLang(lang))
   }, [])
+
   useEffect(() => {
     const onLang = () => setFilterLang(getDisplayLang())
     window.addEventListener('esurvey-display-lang', onLang)
     return () => window.removeEventListener('esurvey-display-lang', onLang)
   }, [])
+
   useEffect(() => {
     const s = surveys.find((x) => x.form_key === filters.survey)
-    if (s?.display_lang === 'te' || s?.display_lang === 'en') {
-      setFilterLangPersist(s.display_lang)
-    }
+    if (s?.display_lang === 'te' || s?.display_lang === 'en') setFilterLangPersist(s.display_lang)
   }, [filters.survey, surveys, setFilterLangPersist])
 
-  const me = useMemo(() => getStoredUser(), [])
-  const allotCap = Number(me?.max_records) || 0
-  const fieldUsed = Number(me?.field_used ?? data?.totalAll ?? data?.dataFilters?.total ?? me?.record_count ?? me?.surveyor_record_count) || 0
-  const webReserved = Number(me?.web_reserved) || 0
-  const allotUsed = fieldUsed + webReserved
-  const allotLeft = allotCap > 0 ? (me?.field_remaining != null ? Number(me.field_remaining) : Math.max(0, allotCap - allotUsed)) : null
-  const allotPct = allotCap > 0 ? Math.min(100, Math.round((allotUsed / allotCap) * 100)) : 0
-
   useEffect(() => {
-    import('./api').then(({ listSurveys }) =>
-      listSurveys()
-        .then((d) => {
-          const items = d.items || []
-          setSurveys(items)
-          const first = pickFirstSurveyKey(items)
-          if (first) setFilters((f) => (f.survey ? f : { ...f, survey: first }))
-        })
-        .catch(() => {}),
-    )
+    listSurveys()
+      .then((d) => {
+        const items = d.items || []
+        setSurveys(items)
+        const first = pickFirstSurveyKey(items)
+        if (first) setFilters((f) => (f.survey ? f : { ...f, survey: first }))
+      })
+      .catch(() => {})
   }, [])
 
+  // Latest-request-wins: a slow older response can never overwrite newer data.
+  const reqSeq = useRef(0)
   const hasChartData = useRef(false)
+  const toastRef = useRef(onToast)
+  toastRef.current = onToast
+
   const load = useCallback(async () => {
-    const first = !hasChartData.current
-    if (first) setLoading(true)
+    const seq = ++reqSeq.current
+    if (!hasChartData.current) setLoading(true)
     setError(null)
     try {
       const params = {
@@ -680,37 +685,36 @@ export default function DashboardScreen({ onToast }) {
         source: filters.source || '',
         period: filters.period || 'total',
       }
-      // Dynamic per-question filters (q_<questionId>)
       Object.entries(filters)
         .filter(([k, v]) => k.startsWith('q_') && v)
-        .forEach(([k, v]) => (params[k] = v))
+        .forEach(([k, v]) => {
+          params[k] = v
+        })
       if (filters.period === 'day') params.day = filters.day
       if (filters.period === 'month') params.month = filters.month
       const clean = Object.fromEntries(Object.entries(params).filter(([, v]) => v))
-      // Field charts stay confirmed+complete. Pending web fills are included server-side.
-      const res = await getAnalytics({
-        ...clean,
-        completeness: 'complete',
-        report: 'locked',
-      })
+      const res = await getAnalytics({ ...clean, completeness: 'complete', report: 'locked' })
+      if (seq !== reqSeq.current) return
       setData(res)
       hasChartData.current = true
     } catch (e) {
+      if (seq !== reqSeq.current) return
       setError(e.message)
-      onToast?.(e.message, 'error')
+      toastRef.current?.(e.message, 'error')
     } finally {
-      setLoading(false)
+      if (seq === reqSeq.current) setLoading(false)
     }
-  }, [filters, onToast])
+  }, [filters])
 
   useEffect(() => {
     const t = setTimeout(load, 180)
     return () => clearTimeout(t)
   }, [load])
 
-  const clearFilters = useCallback(
-    () =>
-      setFilters((f) => ({
+  /** Clear every optional filter. Keep the survey, and drop per-question filters too. */
+  const clearFilters = useCallback(() => {
+    setFilters((f) => {
+      const next = {
         district: '',
         party: '',
         gender: '',
@@ -718,15 +722,37 @@ export default function DashboardScreen({ onToast }) {
         constituency: '',
         user: '',
         survey: f.survey || pickFirstSurveyKey(surveys),
-        source: f.source || '',
+        source: '',
         period: 'total',
-        day: new Date().toISOString().slice(0, 10),
-        month: new Date().toISOString().slice(0, 7),
-      })),
-    [surveys],
-  )
+        day: localDay(),
+        month: localDay().slice(0, 7),
+      }
+      Object.keys(f).forEach((k) => {
+        if (k.startsWith('q_')) next[k] = ''
+      })
+      return next
+    })
+  }, [surveys])
 
-  // Active-filter chips (08-UXUI-SPEC §4.1: filter bar chips, accent-tinted when active)
+  const removeFilter = useCallback((key) => {
+    setFilters((f) => {
+      const next = { ...f, [key]: '' }
+      if (key === 'district') next.constituency = ''
+      if (key === 'period') next.period = 'total'
+      return next
+    })
+  }, [])
+
+  /** Chart clicks set the matching filter. Clicking the same value again clears it. */
+  const drillFilter = useCallback((key, value) => {
+    setFilters((f) => {
+      const next = { ...f, [key]: f[key] === value ? '' : value }
+      if (key === 'district') next.constituency = ''
+      return next
+    })
+  }, [])
+  const drillQuestion = useCallback((qid, value) => drillFilter(`q_${qid}`, value), [drillFilter])
+
   const filterChipLabels = {
     district: 'District',
     party: 'Party',
@@ -734,22 +760,35 @@ export default function DashboardScreen({ onToast }) {
     caste: 'Caste',
     constituency: 'Assembly',
     user: 'Surveyor',
-    survey: 'Survey',
   }
+  const teChipLabels = {
+    district: 'జిల్లా',
+    party: 'పార్టీ',
+    gender: 'లింగం',
+    caste: 'కులం',
+    constituency: 'నియోజకవర్గం',
+    user: 'సర్వేయర్',
+  }
+  const labelTableKey = {
+    district: 'districts',
+    party: 'parties',
+    gender: 'genders',
+    caste: 'castes',
+    constituency: 'constituencies',
+  }
+
   const activeFilterChips = useMemo(() => {
     const chips = []
     for (const [k, v] of Object.entries(filters)) {
-      if (!v) continue
-      if (k === 'day' || k === 'month') continue
-      // Survey scope is no longer an optional filter, so it gets no remove chip
-      if (k === 'survey') continue
-      if (k === 'period' && v === 'total') continue
+      if (!v || k === 'day' || k === 'month' || k === 'survey') continue
       if (k === 'period') {
-        chips.push({
-          key: 'period',
-          label: 'Period',
-          value: { today: 'Today', day: 'Day', month: 'Month' }[v] || v,
-        })
+        if (v !== 'total') {
+          chips.push({ key: 'period', label: 'Period', value: { today: 'Today', day: 'Day', month: 'Month' }[v] || v })
+        }
+        continue
+      }
+      if (k === 'source') {
+        chips.push({ key: k, label: 'Source', value: SOURCE_LABELS[v] || v })
         continue
       }
       if (k.startsWith('q_')) {
@@ -762,64 +801,65 @@ export default function DashboardScreen({ onToast }) {
         })
         continue
       }
-      const teChip = {
-        district: 'జిల్లా',
-        party: 'పార్టీ',
-        gender: 'లింగం',
-        caste: 'కులం',
-        constituency: 'నియోజకవర్గం',
-        user: 'సర్వేయర్',
-        survey: 'సర్వే',
-      }
       const teVal =
-        filterLang === 'te'
-          ? data?.filterLabels?.[
-              { district: 'districts', party: 'parties', gender: 'genders', caste: 'castes', constituency: 'constituencies' }[k]
-            ]?.[v]
-          : null
+        filterLang === 'te' && labelTableKey[k] ? data?.filterLabels?.[labelTableKey[k]]?.[v] : null
       chips.push({
         key: k,
-        label: filterLang === 'te' ? teChip[k] || filterChipLabels[k] || k : filterChipLabels[k] || k,
+        label: filterLang === 'te' ? teChipLabels[k] || filterChipLabels[k] || k : filterChipLabels[k] || k,
         value: teVal || v,
       })
     }
     return chips
   }, [filters, data, filterLang])
-  const removeFilter = useCallback((key) => {
-    setFilters((f) => {
-      const next = { ...f, [key]: '' }
-      if (key === 'district') next.constituency = ''
-      return next
-    })
-  }, [])
-
-  const activeCount = useMemo(
-    () =>
-      Object.entries(filters).filter(
-        ([k, v]) => v && k !== 'period' && k !== 'day' && k !== 'month' && !(k === 'period' && v === 'total'),
-      ).length + (filters.period && filters.period !== 'total' ? 1 : 0),
-    [filters],
-  )
+  const activeCount = activeFilterChips.length
 
   const charts = data?.charts
   const opts = data?.filterOptions
   const confirmedCount = data?.statusCounts?.confirmed ?? 0
   const pendingCount = data?.statusCounts?.pending ?? 0
   const reportCount = data?.totalAll || data?.filtered || 0
-  const reportReady = data && reportCount > 0
-  const reportLocked = !loading && data && reportCount === 0 && pendingCount === 0
+  const reportReady = !!data && reportCount > 0
 
   const filtersBroken =
-    data &&
-    activeCount > 0 &&
-    data.filtered === data.totalAll &&
-    !data.isFiltered &&
-    !(opts?.districts?.length > 0)
+    data && activeCount > 0 && data.filtered === data.totalAll && !data.isFiltered && !(opts?.districts?.length > 0)
 
-  // Freshness (09-ANALYTICS-SPEC §8): stale when no new confirmation in 2+ days
-  const stale =
-    !!data?.data_as_of &&
-    Date.now() - new Date(data.data_as_of).getTime() > 2 * 24 * 60 * 60 * 1000
+  // Freshness: stale when no new confirmation in 2+ days
+  const stale = !!data?.data_as_of && Date.now() - new Date(data.data_as_of).getTime() > 2 * 24 * 60 * 60 * 1000
+
+  const questionsMerged = useMemo(() => {
+    const fromCharts = charts?.questionCharts || []
+    const fromFilters = data?.dataFilters?.questions || []
+    const byId = new Map(fromCharts.map((q) => [q.id, q]))
+    const merged = []
+    const seen = new Set()
+    for (const fq of fromFilters) {
+      const cq = byId.get(fq.id) || {}
+      merged.push({
+        ...fq,
+        ...cq,
+        id: fq.id,
+        type: cq.type || fq.type,
+        category: cq.category || fq.category,
+        authored: cq.authored || fq.authored || fq.options || cq.options,
+        options: fq.options?.length ? fq.options : cq.options,
+        options_te: fq.options_te || cq.options_te,
+        counts: cq.counts || fq.counts,
+        meter: cq.meter || fq.meter,
+        label_en: cq.label_en || fq.label_en,
+        label_te: cq.label_te || fq.label_te,
+        label: cq.label || fq.label,
+      })
+      seen.add(fq.id)
+    }
+    for (const cq of fromCharts) if (!seen.has(cq.id)) merged.push(cq)
+    return merged.filter((q) => q.visible !== false)
+  }, [charts, data])
+
+  const sourceOptions = [
+    { id: '', label: 'All' },
+    { id: 'web', label: 'Web (incl. pending)' },
+    { id: 'field', label: 'Field (confirmed)' },
+  ]
 
   return (
     <div className="screen dashboard-screen">
@@ -829,830 +869,138 @@ export default function DashboardScreen({ onToast }) {
           <p>
             {loading && !data
               ? 'Loading…'
-              : reportReady
+              : reportCount > 0
                 ? `${Number(data.filtered || reportCount).toLocaleString()} records · field confirmed + pending web`
                 : pendingCount > 0
-                  ? `${pendingCount.toLocaleString()} pending web — pick that survey`
+                  ? `${pendingCount.toLocaleString()} pending web. Pick that survey and the Web source.`
                   : 'No chart data for this survey yet'}
           </p>
         </div>
-        <button type="button" className="btn small" onClick={load} disabled={loading}>
-          {loading ? '…' : 'Refresh'}
-        </button>
+        <div className="row">
+          {data?.data_as_of && (
+            <span className={stale ? 'pill bad' : 'pill ok'} title={new Date(data.data_as_of).toLocaleString()}>
+              <span className="dot" />
+              Data as of {timeAgo(data.data_as_of)}
+              {stale ? ' · stale' : ''}
+            </span>
+          )}
+          {data?.degraded && (
+            <span className="pill bad" title={data.degraded_reason || ''}>
+              <span className="dot" />
+              Degraded
+            </span>
+          )}
+          <button type="button" className="btn small" onClick={load} disabled={loading}>
+            {loading ? '…' : 'Refresh'}
+          </button>
+        </div>
       </header>
 
-      <div className="card" style={{ marginBottom: 12 }}>
-        <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
-          Field charts use confirmed records (GPS + photo + Q/A). Pending web fills are
-          included — use the Web check below to view them.
-        </p>
-        {data?.statusCounts && (
-          <p style={{ margin: '0 0 8px', fontSize: 13 }}>
-            Waiting confirm <strong>{data.statusCounts.pending}</strong>
-            {' · '}
-            Confirmed <strong>{data.statusCounts.confirmed}</strong>
-            {' · '}
-            In this report <strong>{data.totalAll ?? 0}</strong>
-          </p>
-        )}
-        {(data?.data_as_of || data?.degraded) && (
-          <p
-            style={{
-              margin: '6px 0 0',
-              fontSize: 12,
-              display: 'flex',
-              gap: 8,
-              flexWrap: 'wrap',
-            }}
-          >
-            {data.data_as_of && (
-              <span
-                className={stale ? 'pill bad' : 'pill ok'}
-                style={{ margin: 0 }}
-                title={new Date(data.data_as_of).toLocaleString()}
-              >
-                <span className="dot" />
-                Data as of {timeAgo(data.data_as_of)}
-                {stale ? ' · stale (no new confirmations in 2+ days)' : ''}
-              </span>
-            )}
-            {data.degraded && (
-              <span className="pill bad" style={{ margin: 0 }} title={data.degraded_reason || ''}>
-                <span className="dot" />
-                Degraded — facts pending retry
-              </span>
-            )}
-          </p>
-        )}
-      </div>
-
-      {!reportReady && !loading && data && (
-        <div className="card" style={{ marginBottom: 14, textAlign: 'center', padding: 24 }}>
-          <h3 style={{ margin: '0 0 8px' }}>No chart rows for this survey</h3>
-          <p className="muted" style={{ fontSize: 13, margin: '0 0 12px' }}>
-            Pending web fills chart here. Confirm the <strong>Web</strong> source check
-            and pick the survey that received the web responses.
-          </p>
-          <p style={{ fontSize: 13, margin: 0 }}>
-            Waiting confirm: <strong>{pendingCount}</strong>
-            {' · '}confirmed: <strong>{confirmedCount}</strong>
-          </p>
-        </div>
-      )}
-
-      <div className="dash-split">
-        <div className="dash-split-main">
-
-
-      {/* After confirmed data: Daily · Monthly · Surveyor daily · Surveyor monthly */}
-      {reportReady && data?.dataFilters && (
-        <div className="data-boards" style={{ marginBottom: 14 }}>
-          <div className="card" style={{ marginBottom: 12 }}>
-            <h3 style={{ marginTop: 0 }}>
-              Report summary ·{' '}
-              {(data.dataFilters.total ?? data.totalAll)?.toLocaleString?.() ?? data.totalAll}{' '}
-              records
-            </h3>
-            <div className="stat-row">
-              <div className="stat">
-                <strong>{data.dataFilters.by_user?.length ?? 0}</strong>
-                <span>Surveyors</span>
-              </div>
-              <div className="stat">
-                <strong>
-                  {data.dataFilters.total ?? data.totalAll ?? 0}
-                </strong>
-                <span>Records in report</span>
-              </div>
-              <div className="stat">
-                <strong>{data.dataFilters.by_day?.length ?? 0}</strong>
-                <span>Days</span>
-              </div>
-              <div className="stat">
-                <strong>{data.dataFilters.by_month?.length ?? 0}</strong>
-                <span>Months</span>
-              </div>
-              <div className="stat">
-                <strong>{data.dataFilters.period || 'total'}</strong>
-                <span>Period filter</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="admin-subtabs">
-            <button
-              type="button"
-              className={boardTab === 'day' ? 'map-tab active' : 'map-tab'}
-              onClick={() => setBoardTab('day')}
-            >
-              By day
-            </button>
-            <button
-              type="button"
-              className={boardTab === 'month' ? 'map-tab active' : 'map-tab'}
-              onClick={() => setBoardTab('month')}
-            >
-              By month
-            </button>
-            <button
-              type="button"
-              className={boardTab === 'surveyor' ? 'map-tab active' : 'map-tab'}
-              onClick={() => setBoardTab('surveyor')}
-            >
-              By surveyor
-            </button>
-            <button
-              type="button"
-              className={boardTab === 'geo' ? 'map-tab active' : 'map-tab'}
-              onClick={() => setBoardTab('geo')}
-            >
-              By geo location
-            </button>
-          </div>
-
-          {/* 1. Daily data */}
-          {boardTab === 'day' && (
-          <div className="card" style={{ marginBottom: 12 }}>
-            <h3 style={{ marginTop: 0 }}>Daily data</h3>
-            <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-              Confirmed surveys per calendar day
-            </p>
-            {!data.dataFilters.by_day?.length ? (
-              <p className="muted">No daily rows yet.</p>
-            ) : (
-              <div className="data-table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Records</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.dataFilters.by_day.slice(0, 31).map((d) => (
-                      <tr key={d.name}>
-                        <td>
-                          <strong>{d.name}</strong>
-                        </td>
-                        <td>{d.value}</td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn small"
-                            onClick={() =>
-                              setFilters((f) => ({ ...f, period: 'day', day: d.name }))
-                            }
-                          >
-                            Open
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-          )}
-
-          {/* 2. Monthly data */}
-          {boardTab === 'month' && (
-          <div className="card" style={{ marginBottom: 12 }}>
-            <h3 style={{ marginTop: 0 }}>Monthly data</h3>
-            <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-              Confirmed surveys per month
-            </p>
-            {!data.dataFilters.by_month?.length ? (
-              <p className="muted">No monthly rows yet.</p>
-            ) : (
-              <div className="data-table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Month</th>
-                      <th>Records</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.dataFilters.by_month.slice(0, 24).map((m) => (
-                      <tr key={m.name}>
-                        <td>
-                          <strong>{m.name}</strong>
-                        </td>
-                        <td>{m.value}</td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn small"
-                            onClick={() =>
-                              setFilters((f) => ({
-                                ...f,
-                                period: 'month',
-                                month: m.name,
-                              }))
-                            }
-                          >
-                            Open
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-          )}
-
-          {/* 3. Surveyor daily data */}
-          {boardTab === 'surveyor' && (
-          <div className="card" style={{ marginBottom: 12 }}>
-            <h3 style={{ marginTop: 0 }}>Surveyor daily data</h3>
-            <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-              Each surveyor · each day
-            </p>
-            {!(data.dataFilters.by_surveyor_day?.length || data.dataFilters.by_user?.length) ? (
-              <p className="muted">No surveyor daily rows yet.</p>
-            ) : (
-              <div className="data-table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Surveyor</th>
-                      <th>Day</th>
-                      <th>Records</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(data.dataFilters.by_surveyor_day || []).slice(0, 60).map((r) => (
-                      <tr key={`${r.surveyor}-${r.day}`}>
-                        <td>
-                          <strong>{r.surveyor}</strong>
-                        </td>
-                        <td>{r.day}</td>
-                        <td>{r.value}</td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn small"
-                            onClick={() =>
-                              setFilters((f) => ({
-                                ...f,
-                                user: r.surveyor,
-                                period: 'day',
-                                day: r.day,
-                              }))
-                            }
-                          >
-                            Open
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!data.dataFilters.by_surveyor_day?.length && (
-                  <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-                    Redeploy Deno API to load surveyor×day breakdown. Totals by user still
-                    available below.
-                  </p>
-                )}
-              </div>
-            )}
-            {data.dataFilters.by_user?.length > 0 && (
-              <>
-                <h4 style={{ margin: '12px 0 6px' }}>By surveyor (total)</h4>
-                <ul className="user-list">
-                  {data.dataFilters.by_user.slice(0, 20).map((u) => (
-                    <li key={u.name}>
-                      <strong>{u.name}</strong>
-                      <span className="meta">
-                        {' '}
-                        {u.value} ({u.pct}%)
-                      </span>
-                      <button
-                        type="button"
-                        className="btn small"
-                        onClick={() => setFilters((f) => ({ ...f, user: u.name }))}
-                      >
-                        Filter
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </div>
-          )}
-
-          {/* 4. Surveyor monthly data */}
-          {boardTab === 'surveyor' && (
-          <div className="card" style={{ marginBottom: 12 }}>
-            <h3 style={{ marginTop: 0 }}>Surveyor monthly data</h3>
-            <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-              Each surveyor · each month
-            </p>
-            {!data.dataFilters.by_surveyor_month?.length ? (
-              <p className="muted">
-                No surveyor monthly rows yet
-                {data.dataFilters.by_user?.length
-                  ? ' — redeploy Deno API for this table.'
-                  : '.'}
-              </p>
-            ) : (
-              <div className="data-table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Surveyor</th>
-                      <th>Month</th>
-                      <th>Records</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.dataFilters.by_surveyor_month.slice(0, 60).map((r) => (
-                      <tr key={`${r.surveyor}-${r.month}`}>
-                        <td>
-                          <strong>{r.surveyor}</strong>
-                        </td>
-                        <td>{r.month}</td>
-                        <td>{r.value}</td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn small"
-                            onClick={() =>
-                              setFilters((f) => ({
-                                ...f,
-                                user: r.surveyor,
-                                period: 'month',
-                                month: r.month,
-                              }))
-                            }
-                          >
-                            Open
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-          )}
-
-          {/* 5. By survey — submissions, participants, locations */}
-          {boardTab === 'geo' && (
-          <div className="card" style={{ marginBottom: 12 }}>
-            <h3 style={{ marginTop: 0 }}>By survey</h3>
-            <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-              Each survey: records, surveyors who participated, locations covered
-            </p>
-            {!data.dataFilters.by_survey?.length ? (
-              <p className="muted">No survey rows yet.</p>
-            ) : (
-              <div className="data-table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Survey</th>
-                      <th>Records</th>
-                      <th>Surveyors</th>
-                      <th>Locations</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.dataFilters.by_survey.slice(0, 25).map((s) => (
-                      <tr key={s.name}>
-                        <td>
-                          <strong>{s.title}</strong>
-                        </td>
-                        <td>{s.value}</td>
-                        <td>
-                          {(s.surveyors || []).length
-                            ? (s.surveyors || []).join(', ')
-                            : '—'}
-                        </td>
-                        <td>
-                          {(s.districts || []).length} district(s)
-                          {s.constituencies?.length
-                            ? ` · ${s.constituencies.length} AC(s)`
-                            : ''}
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn small"
-                            onClick={() => setFilters((f) => ({ ...f, survey: s.name }))}
-                          >
-                            Filter
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-          )}
-        </div>
-      )}
-      {filtersBroken && reportReady && (
-        <div className="banner error" role="alert">
-          Filters did not apply. Redeploy Deno API if this persists.
-        </div>
-      )}
-
-      {/* Widget-level resilience (08-UXUI-SPEC §4b): keep last good data, retry inline */}
-      {error && data && (
-        <div className="banner error" role="alert" style={{ marginBottom: 12 }}>
-          Refresh failed: {error} — showing last loaded data.{' '}
-          <button type="button" className="link-btn" onClick={load}>
-            Retry
-          </button>
-        </div>
-      )}
-
-      {/* KPI strip — only after confirm */}
-      {reportReady && data && (
-        <div className="kpi-strip">
-          <div className="kpi">
-            <strong>{data.filtered.toLocaleString()}</strong>
-            <span>Filtered</span>
-          </div>
-          <div className="kpi">
-            <strong>{data.totalAll.toLocaleString()}</strong>
-            <span>Confirmed</span>
-          </div>
-          <div className="kpi">
-            {charts?.byParty?.[0]?.name ? (
-              <strong>{shown(charts.byParty[0], '', filterLang)}</strong>
-            ) : (
-              <strong style={{ fontStyle: 'italic', fontWeight: 400, color: '#94a3b8' }}>
-                No data yet
-              </strong>
-            )}
-            <span>Lead party</span>
-          </div>
-          <div className="kpi">
-            {charts?.issues?.[0]?.name ? (
-              <strong>{shown(charts.issues[0], '', filterLang)}</strong>
-            ) : (
-              <strong style={{ fontStyle: 'italic', fontWeight: 400, color: '#94a3b8' }}>
-                No data yet
-              </strong>
-            )}
-            <span>Top issue</span>
-          </div>
-          <div className="kpi">
-            <strong>{data.collectTime?.avg_label || '—'}</strong>
-            <span>Avg time GPS → finish</span>
-          </div>
-          <div className="kpi">
-            <strong>{data.collectTime?.median_label || '—'}</strong>
-            <span>Median collect time</span>
-          </div>
-        </div>
-      )}
-
-      {reportReady && data?.collectTime?.count > 0 && (
-        <div className="card" style={{ marginBottom: 14 }}>
-          <h3 style={{ marginTop: 0 }}>Collect time (Enable GPS → Finish)</h3>
-          <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-            Calculated here on confirmed records. Voice on or off does not change this clock.
-            {data.collectTime.count} record{data.collectTime.count === 1 ? '' : 's'} with timing.
-          </p>
-          <div className="stat-row" style={{ marginBottom: 10 }}>
-            <div className="stat">
-              <strong>{data.collectTime.avg_label}</strong>
-              <span>Average</span>
-            </div>
-            <div className="stat">
-              <strong>{data.collectTime.median_label}</strong>
-              <span>Median</span>
-            </div>
-            <div className="stat">
-              <strong>{data.collectTime.min_sec != null ? `${Math.round(data.collectTime.min_sec)}s` : '—'}</strong>
-              <span>Fastest</span>
-            </div>
-            <div className="stat">
-              <strong>{data.collectTime.max_sec != null ? `${Math.round(data.collectTime.max_sec)}s` : '—'}</strong>
-              <span>Slowest</span>
-            </div>
-          </div>
-          {(data.collectTime.by_surveyor || []).length > 0 && (
-            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>
-                  <th style={{ padding: '6px 8px' }}>Surveyor</th>
-                  <th style={{ padding: '6px 8px' }}>Records</th>
-                  <th style={{ padding: '6px 8px' }}>Avg time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.collectTime.by_surveyor.map((u) => (
-                  <tr key={u.name} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '6px 8px' }}>{u.name}</td>
-                    <td style={{ padding: '6px 8px' }}>{u.n}</td>
-                    <td style={{ padding: '6px 8px', fontWeight: 600 }}>{u.avg_label}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-
-      {/* Insight chips */}
-      {reportReady && data?.insights && (
-        <div className="insight-row">
-          <div className="insight">{data.insights.topParty}</div>
-          <div className="insight">{data.insights.topIssue}</div>
-          <div className="insight">{data.insights.topDistrict}</div>
-          {data.insights.contrast && (
-            <div className="insight">{data.insights.contrast}</div>
-          )}
-        </div>
-      )}
-
-      {/* Super-set / Sub-set formula panel — confirmed only */}
-      {reportReady && data?.formula && (
-        <section className="card formula-card" style={{ marginBottom: 14 }}>
-          <h3>Super-set / Sub-set</h3>
-          <div className="stat-row" style={{ marginBottom: 10 }}>
-            <div className="stat">
-              <strong>{data.formula.superset_n?.toLocaleString?.()}</strong>
-              <span>Superset (all)</span>
-            </div>
-            <div className="stat">
-              <strong>{data.formula.subset_n?.toLocaleString?.()}</strong>
-              <span>Subset (filter)</span>
-            </div>
-            <div className="stat">
-              <strong>{data.formula.rest_n?.toLocaleString?.()}</strong>
-              <span>Rest</span>
-            </div>
-          </div>
-          {!data.isFiltered ? (
-            <p className="muted" style={{ fontSize: 12 }}>
-              Apply a filter (district, party, caste…) to compare <strong>Subset</strong> vs{' '}
-              <strong>Rest</strong>. Δpp = Subset% − Rest%. Index = Subset% / Superset%.
-            </p>
-          ) : (
-            <p className="muted" style={{ fontSize: 12 }}>
-              Formula active: Δpp = Subset% − Rest% · Index = Subset% / Superset% (1.0 = same as
-              full population).
-            </p>
-          )}
-        </section>
-      )}
-
-      {/* Active filter chips — accent-tinted, one tap to remove */}
-      {reportReady && activeFilterChips.length > 0 && (
-        <div className="pill-row" style={{ marginBottom: 10 }}>
-          {activeFilterChips.map((chip) => (
-            <button
-              key={chip.key}
-              type="button"
-              className="chip selected"
-              style={{
-                background: 'var(--accent-bg)',
-                border: '1px solid var(--accent-border)',
-                color: 'var(--accent)',
-                fontWeight: 700,
+      {/* Filter bar: always visible, so survey and source are reachable even with no data */}
+      <section
+        className="card"
+        aria-label="Dashboard filters"
+        style={{ position: 'sticky', top: 0, zIndex: 5, display: 'grid', gap: 10 }}
+      >
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+          <label className="field compact" style={{ minWidth: 180 }}>
+            <span>Survey</span>
+            <select
+              value={filters.survey}
+              onChange={(e) => {
+                const survey = e.target.value
+                // A new survey clears per-question and surveyor filters
+                setFilters((f) => ({
+                  ...Object.fromEntries(
+                    Object.entries(f).filter(([k]) => !k.startsWith('q_') && k !== 'user'),
+                  ),
+                  survey,
+                }))
               }}
-              onClick={() => removeFilter(chip.key)}
-              title={`Remove ${chip.label} filter`}
             >
-              {chip.label}: {chip.value} ✕
-            </button>
-          ))}
-          <button type="button" className="link-btn" onClick={clearFilters}>
-            Clear all
-          </button>
-        </div>
-      )}
+              {surveys.length === 0 && <option value="">No surveys yet</option>}
+              {surveys.map((s) => (
+                <option key={s.id} value={s.form_key}>
+                  {s.title}
+                  {s.form_key === 'legacy' ? ' · Excel import' : ''}
+                  {Number(s.web_submissions) > 0 ? ` · ${Number(s.web_submissions)} web` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
 
+          <label className="field compact" style={{ minWidth: 160 }}>
+            <span>Surveyor</span>
+            <select
+              value={filters.user}
+              onChange={(e) => setFilters((f) => ({ ...f, user: e.target.value }))}
+            >
+              <option value="">
+                {data?.dataFilters?.by_user?.length ? 'All surveyors' : 'No surveyors yet'}
+              </option>
+              {(data?.dataFilters?.by_user || []).map((u) => (
+                <option key={u.name} value={u.name}>
+                  {u.name} ({u.value})
+                </option>
+              ))}
+            </select>
+          </label>
 
-      {error && !data ? (
-        <div className="card" style={{ padding: 16, textAlign: 'center' }} role="alert">
-          <h3 style={{ margin: '0 0 8px' }}>Couldn't load the dashboard</h3>
-          <p className="muted" style={{ fontSize: 13, margin: '0 0 12px' }}>
-            {error}
-          </p>
-          <button type="button" className="btn small primary" onClick={load}>
-            Retry
-          </button>
-        </div>
-      ) : loading && !data ? (
-        <div className="card" style={{ padding: 16 }}>
-          <p className="muted center" style={{ margin: 0 }}>
-            Checking confirmed data…
-          </p>
-          <div className="portal-skeleton-rows" style={{ marginTop: 12 }}>
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="portal-skeleton-row" style={{ width: `${90 - i * 10}%` }} />
-            ))}
-          </div>
-        </div>
-      ) : reportLocked ? null : !reportReady ? null : (
-        <div className="chart-grid">
-          {data && (
-            <div className="map-span">
-              <SurveyMap
-                analytics={data}
-                filters={filters}
-                lang={filterLang}
+          <label className="field compact" style={{ minWidth: 130 }}>
+            <span>Period</span>
+            <select
+              value={filters.period}
+              onChange={(e) => setFilters((f) => ({ ...f, period: e.target.value }))}
+            >
+              <option value="total">Total data</option>
+              <option value="today">Today</option>
+              <option value="day">Day</option>
+              <option value="month">Month</option>
+            </select>
+          </label>
+
+          {filters.period === 'day' && (
+            <label className="field compact">
+              <span>Day</span>
+              <input
+                type="date"
+                value={filters.day}
+                onChange={(e) => setFilters((f) => ({ ...f, day: e.target.value }))}
               />
-            </div>
+            </label>
           )}
-
-          {data?.isFiltered && charts?.contrastParty?.length > 0 && (
-            <ChartCard
-              title="Subset vs Rest — Party"
-              subtitle="Δpp = Subset% − Rest% (super-set formula)"
-              tall
-            >
-              <ContrastBars data={charts.contrastParty} />
-            </ChartCard>
-          )}
-
-          {data?.isFiltered && charts?.contrastGender?.length > 0 && (
-            <ChartCard title="Subset vs Rest — Gender" subtitle="Selected filter vs rest of data">
-              <ContrastBars data={charts.contrastGender} />
-            </ChartCard>
-          )}
-
-          {data?.isFiltered && charts?.contrastCaste?.length > 0 && (
-            <ChartCard title="Subset vs Rest — Caste" subtitle="Selected filter vs rest of data">
-              <ContrastBars data={charts.contrastCaste} />
-            </ChartCard>
-          )}
-
-          {data?.isFiltered && charts?.contrastConstituency?.length > 0 && (
-            <ChartCard
-              title="Subset vs Rest — Assembly"
-              subtitle="Which assemblies are in this selection vs rest (Δpp = Subset% − Rest%)"
-              tall
-            >
-              <ContrastBars data={charts.contrastConstituency} />
-            </ChartCard>
-          )}
-
-          {data?.isFiltered && charts?.contrastDistrict?.length > 0 && (
-            <ChartCard
-              title="Subset vs Rest — District"
-              subtitle="District mix of this selection vs rest"
-              tall
-            >
-              <ContrastBars data={charts.contrastDistrict} />
-            </ChartCard>
-          )}
-
-          {data?.isFiltered && charts?.contrastMp?.length > 0 && (
-            <ChartCard
-              title="Subset vs Rest — Parliament (MP)"
-              subtitle="MP segment mix of this selection vs rest"
-            >
-              <ContrastBars data={charts.contrastMp} />
-            </ChartCard>
-          )}
-
-          <ChartCard title="Responses over time" subtitle="Daily volume" tall>
-            <Timeline data={charts?.timeline} />
-          </ChartCard>
-
-          <ChartCard
-            title="Top districts"
-            subtitle="By response count"
-            tall
-          >
-            <HBar
-              data={charts?.byDistrict}
-              lang={filterLang}
-            />
-          </ChartCard>
-
-          {charts?.partyByDistrict?.rows?.length > 0 && (
-            <ChartCard title="Party × District" subtitle="Stacked share" tall>
-              <StackedParty matrix={charts.partyByDistrict} />
-            </ChartCard>
-          )}
-
-          {charts?.byParty?.length > 0 && (
-            <PeriodTable
-              title="Party Preference (Legible Table)"
-              subtitle="Validated palette · measured distribution"
-              columns={[
-                { key: 'name', label: 'Party', partyDot: true },
-                { key: 'value', label: 'Count', align: 'right' },
-                { key: 'pct', label: 'Share %', align: 'right', format: (v) => `${v}%`, bar: true },
-              ]}
-              data={{
-                total: (() => {
-                  const byP = charts.byParty || []
-                  const totalN = byP.reduce((s, p) => s + (p.value || 0), 0)
-                  return byP.map((p) => ({
-                    name: p.name,
-                    value: p.value,
-                    pct: totalN > 0 ? Number(((p.value / totalN) * 100).toFixed(1)) : 0,
-                    color: PARTY_COLORS[p.name] || 'var(--party-others)',
-                  }))
-                })(),
-              }}
-              periods={['total']}
-            />
-          )}
-
-          {charts?.issues?.length > 0 && (
-            <ChartCard title="Local issues" subtitle="Most mentioned">
-              <RadialIssues data={charts.issues} lang={filterLang} />
-            </ChartCard>
-          )}
-
-          {(() => {
-            const fromCharts = charts?.questionCharts || []
-            const fromFilters = data?.dataFilters?.questions || []
-            const byId = new Map(fromCharts.map((q) => [q.id, q]))
-            const merged = []
-            const seen = new Set()
-            for (const fq of fromFilters) {
-              const cq = byId.get(fq.id) || {}
-              merged.push({
-                ...fq,
-                ...cq,
-                id: fq.id,
-                type: cq.type || fq.type,
-                category: cq.category || fq.category,
-                authored: cq.authored || fq.authored || fq.options || cq.options,
-                options: fq.options?.length ? fq.options : cq.options,
-                options_te: fq.options_te || cq.options_te,
-                counts: cq.counts || fq.counts,
-                meter: cq.meter || fq.meter,
-                label_en: cq.label_en || fq.label_en,
-                label_te: cq.label_te || fq.label_te,
-                label: cq.label || fq.label,
-              })
-              seen.add(fq.id)
-            }
-            for (const cq of fromCharts) {
-              if (!seen.has(cq.id)) merged.push(cq)
-            }
-            return (
-              <QuestionChartsBlock
-                questions={merged.filter((q) => q.visible !== false)}
-                order={(charts?.questionCategories || []).map((c) => c.name)}
-                lang={filterLang}
+          {filters.period === 'month' && (
+            <label className="field compact">
+              <span>Month</span>
+              <input
+                type="month"
+                value={filters.month}
+                onChange={(e) => setFilters((f) => ({ ...f, month: e.target.value }))}
               />
-            )
-          })()}
+            </label>
+          )}
 
-          <ChartCard title="Top constituencies" subtitle="By response count" tall>
-            <HBar data={charts?.byConstituency} lang={filterLang} />
-          </ChartCard>
-        </div>
-      )}
+          <label className="field compact" style={{ minWidth: 150 }}>
+            <span>{filterLang === 'te' ? 'జిల్లా' : 'District'}</span>
+            <select
+              value={filters.district}
+              onChange={(e) =>
+                setFilters((f) => ({ ...f, district: e.target.value, constituency: '' }))
+              }
+            >
+              <option value="">{filterLang === 'te' ? 'అన్ని జిల్లాలు' : 'All districts'}</option>
+              {(opts?.districts || []).map((d) => (
+                <option key={d} value={d}>
+                  {filterLang === 'te' ? data?.filterLabels?.districts?.[d] || d : d}
+                </option>
+              ))}
+            </select>
+          </label>
 
-        </div>
-        {reportReady ? (
-        <aside className="dash-split-filters" aria-label="Dashboard filters">
-      {reportReady && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
-            Filter language
-          </p>
-          <FilterLangToggle value={filterLang} onChange={setFilterLangPersist} />
-          <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
-            English and Telugu stay separate. Pick one language for filter names and choices.
-            Step by step: pick a <strong>survey</strong> → <strong>surveyor</strong> →{' '}
-            <strong>day / month</strong>.
-          </p>
-
-          {/* Step 1 · Survey name */}
-          <div
-            style={{
-              border: '1px solid #e2e8f0',
-              borderRadius: 10,
-              padding: 10,
-              marginBottom: 10,
-            }}
-          >
-            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
-              Source
-            </p>
-            <div className="chip-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-              {[
-                { id: '', label: 'All' },
-                { id: 'web', label: 'Web (incl. pending)' },
-                { id: 'field', label: 'Field (confirmed)' },
-              ].map((p) => (
+          <div className="field compact">
+            <span>Source</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {sourceOptions.map((p) => (
                 <button
                   key={p.id || 'all'}
                   type="button"
@@ -1663,212 +1011,470 @@ export default function DashboardScreen({ onToast }) {
                 </button>
               ))}
             </div>
-            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
-              1 · Survey name
-            </p>
-            <label className="field compact">
-              <span>By survey</span>
-              <select
-                value={filters.survey}
-                onChange={(e) => {
-                  const survey = e.target.value
-                  // Changing survey clears old per-question + surveyor filters
-                  const drop = Object.fromEntries(
-                    Object.entries(filters).filter(
-                      ([k]) => !k.startsWith('q_') && k !== 'user',
-                    ),
-                  )
-                  setFilters((f) => ({ ...drop, ...f, survey }))
-                }}
-              >
-                {surveys.length === 0 && <option value="">No surveys yet</option>}
-                {surveys.map((s) => (
-                  <option key={s.id} value={s.form_key}>
-                    {s.title}
-                    {s.form_key === 'legacy' ? ' · Excel import' : ''}
-                    {Number(s.web_submissions) > 0 ? ` · ${Number(s.web_submissions)} web` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
           </div>
 
-          {/* Step 2 · Surveyor — options load per survey */}
-          <div
-            style={{
-              border: '1px solid #e2e8f0',
-              borderRadius: 10,
-              padding: 10,
-              marginBottom: 10,
-            }}
-          >
-            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
-              2 · Surveyor name
-            </p>
-            <label className="field compact">
-              <span>By surveyor</span>
-              <select
-                value={filters.user}
-                onChange={(e) => setFilters((f) => ({ ...f, user: e.target.value }))}
-              >
-                <option value="">
-                  {data?.dataFilters?.by_user?.length ? 'All surveyors' : 'No surveyors yet'}
-                </option>
-                {(data?.dataFilters?.by_user || []).map((u) => (
-                  <option key={u.name} value={u.name}>
-                    {u.name} ({u.value})
-                  </option>
-                ))}
-              </select>
-            </label>
-            {!filters.survey && (
-              <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
-                Showing every survey (including Excel/legacy). Pick one survey to narrow.
-              </p>
-            )}
+          <div style={{ marginLeft: 'auto' }}>
+            <FilterLangToggle value={filterLang} onChange={setFilterLangPersist} />
           </div>
+        </div>
 
-          {/* Step 3 · Day / Month */}
-          <div
-            style={{
-              border: '1px solid #e2e8f0',
-              borderRadius: 10,
-              padding: 10,
-              marginBottom: 10,
-            }}
-          >
-            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>3 · Day / Month</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-              {[
-                { id: 'total', label: 'Total data' },
-                { id: 'today', label: 'Today' },
-                { id: 'day', label: 'Day' },
-                { id: 'month', label: 'Month' },
-              ].map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={`chip ${filters.period === p.id ? 'selected' : ''}`}
-                  onClick={() => setFilters((f) => ({ ...f, period: p.id }))}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            {filters.period === 'day' && (
-              <label className="field compact">
-                <span>Day</span>
-                <input
-                  type="date"
-                  value={filters.day}
-                  onChange={(e) => setFilters((f) => ({ ...f, day: e.target.value }))}
-                />
-              </label>
-            )}
-            {filters.period === 'month' && (
-              <label className="field compact">
-                <span>Month</span>
-                <input
-                  type="month"
-                  value={filters.month}
-                  onChange={(e) => setFilters((f) => ({ ...f, month: e.target.value }))}
-                />
-              </label>
-            )}
-          </div>
-
-          {/* Question filters — load per survey */}
-          <div
-            style={{
-              border: '1px solid #e2e8f0',
-              borderRadius: 10,
-              padding: 10,
-              marginBottom: 10,
-            }}
-          >
-            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>
-              {filterLang === 'te' ? 'ప్రశ్న ఫిల్టర్లు' : 'Question filters'}{' '}
-              <span className="muted" style={{ fontWeight: 500 }}>
-                ({filterLang === 'te' ? 'Telugu' : 'English'})
-              </span>
-            </p>
-            {(data?.dataFilters?.questions || []).filter((q) => q.visible !== false).map((q) => {
-              const countMap = new Map((q.counts || []).map((c) => [c.name, c]))
-              const optionNames = [
-                ...new Set([...createdOptions(q), ...countMap.keys()]),
-              ]
-              const title = questionFilterTitle(q, filterLang)
-              return (
-                <label className="field compact" key={q.id}>
-                  <span>{title}</span>
-                  <select
-                    value={filters[`q_${q.id}`] || ''}
-                    onChange={(e) =>
-                      setFilters((f) => ({ ...f, [`q_${q.id}`]: e.target.value }))
-                    }
-                  >
-                    <option value="">{filterLang === 'te' ? 'అన్నీ' : 'All'} {title}</option>
-                    {optionNames.map((name) => {
-                      const shownName = optionFilterText(name, q, countMap.get(name), filterLang)
-                      const n = countMap.get(name)?.value
-                      return (
-                      <option key={name} value={name}>
-                        {`${shownName} (${n != null ? n : 0})`}
+        <details open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
+          <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
+            {filterLang === 'te' ? 'ప్రశ్న ఫిల్టర్లు' : 'Question filters'}
+          </summary>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
+            {(data?.dataFilters?.questions || [])
+              .filter((q) => q.visible !== false)
+              .map((q) => {
+                const countMap = new Map((q.counts || []).map((c) => [c.name, c]))
+                const optionNames = [...new Set([...createdOptions(q), ...countMap.keys()])]
+                const title = questionFilterTitle(q, filterLang)
+                return (
+                  <label className="field compact" key={q.id} style={{ minWidth: 200 }}>
+                    <span>{title}</span>
+                    <select
+                      value={filters[`q_${q.id}`] || ''}
+                      onChange={(e) => setFilters((f) => ({ ...f, [`q_${q.id}`]: e.target.value }))}
+                    >
+                      <option value="">
+                        {filterLang === 'te' ? 'అన్నీ' : 'All'} {title}
                       </option>
-                      )
-                    })}
-                  </select>
-                </label>
-              )
-            })}
+                      {optionNames.map((name) => {
+                        const n = countMap.get(name)?.value
+                        return (
+                          <option key={name} value={name}>
+                            {`${optionFilterText(name, q, countMap.get(name), filterLang)} (${n ?? 0})`}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </label>
+                )
+              })}
             {!data?.dataFilters?.questions?.length && (
               <p className="muted" style={{ fontSize: 12, margin: 0 }}>
                 No question filters for this survey yet.
               </p>
             )}
           </div>
+        </details>
 
-          {activeCount > 0 && (
-            <button type="button" className="btn small" onClick={clearFilters}>
-              Clear filters
-            </button>
-          )}
-        </div>
-      )}
-      {/* Filters */}
-      <section className="filter-panel">
-        <div className="filter-head">
-          <h3>Filters {activeCount ? `(${activeCount})` : ''}</h3>
-          {activeCount > 0 && (
+        {activeFilterChips.length > 0 && (
+          <div className="pill-row">
+            {activeFilterChips.map((chip) => (
+              <button
+                key={chip.key}
+                type="button"
+                className="chip selected"
+                onClick={() => removeFilter(chip.key)}
+                title={`Remove ${chip.label} filter`}
+              >
+                {chip.label}: {chip.value} ✕
+              </button>
+            ))}
             <button type="button" className="link-btn" onClick={clearFilters}>
               Clear all
             </button>
-          )}
-        </div>
-
-        <FilterLangToggle value={filterLang} onChange={setFilterLangPersist} />
-        <label className="field compact">
-          <span>{filterLang === 'te' ? 'జిల్లా' : 'District'}</span>
-          <select
-            value={filters.district}
-            onChange={(e) => setFilters((f) => ({ ...f, district: e.target.value, constituency: '' }))}
-          >
-            <option value="">{filterLang === 'te' ? 'అన్ని జిల్లాలు' : 'All districts'}</option>
-            {(opts?.districts || []).map((d) => (
-              <option key={d} value={d}>
-                {filterLang === 'te' ? (data?.filterLabels?.districts?.[d] || d) : d}
-              </option>
-            ))}
-          </select>
-        </label>
+          </div>
+        )}
+        {filtersBroken && (
+          <div className="banner error" role="alert">
+            Filters did not apply. Redeploy Deno API if this persists.
+          </div>
+        )}
       </section>
-        </aside>
-        ) : null}
-      </div>
+
+      {/* Status */}
+      {data?.statusCounts && (
+        <div className="card" style={{ fontSize: 13 }}>
+          Waiting confirm <strong>{pendingCount}</strong>
+          {' · '}Confirmed <strong>{confirmedCount}</strong>
+          {' · '}In this report <strong>{data.totalAll ?? 0}</strong>
+          <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>
+            Field charts use confirmed records. Pending web fills show when the Web source is picked.
+          </span>
+        </div>
+      )}
+
+      {error && data && (
+        <div className="banner error" role="alert">
+          Refresh failed: {error}. Showing last loaded data.{' '}
+          <button type="button" className="link-btn" onClick={load}>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {error && !data && (
+        <div className="card" style={{ padding: 16, textAlign: 'center' }} role="alert">
+          <h3 style={{ margin: '0 0 8px' }}>Couldn't load the dashboard</h3>
+          <p className="muted" style={{ fontSize: 13, margin: '0 0 12px' }}>
+            {error}
+          </p>
+          <button type="button" className="btn small primary" onClick={load}>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!error && loading && !data && (
+        <div className="card" style={{ padding: 16 }}>
+          <p className="muted center" style={{ margin: 0 }}>
+            Checking confirmed data…
+          </p>
+        </div>
+      )}
+
+      {!loading && data && !reportReady && (
+        <div className="card" style={{ textAlign: 'center', padding: 24 }}>
+          <h3 style={{ margin: '0 0 8px' }}>No chart rows for this filter</h3>
+          <p className="muted" style={{ fontSize: 13, margin: '0 0 12px' }}>
+            {pendingCount > 0
+              ? 'Pending web fills exist for this survey. Pick the Web source above to chart them.'
+              : 'Clear a filter, or pick a different survey.'}
+          </p>
+          <p style={{ fontSize: 13, margin: 0 }}>
+            Waiting confirm: <strong>{pendingCount}</strong> · confirmed: <strong>{confirmedCount}</strong>
+          </p>
+        </div>
+      )}
+
+      {reportReady && (
+        <>
+          {/* KPI strip */}
+          <div className="kpi-strip">
+            <div className="kpi">
+              <strong>{data.filtered.toLocaleString()}</strong>
+              <span>Filtered</span>
+            </div>
+            <div className="kpi">
+              <strong>{data.totalAll.toLocaleString()}</strong>
+              <span>Confirmed</span>
+            </div>
+            <div className="kpi">
+              <strong>{charts?.byParty?.[0]?.name ? shown(charts.byParty[0], '', filterLang) : '—'}</strong>
+              <span>Lead party</span>
+            </div>
+            <div className="kpi">
+              <strong>{charts?.issues?.[0]?.name ? shown(charts.issues[0], '', filterLang) : '—'}</strong>
+              <span>Top issue</span>
+            </div>
+            <div className="kpi">
+              <strong>{data.collectTime?.median_label || '—'}</strong>
+              <span>Median collect time</span>
+            </div>
+          </div>
+
+          {data.insights && (
+            <div className="insight-row">
+              <div className="insight">{data.insights.topParty}</div>
+              <div className="insight">{data.insights.topIssue}</div>
+              <div className="insight">{data.insights.topDistrict}</div>
+              {data.insights.contrast && <div className="insight">{data.insights.contrast}</div>}
+            </div>
+          )}
+
+          {data.formula && (
+            <section className="card formula-card">
+              <h3>Super-set / Sub-set</h3>
+              <div className="stat-row" style={{ marginBottom: 10 }}>
+                <div className="stat">
+                  <strong>{data.formula.superset_n?.toLocaleString?.()}</strong>
+                  <span>Superset (all)</span>
+                </div>
+                <div className="stat">
+                  <strong>{data.formula.subset_n?.toLocaleString?.()}</strong>
+                  <span>Subset (filter)</span>
+                </div>
+                <div className="stat">
+                  <strong>{data.formula.rest_n?.toLocaleString?.()}</strong>
+                  <span>Rest</span>
+                </div>
+              </div>
+              <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                {data.isFiltered
+                  ? 'Δpp = Subset% − Rest%. Index = Subset% / Superset% (1.0 = same as full population).'
+                  : 'Pick a filter to compare Subset vs Rest. Δpp = Subset% − Rest%.'}
+              </p>
+            </section>
+          )}
+
+          <div className="chart-grid">
+            {charts?.byParty?.length > 0 && (
+              <PeriodTable
+                title="Party preference"
+                subtitle="Validated palette · measured distribution"
+                columns={[
+                  { key: 'name', label: 'Party', partyDot: true },
+                  { key: 'value', label: 'Count', align: 'right' },
+                  { key: 'pct', label: 'Share %', align: 'right', format: (v) => `${v}%`, bar: true },
+                ]}
+                data={{
+                  total: (() => {
+                    const byP = charts.byParty || []
+                    const totalN = byP.reduce((s, p) => s + (p.value || 0), 0)
+                    return byP.map((p) => ({
+                      name: p.name,
+                      value: p.value,
+                      pct: totalN > 0 ? Number(((p.value / totalN) * 100).toFixed(1)) : 0,
+                      color: PARTY_COLORS[p.name] || 'var(--party-others)',
+                    }))
+                  })(),
+                }}
+                periods={['total']}
+              />
+            )}
+
+            <div className="map-span">
+              <SurveyMap analytics={data} filters={filters} lang={filterLang} />
+            </div>
+
+            {data.isFiltered &&
+              [
+                ['Subset vs Rest — Party', charts?.contrastParty],
+                ['Subset vs Rest — Gender', charts?.contrastGender],
+                ['Subset vs Rest — Caste', charts?.contrastCaste],
+                ['Subset vs Rest — Assembly', charts?.contrastConstituency],
+                ['Subset vs Rest — District', charts?.contrastDistrict],
+                ['Subset vs Rest — Parliament (MP)', charts?.contrastMp],
+              ]
+                .filter(([, rows]) => rows?.length > 0)
+                .map(([title, rows]) => (
+                  <ChartCard key={title} title={title} subtitle="Δpp = Subset% − Rest%" tall>
+                    <ContrastBars lang={filterLang} data={rows} />
+                  </ChartCard>
+                ))}
+
+            <ChartCard title="Responses over time" subtitle="Daily volume" tall>
+              <Timeline data={charts?.timeline} />
+            </ChartCard>
+
+            <ChartCard title="Top districts" subtitle="Click a bar to filter" tall>
+              <HBar
+                data={charts?.byDistrict}
+                lang={filterLang}
+                onSelect={(_, name) => drillFilter('district', name)}
+              />
+            </ChartCard>
+
+            {charts?.partyByDistrict?.rows?.length > 0 && (
+              <ChartCard title="Party × District" subtitle="Stacked share" tall>
+                <StackedParty
+                  lang={filterLang}
+                  matrix={charts.partyByDistrict}
+                  onSelect={(_, name) => drillFilter('district', name)}
+                />
+              </ChartCard>
+            )}
+
+            {charts?.issues?.length > 0 && (
+              <ChartCard title="Local issues" subtitle="Most mentioned">
+                <RadialIssues data={charts.issues} lang={filterLang} />
+              </ChartCard>
+            )}
+
+            <QuestionChartsBlock
+              questions={questionsMerged}
+              order={(charts?.questionCategories || []).map((c) => c.name)}
+              lang={filterLang}
+              onPick={drillQuestion}
+            />
+
+            <ChartCard title="Top constituencies" subtitle="Click a bar to filter" tall>
+              <HBar
+                data={charts?.byConstituency}
+                lang={filterLang}
+                onSelect={(_, name) => drillFilter('constituency', name)}
+              />
+            </ChartCard>
+
+            {data.collectTime?.count > 0 && (
+              <ChartCard title="Collect time" subtitle="GPS → finish. Voice on or off does not change this clock.">
+                <div className="stat-row" style={{ marginBottom: 10 }}>
+                  <div className="stat">
+                    <strong>{data.collectTime.avg_label}</strong>
+                    <span>Average</span>
+                  </div>
+                  <div className="stat">
+                    <strong>{data.collectTime.median_label}</strong>
+                    <span>Median</span>
+                  </div>
+                  <div className="stat">
+                    <strong>{data.collectTime.min_sec != null ? `${Math.round(data.collectTime.min_sec)}s` : '—'}</strong>
+                    <span>Fastest</span>
+                  </div>
+                  <div className="stat">
+                    <strong>{data.collectTime.max_sec != null ? `${Math.round(data.collectTime.max_sec)}s` : '—'}</strong>
+                    <span>Slowest</span>
+                  </div>
+                </div>
+                <SimpleTable
+                  head={['Surveyor', 'Records', 'Avg time']}
+                  rows={(data.collectTime.by_surveyor || []).map((u) => ({
+                    cells: [u.name, u.n, u.avg_label],
+                  }))}
+                  empty="No timing rows."
+                />
+              </ChartCard>
+            )}
+          </div>
+
+          <section className="card" style={{ display: 'grid', gap: 10 }}>
+            <div className="admin-subtabs">
+              {[
+                ['day', 'By day'],
+                ['month', 'By month'],
+                ['surveyor', 'By surveyor'],
+                ['survey', 'By survey'],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={tableTab === id ? 'map-tab active' : 'map-tab'}
+                  onClick={() => setTableTab(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {tableTab === 'day' && (
+              <SimpleTable
+                head={['Date', 'Records', '']}
+                empty="No daily rows yet."
+                rows={(data.dataFilters.by_day || []).slice(0, 31).map((d) => ({
+                  cells: [<strong key="d">{d.name}</strong>, d.value],
+                  action: (
+                    <button
+                      type="button"
+                      className="btn small"
+                      onClick={() => setFilters((f) => ({ ...f, period: 'day', day: d.name }))}
+                    >
+                      Open
+                    </button>
+                  ),
+                }))}
+              />
+            )}
+
+            {tableTab === 'month' && (
+              <SimpleTable
+                head={['Month', 'Records', '']}
+                empty="No monthly rows yet."
+                rows={(data.dataFilters.by_month || []).slice(0, 24).map((m) => ({
+                  cells: [<strong key="m">{m.name}</strong>, m.value],
+                  action: (
+                    <button
+                      type="button"
+                      className="btn small"
+                      onClick={() => setFilters((f) => ({ ...f, period: 'month', month: m.name }))}
+                    >
+                      Open
+                    </button>
+                  ),
+                }))}
+              />
+            )}
+
+            {tableTab === 'surveyor' && (
+              <>
+                <SimpleTable
+                  head={['Surveyor', 'Day', 'Records', '']}
+                  empty="No surveyor daily rows yet."
+                  rows={(data.dataFilters.by_surveyor_day || []).slice(0, 60).map((r) => ({
+                    cells: [<strong key="s">{r.surveyor}</strong>, r.day, r.value],
+                    action: (
+                      <button
+                        type="button"
+                        className="btn small"
+                        onClick={() =>
+                          setFilters((f) => ({ ...f, user: r.surveyor, period: 'day', day: r.day }))
+                        }
+                      >
+                        Open
+                      </button>
+                    ),
+                  }))}
+                />
+                <SimpleTable
+                  head={['Surveyor', 'Month', 'Records', '']}
+                  empty="No surveyor monthly rows yet."
+                  rows={(data.dataFilters.by_surveyor_month || []).slice(0, 60).map((r) => ({
+                    cells: [<strong key="s">{r.surveyor}</strong>, r.month, r.value],
+                    action: (
+                      <button
+                        type="button"
+                        className="btn small"
+                        onClick={() =>
+                          setFilters((f) => ({ ...f, user: r.surveyor, period: 'month', month: r.month }))
+                        }
+                      >
+                        Open
+                      </button>
+                    ),
+                  }))}
+                />
+              </>
+            )}
+
+            {tableTab === 'survey' && (
+              <SimpleTable
+                head={['Survey', 'Records', 'Surveyors', 'Locations', '']}
+                empty="No survey rows yet."
+                rows={(data.dataFilters.by_survey || []).slice(0, 25).map((s) => ({
+                  cells: [
+                    <strong key="t">{s.title}</strong>,
+                    s.value,
+                    (s.surveyors || []).length ? s.surveyors.join(', ') : '—',
+                    `${(s.districts || []).length} district(s)${s.constituencies?.length ? ` · ${s.constituencies.length} AC(s)` : ''}`,
+                  ],
+                  action: (
+                    <button
+                      type="button"
+                      className="btn small"
+                      onClick={() => setFilters((f) => ({ ...f, survey: s.name }))}
+                    >
+                      Filter
+                    </button>
+                  ),
+                }))}
+              />
+            )}
+          </section>
+        </>
+      )}
 
       <p className="dash-foot muted">
-        Charts update live from Neon submissions. Click bars/slices to drill down.
+        Charts update live from Neon submissions. Click a bar or slice to filter the page. Click it again to clear.
       </p>
+    </div>
+  )
+}
+
+/** Plain table. Each row: `cells` plus an optional `action` cell. */
+function SimpleTable({ head, rows, empty }) {
+  if (!rows?.length) return <p className="muted">{empty}</p>
+  return (
+    <div className="data-table-wrap">
+      <table className="data-table">
+        <thead>
+          <tr>
+            {head.map((h, i) => (
+              <th key={`${h}-${i}`}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              {r.cells.map((c, j) => (
+                <td key={j}>{c}</td>
+              ))}
+              <td>{r.action}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

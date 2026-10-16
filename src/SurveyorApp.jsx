@@ -4,6 +4,7 @@ import {
   clearSession,
   getMyProgress,
   getMySubmissions,
+  getStoredUser,
   getSurveyForm,
   getToken,
   logout,
@@ -53,6 +54,9 @@ import {
 } from './prefs'
 import './App.css'
 
+const VERIFY_PENDING_MSG =
+  'Surveyor profile verification is pending. Client Admin must verify your profile before you can open Home or collect.'
+
 /** Catch ReferenceError / render crashes so a tab does not go fully blank. */
 class ScreenErrorBoundary extends Component {
   constructor(props) {
@@ -69,7 +73,7 @@ class ScreenErrorBoundary extends Component {
     if (this.state.hasError) {
       return (
         <div className="card" style={{ padding: 24, textAlign: 'center', margin: 16 }}>
-          <h3 style={{ marginTop: 0, color: '#ef4444' }}>
+          <h3 style={{ marginTop: 0, color: 'var(--danger)' }}>
             {this.props.title || 'Screen'} error
           </h3>
           <p className="muted" style={{ fontSize: 13 }}>
@@ -348,7 +352,7 @@ function HomeScreen({
     stacked.length > 1
       ? `${stacked.length} assigned surveys`
       : questionsMeta?.title || stacked[0]?.title || 'Field Survey Campaign'
-  const BAR_COLORS = ['#059669', '#2563eb', '#d97706', '#7c3aed', '#db2777', '#0d9488']
+  const BAR_COLORS = ['var(--ok)', '#2563eb', 'var(--warn)', '#7c3aed', '#db2777', '#0d9488']
   const weightOf = (s) => (s.target > 0 ? s.target : s.questions > 0 ? s.questions : 1)
   const weightSum = stacked.reduce((n, s) => n + weightOf(s), 0) || 1
 
@@ -503,6 +507,7 @@ function MyRecordsScreen({ user, onToast, questions }) {
   const [records, setRecords] = useState(null)
   const [openId, setOpenId] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [loadError, setLoadError] = useState(null)
   const recNums = recordNumberMap(records || [])
 
   const load = useCallback(async () => {
@@ -510,7 +515,10 @@ function MyRecordsScreen({ user, onToast, questions }) {
     try {
       const d = await getMySubmissions()
       setRecords(d.items || [])
+      setLoadError(null)
     } catch (e) {
+      setLoadError(e.message || 'Failed to load your activity')
+      setRecords((prev) => prev ?? [])
       onToast?.(e.message || 'Failed to load your activity', 'error')
     } finally {
       setRefreshing(false)
@@ -545,8 +553,13 @@ function MyRecordsScreen({ user, onToast, questions }) {
         Sent items for @{user?.username}, grouped by date. Tap one to view details.
       </p>
 
-      {records === null ? (
+      {records === null && !loadError ? (
         <p className="muted">Loading activity…</p>
+      ) : records.length === 0 && loadError ? (
+        <div className="card" style={{ marginTop: 10, padding: 14 }}>
+          <p className="muted" style={{ margin: '0 0 8px' }}>Couldn't load your activity. {loadError}</p>
+          <button type="button" className="btn small" onClick={load}>Retry</button>
+        </div>
       ) : records.length === 0 ? (
         <p className="muted">No activity yet.</p>
       ) : (
@@ -592,7 +605,7 @@ function MyRecordsScreen({ user, onToast, questions }) {
                   {open && (
                     <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #e2e8f0' }}>
                       <div style={{ fontSize: 13, marginTop: 8 }}>
-                        <strong style={{ display: 'block', marginBottom: 6, color: '#0f172a' }}>Activity details</strong>
+                        <strong style={{ display: 'block', marginBottom: 6, color: 'var(--ink)' }}>Activity details</strong>
                         <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6 }}>
                           <tbody>
                             <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -601,7 +614,7 @@ function MyRecordsScreen({ user, onToast, questions }) {
                             </tr>
                             <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
                               <td className="muted" style={{ padding: '6px 8px' }}>Status:</td>
-                              <td style={{ textAlign: 'right', fontWeight: 600, padding: '6px 8px', color: isConfirmed ? '#059669' : '#d97706' }}>
+                              <td style={{ textAlign: 'right', fontWeight: 600, padding: '6px 8px', color: isConfirmed ? 'var(--ok)' : 'var(--warn)' }}>
                                 {isConfirmed ? <><Icon name="check" size={11} /> Confirmed</> : r.status || 'pending'}
                               </td>
                             </tr>
@@ -1193,7 +1206,14 @@ function DraftsScreen({ user, onToast, onEdit, questions, onPushed, onStartNew }
   }
 
   const remove = async (id) => {
-    if (!confirm('Delete this from the phone? It will not be sent.')) return
+    const item = (items || []).find((x) => x.id === id)
+    if (item?.serverSubmissionId) {
+      // Part of this record already reached the server. Deleting it here would leave a
+      // half-sent record behind, so keep it until the sync finishes.
+      onToast?.('This record is already partly sent. It will finish syncing, so it can’t be deleted here.', 'error')
+      return
+    }
+    if (!window.confirm('Delete this from the phone? It will not be sent.')) return
     await deleteDraft(id).catch(() => {})
     await load()
   }
@@ -1233,7 +1253,7 @@ function DraftsScreen({ user, onToast, onEdit, questions, onPushed, onStartNew }
       {items && items.length === 0 && (
         <div className="card" style={{ marginTop: 12, padding: '20px 14px', textAlign: 'center' }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
-          <strong style={{ display: 'block', fontSize: 16, marginBottom: 4, color: '#0f172a' }}>All Records Synced!</strong>
+          <strong style={{ display: 'block', fontSize: 16, marginBottom: 4, color: 'var(--ink)' }}>All Records Synced!</strong>
           <p className="muted" style={{ margin: '0 0 16px', fontSize: 13 }}>
             All collected records are safely stored on the server. Tap <strong>Sent Activity</strong> above to view them.
           </p>
@@ -1256,7 +1276,7 @@ function DraftsScreen({ user, onToast, onEdit, questions, onPushed, onStartNew }
         const loc = qa.location_details || {}
         const open = openId === d.id
         const isDraft = d.kind === 'draft'
-        const isFailed = d.phase === 'failed'
+        const isFailed = d.phase === 'failed' || d.phase === 'needs_attention'
         const isSyncing = d.phase === 'syncing'
         const failedReq = packageFailedRequirements(d)
         const pendingNo = pendingNums.get(d.id) ?? 0
@@ -1403,7 +1423,7 @@ function SubmissionsScreen({ user, onToast, onEdit, questions, onStartNew, initi
       <div
         style={{
           display: 'flex',
-          background: '#f1f5f9',
+          background: 'var(--border-subtle)',
           border: '1px solid #e2e8f0',
           borderRadius: 12,
           padding: 4,
@@ -1423,7 +1443,7 @@ function SubmissionsScreen({ user, onToast, onEdit, questions, onStartNew, initi
             fontSize: 13,
             cursor: 'pointer',
             background: subTab === 'drafts' ? '#ffffff' : 'transparent',
-            color: subTab === 'drafts' ? '#0f172a' : '#64748b',
+            color: subTab === 'drafts' ? 'var(--ink)' : '#64748b',
             boxShadow: subTab === 'drafts' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
             display: 'flex',
             alignItems: 'center',
@@ -1435,7 +1455,7 @@ function SubmissionsScreen({ user, onToast, onEdit, questions, onStartNew, initi
           {draftsN > 0 && (
             <span
               style={{
-                background: '#ef4444',
+                background: 'var(--danger)',
                 color: '#fff',
                 fontSize: 11,
                 padding: '1px 6px',
@@ -1459,7 +1479,7 @@ function SubmissionsScreen({ user, onToast, onEdit, questions, onStartNew, initi
             fontSize: 13,
             cursor: 'pointer',
             background: subTab === 'records' ? '#ffffff' : 'transparent',
-            color: subTab === 'records' ? '#0f172a' : '#64748b',
+            color: subTab === 'records' ? 'var(--ink)' : '#64748b',
             boxShadow: subTab === 'records' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
           }}
         >
@@ -1499,7 +1519,8 @@ export default function SurveyorApp() {
   const [navMode, setNavModeState] = useState(getNavMode)
   const [fontScale, setFontScaleState] = useState(getFontScale)
   const [displayLang, setDisplayLangState] = useState(getDisplayLang)
-  const wasVerified = useRef(false)
+  // null = no user seen yet this session; avoids a toast on every launch.
+  const lastVerified = useRef(null)
 
   const changeNavMode = useCallback((mode) => {
     setNavModeState(persistNavMode(mode))
@@ -1513,6 +1534,11 @@ export default function SurveyorApp() {
     setDisplayLangState(persistDisplayLang(lang))
   }, [])
 
+  // Stable identity: the profile effect depends on this, so an inline arrow would loop.
+  const applyUserUpdate = useCallback((next) => {
+    setUser((prev) => mergeUserKeepMedia(prev, typeof next === 'function' ? next(prev) : next))
+  }, [])
+
   // Apply the display-size zoom to the whole app on mount and whenever it
   // changes, so the scale is live on every tab — not just Settings.
   useEffect(() => {
@@ -1523,9 +1549,7 @@ export default function SurveyorApp() {
   const lockForVerify = !!user && user.role === 'surveyor' && !verified
 
   const alertVerifyPending = useCallback(() => {
-    window.alert(
-      'Surveyor profile verification is pending. Client Admin must verify your profile before you can open Home or collect.',
-    )
+    window.alert(VERIFY_PENDING_MSG)
   }, [])
 
   const refreshDraftCount = useCallback(async () => {
@@ -1627,8 +1651,9 @@ export default function SurveyorApp() {
     notify('Logged out', 'ok')
   }, [notify])
 
+  const engineOn = !!user && authReady
   useEffect(() => {
-    if (!user || !authReady) return undefined
+    if (!engineOn) return undefined
     const stopNet = watchNetwork((s) => {
       setNetwork((prev) => {
         if (prev && prev.quality === s.quality && prev.online === s.online) return prev
@@ -1688,9 +1713,7 @@ export default function SurveyorApp() {
       window.removeEventListener('esurvey-queue-change', onQueue)
       stopSyncEngine()
     }
-  }, [user, authReady, notify])
-
-
+  }, [engineOn, notify])
 
   const loadAppData = useCallback(async () => {
     if (!getToken()) return
@@ -1768,10 +1791,16 @@ export default function SurveyorApp() {
           setUser(data.user)
           setAuthReady(true)
         }
-      } catch {
+      } catch (e) {
         if (!cancelled) {
-          await logout()
-          setUser(null)
+          if (e?.status === 401) {
+            await logout()
+            setUser(null)
+          } else {
+            // Offline or server down: keep the session and the last known profile.
+            const cached = getStoredUser()
+            setUser(cached?.role === 'surveyor' ? cached : null)
+          }
           setAuthReady(true)
         }
       } finally {
@@ -1802,8 +1831,11 @@ export default function SurveyorApp() {
   // re-check every 120 seconds and whenever the app returns to foreground. 401/disabled → force
   // logout (clears the stored session). Transient network errors keep the session so a
   // surveyor in the field is never logged out by a bad connection.
+  const userId = user?.id
+  const verifiedRef = useRef(false)
+  verifiedRef.current = !!user?.verified
   useEffect(() => {
-    if (!user || !authReady) return undefined
+    if (!userId || !authReady) return undefined
     let dead = false
     const check = async () => {
       try {
@@ -1815,7 +1847,7 @@ export default function SurveyorApp() {
           throw err
         }
         // Only re-set when something actually changed (avoids effect churn on identical objects)
-        if (!dead && res.user.verified !== user.verified) {
+        if (!dead && !!res.user.verified !== verifiedRef.current) {
           setUser((prev) => mergeUserKeepMedia(prev, res.user))
         }
       } catch (e) {
@@ -1849,7 +1881,7 @@ export default function SurveyorApp() {
       window.clearTimeout(visTimer)
       document.removeEventListener('visibilitychange', onVis)
     }
-  }, [user, authReady, notify])
+  }, [userId, authReady, notify])
 
   useEffect(() => {
     if (user && authReady) loadAppData()
@@ -1869,13 +1901,14 @@ export default function SurveyorApp() {
 
   useEffect(() => {
     if (!user) {
-      wasVerified.current = false
+      lastVerified.current = null
       return
     }
-    if (user.verified && !wasVerified.current) {
+    const now = !!user.verified
+    if (lastVerified.current === false && now) {
       notify('Profile verified ✓ Home is unlocked', 'ok')
     }
-    wasVerified.current = !!user.verified
+    lastVerified.current = now
   }, [user, notify])
 
   if (!authReady) {
@@ -1916,9 +1949,7 @@ export default function SurveyorApp() {
             setUser(u)
             if (u?.role === 'surveyor' && !u.verified) {
               setTab('profile')
-              window.alert(
-                'Surveyor profile verification is pending. Client Admin must verify your profile before you can open Home or collect.',
-              )
+              window.alert(VERIFY_PENDING_MSG)
             } else {
               setTab('home')
             }
@@ -1944,7 +1975,7 @@ export default function SurveyorApp() {
           </div>
           <div className="topbar-title-group">
             <span className="topbar-title">Smart Survey X</span>
-            <span className="topbar-badge">{tab.toUpperCase()}</span>
+            <span className="topbar-badge">{TABS.find((t) => t.id === tab)?.label || ''}</span>
           </div>
         </div>
         <div className="topbar-actions">
@@ -2028,6 +2059,10 @@ export default function SurveyorApp() {
                 try {
                   let pkg = await getPackage(d.id)
                   if (!pkg) pkg = d
+                  if (pkg.serverSubmissionId) {
+                    notify('This record is already partly sent. Retry it from the list instead of editing.', 'error')
+                    return
+                  }
                   if (pkg.phase && pkg.phase !== 'draft' && pkg.phase !== 'syncing') {
                     pkg = (await updatePackage(pkg.id, { phase: 'draft', lastError: null })) || pkg
                   }
@@ -2047,9 +2082,7 @@ export default function SurveyorApp() {
             <SurveyorProfileScreen
               user={user}
               onToast={notify}
-              onUserUpdated={(next) =>
-                setUser((prev) => mergeUserKeepMedia(prev, typeof next === 'function' ? next(prev) : next))
-              }
+              onUserUpdated={applyUserUpdate}
               navMode={navMode}
               onNavModeChange={changeNavMode}
               fontScale={fontScale}

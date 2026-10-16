@@ -33,7 +33,7 @@ export default function OptionPills({
   onChange,
   addLabel = '+ Add Option',
   addValue,
-  accent = '#059669',
+  accent = '#4f7dc6',
   fontSize = 12,
   disabled = false,
 }) {

@@ -164,9 +164,9 @@ export default function PublicWebFill({ formKey, fillToken }) {
         {err ? <p style={{ color: '#b91c1c' }}>{err}</p> : null}
 
         {done ? (
-          <div className="card success-card" style={{ textAlign: 'center', padding: '36px 20px', background: 'rgba(5, 150, 105, 0.08)', border: '1.5px solid #059669', borderRadius: 12 }}>
+          <div className="card success-card" style={{ textAlign: 'center', padding: '36px 20px', background: 'rgba(79, 125, 198, 0.08)', border: '1.5px solid #4f7dc6', borderRadius: 12 }}>
             <div style={{ fontSize: 44, marginBottom: 10 }}>🎉</div>
-            <h3 style={{ margin: '0 0 8px', color: '#059669', fontSize: 22 }}>
+            <h3 style={{ margin: '0 0 8px', color: '#4f7dc6', fontSize: 22 }}>
               {te ? `${heading} సర్వేలో పాల్గొన్నందుకు ధన్యవాదాలు!` : `Thank you for participating in ${heading}!`}
             </h3>
             <p className="success-sub" style={{ margin: 0, fontSize: 14 }}>
@@ -233,7 +233,7 @@ export default function PublicWebFill({ formKey, fillToken }) {
                         return (
                           <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                              <span style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: '#4f7dc6' }}>
                                 ☑️{' '}
                                 {te
                                   ? `గరిష్టంగా ${max} ఎంపికలను ఎంచుకోండి`

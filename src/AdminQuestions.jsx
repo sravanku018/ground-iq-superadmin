@@ -641,8 +641,8 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 10,
-                  background: isQuestionVisible(q) ? 'rgba(5, 150, 105, 0.12)' : 'rgba(15, 23, 42, 0.05)',
-                  border: isQuestionVisible(q) ? '1px solid #059669' : '1px solid #e2e8f0',
+                  background: isQuestionVisible(q) ? 'rgba(79, 125, 198, 0.12)' : 'rgba(15, 23, 42, 0.05)',
+                  border: isQuestionVisible(q) ? '1px solid #4f7dc6' : '1px solid #e2e8f0',
                   borderRadius: 8,
                   padding: '10px 14px',
                   cursor: isFrozen || !canEdit ? 'not-allowed' : 'pointer',
@@ -655,7 +655,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                   onChange={(e) => updateQ(i, { visible: e.target.checked })}
                   disabled={isFrozen || !canEdit}
                 />
-                <span style={{ fontSize: 13, fontWeight: 'bold', color: isQuestionVisible(q) ? '#059669' : '#64748b' }}>
+                <span style={{ fontSize: 13, fontWeight: 'bold', color: isQuestionVisible(q) ? '#4f7dc6' : '#64748b' }}>
                   {isQuestionVisible(q) ? '✓ Visible on dashboard' : 'Hidden on dashboard'}
                 </span>
               </label>
@@ -664,8 +664,8 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 10,
-                  background: q.required ? 'rgba(5, 150, 105, 0.12)' : 'rgba(15, 23, 42, 0.05)',
-                  border: q.required ? '1px solid #059669' : '1px solid #e2e8f0',
+                  background: q.required ? 'rgba(79, 125, 198, 0.12)' : 'rgba(15, 23, 42, 0.05)',
+                  border: q.required ? '1px solid #4f7dc6' : '1px solid #e2e8f0',
                   borderRadius: 8,
                   padding: '10px 14px',
                   cursor: isFrozen || !canEdit ? 'not-allowed' : 'pointer',
@@ -678,7 +678,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                   onChange={(e) => updateQ(i, { required: e.target.checked })}
                   disabled={isFrozen || !canEdit}
                 />
-                <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#059669' : '#e2e8f0' }}>
+                <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#4f7dc6' : '#e2e8f0' }}>
                   {q.required ? <><Icon name="check" size={12} /> Required (surveyor must answer)</> : 'Optional'}
                 </span>
               </label>
@@ -691,7 +691,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
               </p>
               {type === 'multi_select' || type === 'multi' ? (
                 <div>
-                  <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 'bold', color: '#059669' }}>
+                  <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 'bold', color: '#4f7dc6' }}>
                     ☑️ Select up to {multiMaxChoices(q)} answers (Multiple Choice):
                   </p>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -701,9 +701,9 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                         <span
                           key={opt}
                           style={{
-                            background: sampleSelected ? '#059669' : 'rgba(15,23,42,0.08)',
+                            background: sampleSelected ? '#4f7dc6' : 'rgba(15,23,42,0.08)',
                             color: sampleSelected ? '#ffffff' : '#0f172a',
-                            border: sampleSelected ? '2px solid #059669' : '1px solid #cbd5e1',
+                            border: sampleSelected ? '2px solid #4f7dc6' : '1px solid #cbd5e1',
                             padding: '6px 14px',
                             borderRadius: 16,
                             fontSize: 12,
@@ -722,7 +722,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                 </div>
               ) : type === 'yesno' ? (
                 <div style={{ display: 'flex', gap: 10 }}>
-                  <button type="button" className="btn" style={{ background: '#059669', color: '#fff', fontWeight: 'bold', padding: '8px 20px', border: 0 }}>
+                  <button type="button" className="btn" style={{ background: '#4f7dc6', color: '#fff', fontWeight: 'bold', padding: '8px 20px', border: 0 }}>
                     <Icon name="check" size={13} /> YES
                   </button>
                   <button type="button" className="btn" style={{ background: '#dc2626', color: '#fff', fontWeight: 'bold', padding: '8px 20px', border: 0 }}>
@@ -735,7 +735,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                     <input readOnly placeholder="Open text response…" style={{ marginBottom: 8, width: '100%' }} />
                   )}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ background: '#059669', color: '#fff', padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 'bold' }}>
+                    <span style={{ background: '#4f7dc6', color: '#fff', padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 'bold' }}>
                       😀 Positive
                     </span>
                     <span style={{ background: '#d97706', color: '#fff', padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 'bold' }}>
@@ -749,7 +749,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
               ) : type === 'abc' ? (
                 <div style={{ display: 'flex', gap: 8 }}>
                   {['A', 'B', 'C', 'D'].map((letter, idx) => (
-                    <span key={letter} style={{ background: ['#059669', '#38bdf8', '#a78bfa', '#f472b6'][idx], color: '#111', padding: '6px 16px', borderRadius: 16, fontWeight: 'bold' }}>
+                    <span key={letter} style={{ background: ['#4f7dc6', '#38bdf8', '#a78bfa', '#f472b6'][idx], color: '#111', padding: '6px 16px', borderRadius: 16, fontWeight: 'bold' }}>
                       {letter}
                     </span>
                   ))}
@@ -761,7 +761,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
                     min="1"
                     max="100"
                     readOnly
-                    style={{ width: '100%', accentColor: '#059669' }}
+                    style={{ width: '100%', accentColor: '#4f7dc6' }}
                   />
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
                     <span>1% · Negative</span>

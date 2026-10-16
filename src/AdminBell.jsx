@@ -183,7 +183,7 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
                       onClick={() => openItem(it)}
                       style={{ flex: 1, textAlign: 'left' }}
                     >
-                      <span className="admin-bell-kind" style={{ color: isVerified ? '#059669' : isWeb ? '#1d4ed8' : isDocs ? '#d97706' : undefined }}>
+                      <span className="admin-bell-kind" style={{ color: isVerified ? '#4f7dc6' : isWeb ? '#1d4ed8' : isDocs ? '#d97706' : undefined }}>
                         {isWeb ? 'Web survey' : isDocs ? (isVerified ? 'ID Verified ✓' : 'ID Pending ⏳') : 'Activity'}
                       </span>
                       <span className="admin-bell-title">{it.title}</span>

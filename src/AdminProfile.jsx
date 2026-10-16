@@ -156,7 +156,7 @@ export default function AdminProfileScreen({ user, onToast, onUserUpdated }) {
                   }}
                 >
                   <div>
-                    <strong style={{ fontSize: 13, color: p.active ? '#1a73e8' : '#475569', display: 'block' }}>
+                    <strong style={{ fontSize: 13, color: p.active ? '#4f7dc6' : '#475569', display: 'block' }}>
                       {p.label}
                     </strong>
                     <span style={{ fontSize: 11, color: '#64748b' }}>{p.desc}</span>

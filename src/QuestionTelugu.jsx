@@ -39,14 +39,14 @@ export default function QuestionTelugu({ q, onChange, onToast, disabled = false 
     <div
       style={{
         marginTop: 10,
-        background: 'rgba(5, 150, 105, 0.06)',
+        background: 'rgba(79, 125, 198, 0.06)',
         border: '1px solid #a7f3d0',
         borderRadius: 8,
         padding: 12,
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#047857' }}>తెలుగు · Telugu</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#223f75' }}>తెలుగు · Telugu</span>
         <button type="button" className="btn small" disabled={busy || disabled} onClick={() => void autoTranslate()}>
           {busy ? 'Translating…' : 'Auto-translate'}
         </button>

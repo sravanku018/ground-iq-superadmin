@@ -353,7 +353,7 @@ function HomeScreen({
     stacked.length > 1
       ? `${stacked.length} assigned surveys`
       : questionsMeta?.title || stacked[0]?.title || 'Field Survey Campaign'
-  const BAR_COLORS = ['var(--ok)', '#2563eb', 'var(--warn)', '#7c3aed', '#db2777', '#0d9488']
+  const BAR_COLORS = ['var(--ok)', '#2563eb', 'var(--warn)', '#7c3aed', '#db2777', '#3f6cbe']
   const weightOf = (s) => (s.target > 0 ? s.target : s.questions > 0 ? s.questions : 1)
   const weightSum = stacked.reduce((n, s) => n + weightOf(s), 0) || 1
 
@@ -842,7 +842,7 @@ function SurveyorProfileScreen({
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#1a73e8',
+                color: '#4f7dc6',
                 fontSize: 12,
                 fontWeight: 600,
                 cursor: 'pointer',
@@ -1000,8 +1000,8 @@ function SurveyorProfileScreen({
                   textAlign: 'left',
                   padding: '10px 12px',
                   borderRadius: 10,
-                  border: selected ? '2px solid #059669' : '1px solid #e2e8f0',
-                  background: selected ? 'rgba(0,229,153,0.08)' : '#fff',
+                  border: selected ? '2px solid #4f7dc6' : '1px solid #e2e8f0',
+                  background: selected ? 'rgba(143,179,230,0.08)' : '#fff',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -1013,7 +1013,7 @@ function SurveyorProfileScreen({
                     width: 16,
                     height: 16,
                     borderRadius: '50%',
-                    border: selected ? '5px solid #059669' : '2px solid #cbd5e1',
+                    border: selected ? '5px solid #4f7dc6' : '2px solid #cbd5e1',
                     boxSizing: 'border-box',
                   }}
                 />

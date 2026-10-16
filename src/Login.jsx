@@ -132,7 +132,7 @@ export default function LoginScreen({ onSuccess, onToast }) {
             <a
               href="/admin"
               className="btn secondary small"
-              style={{ display: 'inline-block', textDecoration: 'none', fontWeight: 600, padding: '8px 16px', background: 'rgba(255,255,255,0.08)', color: '#059669', border: '1px solid rgba(5,150,105,0.4)', borderRadius: 8 }}
+              style={{ display: 'inline-block', textDecoration: 'none', fontWeight: 600, padding: '8px 16px', background: 'rgba(255,255,255,0.08)', color: '#4f7dc6', border: '1px solid rgba(79,125,198,0.4)', borderRadius: 8 }}
             >
               🛡️ Sign in to Client Admin Portal →
             </a>

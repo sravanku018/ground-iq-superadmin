@@ -140,7 +140,7 @@ function QuestionEditor({
           : (q.optionsText || '').split(',').map((s) => s.trim()).filter(Boolean)
 
         return (
-          <div key={q._uid || `qi-${i}`} className="card" style={{ marginBottom: 14, borderLeft: '4px solid #059669' }}>
+          <div key={q._uid || `qi-${i}`} className="card" style={{ marginBottom: 14, borderLeft: '4px solid #4f7dc6' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span className="pill ok" style={{ fontSize: 11, fontWeight: 'bold' }}>
                 Q{i + 1} · {type.toUpperCase().replace('_', ' ')}
@@ -233,8 +233,8 @@ function QuestionEditor({
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 10,
-                  background: isQuestionVisible(q) ? 'rgba(5, 150, 105, 0.12)' : 'rgba(15, 23, 42, 0.05)',
-                  border: isQuestionVisible(q) ? '1px solid #059669' : '1px solid #e2e8f0',
+                  background: isQuestionVisible(q) ? 'rgba(79, 125, 198, 0.12)' : 'rgba(15, 23, 42, 0.05)',
+                  border: isQuestionVisible(q) ? '1px solid #4f7dc6' : '1px solid #e2e8f0',
                   borderRadius: 8,
                   padding: '10px 14px',
                   cursor: 'pointer',
@@ -246,7 +246,7 @@ function QuestionEditor({
                   checked={isQuestionVisible(q)}
                   onChange={(e) => updateQ(i, { visible: e.target.checked })}
                 />
-                <span style={{ fontSize: 13, fontWeight: 'bold', color: isQuestionVisible(q) ? '#059669' : '#64748b' }}>
+                <span style={{ fontSize: 13, fontWeight: 'bold', color: isQuestionVisible(q) ? '#4f7dc6' : '#64748b' }}>
                   {isQuestionVisible(q) ? '✓ Visible on dashboard' : 'Hidden on dashboard'}
                 </span>
               </label>
@@ -255,8 +255,8 @@ function QuestionEditor({
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 10,
-                  background: q.required ? 'rgba(5, 150, 105, 0.12)' : 'rgba(15, 23, 42, 0.05)',
-                  border: q.required ? '1px solid #059669' : '1px solid #e2e8f0',
+                  background: q.required ? 'rgba(79, 125, 198, 0.12)' : 'rgba(15, 23, 42, 0.05)',
+                  border: q.required ? '1px solid #4f7dc6' : '1px solid #e2e8f0',
                   borderRadius: 8,
                   padding: '10px 14px',
                   cursor: 'pointer',
@@ -268,7 +268,7 @@ function QuestionEditor({
                   checked={!!q.required}
                   onChange={(e) => updateQ(i, { required: e.target.checked })}
                 />
-                <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#059669' : '#e2e8f0' }}>
+                <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#4f7dc6' : '#e2e8f0' }}>
                   {q.required ? '✓ Required (surveyor must answer)' : 'Optional'}
                 </span>
               </label>
@@ -281,7 +281,7 @@ function QuestionEditor({
               </p>
               {type === 'yesno' ? (
                 <div style={{ display: 'flex', gap: 10 }}>
-                  <button type="button" className="btn" style={{ background: '#059669', color: '#fff', fontWeight: 'bold', padding: '8px 20px', border: 0 }}>
+                  <button type="button" className="btn" style={{ background: '#4f7dc6', color: '#fff', fontWeight: 'bold', padding: '8px 20px', border: 0 }}>
                     ✓ YES
                   </button>
                   <button type="button" className="btn" style={{ background: '#dc2626', color: '#fff', fontWeight: 'bold', padding: '8px 20px', border: 0 }}>
@@ -294,7 +294,7 @@ function QuestionEditor({
                     <input readOnly placeholder="Open text response…" style={{ marginBottom: 8, width: '100%' }} />
                   )}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ background: '#059669', color: '#fff', padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 'bold' }}>
+                    <span style={{ background: '#4f7dc6', color: '#fff', padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 'bold' }}>
                       😀 Positive
                     </span>
                     <span style={{ background: '#d97706', color: '#fff', padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 'bold' }}>
@@ -308,7 +308,7 @@ function QuestionEditor({
               ) : type === 'abc' ? (
                 <div style={{ display: 'flex', gap: 8 }}>
                   {['A', 'B', 'C', 'D'].map((letter, idx) => (
-                    <span key={letter} style={{ background: ['#059669', '#38bdf8', '#a78bfa', '#f472b6'][idx], color: '#111', padding: '6px 16px', borderRadius: 16, fontWeight: 'bold' }}>
+                    <span key={letter} style={{ background: ['#4f7dc6', '#38bdf8', '#a78bfa', '#f472b6'][idx], color: '#111', padding: '6px 16px', borderRadius: 16, fontWeight: 'bold' }}>
                       {letter}
                     </span>
                   ))}
@@ -320,7 +320,7 @@ function QuestionEditor({
                     min="1"
                     max="100"
                     readOnly
-                    style={{ width: '100%', accentColor: '#059669' }}
+                    style={{ width: '100%', accentColor: '#4f7dc6' }}
                   />
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
                     <span>1% · Negative</span>
@@ -357,8 +357,8 @@ function QuestionEditor({
             className="pill"
             title="No. of questions used by Client Admin / Total questions allotted"
             style={{
-              background: totalQuestionsUsed >= maxQs ? '#fef2f2' : 'rgba(0, 229, 153, 0.12)',
-              color: totalQuestionsUsed >= maxQs ? '#dc2626' : '#047857',
+              background: totalQuestionsUsed >= maxQs ? '#fef2f2' : 'rgba(143, 179, 230, 0.12)',
+              color: totalQuestionsUsed >= maxQs ? '#dc2626' : '#223f75',
               fontWeight: 700,
               fontSize: 12,
             }}
@@ -833,7 +833,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
                       alignItems: 'center',
                       gap: 10,
                       background: checkedAdmins[String(u.id)] ? '#c8f5df' : 'rgba(15,23,42,0.05)',
-                      border: checkedAdmins[String(u.id)] ? '1px solid #059669' : '1px solid #e2e8f0',
+                      border: checkedAdmins[String(u.id)] ? '1px solid #4f7dc6' : '1px solid #e2e8f0',
                       borderRadius: 8,
                       padding: '9px 12px',
                       cursor: 'pointer',
@@ -984,9 +984,9 @@ export default function AdminSurveysScreen({ onToast, user }) {
           </div>
         )}
 
-        <div className="card" style={{ marginBottom: 12, borderLeft: '4px solid #059669' }}>
+        <div className="card" style={{ marginBottom: 12, borderLeft: '4px solid #4f7dc6' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-            <span style={{ fontSize: 12, color: '#059669', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <span style={{ fontSize: 12, color: '#4f7dc6', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               <Icon name="lock" size={11} /> Project Name (Locked / Non-Editable)
             </span>
             <span style={{ fontSize: 11, color: '#64748b' }}>form_key: {detail.form_key}</span>
@@ -1279,7 +1279,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
       style={{
         marginBottom: 10,
         padding: 14,
-        borderLeft: `4px solid ${sharedProject ? '#7c3aed' : '#059669'}`,
+        borderLeft: `4px solid ${sharedProject ? '#7c3aed' : '#4f7dc6'}`,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1327,8 +1327,8 @@ export default function AdminSurveysScreen({ onToast, user }) {
               <span
                 className="pill"
                 style={{
-                  background: 'rgba(0, 229, 153, 0.12)',
-                  color: '#047857',
+                  background: 'rgba(143, 179, 230, 0.12)',
+                  color: '#223f75',
                   fontWeight: 700,
                   fontSize: 11,
                 }}
@@ -1379,7 +1379,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
                 Web quota: <strong>{Number(s.web_link?.max_uses) > 0 ? Number(s.web_link.max_uses).toLocaleString() : 'No link'}</strong>
               </span>
               <span>·</span>
-              <span style={{ color: Number(s.web_submissions) > 0 ? '#059669' : '#64748b' }}>
+              <span style={{ color: Number(s.web_submissions) > 0 ? '#4f7dc6' : '#64748b' }}>
                 Web used: <strong>{Number(s.web_submissions || 0).toLocaleString()}</strong>
               </span>
               <span>·</span>
@@ -1540,7 +1540,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
                         </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <span style={{ color: Number(ca.web_used) > 0 ? '#059669' : '#64748b', fontWeight: 600 }}>
+                        <span style={{ color: Number(ca.web_used) > 0 ? '#4f7dc6' : '#64748b', fontWeight: 600 }}>
                           {Number(ca.web_used).toLocaleString()}
                         </span>
                       </td>
@@ -1590,7 +1590,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
                     <td style={{ textAlign: 'right', color: '#1d4ed8' }}>
                       {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.web_allocated) || 0), 0).toLocaleString()}
                     </td>
-                    <td style={{ textAlign: 'right', color: '#059669' }}>
+                    <td style={{ textAlign: 'right', color: '#4f7dc6' }}>
                       {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.web_used) || 0), 0).toLocaleString()}
                     </td>
                     <td style={{ textAlign: 'right' }}>

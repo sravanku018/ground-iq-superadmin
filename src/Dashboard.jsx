@@ -34,16 +34,16 @@ const PARTY_COLORS = {
 }
 
 const PALETTE = [
-  '#059669',
+  '#4f7dc6',
   '#38bdf8',
   '#a78bfa',
   '#f472b6',
   '#fbbf24',
-  '#34d399',
+  '#2dd4bf',
   '#fb7185',
   '#60a5fa',
   '#c084fc',
-  '#2dd4bf',
+  '#fb923c',
   '#f59e0b',
   '#e879f9',
 ]
@@ -492,8 +492,8 @@ const Timeline = memo(function Timeline({ data }) {
       <AreaChart data={data} margin={{ left: 0, right: 8, top: 10, bottom: 0 }}>
         <defs>
           <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#059669" stopOpacity={0.45} />
-            <stop offset="100%" stopColor="#059669" stopOpacity={0.02} />
+            <stop offset="0%" stopColor="#4f7dc6" stopOpacity={0.45} />
+            <stop offset="100%" stopColor="#4f7dc6" stopOpacity={0.02} />
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -509,7 +509,7 @@ const Timeline = memo(function Timeline({ data }) {
         <Area
           type="monotone"
           dataKey="count"
-          stroke="#059669"
+          stroke="#4f7dc6"
           fill="url(#volGrad)"
           strokeWidth={2}
           name="Responses"

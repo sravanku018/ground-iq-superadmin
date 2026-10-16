@@ -208,12 +208,12 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
         <div style={{ fontSize: 11, fontWeight: 700, color: full ? '#b91c1c' : '#15803d', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
           {title || 'Web survey'}
         </div>
-        <span style={{ fontSize: 11, fontWeight: 700, color: full ? '#dc2626' : '#059669' }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: full ? '#dc2626' : '#4f7dc6' }}>
           {full ? 'Target reached' : `${left.toLocaleString()} remaining`}
         </span>
       </div>
       <div style={{ fontSize: compact ? 16 : 20, fontWeight: 800, color: '#0f172a', marginTop: 4 }}>
-        <span style={{ color: full ? '#dc2626' : '#059669' }}>{totalUsed.toLocaleString()}</span>
+        <span style={{ color: full ? '#dc2626' : '#4f7dc6' }}>{totalUsed.toLocaleString()}</span>
         <span style={{ fontWeight: 600, color: '#64748b', fontSize: compact ? 13 : 15 }}>
           {' '}of {cap.toLocaleString()} responses used
         </span>
@@ -224,7 +224,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
           style={{
             width: `${pct}%`,
             height: '100%',
-            background: full ? '#dc2626' : pct >= 80 ? '#f59e0b' : '#059669',
+            background: full ? '#dc2626' : pct >= 80 ? '#f59e0b' : '#4f7dc6',
           }}
         />
       </div>

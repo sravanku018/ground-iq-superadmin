@@ -21,10 +21,10 @@
   --ink-faint:    #94a3b8;
 
   /* ── Accent (portal blue · shared with portal.css) ── */
-  --accent:       #1a73e8;
-  --accent-bg:    #eff6ff;
-  --accent-border:#bfdbfe;
-  --accent-light: #dbeafe;
+  --accent:       #4f7dc6;
+  --accent-bg:    #eef3fb;
+  --accent-border:#c9d8ee;
+  --accent-light: #dbe7f7;
 
   /* ── Party palette (validated on #ffffff) ── */
   --party-congress:  #16a34a;

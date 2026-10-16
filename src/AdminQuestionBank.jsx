@@ -310,15 +310,15 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 10,
-                    background: isQuestionVisible(q) ? 'rgba(5, 150, 105, 0.12)' : 'rgba(15, 23, 42, 0.05)',
-                    border: isQuestionVisible(q) ? '1px solid #059669' : '1px solid #e2e8f0',
+                    background: isQuestionVisible(q) ? 'rgba(79, 125, 198, 0.12)' : 'rgba(15, 23, 42, 0.05)',
+                    border: isQuestionVisible(q) ? '1px solid #4f7dc6' : '1px solid #e2e8f0',
                     borderRadius: 8,
                     padding: '10px 14px',
                     cursor: 'pointer',
                   }}
                 >
                   <input type="checkbox" checked={isQuestionVisible(q)} onChange={(e) => updateQ(i, { visible: e.target.checked })} />
-                  <span style={{ fontSize: 13, fontWeight: 'bold', color: isQuestionVisible(q) ? '#059669' : '#64748b' }}>
+                  <span style={{ fontSize: 13, fontWeight: 'bold', color: isQuestionVisible(q) ? '#4f7dc6' : '#64748b' }}>
                     {isQuestionVisible(q) ? '✓ Visible on dashboard' : 'Hidden on dashboard'}
                   </span>
                 </label>
@@ -327,15 +327,15 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 10,
-                    background: q.required ? 'rgba(5, 150, 105, 0.12)' : 'rgba(15, 23, 42, 0.05)',
-                    border: q.required ? '1px solid #059669' : '1px solid #e2e8f0',
+                    background: q.required ? 'rgba(79, 125, 198, 0.12)' : 'rgba(15, 23, 42, 0.05)',
+                    border: q.required ? '1px solid #4f7dc6' : '1px solid #e2e8f0',
                     borderRadius: 8,
                     padding: '10px 14px',
                     cursor: 'pointer',
                   }}
                 >
                   <input type="checkbox" checked={!!q.required} onChange={(e) => updateQ(i, { required: e.target.checked })} />
-                  <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#059669' : '#64748b' }}>
+                  <span style={{ fontSize: 13, fontWeight: 'bold', color: q.required ? '#4f7dc6' : '#64748b' }}>
                     {q.required ? '✓ Required' : 'Optional'}
                   </span>
                 </label>

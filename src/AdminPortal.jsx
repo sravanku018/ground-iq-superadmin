@@ -395,7 +395,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                           </span>
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          <span style={{ color: Number(ca.web_used) > 0 ? '#059669' : '#64748b', fontWeight: 600 }}>
+                          <span style={{ color: Number(ca.web_used) > 0 ? '#4f7dc6' : '#64748b', fontWeight: 600 }}>
                             {Number(ca.web_used).toLocaleString()}
                           </span>
                         </td>
@@ -494,7 +494,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                                     </td>
                                     <td style={{ textAlign: 'right' }}>
                                       {sv.web_remaining != null ? (
-                                        <span style={{ color: Number(sv.web_remaining) === 0 ? '#dc2626' : '#059669', fontWeight: 600 }}>
+                                        <span style={{ color: Number(sv.web_remaining) === 0 ? '#dc2626' : '#4f7dc6', fontWeight: 600 }}>
                                           {Number(sv.web_remaining).toLocaleString()} left
                                         </span>
                                       ) : (
@@ -538,7 +538,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                   <td style={{ textAlign: 'right', color: '#1d4ed8' }}>
                     {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.web_allocated) || 0), 0).toLocaleString()}
                   </td>
-                  <td style={{ textAlign: 'right', color: '#059669' }}>
+                  <td style={{ textAlign: 'right', color: '#4f7dc6' }}>
                     {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.web_used) || 0), 0).toLocaleString()}
                   </td>
                   <td style={{ textAlign: 'right' }}>
@@ -653,13 +653,13 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                         )}
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <span style={{ color: webTotal > 0 ? '#059669' : '#64748b', fontWeight: 600 }}>{webTotal.toLocaleString()}</span>
+                        <span style={{ color: webTotal > 0 ? '#4f7dc6' : '#64748b', fontWeight: 600 }}>{webTotal.toLocaleString()}</span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         {closed ? (
                           <span style={{ color: '#dc2626', fontWeight: 700, fontSize: 12 }}>Disabled · 0 left</span>
                         ) : cap > 0 ? (
-                          <span style={{ color: '#059669', fontWeight: 600, fontSize: 12 }}>
+                          <span style={{ color: '#4f7dc6', fontWeight: 600, fontSize: 12 }}>
                             {left.toLocaleString()} left
                           </span>
                         ) : (
@@ -700,10 +700,10 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                       <td style={{ textAlign: 'right', color: '#1d4ed8' }}>
                         {totWebAlloc > 0 ? totWebAlloc.toLocaleString() : '0'}
                       </td>
-                      <td style={{ textAlign: 'right', color: '#059669' }}>
+                      <td style={{ textAlign: 'right', color: '#4f7dc6' }}>
                         {totWebUsed.toLocaleString()}
                       </td>
-                      <td style={{ textAlign: 'right', color: '#059669' }}>
+                      <td style={{ textAlign: 'right', color: '#4f7dc6' }}>
                         {totWebLeft != null ? `${totWebLeft.toLocaleString()} left` : '—'}
                       </td>
                       <td style={{ textAlign: 'right' }}>
@@ -844,7 +844,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                 style={{
                   fontSize: 12,
                   fontWeight: 600,
-                  color: '#1a73e8',
+                  color: '#4f7dc6',
                   background: '#eff6ff',
                   border: '1px solid #bfdbfe',
                   borderRadius: 6,
@@ -948,7 +948,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                       style={{
                         border: '1px solid #bfdbfe',
                         background: status === 'pending' ? '#eff6ff' : '#ffffff',
-                        color: '#1a73e8',
+                        color: '#4f7dc6',
                         fontSize: 12,
                         fontWeight: 600,
                         borderRadius: 6,
@@ -1572,7 +1572,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
               fontWeight: 'bold',
               background: '#e2e8f0',
               border: '1px solid #cbd5e1',
-              color: '#059669',
+              color: '#4f7dc6',
               padding: '8px 12px',
               borderRadius: 8,
               cursor: 'pointer',

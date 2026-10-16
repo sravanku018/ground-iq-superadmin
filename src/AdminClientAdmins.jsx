@@ -456,7 +456,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
           grant powers in the profile below; only Super Admin can verify a Client Admin.
         </p>
         {created && (
-          <div className="card" id="created-credentials" style={{ marginTop: 12, borderColor: '#10b981' }}>
+          <div className="card" id="created-credentials" style={{ marginTop: 12, borderColor: '#6b93d4' }}>
             <h4 style={{ margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="checkCircle" size={14} /> {created.name} created</h4>
             <p style={{ margin: 0, fontSize: 13 }}>
               Portal login → username: <strong>{created.username}</strong> · password:{' '}
@@ -477,7 +477,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
         ) : (
           <ul className="user-list">
             {admins.map((u) => (
-              <li key={u.id} style={{ border: Number(profileId) === Number(u.id) ? '1px solid #059669' : undefined, borderRadius: 10 }}>
+              <li key={u.id} style={{ border: Number(profileId) === Number(u.id) ? '1px solid #4f7dc6' : undefined, borderRadius: 10 }}>
                 <div>
                   <strong>
                     {u.name || u.username}{' '}
@@ -539,7 +539,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                     style={{
                       marginTop: 12,
                       width: '100%',
-                      borderLeft: '4px solid #059669',
+                      borderLeft: '4px solid #4f7dc6',
                       background: '#fbfdfe',
                     }}
                   >
@@ -550,7 +550,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                           width: 44,
                           height: 44,
                           borderRadius: '50%',
-                          background: 'linear-gradient(135deg,#059669,#0d9488)',
+                          background: 'linear-gradient(135deg,#4f7dc6,#3f6cbe)',
                           color: '#fff',
                           fontWeight: 800,
                           fontSize: 17,
@@ -660,10 +660,10 @@ export default function AdminClientAdminsScreen({ onToast }) {
                               padding: '10px 12px',
                               borderRadius: 10,
                               border: checked
-                                ? '1px solid rgba(5, 150, 105, 0.45)'
+                                ? '1px solid rgba(79, 125, 198, 0.45)'
                                 : '1px solid var(--border, #e2e8f0)',
                               background: checked
-                                ? 'rgba(5, 150, 105, 0.08)'
+                                ? 'rgba(79, 125, 198, 0.08)'
                                 : 'var(--bg, #fff)',
                               cursor: saving ? 'not-allowed' : 'pointer',
                               userSelect: 'none',
@@ -679,7 +679,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                               style={{
                                 width: 18,
                                 height: 18,
-                                accentColor: '#059669',
+                                accentColor: '#4f7dc6',
                                 flexShrink: 0,
                                 cursor: 'pointer',
                               }}
@@ -687,7 +687,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                             <span style={{ lineHeight: 1.3 }}>
                               {p.icon} {p.label}
                               {checked ? (
-                                <span style={{ color: '#059669', marginLeft: 4 }}><Icon name="check" size={12} /></span>
+                                <span style={{ color: '#4f7dc6', marginLeft: 4 }}><Icon name="check" size={12} /></span>
                               ) : null}
                             </span>
                           </label>
@@ -700,7 +700,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>
                           Questions allotted (0 = unlimited) ·{' '}
-                          <strong style={{ color: '#059669' }}>{u.question_count ?? 0}</strong> created /{' '}
+                          <strong style={{ color: '#4f7dc6' }}>{u.question_count ?? 0}</strong> created /{' '}
                           allotted {u.max_questions_per_survey > 0 ? u.max_questions_per_survey : '∞'}
                         </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -726,7 +726,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>
                           Max surveys they can create (0 = unlimited) ·{' '}
-                          <strong style={{ color: '#059669' }}>{u.survey_count ?? 0}</strong> created /{' '}
+                          <strong style={{ color: '#4f7dc6' }}>{u.survey_count ?? 0}</strong> created /{' '}
                           {u.max_surveys > 0 ? u.max_surveys : '∞'} allocated
                         </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -752,7 +752,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>
                           Max surveyors (0 = unlimited) ·{' '}
-                          <strong style={{ color: '#059669' }}>{u.surveyor_count ?? 0}</strong> created /{' '}
+                          <strong style={{ color: '#4f7dc6' }}>{u.surveyor_count ?? 0}</strong> created /{' '}
                           {u.max_surveyors > 0 ? u.max_surveyors : '∞'} allocated
                         </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -778,7 +778,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>
                           Max field records (0 = unlimited) ·{' '}
-                          <strong style={{ color: '#059669' }}>
+                          <strong style={{ color: '#4f7dc6' }}>
                             {u.surveyor_record_count ?? u.record_count ?? 0}
                           </strong>{' '}
                           of {u.max_records > 0 ? `${Number(u.max_records).toLocaleString()} used` : '∞ allocated'}

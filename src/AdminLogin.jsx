@@ -152,7 +152,7 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
         <div style={{ marginTop: 20, textAlign: 'center', borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
           {superAdminOnly ? (
             <p style={{ fontSize: 13, margin: '0 0 10px' }}>
-              <a href="/admin" style={{ color: '#1a73e8', fontWeight: 600, textDecoration: 'none' }}>
+              <a href="/admin" style={{ color: '#4f7dc6', fontWeight: 600, textDecoration: 'none' }}>
                 ← Switch to Client Admin portal
               </a>
             </p>

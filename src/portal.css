@@ -118,7 +118,7 @@
   width: 34px;
   height: 34px;
   border-radius: 8px;
-  background: #1a73e8;
+  background: #4f7dc6;
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -182,7 +182,7 @@
   margin-left: auto;
   font-size: 10.5px;
   font-weight: 700;
-  color: #1a73e8;
+  color: #4f7dc6;
   background: #eff6ff;
   padding: 2px 8px;
   border-radius: 4px;
@@ -210,7 +210,7 @@
 
 .side-sub.active {
   background: #eff6ff;
-  color: #1a73e8;
+  color: #4f7dc6;
   font-weight: 700;
 }
 
@@ -238,7 +238,7 @@
 .portal-link {
   font-size: 12.5px;
   font-weight: 500;
-  color: #1a73e8;
+  color: #4f7dc6;
   text-decoration: none;
 }
 
@@ -442,14 +442,14 @@
 
 .portal-subtab:hover {
   background: #f8fafd;
-  border-color: #1a73e8;
-  color: #1a73e8;
+  border-color: #4f7dc6;
+  color: #4f7dc6;
 }
 
 .portal-subtab.active {
-  background: #1a73e8;
+  background: #4f7dc6;
   color: #ffffff;
-  border-color: #1a73e8;
+  border-color: #4f7dc6;
   font-weight: 600;
   box-shadow: 0 1px 3px rgba(26, 115, 232, 0.35);
 }
@@ -501,7 +501,7 @@
 
 .portal-kpi:hover {
   transform: translateY(-1px);
-  border-color: #1a73e8;
+  border-color: #4f7dc6;
   box-shadow: 0 4px 12px rgba(60,64,67,0.12);
 }
 
@@ -547,7 +547,7 @@
 }
 
 .portal-action:hover {
-  border-color: #1a73e8;
+  border-color: #4f7dc6;
   box-shadow: 0 4px 14px rgba(26,115,232,0.12);
   transform: translateY(-1px);
 }
@@ -562,7 +562,7 @@
   height: 28px;
   border-radius: 50%;
   background: #e8f0fe;
-  color: #1a73e8;
+  color: #4f7dc6;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -598,7 +598,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .6px;
-  color: #1a73e8;
+  color: #4f7dc6;
   background: #e8f0fe;
   padding: 3px 10px;
   border-radius: 9999px;
@@ -660,7 +660,7 @@
   border-radius: 8px;
   border: 1px solid var(--accent-border, #bfdbfe);
   background: var(--accent-bg, #eff6ff);
-  color: var(--accent, #1a73e8);
+  color: var(--accent, #4f7dc6);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -671,7 +671,7 @@
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border-left: 3px solid var(--accent, #1a73e8);
+  border-left: 3px solid var(--accent, #4f7dc6);
   background: var(--surface-alt, #f1f5f9);
   border-radius: 0 8px 8px 0;
   margin-bottom: 10px;
@@ -755,7 +755,7 @@
 .portal-main input:focus,
 .portal-main select:focus,
 .portal-main textarea:focus {
-  border-color: #1a73e8;
+  border-color: #4f7dc6;
   box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.15);
 }
 
@@ -784,9 +784,9 @@
 }
 
 .portal-main .btn.primary {
-  background: #1a73e8;
+  background: #4f7dc6;
   color: #ffffff;
-  border-color: #1a73e8;
+  border-color: #4f7dc6;
   box-shadow: 0 1px 2px rgba(26, 115, 232, 0.2);
 }
 
@@ -832,14 +832,14 @@
 
 .portal-main .chip:hover {
   background: #e8f0fe;
-  color: #1a73e8;
-  border-color: #1a73e8;
+  color: #4f7dc6;
+  border-color: #4f7dc6;
 }
 
 .portal-main .chip.selected {
-  background: #1a73e8;
+  background: #4f7dc6;
   color: #ffffff;
-  border-color: #1a73e8;
+  border-color: #4f7dc6;
   font-weight: 600;
   box-shadow: 0 1px 3px rgba(26, 115, 232, 0.3);
 }
@@ -894,7 +894,7 @@
 
 .portal-main .review-item:hover,
 .portal-main .qa-row:hover {
-  border-color: #1a73e8;
+  border-color: #4f7dc6;
   box-shadow: 0 3px 10px rgba(60,64,67,0.08);
 }
 
@@ -969,7 +969,7 @@
   .portal-refresh-pill {
     border: 1px solid #cbd5e1;
     background: #ffffff;
-    color: #059669;
+    color: #4f7dc6;
     font-weight: 700;
     font-size: 13px;
     border-radius: 8px;
@@ -1100,7 +1100,7 @@
   }
 
   .portal-tab-btn.active {
-    color: #1a73e8;
+    color: #4f7dc6;
     font-weight: 700;
   }
 

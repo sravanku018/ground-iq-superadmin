@@ -766,7 +766,7 @@ export default function ReviewQAScreen({
                   <div className="qa-block" style={{ marginTop: 10 }}>
                     {!isWeb && (item.status === 'confirmed' || item.fact_status === 'confirmed' || item.fact_status === 'materialized') ? (
                       <div className="card" style={{ marginBottom: 10, padding: '8px 12px', background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
-                        <span style={{ fontSize: 12, color: '#047857', fontWeight: 600 }}>
+                        <span style={{ fontSize: 12, color: '#223f75', fontWeight: 600 }}>
                           ✅ Confirmed Record — Photo & Audio hidden post-verification (Details verified)
                         </span>
                       </div>

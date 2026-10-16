@@ -168,7 +168,7 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle, canDeactivate, rel
     }
   }
 
-  const barColor = full ? '#dc2626' : pct >= 80 ? '#f59e0b' : '#059669'
+  const barColor = full ? '#dc2626' : pct >= 80 ? '#f59e0b' : '#4f7dc6'
 
   return (
     <div style={{
@@ -418,7 +418,7 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle, canDeactivate, rel
                   const status = r.payload?.status || r.status || 'pending'
                   const name = r.payload?.answers?.name || r.payload?.name || r.payload?.answers?.respondent_name || '—'
                   const ts = fmt(r.payload?.submitted_at || r.created_at)
-                  const statusColor = status === 'confirmed' ? '#059669' : status === 'rejected' ? '#dc2626' : '#f59e0b'
+                  const statusColor = status === 'confirmed' ? '#4f7dc6' : status === 'rejected' ? '#dc2626' : '#f59e0b'
                   return (
                     <div key={r.id} style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',

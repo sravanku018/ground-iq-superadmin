@@ -87,7 +87,7 @@ export default function SubmissionMedia({ item, compact }) {
           borderRadius: 8,
         }}
       >
-        <span style={{ fontSize: 12, color: '#047857', fontWeight: 600 }}>
+        <span style={{ fontSize: 12, color: '#223f75', fontWeight: 600 }}>
           ✅ Confirmed Record — Photo & Audio hidden post-verification (Details only)
         </span>
       </div>

@@ -275,7 +275,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
               <li
                 key={c.id}
                 style={{
-                  border: openId === c.id ? '1px solid #059669' : undefined,
+                  border: openId === c.id ? '1px solid #4f7dc6' : undefined,
                   borderRadius: 10,
                 }}
               >
@@ -334,7 +334,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
                     style={{
                       marginTop: 12,
                       width: '100%',
-                      borderLeft: '4px solid #059669',
+                      borderLeft: '4px solid #4f7dc6',
                       background: '#fbfdfe',
                     }}
                   >
@@ -366,7 +366,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
                                   alignItems: 'center',
                                   gap: 10,
                                   background: on ? '#c8f5df' : 'rgba(15,23,42,0.05)',
-                                  border: on ? '1px solid #059669' : '1px solid #e2e8f0',
+                                  border: on ? '1px solid #4f7dc6' : '1px solid #e2e8f0',
                                   borderRadius: 8,
                                   padding: '9px 12px',
                                   cursor: 'pointer',
@@ -493,11 +493,11 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
                         style={{
                           marginTop: 10,
                           padding: 12,
-                          background: 'rgba(5, 150, 105, 0.08)',
-                          border: '1px solid rgba(5, 150, 105, 0.35)',
+                          background: 'rgba(79, 125, 198, 0.08)',
+                          border: '1px solid rgba(79, 125, 198, 0.35)',
                         }}
                       >
-                        <strong style={{ color: '#059669' }}>
+                        <strong style={{ color: '#4f7dc6' }}>
                           <Icon name="check" size={13} /> Project “{createdProject.title}” created
                         </strong>
                         <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>

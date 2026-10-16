@@ -54,7 +54,7 @@ function CompanyGeoMap({ locations = [] }) {
         const popupContent = `
           <div style="font-family: sans-serif; font-size: 12px; padding: 2px;">
             <strong style="font-size: 13px; color: #0f172a;">${loc.survey_title || 'Survey'}</strong><br/>
-            <span style="color: #059669; font-weight: 600;">👤 ${loc.submitted_by || 'Surveyor'}</span><br/>
+            <span style="color: #4f7dc6; font-weight: 600;">👤 ${loc.submitted_by || 'Surveyor'}</span><br/>
             ${loc.district ? `<span>📍 District: ${loc.district}</span><br/>` : ''}
             ${loc.constituency ? `<span>🏛 AC: ${loc.constituency}</span><br/>` : ''}
             <span style="color: #64748b;">🕒 ${loc.created_at ? String(loc.created_at).slice(0, 16).replace('T', ' ') : ''}</span><br/>
@@ -127,7 +127,7 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
   const { company, summary, admins = [], projects = [], surveyors = [], locations = [], qa_stats } = data
 
   return (
-    <div className="card" style={{ border: '2px solid #059669', background: '#f8fafc', marginBottom: 16 }}>
+    <div className="card" style={{ border: '2px solid #4f7dc6', background: '#f8fafc', marginBottom: 16 }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, borderBottom: '1px solid #e2e8f0', paddingBottom: 12, marginBottom: 16 }}>
         <div>
@@ -161,7 +161,7 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
             style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, padding: '10px 12px' }}
           >
             {value ? (
-              <strong style={{ fontSize: 20, color: accent ? '#059669' : '#0f172a' }}>
+              <strong style={{ fontSize: 20, color: accent ? '#4f7dc6' : '#0f172a' }}>
                 {value}
               </strong>
             ) : (
@@ -234,14 +234,14 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                   <span>Confirmed & Materialized:</span>
-                  <strong style={{ color: '#059669' }}>{qa_stats?.confirmed ?? 0} records</strong>
+                  <strong style={{ color: '#4f7dc6' }}>{qa_stats?.confirmed ?? 0} records</strong>
                 </div>
                 <div style={{ width: '100%', height: 8, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
                   <div
                     style={{
                       height: '100%',
                       width: `${qa_stats?.total ? Math.round(((qa_stats?.confirmed ?? 0) / qa_stats.total) * 100) : 0}%`,
-                      background: '#059669',
+                      background: '#4f7dc6',
                     }}
                   />
                 </div>
@@ -353,7 +353,7 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
                         {s.verified ? <span className="pill" style={{ background: '#e0f2fe', color: '#0284c7', marginLeft: 4 }}>Verified</span> : null}
                       </td>
                       <td style={{ padding: '8px 10px', textAlign: 'right' }}>{s.target_quota || 0}</td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: '#059669' }}>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: '#4f7dc6' }}>
                         {s.submission_count ?? 0}
                       </td>
                     </tr>
@@ -408,9 +408,9 @@ export default function CompanyClientDashboard({ companyIdOrName, onClose, onToa
           <h4 style={{ fontSize: 14, margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="checkCircle" size={14} /> Data Quality Assurance Breakdown</h4>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
             <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8, padding: 14 }}>
-              <div style={{ fontSize: 12, color: '#047857', fontWeight: 600 }}>CONFIRMED / MATERIALIZED FACTS</div>
-              <strong style={{ fontSize: 24, color: '#059669' }}>{qa_stats?.confirmed ?? 0}</strong>
-              <div style={{ fontSize: 11, color: '#065f46', marginTop: 4 }}>Verified records included in analytics dashboards</div>
+              <div style={{ fontSize: 12, color: '#223f75', fontWeight: 600 }}>CONFIRMED / MATERIALIZED FACTS</div>
+              <strong style={{ fontSize: 24, color: '#4f7dc6' }}>{qa_stats?.confirmed ?? 0}</strong>
+              <div style={{ fontSize: 11, color: '#1b2f52', marginTop: 4 }}>Verified records included in analytics dashboards</div>
             </div>
             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 14 }}>
               <div style={{ fontSize: 12, color: '#b45309', fontWeight: 600 }}>PENDING VERIFICATION</div>

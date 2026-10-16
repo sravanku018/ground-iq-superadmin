@@ -1685,7 +1685,7 @@ export default function FieldCollectScreen({
           return (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '4px 0 10px' }}>
-                <span style={{ fontSize: 13, fontWeight: 'bold', color: '#059669' }}>
+                <span style={{ fontSize: 13, fontWeight: 'bold', color: '#4f7dc6' }}>
                   ☑️{' '}
                   {displayLang === 'te'
                     ? `గరిష్టంగా ${max} ఎంపికలు ఎంచుకోండి`
@@ -1714,9 +1714,9 @@ export default function FieldCollectScreen({
                         fontSize: 15,
                         borderRadius: 16,
                         opacity: !sel && atCap ? 0.4 : 1,
-                        border: sel ? '2px solid #059669' : '1px solid rgba(255,255,255,0.15)',
-                        background: sel ? 'rgba(0, 229, 153, 0.22)' : 'rgba(255,255,255,0.06)',
-                        color: sel ? '#059669' : '#f8fafc',
+                        border: sel ? '2px solid #4f7dc6' : '1px solid rgba(255,255,255,0.15)',
+                        background: sel ? 'rgba(143, 179, 230, 0.22)' : 'rgba(255,255,255,0.06)',
+                        color: sel ? '#4f7dc6' : '#f8fafc',
                       }}
                       onClick={() => toggleOpt(opt)}
                     >
@@ -1764,7 +1764,7 @@ export default function FieldCollectScreen({
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {[
-            { label: `😀 ${displayOption('Positive', qq, 0, displayLang)}`, val: 'Positive', color: '#059669' },
+            { label: `😀 ${displayOption('Positive', qq, 0, displayLang)}`, val: 'Positive', color: '#4f7dc6' },
             { label: `😐 ${displayOption('Neutral', qq, 1, displayLang)}`, val: 'Neutral', color: '#d97706' },
             { label: `🙁 ${displayOption('Negative', qq, 2, displayLang)}`, val: 'Negative', color: '#dc2626' },
           ].map((item) => {
@@ -2225,7 +2225,7 @@ export default function FieldCollectScreen({
                     style={{
                       width: '100%',
                       textAlign: 'left',
-                      border: on ? '2px solid #059669' : '1px solid #e2e8f0',
+                      border: on ? '2px solid #4f7dc6' : '1px solid #e2e8f0',
                       background: on ? '#f0fdf4' : '#ffffff',
                       borderRadius: 12,
                       padding: '12px 14px',
@@ -2243,7 +2243,7 @@ export default function FieldCollectScreen({
                       <strong style={{ fontSize: 15, color: '#0f172a' }}>
                         {on ? '✓ ' : ''}{s.title}
                       </strong>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: full ? '#059669' : '#334155' }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: full ? '#4f7dc6' : '#334155' }}>
                         {t > 0 ? `${d} / ${t}` : `${d} sent`}
                       </span>
                     </span>
@@ -2262,7 +2262,7 @@ export default function FieldCollectScreen({
                           display: 'block',
                           height: '100%',
                           width: `${pct}%`,
-                          background: full ? '#059669' : on ? '#059669' : '#2563eb',
+                          background: full ? '#4f7dc6' : on ? '#4f7dc6' : '#2563eb',
                           borderRadius: 99,
                         }}
                       />
@@ -2399,7 +2399,7 @@ export default function FieldCollectScreen({
         {thisSurveyComplete ? (
           <div className="card" style={{ textAlign: 'center', padding: '28px 16px', marginTop: 12 }}>
             <div style={{ fontSize: 42, marginBottom: 10 }}>🎯</div>
-            <h3 style={{ margin: '0 0 6px', fontSize: 18, color: '#059669', fontWeight: 800 }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: 18, color: '#4f7dc6', fontWeight: 800 }}>
               {allSurveysComplete || !otherOpen ? 'Target Cap Reached!' : 'This survey quota is full'}
             </h3>
             <p className="muted" style={{ margin: '0 0 18px', fontSize: 14, lineHeight: 1.5 }}>

@@ -184,7 +184,7 @@ function SurveySelect({
           width: '100%',
           textAlign: 'left',
           margin: '2px 0',
-          background: on ? 'rgba(0,229,153,0.15)' : undefined,
+          background: on ? 'rgba(143,179,230,0.15)' : undefined,
         }}
         onClick={() => toggle(sid)}
       >
@@ -1710,8 +1710,8 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
           className="card"
           style={{
             marginBottom: 14,
-            borderColor: 'rgba(0, 229, 153, 0.45)',
-            boxShadow: '0 0 0 1px rgba(0, 229, 153, 0.2)',
+            borderColor: 'rgba(143, 179, 230, 0.45)',
+            boxShadow: '0 0 0 1px rgba(143, 179, 230, 0.2)',
           }}
         >
           <h3>Just created — app logins</h3>
@@ -1803,7 +1803,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                     background: '#ffffff',
                     border: '1px solid #e2e8f0',
                     marginBottom: 10,
-                    borderColor: justCreated ? '#059669' : '#e2e8f0',
+                    borderColor: justCreated ? '#4f7dc6' : '#e2e8f0',
                     boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                   }}
                 >
@@ -1814,7 +1814,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                         <img
                           src={u.photo}
                           alt=""
-                          style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', border: '2px solid #059669', flexShrink: 0 }}
+                          style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', border: '2px solid #4f7dc6', flexShrink: 0 }}
                         />
                       ) : (
                         <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#f1f5f9', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -1831,7 +1831,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                             @{loginUser}
                           </span>
                           {u.key_id && (
-                            <span style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>
+                            <span style={{ fontSize: 11, color: '#4f7dc6', fontWeight: 600 }}>
                               [{u.key_id}]
                             </span>
                           )}
@@ -2209,7 +2209,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                     <img
                       src={profileUser.photo}
                       alt="Profile"
-                      style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', border: '2px solid #059669' }}
+                      style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', border: '2px solid #4f7dc6' }}
                     />
                   ) : (
                     <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -2230,7 +2230,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       )}
                     </div>
                     <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b' }}>
-                      @{profileUser.username} · Key ID: <strong style={{ color: '#059669' }}>{profileUser.key_id || '—'}</strong>
+                      @{profileUser.username} · Key ID: <strong style={{ color: '#4f7dc6' }}>{profileUser.key_id || '—'}</strong>
                     </p>
                   </div>
                   {canVerify && (
@@ -2238,7 +2238,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       type="button"
                       className="btn small"
                       style={{
-                        background: profileUser.verified ? '#dc2626' : '#059669',
+                        background: profileUser.verified ? '#dc2626' : '#4f7dc6',
                         color: '#ffffff',
                         fontWeight: 'bold',
                         padding: '6px 12px',
@@ -2382,15 +2382,15 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                 {/* Metrics: Surveys Done / Approved / Pending */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
                   <div style={{ background: '#f8fafc', padding: '8px 6px', borderRadius: 8, textAlign: 'center', border: '1px solid #e2e8f0' }}>
-                    <span style={{ display: 'block', fontSize: 18, fontWeight: '800', color: '#059669' }}>
+                    <span style={{ display: 'block', fontSize: 18, fontWeight: '800', color: '#4f7dc6' }}>
                       {profileData?.geoSummary?.records ?? (profileUser.done_count || 0)}
                     </span>
                     <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', fontWeight: '700' }}>
                       Done
                     </span>
                   </div>
-                  <div style={{ background: '#f8fafc', padding: '8px 6px', borderRadius: 8, textAlign: 'center', border: '1px solid #059669' }}>
-                    <span style={{ display: 'block', fontSize: 18, fontWeight: '800', color: '#10b981' }}>
+                  <div style={{ background: '#f8fafc', padding: '8px 6px', borderRadius: 8, textAlign: 'center', border: '1px solid #4f7dc6' }}>
+                    <span style={{ display: 'block', fontSize: 18, fontWeight: '800', color: '#6b93d4' }}>
                       {profileData?.geoSummary?.confirmed ?? (profileUser.confirmed_count || 0)}
                     </span>
                     <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', fontWeight: '700' }}>
@@ -2414,7 +2414,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                     <strong style={{ fontSize: 12, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 4 }}>
                       <Icon name="idCard" size={13} /> Aadhaar Identity
                     </strong>
-                    <span style={{ fontSize: 11, fontWeight: 'bold', color: profileUser.verified ? '#059669' : '#f59e0b' }}>
+                    <span style={{ fontSize: 11, fontWeight: 'bold', color: profileUser.verified ? '#4f7dc6' : '#f59e0b' }}>
                       {profileUser.verified ? 'Verified ✓' : 'Pending'}
                     </span>
                   </div>
@@ -2423,7 +2423,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       <span style={{ display: 'block', fontSize: 10, color: '#64748b', marginBottom: 4, fontWeight: 'bold' }}>Front Side</span>
                       {profileUser.aadhaar_front ? (
                         <a href={profileUser.aadhaar_front} target="_blank" rel="noreferrer">
-                          <img src={profileUser.aadhaar_front} alt="Aadhaar Front" style={{ width: '100%', height: 75, objectFit: 'cover', borderRadius: 6, border: '1px solid #059669', marginBottom: 4 }} />
+                          <img src={profileUser.aadhaar_front} alt="Aadhaar Front" style={{ width: '100%', height: 75, objectFit: 'cover', borderRadius: 6, border: '1px solid #4f7dc6', marginBottom: 4 }} />
                         </a>
                       ) : (
                         <div style={{ height: 60, background: '#f1f5f9', borderRadius: 6, border: '1px dashed #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 11, marginBottom: 4 }}>
@@ -2444,7 +2444,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       <span style={{ display: 'block', fontSize: 10, color: '#64748b', marginBottom: 4, fontWeight: 'bold' }}>Back Side</span>
                       {profileUser.aadhaar_back ? (
                         <a href={profileUser.aadhaar_back} target="_blank" rel="noreferrer">
-                          <img src={profileUser.aadhaar_back} alt="Aadhaar Back" style={{ width: '100%', height: 75, objectFit: 'cover', borderRadius: 6, border: '1px solid #059669', marginBottom: 4 }} />
+                          <img src={profileUser.aadhaar_back} alt="Aadhaar Back" style={{ width: '100%', height: 75, objectFit: 'cover', borderRadius: 6, border: '1px solid #4f7dc6', marginBottom: 4 }} />
                         </a>
                       ) : (
                         <div style={{ height: 60, background: '#f1f5f9', borderRadius: 6, border: '1px dashed #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 11, marginBottom: 4 }}>
@@ -2591,7 +2591,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                                 <span
                                   style={{
                                     marginLeft: 6,
-                                    color: '#059669',
+                                    color: '#4f7dc6',
                                     fontWeight: 700,
                                     fontSize: 12,
                                     display: 'inline-flex',

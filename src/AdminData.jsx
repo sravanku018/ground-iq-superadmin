@@ -660,7 +660,7 @@ export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
                   <div
                     style={{
                       background: '#f1f5f9',
-                      border: '1px solid #059669',
+                      border: '1px solid #4f7dc6',
                       borderRadius: 10,
                       padding: '12px 14px',
                       marginBottom: 12,
@@ -668,7 +668,7 @@ export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
                   >
                     <div
                       style={{
-                        color: '#059669',
+                        color: '#4f7dc6',
                         fontWeight: 'bold',
                         fontSize: 13,
                         display: 'flex',

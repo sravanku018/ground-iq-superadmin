@@ -16,7 +16,7 @@ function fmtTime(v) {
 
 const STATUS_STYLE = {
   pending: { icon: 'clock', label: 'Pending', color: '#d97706', bg: 'rgba(217,119,6,0.12)' },
-  approved: { icon: 'check', label: 'Approved', color: '#059669', bg: 'rgba(5,150,105,0.12)' },
+  approved: { icon: 'check', label: 'Approved', color: '#4f7dc6', bg: 'rgba(79,125,198,0.12)' },
   denied: { icon: 'cross', label: 'Denied', color: '#dc2626', bg: 'rgba(220,38,38,0.10)' },
 }
 

@@ -841,7 +841,7 @@ function withCors(req: Request, res: Response): Response {
 
 const CORS_HEADERS: Record<string, string> = {
   "access-control-allow-headers":
-    "authorization, content-type, x-auth-token, accept, origin, range, content-disposition, cache-control, pragma, x-requested-with",
+    "authorization, content-type, x-auth-token, idempotency-key, accept, origin, range, content-disposition, cache-control, pragma, x-requested-with",
   "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
   "access-control-expose-headers":
     "content-disposition, content-type, content-length, location",

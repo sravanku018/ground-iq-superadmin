@@ -64,8 +64,8 @@ export default function AdminQuestionsScreen({ onToast, user }) {
   const [displayLang, setDisplayLang] = useState('en')
   const [translatingAll, setTranslatingAll] = useState(false)
   const [currentSurvey, setCurrentSurvey] = useState(null)
-  // Which question is expanded. View-only, never saved.
-  const [activeIndex, setActiveIndex] = useState(0)
+  // Which question is expanded (null = all collapsed). View-only, never saved.
+  const [activeIndex, setActiveIndex] = useState(null)
   const originalLabelsRef = useRef(new Map())
 
   const load = useCallback(async () => {
@@ -149,16 +149,16 @@ export default function AdminQuestionsScreen({ onToast, user }) {
     load()
   }, [load])
 
-  // On load / survey switch the first question is active.
+  // Start collapsed on load / survey switch.
   useEffect(() => {
-    setActiveIndex(0)
+    setActiveIndex(null)
   }, [surveyId])
 
-  // Keep exactly one active row: default to the first, clamp if the list shrank.
+  // Collapse if the list shrank past the active row; otherwise leave it as-is.
   useEffect(() => {
     setActiveIndex((cur) => {
       if (questions.length === 0) return null
-      if (cur == null || cur >= questions.length) return 0
+      if (cur != null && cur >= questions.length) return null
       return cur
     })
   }, [questions.length])
@@ -521,11 +521,16 @@ export default function AdminQuestionsScreen({ onToast, user }) {
 
         return (
           <article key={q._uid || `qi-${i}`} className="mix-card">
-            <header className="mix-head">
+            <button
+              type="button"
+              className="mix-head"
+              onClick={() => setActiveIndex(null)}
+              title="Collapse"
+            >
               <span className="mix-num">{i + 1}</span>
               <strong className="mix-t">{q.label || 'Untitled question'}</strong>
               <span className="mix-chev is-open">▴</span>
-            </header>
+            </button>
             <div className="mix-body">
 
             <label className="field">

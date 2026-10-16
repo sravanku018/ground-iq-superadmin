@@ -2522,9 +2522,17 @@ textarea:focus,
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   padding: 12px 14px;
+  background: none;
+  border: 0;
   border-bottom: 1px solid var(--border);
+  color: var(--text-h);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
+.mix-head:hover { background: var(--bg); }
 .mix-head .mix-t { font-size: 15px; }
 .mix-body {
   padding: 14px;

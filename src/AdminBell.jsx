@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { listNotifications, notificationsStreamUrl, authHeaders } from './api'
+import { getApiBase, getToken, listNotifications } from './api'
 
 function dismissedKey(adminId) {
   return `esurvey_bell_dismissed_${adminId || 'admin'}`
@@ -55,83 +55,69 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
     })
   }, [])
 
+  // Live stream over fetch, not EventSource: EventSource cannot send the Authorization header,
+  // and the server accepts the token only in that header. Reconnects after a drop.
   useEffect(() => {
     if (!enabled) return undefined
+    const controller = new AbortController()
     let dead = false
-    let controller = null
-    let retries = 0
-    let retryTimer = 0
 
-    const consume = (chunk) => {
-      const line = chunk.split('\n').find((l) => l.startsWith('data:'))
-      if (!line) return
-      try {
-        const msg = JSON.parse(line.slice(5).trim())
-        if (msg?.type === 'item' && msg.item) addItems([msg.item])
-      } catch {
-        /* ignore malformed frame */
-      }
-    }
-
-    const connect = async () => {
-      try {
-        const d = await listNotifications(0)
-        if (dead) return
-        addItems(d.items || [])
-      } catch {
-        /* ignore */
-      }
-      if (dead) return
-      // The API only accepts the token via header, so EventSource can't be used
-      // (it cannot set Authorization). Stream the SSE body with fetch() instead.
-      let status = 0
-      try {
-        controller = new AbortController()
-        const res = await fetch(notificationsStreamUrl(maxSeq.current), {
-          headers: authHeaders(),
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-        status = res.status
-        if (dead) return
-        if (res.ok && res.body) {
-          retries = 0
-          const reader = res.body.getReader()
-          const decoder = new TextDecoder()
-          let buf = ''
-          for (;;) {
-            const { value, done } = await reader.read()
-            if (done) break
-            buf += decoder.decode(value, { stream: true })
-            let idx
-            while ((idx = buf.indexOf('\n\n')) >= 0) {
-              consume(buf.slice(0, idx))
-              buf = buf.slice(idx + 2)
+    const streamOnce = async () => {
+      // Built here, not by notificationsStreamUrl: that helper puts the token in the URL.
+      const token = getToken()
+      const url = `${getApiBase()}/api/notifications/stream?after=${maxSeq.current}`
+      const res = await fetch(url, {
+        headers: token ? { Accept: 'text/event-stream', Authorization: `Bearer ${token}` } : { Accept: 'text/event-stream' },
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+      if (!res.ok || !res.body) throw new Error(`stream HTTP ${res.status}`)
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      while (!dead) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        let idx = buf.indexOf('\n\n')
+        while (idx >= 0) {
+          const chunk = buf.slice(0, idx)
+          buf = buf.slice(idx + 2)
+          const dataLine = chunk.split('\n').find((l) => l.startsWith('data:'))
+          if (dataLine) {
+            try {
+              const msg = JSON.parse(dataLine.slice(5).trim())
+              if (msg?.type === 'item' && msg.item) addItems([msg.item])
+            } catch {
+              /* ignore malformed event */
             }
           }
+          idx = buf.indexOf('\n\n')
         }
-      } catch {
-        /* aborted or network error — fall through to retry */
       }
-      if (dead) return
-      // 401/403 means the session is gone — stop instead of hammering the API.
-      if (status === 401 || status === 403) return
-      retries += 1
-      retryTimer = window.setTimeout(() => {
-        if (!dead) void connect()
-      }, Math.min(30_000, 2_000 * retries))
     }
 
-    void connect()
+    ;(async () => {
+      try {
+        const d = await listNotifications(0)
+        if (!dead) addItems(d.items || [])
+      } catch {
+        /* the stream below still runs */
+      }
+      while (!dead) {
+        try {
+          await streamOnce()
+        } catch {
+          /* dropped or aborted: retry below, polling covers the gap */
+        }
+        if (dead) break
+        await new Promise((r) => setTimeout(r, 5000))
+      }
+    })()
 
     return () => {
       dead = true
-      window.clearTimeout(retryTimer)
-      try {
-        controller?.abort()
-      } catch {
-        /* ignore */
-      }
+      controller.abort()
     }
   }, [enabled, addItems])
 

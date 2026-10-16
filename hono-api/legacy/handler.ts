@@ -865,6 +865,113 @@ const LOCAL_APK_PATHS = [
   "/opt/smart-survey-x/SmartSurveyX.apk",
   "/opt/smart-survey-x/app.apk",
 ];
+const GITHUB_REPO = "sravanku018/ground-iq-web";
+
+/**
+ * Release numbers for this build. scripts/sync-version.mjs rewrites the two
+ * literals (keep the `version:` / `versionCode:` key shape) and bumps
+ * android/app/build.gradle in the same run, so the web bundle, the APK and this
+ * API all carry one number.
+ */
+const APP_RELEASE = {
+  version: "2.0.83",
+  versionCode: 20083,
+  minSupportedVersionCode: 20000,
+};
+
+/**
+ * Manifest describing the APK published next to this server. It is the only
+ * thing trusted for "which build can a client actually download", so
+ * /api/app-version can never advertise a release that /api/app.apk cannot serve
+ * — the failure that left phones offering an update forever (the API said
+ * 2.0.83 while the cached file on disk was 2.0.63).
+ */
+const APK_SIDECAR_PATH = Deno.env.get("APK_SIDECAR_PATH") || "/opt/smart-survey-x/app-version.json";
+
+type ApkRelease = {
+  version: string;
+  versionCode: number;
+  sha256?: string;
+  size?: number;
+  publishedAt?: string;
+};
+
+/** "2.0.83" → 20083, matching scripts/sync-version.mjs and src/appUpdate.js. */
+function versionCodeFromSemver(v: string): number {
+  const p = String(v || "").replace(/^v/, "").split(".").map((n) => Number(n) || 0);
+  return (p[0] || 0) * 10000 + (p[1] || 0) * 100 + Math.min(p[2] || 0, 99);
+}
+
+async function readApkSidecar(): Promise<ApkRelease | null> {
+  try {
+    const raw = await Deno.readTextFile(APK_SIDECAR_PATH);
+    const m = JSON.parse(raw) as Record<string, unknown>;
+    const version = typeof m?.version === "string" ? m.version.trim() : "";
+    if (!/^\d+\.\d+\.\d+/.test(version)) return null;
+    return {
+      version,
+      versionCode: Number(m?.versionCode) || versionCodeFromSemver(version),
+      sha256: typeof m?.sha256 === "string" ? m.sha256 : undefined,
+      size: Number(m?.size) || undefined,
+      publishedAt: typeof m?.publishedAt === "string" ? m.publishedAt : undefined,
+    };
+  } catch {
+    return null; // absent or unreadable — the caller falls back
+  }
+}
+
+let ghLatestCache: { version: string; at: number } | null = null;
+
+/** Latest published GitHub release tag — the trusted artifact when no manifest exists. */
+async function githubLatestVersion(): Promise<string | null> {
+  if (ghLatestCache && Date.now() - ghLatestCache.at < 600_000) return ghLatestCache.version;
+  let version: string | null = null;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "SmartSurveyX-API" },
+    });
+    if (res.ok) {
+      const j = (await res.json()) as Record<string, unknown>;
+      const tag = String(j?.tag_name || "").replace(/^v/, "");
+      if (/^\d+\.\d+\.\d+/.test(tag)) version = tag;
+    }
+  } catch {
+    version = null;
+  }
+  ghLatestCache = { version, at: Date.now() };
+  return version;
+}
+
+/**
+ * What a client will actually receive: the published APK's manifest when it
+ * exists, else the latest published release, else this build's compiled number.
+ */
+async function servedApkRelease(): Promise<ApkRelease> {
+  const sidecar = await readApkSidecar();
+  if (sidecar) return sidecar;
+  const gh = await githubLatestVersion();
+  if (gh) return { version: gh, versionCode: versionCodeFromSemver(gh) };
+  return { version: APP_RELEASE.version, versionCode: APP_RELEASE.versionCode };
+}
+
+/** Persist the manifest for the APK we just cached, so advert and file agree. */
+async function writeApkSidecar(bytes: Uint8Array): Promise<void> {
+  try {
+    const gh = await githubLatestVersion();
+    const version = gh || APP_RELEASE.version;
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    const info: ApkRelease = {
+      version,
+      versionCode: versionCodeFromSemver(version),
+      sha256: [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join(""),
+      size: bytes.byteLength,
+      publishedAt: new Date().toISOString(),
+    };
+    await Deno.writeTextFile(APK_SIDECAR_PATH, JSON.stringify(info, null, 2) + "\n");
+  } catch {
+    /* best-effort — without it the advert falls back to GitHub's tag */
+  }
+}
 
 function apkHeaders(byteLength?: number): Record<string, string> {
   const headers: Record<string, string> = {
@@ -883,41 +990,65 @@ function isZipApk(bytes: Uint8Array): boolean {
   return bytes.length > 100_000 && bytes[0] === 0x50 && bytes[1] === 0x4b;
 }
 
-/** Direct APK file for phones. Prefer a cached file on disk; never serve HTML as APK. */
+function apkFileResponse(method: string, file: Uint8Array): Response {
+  if (method === "HEAD") {
+    return new Response(null, { status: 200, headers: apkHeaders(file.byteLength) });
+  }
+  return new Response(file, { status: 200, headers: apkHeaders(file.byteLength) });
+}
+
+/** Fetch the published release, and (optionally) cache it with a fresh manifest. */
+async function proxyPublishedApk(method: string, cache: boolean): Promise<Response> {
+  const upstream = await fetch(GITHUB_RELEASE_APK, {
+    redirect: "follow",
+    headers: {
+      "User-Agent": "Mozilla/5.0 SmartSurveyX-APK",
+      Accept: "application/vnd.android.package-archive,application/octet-stream,*/*",
+    },
+  });
+  if (!upstream.ok) {
+    return json({ error: "App download is temporarily unavailable" }, 502);
+  }
+  const buf = new Uint8Array(await upstream.arrayBuffer());
+  if (!isZipApk(buf)) {
+    return json({ error: "App package is invalid. Use the PWA web app instead." }, 502);
+  }
+  if (cache) {
+    Deno.writeFile(LOCAL_APK_PATHS[0], buf).catch(() => null);
+    await writeApkSidecar(buf);
+  }
+  return apkFileResponse(method, buf);
+}
+
+/** Direct APK file for phones. Never serve HTML as APK, never serve an unverified build. */
 async function serveAppApk(method: string): Promise<Response> {
   try {
-    for (const p of LOCAL_APK_PATHS) {
-      try {
-        const file = await Deno.readFile(p);
-        if (!isZipApk(file)) continue;
-        if (method === "HEAD") {
-          return new Response(null, { status: 200, headers: apkHeaders(file.byteLength) });
+    const manifest = await readApkSidecar();
+
+    if (manifest) {
+      // A published manifest makes the on-disk APK trustworthy — and its size
+      // proves the file is the one that was published, not a half-written leftover.
+      for (const p of LOCAL_APK_PATHS) {
+        try {
+          const file = await Deno.readFile(p);
+          if (!isZipApk(file)) continue;
+          if (manifest.size && file.byteLength !== manifest.size) {
+            console.error(`apk: ${p} (${file.byteLength}B) does not match manifest ${manifest.version} (${manifest.size}B)`);
+            continue;
+          }
+          return apkFileResponse(method, file);
+        } catch {
+          /* try next path */
         }
-        return new Response(file, { status: 200, headers: apkHeaders(file.byteLength) });
-      } catch {
-        /* try next path */
       }
+      console.error(`apk: manifest ${manifest.version} has no matching file — serving the release uncached`);
+      return await proxyPublishedApk(method, false);
     }
 
-    const upstream = await fetch(GITHUB_RELEASE_APK, {
-      redirect: "follow",
-      headers: {
-        "User-Agent": "Mozilla/5.0 SmartSurveyX-APK",
-        Accept: "application/vnd.android.package-archive,application/octet-stream,*/*",
-      },
-    });
-    if (!upstream.ok) {
-      return json({ error: "App download is temporarily unavailable" }, 502);
-    }
-    const buf = new Uint8Array(await upstream.arrayBuffer());
-    if (!isZipApk(buf)) {
-      return json({ error: "App package is invalid. Use the PWA web app instead." }, 502);
-    }
-    Deno.writeFile(LOCAL_APK_PATHS[0], buf).catch(() => null);
-    if (method === "HEAD") {
-      return new Response(null, { status: 200, headers: apkHeaders(buf.byteLength) });
-    }
-    return new Response(buf, { status: 200, headers: apkHeaders(buf.byteLength) });
+    // No manifest: an on-disk copy cannot be identified, so it may be an old
+    // release (that is exactly how the stale 2.0.63 file shadowed every newer
+    // build). Fetch the published artifact and describe what we cached.
+    return await proxyPublishedApk(method, true);
   } catch (err) {
     console.error("apk proxy:", err);
     return json({ error: "App download failed" }, 502);
@@ -5112,18 +5243,22 @@ async function rawHandler(req: Request): Promise<Response> {
 
     // App Version & In-App OTA Update Metadata (Telegram-style auto-update)
     if (path === "/api/app-version" && method === "GET") {
-      const repo = "sravanku018/ground-iq-web";
+      // Report the release a client can actually download. Never a number ahead
+      // of the published APK, or phones chase an update that cannot exist.
+      const release = await servedApkRelease();
       return json(
         {
           appName: "Smart Survey X",
-          version: "2.0.83",
-          versionCode: 20083,
-          minSupportedVersionCode: 20000,
+          version: release.version,
+          versionCode: release.versionCode,
+          minSupportedVersionCode: APP_RELEASE.minSupportedVersionCode,
           apkUrl: `https://${req.headers.get("x-forwarded-host") || url.hostname}/api/app.apk`,
-          apkDebugUrl: `https://github.com/${repo}/releases/latest/download/ElectionSurvey-debug.apk`,
-          releaseUrl: `https://github.com/${repo}/releases/latest`,
+          apkDebugUrl: `https://github.com/${GITHUB_REPO}/releases/latest/download/ElectionSurvey-debug.apk`,
+          releaseUrl: `https://github.com/${GITHUB_REPO}/releases/latest`,
           changelog: "In-app APK install, voice only when Super Admin/Client Admin requires it, IST timestamps.",
-          publishedAt: new Date().toISOString(),
+          apkSha256: release.sha256,
+          apkSize: release.size,
+          publishedAt: release.publishedAt || new Date().toISOString(),
         },
         200,
         { "cache-control": "no-store, no-cache, must-revalidate" },

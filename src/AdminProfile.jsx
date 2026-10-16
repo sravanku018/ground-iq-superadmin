@@ -1,6 +1,6 @@
 import { resetSuperAdminTotp, updateUser } from './api'
 import CredentialsCard from './components/CredentialsCard'
-import { APP_VERSION } from './version'
+import { isNewerBuild } from './version'
 import ShareAppLink from './components/ShareAppLink'
 
 
@@ -81,8 +81,11 @@ export default function AdminProfileScreen({ user, onToast, onUserUpdated }) {
                   if (!res.ok) throw new Error(`HTTP ${res.status}`)
                   const data = await res.json()
                   const latest = String(data?.version || '')
-                  if (latest && latest !== APP_VERSION) {
-                    onToast?.(`New version v${latest} found. Reloading…`, 'ok')
+                  // Only reload when the API advertises a genuinely NEWER build.
+                  // A plain `!==` reloads when the API is behind (e.g. VPS still
+                  // serving an older version), which loops on every click.
+                  if (isNewerBuild(data)) {
+                    onToast?.(`New version ${latest ? `v${latest} ` : ''}found. Reloading…`, 'ok')
                     setTimeout(() => window.location.reload(), 1200)
                   } else {
                     onToast?.('Portal is up to date ✓', 'ok')

@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /**
- * Push package.json version into Android build.gradle (versionName + versionCode).
+ * Push package.json version into:
+ *   - Android build.gradle (versionName + versionCode)
+ *   - the API's /api/app-version metadata (hono-api/legacy/handler.ts), which is
+ *     what installed apps read to decide whether a newer release exists.
  * Usage:
  *   node scripts/sync-version.mjs           # sync only
  *   node scripts/sync-version.mjs --bump    # patch bump then sync
@@ -14,6 +17,7 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const pkgPath = path.join(root, 'package.json')
 const gradlePath = path.join(root, 'android', 'app', 'build.gradle')
+const apiHandlerPath = path.join(root, 'hono-api', 'legacy', 'handler.ts')
 
 function parseSemver(v) {
   const m = String(v).trim().match(/^(\d+)\.(\d+)\.(\d+)/)
@@ -62,6 +66,24 @@ if (fs.existsSync(gradlePath)) {
   console.log(`Synced Android: versionName=${version} versionCode=${versionCode}`)
 } else {
   console.warn('android/app/build.gradle not found — package.json only')
+}
+
+// /api/app-version is a plain string constant in the API source. If it isn't
+// bumped with the app, installed clients keep seeing an old "latest" release.
+if (fs.existsSync(apiHandlerPath)) {
+  let api = fs.readFileSync(apiHandlerPath, 'utf8')
+  const versionRe = /(\bversion:\s*")\d+\.\d+\.\d+(")/
+  const versionCodeRe = /(\bversionCode:\s*)\d+/
+  if (!versionRe.test(api) || !versionCodeRe.test(api)) {
+    console.error('Could not find version/versionCode in hono-api/legacy/handler.ts')
+    process.exit(1)
+  }
+  api = api.replace(versionRe, `$1${version}$2`)
+  api = api.replace(versionCodeRe, `$1${versionCode}`)
+  fs.writeFileSync(apiHandlerPath, api)
+  console.log(`Synced API: version=${version} versionCode=${versionCode}`)
+} else {
+  console.warn('hono-api/legacy/handler.ts not found — API version not synced')
 }
 
 console.log(`package.json version=${version} versionCode=${versionCode}`)

@@ -25,6 +25,32 @@ export function versionFullLabel() {
   return `v${APP_VERSION}${code} · build ${APP_BUILD}`
 }
 
+/** Parse "2.0.83" → [2, 0, 83]; null when unparseable. */
+function parseSemver(v) {
+  const m = String(v || '').trim().match(/^(\d+)\.(\d+)\.(\d+)/)
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null
+}
+
+/**
+ * True when the build advertised by /api/app-version is NEWER than the build
+ * running here.
+ *
+ * Compares versionCode first (monotonic, authoritative), then semver. It never
+ * returns true for an older or equal build — an API still advertising an older
+ * release must not trigger a "new version, reloading…" loop.
+ */
+export function isNewerBuild(remote) {
+  const code = Number(remote?.versionCode) || 0
+  if (code && APP_VERSION_CODE) return code > APP_VERSION_CODE
+  const remoteParts = parseSemver(remote?.version)
+  const oursParts = parseSemver(APP_VERSION)
+  if (!remoteParts || !oursParts) return false
+  for (let i = 0; i < 3; i += 1) {
+    if (remoteParts[i] !== oursParts[i]) return remoteParts[i] > oursParts[i]
+  }
+  return false
+}
+
 const RELOAD_KEY = 'esurvey_reloaded_after_upgrade'
 
 /**

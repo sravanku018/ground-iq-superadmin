@@ -178,15 +178,9 @@ h1, h2, h3, h4, .topbar-title, .hero-name, .mission-title, .fl-title, .qa-title,
 }
 
 .topbar-logo {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.35);
+  height: 30px;
+  width: auto;
+  display: block;
 }
 
 .topbar-title-group {
@@ -425,16 +419,9 @@ h1, h2, h3, h4, .topbar-title, .hero-name, .mission-title, .fl-title, .qa-title,
 }
 
 .fl-logo {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  display: grid;
-  place-items: center;
-  font-weight: 900;
-  font-size: var(--fs-2xl);
-  color: #04140e;
-  background: linear-gradient(145deg, #3dffc0, var(--accent));
-  box-shadow: 0 8px 20px rgba(0, 229, 153, 0.35);
+  height: 46px;
+  width: auto;
+  display: block;
 }
 
 .fl-brand {

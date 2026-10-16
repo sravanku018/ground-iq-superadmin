@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { clearSession, login } from './api'
 import { versionLabel } from './version'
+import logoMark from './assets/logo-mark.png'
 
 /**
  * Surveyor field app login ONLY.
@@ -62,7 +63,7 @@ export default function LoginScreen({ onSuccess, onToast }) {
       <div className="fl-bg" aria-hidden />
 
       <header className="fl-header">
-        <div className="fl-logo">S</div>
+        <img className="fl-logo" src={logoMark} alt="Smart Survey X" />
         <div>
           <p className="fl-brand">Smart Survey X</p>
           <p className="fl-tag">Field Survey App</p>

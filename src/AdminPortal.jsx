@@ -1,5 +1,6 @@
 import { Component, Fragment, lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import Icon from './Icons'
+import logoMark from './assets/logo-mark.png'
 import {
   clearSession,
   apkDownloadUrl,
@@ -1532,7 +1533,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
 
       <aside className="portal-sidebar" aria-label="Main navigation">
         <div className="side-brand">
-          <span style={{ color: '#1a73e8' }}>✦</span> Smart Survey X
+          <img className="side-brand-logo" src={logoMark} alt="" /> Smart Survey X
           <span className="role-tag">{isSuper ? 'Super Admin' : 'Client Admin'}</span>
         </div>
         <nav className="portal-nav">

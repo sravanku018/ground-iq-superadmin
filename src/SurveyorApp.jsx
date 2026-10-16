@@ -1,5 +1,6 @@
 import { Component, useCallback, useEffect, useRef, useState } from 'react'
 import Icon from './Icons'
+import logoMark from './assets/logo-mark.png'
 import {
   clearSession,
   getMyProgress,
@@ -1970,9 +1971,7 @@ export default function SurveyorApp() {
       {/* Sleek Fixed Native App Bar */}
       <header className="app-topbar">
         <div className="topbar-brand">
-          <div className="topbar-logo">
-            <Icon name="check" size={14} />
-          </div>
+          <img className="topbar-logo" src={logoMark} alt="Smart Survey X" />
           <div className="topbar-title-group">
             <span className="topbar-title">Smart Survey X</span>
             <span className="topbar-badge">{TABS.find((t) => t.id === tab)?.label || ''}</span>

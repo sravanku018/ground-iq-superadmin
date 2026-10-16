@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { clearSession, login } from './api'
+import logoMark from './assets/logo-mark.png'
 
 /** Client Admin web portal login — clean form, no demo credentials.
  * superAdminOnly → separate Super Admin console (server-enforced expected_role=super_admin). */
@@ -71,7 +72,7 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
     <div className="portal-login">
       <div className="portal-login-card">
         <div className="portal-brand">
-          <span className="portal-logo">◆</span>
+          <img className="portal-logo" src={logoMark} alt="Smart Survey X" />
           <div>
             <p className="eyebrow">Smart Survey X</p>
             <h1>{superAdminOnly ? 'Super Admin Console' : 'Client Admin'}</h1>

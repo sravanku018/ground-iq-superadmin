@@ -6201,8 +6201,17 @@ async function rawHandler(req: Request): Promise<Response> {
         const canWebSurvey = canSuper && body.can_web_survey === true;
         const canRecordVoice = canSuper && body.can_record_voice === true;
         const canTranslateTeluguGrant = canSuper && body.can_translate_telugu === true;
+        // A brand-new Client Admin starts with a usable allowance — 50 questions and
+        // 500 field records — instead of 0 (which means unlimited). An explicit value
+        // in the request always wins, including 0 for unlimited.
+        const DEFAULT_MAX_QUESTIONS = 50;
+        const DEFAULT_MAX_RECORDS = 500;
+        const clampUserLimit = (value: unknown, fallback: number, max: number) =>
+          value === undefined || value === null || value === ""
+            ? fallback
+            : Math.max(0, Math.min(Number(value) || 0, max));
         const maxQuestionsPerSurvey = canSuper
-          ? Math.max(0, Math.min(Number(body.max_questions_per_survey) || 0, 100000))
+          ? clampUserLimit(body.max_questions_per_survey, DEFAULT_MAX_QUESTIONS, 100000)
           : 0;      const maxSurveysCreate = canSuper
         ? Math.max(0, Math.min(Number(body.max_surveys) || 0, 100000))
         : 0;
@@ -6210,7 +6219,7 @@ async function rawHandler(req: Request): Promise<Response> {
         ? Math.max(0, Math.min(Number(body.max_surveyors) || 0, 100000))
         : 0;
       const maxRecordsCreate = canSuper
-        ? Math.max(0, Math.min(Number(body.max_records) || 0, 10_000_000))
+        ? clampUserLimit(body.max_records, DEFAULT_MAX_RECORDS, 10_000_000)
         : 0;
       // 0 = unlimited; only Super Admin may grant it, and the default is the 5-category allowance.
       const maxCategoriesCreate = canSuper && body.max_categories !== undefined

@@ -37,7 +37,18 @@ function powersFromUser(u) {
   return o
 }
 
-const EMPTY_FORM = { username: '', name: '', company_name: '', password: '' }
+/** Starting allowance for a brand-new Client Admin (Super Admin can change it later). */
+const DEFAULT_MAX_QUESTIONS = 50
+const DEFAULT_MAX_RECORDS = 500
+
+const EMPTY_FORM = {
+  username: '',
+  name: '',
+  company_name: '',
+  password: '',
+  max_questions: DEFAULT_MAX_QUESTIONS,
+  max_records: DEFAULT_MAX_RECORDS,
+}
 
 function initialsOf(name) {
   return String(name || '?')
@@ -285,6 +296,14 @@ export default function AdminClientAdminsScreen({ onToast }) {
     }
     setSaving(true)
     try {
+      // Blank limit = keep the server default (50 questions / 500 records); 0 = unlimited.
+      const limits = {}
+      if (String(form.max_questions ?? '').trim() !== '') {
+        limits.max_questions_per_survey = Math.max(0, Number(form.max_questions) || 0)
+      }
+      if (String(form.max_records ?? '').trim() !== '') {
+        limits.max_records = Math.max(0, Number(form.max_records) || 0)
+      }
       const res = await createUser({
         username: typedUser,
         password: form.password,
@@ -292,6 +311,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
         company_name: form.company_name.trim(),
         role: 'admin',
         target_quota: 0,
+        ...limits,
       })
       const createdUser = res?.user || {}
       const loginName = String(createdUser.username || typedUser).trim().toLowerCase()
@@ -447,6 +467,28 @@ export default function AdminClientAdminsScreen({ onToast }) {
               autoComplete="off"
             />
           </label>
+          <label className="field compact" title="Total questions this Client Admin may create across their surveys (0 = unlimited)">
+            <span>Questions allotted</span>
+            <input
+              type="number"
+              min="0"
+              max="100000"
+              value={form.max_questions}
+              onChange={(e) => setForm({ ...form, max_questions: e.target.value })}
+              style={{ width: 120 }}
+            />
+          </label>
+          <label className="field compact" title="Field records this Client Admin may collect (0 = unlimited)">
+            <span>Max field records</span>
+            <input
+              type="number"
+              min="0"
+              max="10000000"
+              value={form.max_records}
+              onChange={(e) => setForm({ ...form, max_records: e.target.value })}
+              style={{ width: 120 }}
+            />
+          </label>
           <button type="submit" className="btn primary" disabled={saving}>
             {saving ? '…' : '＋ Create'}
           </button>
@@ -454,6 +496,9 @@ export default function AdminClientAdminsScreen({ onToast }) {
         <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
           New admins start with <strong>no powers</strong> (least privilege) and unverified —
           grant powers in the profile below; only Super Admin can verify a Client Admin.
+          Limits start at <strong>{DEFAULT_MAX_QUESTIONS} questions</strong> and{' '}
+          <strong>{DEFAULT_MAX_RECORDS} field records</strong> (0 = unlimited) — change them
+          here or in the profile below any time.
         </p>
         {created && (
           <div className="card" id="created-credentials" style={{ marginTop: 12, borderColor: '#6b93d4' }}>

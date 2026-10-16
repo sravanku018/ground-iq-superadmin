@@ -120,6 +120,11 @@ function nowIso() {
 
 const FIELD_TZ = 'Asia/Kolkata'
 
+/** Stable per surveyor + record number, so a retried save is recognisably the same record. */
+function recordFormId(user, recordNo) {
+  return `field-${user?.username || 's'}-r${recordNo}`
+}
+
 function formatIstStamp(value) {
   const d = value instanceof Date ? value : new Date(value || '')
   if (Number.isNaN(d.getTime())) return String(value || '')
@@ -265,8 +270,10 @@ export default function FieldCollectScreen({
         const mine = list.filter((p) => {
           if (!p) return false
           const pUser = String(p.submitted_by || p.qa?.submitted_by || '').toLowerCase()
-          if (!pUser || (meName && pUser === meName) || (meUsername && pUser === meUsername)) return true
-          return true
+          // Count only this surveyor's packages. Packages saved by another login on this phone must not move the numbering.
+          if (p.user_id != null) return String(p.user_id) === String(user?.id)
+          if (!pUser) return true
+          return pUser === meName || pUser === meUsername
         })
         const maxIdx = mine.reduce((m, p) => Math.max(m, Number(p?.recordIndex) || 0), 0)
         const count = Math.max(maxIdx, mine.length)
@@ -291,6 +298,8 @@ export default function FieldCollectScreen({
   const audioCtxRef = useRef(null)
   const audioStartedAt = useRef(null)
   const audioTimerRef = useRef(null)
+  const recordingRef = useRef(false)
+  recordingRef.current = recording
   const timingRef = useRef(emptyTiming())
 
   function markTiming(key) {
@@ -550,9 +559,17 @@ export default function FieldCollectScreen({
     [onToast, refreshProgress, refreshQueue, draft, user],
   )
 
+  // Answers are seeded once. A later user/draft identity change must not wipe them.
+  const answersSeededRef = useRef(false)
   useEffect(() => {
     const resume = !draft && !!readStoredOpenDraft(user)?.id
-    loadQuestions({ silent: true, resetAnswers: !draft && !resume }).catch(() => {})
+    const resetAnswers = !draft && !resume && !answersSeededRef.current
+    answersSeededRef.current = true
+    loadQuestions({ silent: true, resetAnswers }).catch(() => {})
+  }, [loadQuestions, draft, user])
+
+  // Unmount-only teardown: stop GPS, recorder, audio context, and stream.
+  useEffect(() => {
     return () => {
       if (watchId.current != null && navigator.geolocation) {
         navigator.geolocation.clearWatch(watchId.current)
@@ -595,7 +612,7 @@ export default function FieldCollectScreen({
       audioUrlRef.current = ''
       setAudioUrl('')
     }
-  }, [loadQuestions, draft])
+  }, [])
 
   useEffect(() => {
     if (active) return undefined
@@ -637,6 +654,11 @@ export default function FieldCollectScreen({
       if (typeof document !== 'undefined' && document.hidden) return
       timer = window.setTimeout(() => {
         if (typeof document !== 'undefined' && document.hidden) return
+        if (recordingRef.current) {
+          // Never leave mid-recording: the mic would keep running with no screen.
+          arm()
+          return
+        }
         const go = () => {
           onToast?.('Idle 3 minutes — back to Home', 'ok')
           onIdleHome()
@@ -1150,6 +1172,7 @@ export default function FieldCollectScreen({
       return
     }
     for (const q of questions) {
+      if (q.required === false) continue
       const qVal = String(answers[q.id] || '').trim()
       if (!qVal) {
         const qTitle = q.label || q.label_te || `Question ${questions.indexOf(q) + 1}`
@@ -1176,6 +1199,7 @@ export default function FieldCollectScreen({
     if (recording && mediaRec.current) {
       await new Promise((resolve) => {
         const rec = mediaRec.current
+        const guard = setTimeout(() => resolve(null), 4000)
         const prev = rec.onstop
         rec.onstop = (ev) => {
           try {
@@ -1193,6 +1217,7 @@ export default function FieldCollectScreen({
               /* ignore */
             }
             setRecording(false)
+            clearTimeout(guard)
             resolve(b)
           })
         }
@@ -1274,7 +1299,7 @@ export default function FieldCollectScreen({
         id: reuseId,
         createdAt: draftCreatedAtRef.current || draft?.createdAt,
         form_key: formMeta?.form_key || 'default',
-        form_id: `field-${user?.username || 's'}-${Date.now()}`,
+        form_id: recordFormId(user, localSeq),
         source: 'mobile-field-survey',
         submitted_by: user?.name || user?.username,
         user_id: user?.id,
@@ -1483,7 +1508,7 @@ export default function FieldCollectScreen({
           id: workingDraftIdRef.current,
           createdAt: draftCreatedAtRef.current,
           form_key: formMeta?.form_key || 'default',
-          form_id: `field-${user?.username || 's'}-${Date.now()}`,
+          form_id: recordFormId(user, localSeq),
           source: 'mobile-field-survey',
           submitted_by: user?.name || user?.username,
           user_id: user?.id,
@@ -1550,7 +1575,7 @@ export default function FieldCollectScreen({
   /** Discard the draft being edited (drafts never reach the server on their own) */
   async function removeCurrentDraft() {
     if (!draft?.id) return
-    if (!confirm('Delete this draft from the phone? Its answers and media will be removed.')) return
+    if (!window.confirm('Delete this draft from the phone? Its answers and media will be removed.')) return
     setSaving(true)
     try {
       await deleteDraft(draft.id).catch(() => {})
@@ -2592,6 +2617,19 @@ export default function FieldCollectScreen({
         {/* STEP 2 — VOICE LOCK + Q/A */}
         {step === 2 && (
           <div>
+            {/* Redesign stage 1: lock checklist, as in the voice-first mock. Same locks and handlers. */}
+            <div className="fc-checklist" role="list" aria-label="Before questions">
+              {[
+                { label: 'Location', done: locks.geo },
+                { label: 'Photo', done: locks.photo },
+                ...(voiceRequired ? [{ label: 'Voice', done: !!voiceLocked && voiceActivated }] : []),
+              ].map((row) => (
+                <div key={row.label} className={`fc-check${row.done ? ' done' : ' todo'}`} role="listitem">
+                  <span>{row.label}</span>
+                  <b>{row.done ? 'Done' : 'To do'}</b>
+                </div>
+              ))}
+            </div>
             {voiceRequired && voiceActivated ? (
               <div className="voice-strip">
                 {recording ? <span className="live-dot" aria-hidden /> : <span className="pill ok" style={{ margin: 0 }}>Voice on</span>}

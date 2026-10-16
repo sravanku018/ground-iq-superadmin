@@ -3340,3 +3340,15 @@ textarea:focus,
 @media (pointer: coarse) {
   input, select, textarea { font-size: 16px; }
 }
+
+
+/* Redesign stage 1: lock checklist for the Collect step */
+.fc-checklist { display: grid; gap: 8px; margin-bottom: 12px; }
+.fc-check {
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 12px 14px; font-size: var(--fs-base); color: var(--ink);
+}
+.fc-check b { font-weight: var(--fw-bold); }
+.fc-check.done b { color: var(--ok); }
+.fc-check.todo b { color: var(--warn); }

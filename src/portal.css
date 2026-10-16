@@ -25,7 +25,7 @@
   left: 50%;
   transform: translateX(-50%);
   z-index: 200;
-  border-radius: 999px;
+  border-radius: var(--r-full);
   min-width: 240px;
   box-shadow: var(--shadow-lg, 0 8px 32px rgba(15, 23, 42, 0.15));
 }
@@ -47,7 +47,7 @@
   max-width: 420px;
   background: var(--surface, #ffffff);
   border: 1px solid var(--surface-hover, #e2e8f0);
-  border-radius: 16px;
+  border-radius: var(--r-xl);
   padding: 32px 28px;
   box-shadow: var(--shadow-md, 0 4px 16px rgba(0,0,0,0.06));
 }
@@ -55,7 +55,7 @@
 .login-alert {
   margin: 0 0 12px;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: var(--bad-bg, #fef2f2);
   border: 1px solid rgba(239, 68, 68, 0.3);
   color: var(--bad, #ef4444);
@@ -117,7 +117,7 @@
 .portal-sidebar-brand .portal-logo {
   width: 34px;
   height: 34px;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: #4f7dc6;
   color: #ffffff;
   display: flex;
@@ -185,7 +185,7 @@
   color: #4f7dc6;
   background: #eff6ff;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   border: 1px solid #bfdbfe;
 }
 
@@ -199,7 +199,7 @@
   text-align: left;
   cursor: pointer;
   padding: 9px 10px;
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   font-size: 13px;
   font-weight: 500;
   color: #475569;
@@ -294,7 +294,7 @@
   border: 1px solid var(--surface-hover, #e2e8f0);
   background: var(--surface, #ffffff);
   color: var(--ink, #1e293b);
-  border-radius: 8px;
+  border-radius: var(--r-md);
   width: 38px;
   height: 38px;
   font-size: 18px;
@@ -334,7 +334,7 @@
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  border-radius: 999px;
+  border-radius: var(--r-full);
   background: var(--bad, #ef4444);
   color: #ffffff;
   font-size: 10px;
@@ -353,7 +353,7 @@
   overflow: auto;
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   box-shadow: 0 12px 40px rgba(15, 23, 42, 0.16);
   z-index: 130;
 }
@@ -441,7 +441,7 @@
   background: #ffffff;
   color: #3c4043;
   padding: 8px 18px;
-  border-radius: 9999px;
+  border-radius: var(--r-full);
   font-size: 13.5px;
   font-weight: 500;
   cursor: pointer;
@@ -466,7 +466,7 @@
 .portal-main .card {
   background: #ffffff;
   border: 1px solid #e0e2ec;
-  border-radius: 16px;
+  border-radius: var(--r-xl);
   padding: 24px;
   box-shadow: 0 1px 3px 0 rgba(60,64,67,0.06);
   margin-bottom: 16px;
@@ -497,7 +497,7 @@
 .portal-kpi {
   background: #ffffff;
   border: 1px solid #e0e2ec;
-  border-radius: 16px;
+  border-radius: var(--r-xl);
   padding: 20px 22px;
   box-shadow: 0 1px 2px 0 rgba(60,64,67,0.06);
   cursor: pointer;
@@ -544,7 +544,7 @@
 .portal-action {
   background: #ffffff;
   border: 1px solid #e0e2ec;
-  border-radius: 16px;
+  border-radius: var(--r-xl);
   padding: 18px 20px;
   text-align: left;
   cursor: pointer;
@@ -609,7 +609,7 @@
   color: #4f7dc6;
   background: #e8f0fe;
   padding: 3px 10px;
-  border-radius: 9999px;
+  border-radius: var(--r-full);
   margin-bottom: 8px;
 }
 
@@ -632,7 +632,7 @@
 .feed-card {
   background: var(--surface, #ffffff);
   border: 1px solid var(--surface-hover, #e2e8f0);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   padding: 16px 18px;
   margin-bottom: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
@@ -648,7 +648,7 @@
 .company-card {
   border: 1px solid var(--surface-hover, #e2e8f0);
   border-left: 4px solid var(--party-congress, #16a34a);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   padding: 14px 16px;
   background: var(--surface, #ffffff);
   margin-bottom: 12px;
@@ -665,7 +665,7 @@
   font-size: 12px;
   font-weight: 600;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   border: 1px solid var(--accent-border, #bfdbfe);
   background: var(--accent-bg, #eff6ff);
   color: var(--accent, #4f7dc6);
@@ -681,14 +681,14 @@
   padding: 12px 14px;
   border-left: 3px solid var(--accent, #4f7dc6);
   background: var(--surface-alt, #f1f5f9);
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 var(--r-md) var(--r-md) 0;
   margin-bottom: 10px;
 }
 
 .audit-row .ico {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: #ffffff;
   display: flex;
   align-items: center;
@@ -749,7 +749,7 @@
 .portal-main select,
 .portal-main textarea {
   border: 1px solid #dadce0;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   padding: 9px 14px;
   font-size: 13.5px;
   background: #ffffff;
@@ -772,7 +772,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   font-size: 13px;
   font-weight: 600;
   padding: 8px 16px;
@@ -819,7 +819,7 @@
 .portal-main .btn.small {
   padding: 5px 12px;
   font-size: 12px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
 }
 
 .portal-main .chip,
@@ -831,7 +831,7 @@
   background: #f8f9fa;
   color: #3c4043;
   padding: 6px 14px;
-  border-radius: 9999px;
+  border-radius: var(--r-full);
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
@@ -857,7 +857,7 @@
   border-collapse: separate;
   border-spacing: 0;
   border: 1px solid #e0e2ec;
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   overflow: hidden;
   background: #ffffff;
   margin: 12px 0;
@@ -893,7 +893,7 @@
 .portal-main .review-item,
 .portal-main .qa-row {
   border: 1px solid #e0e2ec;
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   padding: 16px 18px;
   background: #ffffff;
   margin-bottom: 10px;
@@ -985,7 +985,7 @@
     color: #4f7dc6;
     font-weight: 700;
     font-size: 13px;
-    border-radius: 8px;
+    border-radius: var(--r-md);
     height: 34px;
     padding: 0 10px;
     cursor: pointer;
@@ -1038,7 +1038,7 @@
     flex-shrink: 0;
     padding: 7px 14px;
     font-size: 12.5px;
-    border-radius: 999px;
+    border-radius: var(--r-full);
   }
 
   .portal-kpi-grid {
@@ -1048,7 +1048,7 @@
 
   .portal-kpi {
     padding: 14px 14px;
-    border-radius: 14px;
+    border-radius: var(--r-xl);
   }
 
   .portal-kpi strong {
@@ -1061,7 +1061,7 @@
 
   .card {
     padding: 16px 14px;
-    border-radius: 16px;
+    border-radius: var(--r-xl);
   }
 
   /* Survey card header row: let the action cluster (Open + web-link quota picker)
@@ -1132,7 +1132,7 @@
     min-height: 52px;
     background: none;
     border: none;
-    border-radius: 14px;
+    border-radius: var(--r-lg);
     color: #475569;
     cursor: pointer;
     transition: background-color 140ms cubic-bezier(0.4, 0, 0.2, 1),
@@ -1187,7 +1187,7 @@
     min-width: 15px;
     height: 15px;
     padding: 0 4px;
-    border-radius: 999px;
+    border-radius: var(--r-full);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1243,4 +1243,16 @@
 }
 @media (pointer: coarse) {
   .portal-main input, .portal-main select, .portal-main textarea { font-size: 16px; }
+}
+
+/* ── Keyboard focus ────────────────────────────────────────────────────────────
+   The portal had zero :focus-visible styling, so every button, tab and link was
+   keyboard-reachable but invisible. Scoped to portal roots only (this sheet is
+   bundled with the field app). Text fields keep their own ring — see :focus
+   above — and are deliberately excluded so they don't get a double indicator. */
+.portal-shell :where(a, button, [role="button"], summary, [tabindex]):focus-visible,
+.portal-login :where(a, button, [tabindex]):focus-visible,
+[role="dialog"] :where(a, button, [role="button"], summary, [tabindex]):focus-visible {
+  outline: 2px solid #1d4ed8;
+  outline-offset: 2px;
 }

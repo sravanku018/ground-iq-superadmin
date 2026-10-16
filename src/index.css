@@ -66,7 +66,9 @@
   --r-sm: 6px;
   --r-md: 10px;
   --r-lg: 12px;
+  --r-xl: 16px;   /* panels & cards */
   --r-pill: 20px;
+  --r-full: 999px; /* capsules: chips, tabs, badges of any height */
 
   /* ── Shadow ── */
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.04);

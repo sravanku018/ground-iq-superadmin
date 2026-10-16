@@ -6299,7 +6299,6 @@ async function rawHandler(req: Request): Promise<Response> {
             can_web_survey: u.can_web_survey === true,
             can_record_voice: u.can_record_voice === true,
             can_translate_telugu: u.can_translate_telugu === true,
-            starter_form_key: starterFormKey,
           },
           field_app_access: role === "surveyor",
           field_app_login: role === "surveyor"

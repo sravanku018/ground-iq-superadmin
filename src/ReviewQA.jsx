@@ -314,7 +314,7 @@ export default function ReviewQAScreen({
         onToast?.('Super Admin has not granted your account data-verification rights', 'error')
         return
       }
-      if (!confirm('Delete this rejected record permanently? Photo and voice for it are removed too.')) {
+      if (!window.confirm('Delete this rejected record permanently? Photo and voice for it are removed too.')) {
         return
       }
       setBusyId(id)
@@ -342,7 +342,7 @@ export default function ReviewQAScreen({
       return
     }
     if (
-      !confirm(
+      !window.confirm(
         `Delete ${rejected.length} rejected record(s) permanently? Photos and voice for them are removed too.`,
       )
     ) {
@@ -397,7 +397,7 @@ export default function ReviewQAScreen({
       return
     }
     if (
-      !confirm(
+      !window.confirm(
         'Confirm ALL pending surveys in the last batch? They will enter the analytics report.',
       )
     ) {
@@ -419,8 +419,15 @@ export default function ReviewQAScreen({
   // Keyboard shortcuts when not typing in inputs
   useEffect(() => {
     function onKey(e) {
+      // Shortcuts are single keys only. Ctrl+C, Cmd+C, Ctrl+R and similar must never act on a record.
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.repeat) return
       const tag = (e.target?.tagName || '').toLowerCase()
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) {
+        return
+      }
+      // Focus on a button, link, or inside a dialog: keys belong to that control, not the list.
+      if (e.target?.closest?.('button, a, [role="button"], [role="dialog"], [role="menu"]')) {
         return
       }
       if (!items.length) return

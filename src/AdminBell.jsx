@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { listNotifications, notificationsStreamUrl } from './api'
+import { listNotifications, notificationsStreamUrl, authHeaders } from './api'
 
 function dismissedKey(adminId) {
   return `esurvey_bell_dismissed_${adminId || 'admin'}`
@@ -16,12 +16,17 @@ function readDismissed(adminId) {
   }
 }
 
+const DISMISSED_CAP = 200
+
+/** Keep only the most recent dismissed IDs. Returns the capped list so state matches storage. */
 function writeDismissed(adminId, ids) {
+  const capped = ids.slice(-DISMISSED_CAP)
   try {
-    localStorage.setItem(dismissedKey(adminId), JSON.stringify({ ids, at: Date.now() }))
+    localStorage.setItem(dismissedKey(adminId), JSON.stringify({ ids: capped, at: Date.now() }))
   } catch {
     /* ignore */
   }
+  return capped
 }
 
 export default function AdminBell({ user, onGoPage, enabled = true }) {
@@ -52,9 +57,23 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
 
   useEffect(() => {
     if (!enabled) return undefined
-    let es = null
     let dead = false
-    ;(async () => {
+    let controller = null
+    let retries = 0
+    let retryTimer = 0
+
+    const consume = (chunk) => {
+      const line = chunk.split('\n').find((l) => l.startsWith('data:'))
+      if (!line) return
+      try {
+        const msg = JSON.parse(line.slice(5).trim())
+        if (msg?.type === 'item' && msg.item) addItems([msg.item])
+      } catch {
+        /* ignore malformed frame */
+      }
+    }
+
+    const connect = async () => {
       try {
         const d = await listNotifications(0)
         if (dead) return
@@ -63,24 +82,53 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
         /* ignore */
       }
       if (dead) return
+      // The API only accepts the token via header, so EventSource can't be used
+      // (it cannot set Authorization). Stream the SSE body with fetch() instead.
+      let status = 0
       try {
-        es = new EventSource(notificationsStreamUrl(maxSeq.current))
-        es.onmessage = (ev) => {
-          try {
-            const msg = JSON.parse(ev.data)
-            if (msg?.type === 'item' && msg.item) addItems([msg.item])
-          } catch {
-            /* ignore */
+        controller = new AbortController()
+        const res = await fetch(notificationsStreamUrl(maxSeq.current), {
+          headers: authHeaders(),
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        status = res.status
+        if (dead) return
+        if (res.ok && res.body) {
+          retries = 0
+          const reader = res.body.getReader()
+          const decoder = new TextDecoder()
+          let buf = ''
+          for (;;) {
+            const { value, done } = await reader.read()
+            if (done) break
+            buf += decoder.decode(value, { stream: true })
+            let idx
+            while ((idx = buf.indexOf('\n\n')) >= 0) {
+              consume(buf.slice(0, idx))
+              buf = buf.slice(idx + 2)
+            }
           }
         }
       } catch {
-        /* EventSource unavailable */
+        /* aborted or network error — fall through to retry */
       }
-    })()
+      if (dead) return
+      // 401/403 means the session is gone — stop instead of hammering the API.
+      if (status === 401 || status === 403) return
+      retries += 1
+      retryTimer = window.setTimeout(() => {
+        if (!dead) void connect()
+      }, Math.min(30_000, 2_000 * retries))
+    }
+
+    void connect()
+
     return () => {
       dead = true
+      window.clearTimeout(retryTimer)
       try {
-        es?.close()
+        controller?.abort()
       } catch {
         /* ignore */
       }
@@ -116,15 +164,13 @@ export default function AdminBell({ user, onGoPage, enabled = true }) {
   const clearAll = () => {
     if (!count) return
     const newDismissed = [...new Set([...dismissed, ...activeItems.map((i) => i.id)])]
-    writeDismissed(user?.id, newDismissed)
-    setDismissed(newDismissed)
+    setDismissed(writeDismissed(user?.id, newDismissed))
   }
 
   const dismissItem = (e, item) => {
     e.stopPropagation()
     const newDismissed = [...new Set([...dismissed, item.id])]
-    writeDismissed(user?.id, newDismissed)
-    setDismissed(newDismissed)
+    setDismissed(writeDismissed(user?.id, newDismissed))
   }
 
   const openItem = (it) => {

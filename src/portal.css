@@ -995,6 +995,7 @@
     gap: 8px;
     margin-bottom: 12px;
     flex-wrap: wrap;
+    padding: 10px 14px 0;
   }
 
   .portal-main {
@@ -1050,11 +1051,41 @@
     border-radius: 16px;
   }
 
+  /* Survey card header row: let the action cluster (Open + web-link quota picker)
+     wrap onto its own line instead of overflowing and being clipped by `.screen`. */
+  .survey-card-head {
+    flex-wrap: wrap;
+  }
+
+  .survey-card-head .cwfl-inline {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .survey-card-head .field {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  /* `.btn` is `white-space: nowrap` — long labels (e.g. "Download photos & audio
+     in folders (same record id)") then spill past a narrow card. Let them wrap. */
+  .portal-main .btn {
+    white-space: normal;
+    max-width: 100%;
+    text-align: center;
+    line-height: 1.2;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  /* Must out-specify `.portal-main table { overflow: hidden }` above (line ~847),
+     otherwise wide tables are clipped with no way to scroll them. */
   .mini-table-wrap,
-  table {
+  .portal-main table {
     display: block;
     max-width: 100%;
     overflow-x: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
   }
 

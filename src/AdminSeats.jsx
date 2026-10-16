@@ -41,6 +41,12 @@ export default function AdminSeatsScreen({ onToast }) {
   }, [load])
 
   async function decide(id, approve) {
+    const req = (data?.requests || []).find((r) => r.id === id)
+    const who = req?.requested_by_name || (req?.requested_by ? `@${req.requested_by}` : 'this admin')
+    const message = approve
+      ? `Approve ${who}'s request? The admin seat limit will be raised to ${req?.requested_limit ?? 'the requested value'}.`
+      : `Deny ${who}'s request? They will need to submit a new request to get more seats.`
+    if (!window.confirm(message)) return
     setBusyId(id)
     try {
       if (approve) await approveSeatRequest(id)

@@ -326,7 +326,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
   }
 
   async function handleDisable(u) {
-    if (!confirm(`Disable @${u.username}? They cannot log into the portal. Active sessions will be revoked.`)) return
+    if (!window.confirm(`Disable @${u.username}? They cannot log into the portal. Active sessions will be revoked.`)) return
     try {
       await disableUser(u.id)
       onToast?.(`Disabled @${u.username} · access revoked`, 'ok')
@@ -347,7 +347,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
   }
 
   async function handleDelete(u) {
-    if (!confirm(`DELETE @${u.username} permanently? Prefer Disable. This cannot be undone.`)) return
+    if (!window.confirm(`DELETE @${u.username} permanently? Prefer Disable. This cannot be undone.`)) return
     try {
       await deleteUser(u.id)
       onToast?.(`Deleted @${u.username}`, 'ok')

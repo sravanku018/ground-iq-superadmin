@@ -1282,7 +1282,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         borderLeft: `4px solid ${sharedProject ? '#7c3aed' : '#4f7dc6'}`,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div className="survey-card-head" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <button
           type="button"
           className="btn small primary"

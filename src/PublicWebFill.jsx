@@ -26,7 +26,7 @@ function emptyAnswers(qs) {
   for (const q of qs) {
     const id = qid(q)
     if (!id) continue
-    init[id] = isMeter(q) ? '50%' : ''
+    init[id] = ''
   }
   return init
 }
@@ -87,6 +87,7 @@ export default function PublicWebFill({ formKey, fillToken }) {
   async function submit(e) {
     e.preventDefault()
     for (const q of questions) {
+      if (q.required === false) continue
       const val = answers[qid(q)]
       const hasVal = Array.isArray(val) ? val.length > 0 : String(val ?? '').trim() !== ''
       if (!hasVal) {
@@ -206,7 +207,7 @@ export default function PublicWebFill({ formKey, fillToken }) {
                 <div key={id || i} id={`web-q-${id}`} className="card" style={{ marginBottom: 12 }}>
                   <p style={{ margin: '0 0 10px', fontWeight: 700 }}>
                     Q{i + 1}. {label}
-                    {q.required ? ' *' : ''}
+                    {q.required !== false ? ' *' : ''}
                   </p>
 
                   {(type === 'multi_select' || type === 'multi') ? (
@@ -292,8 +293,8 @@ export default function PublicWebFill({ formKey, fillToken }) {
                         <span>{opts[2] || (te ? 'సానుకూల' : 'Positive')}</span>
                       </div>
                       <div className="qa-meter-value">
-                        <strong>{val || `${meterNum(val)}%`}</strong>
-                        <span
+                        <strong>{val ? val : (te ? 'ఇంకా ఎంచుకోలేదు' : 'Not answered yet')}</strong>
+                        {val ? <span
                           className="pill"
                           style={{
                             background:
@@ -318,7 +319,7 @@ export default function PublicWebFill({ formKey, fillToken }) {
                             : meterNum(val) <= 66
                             ? opts[1] || (te ? 'తటస్థ' : 'Neutral')
                             : opts[2] || (te ? 'సానుకూల' : 'Positive')}
-                        </span>
+                        </span> : null}
                       </div>
                     </div>
                   ) : opts.length > 0 ? (

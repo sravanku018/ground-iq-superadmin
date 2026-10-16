@@ -63,8 +63,15 @@ export default function AdminAuditScreen({ onToast }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [action, setAction] = useState('')
+  const [actorInput, setActorInput] = useState('')
   const [actor, setActor] = useState('')
   const [entity, setEntity] = useState('')
+
+  // Query only after the user pauses typing, not on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setActor(actorInput.trim()), 400)
+    return () => clearTimeout(t)
+  }, [actorInput])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -108,8 +115,8 @@ export default function AdminAuditScreen({ onToast }) {
           <label className="field compact" style={{ flex: 1, minWidth: 150 }}>
             <span>Actor</span>
             <input
-              value={actor}
-              onChange={(e) => setActor(e.target.value)}
+              value={actorInput}
+              onChange={(e) => setActorInput(e.target.value)}
               placeholder="username…"
             />
           </label>

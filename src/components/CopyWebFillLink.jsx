@@ -270,7 +270,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
 
   if (compact) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className="cwfl-inline" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {usage}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           {picker}
@@ -288,7 +288,7 @@ export default function CopyWebFillLink({ formKey, title, onToast, onStatusChang
   }
 
   return (
-    <div style={{ margin: '0 0 12px' }}>
+    <div className="cwfl-inline" style={{ margin: '0 0 12px' }}>
       <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 700 }}>
         {title ? `${title} — web link` : 'Web survey link'}
       </p>

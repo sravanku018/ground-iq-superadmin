@@ -18,8 +18,10 @@ export function getApiBase() {
   const env = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
   if (env) return env
 
-  // Always Deno in production / native
-  return DENO_API_URL
+  // Production builds use the production API. Development and staging builds must name
+  // their API explicitly, so test work cannot reach the live server by accident.
+  if (import.meta.env.PROD) return DENO_API_URL
+  throw new Error('VITE_API_BASE_URL is not set for this build. Add it to the .env file.')
 }
 
 export function getToken() {
@@ -27,6 +29,20 @@ export function getToken() {
     return localStorage.getItem(TOKEN_KEY) || ''
   } catch {
     return ''
+  }
+}
+
+/**
+ * Auth headers for requests that must bypass `request()` (e.g. streaming a
+ * response body). The API only accepts the token via header — never a query
+ * param — so `EventSource` cannot be used for authenticated streams.
+ */
+export function authHeaders(extra = {}) {
+  const token = getToken()
+  return {
+    Accept: 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extra,
   }
 }
 
@@ -68,6 +84,31 @@ export function clearSession() {
   }
 }
 
+const REQUEST_TIMEOUT_MS = 60_000
+
+/** fetch with a timeout and readable errors. Connection failures and timeouts become clear messages. */
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    return await fetch(url, { ...options, signal: options.signal || controller.signal })
+  } catch (e) {
+    if (e?.name === 'AbortError') {
+      const err = new Error('The server took too long to respond. Check the connection and try again.')
+      err.timeout = true
+      throw err
+    }
+    if (e instanceof TypeError) {
+      const err = new Error('No connection to the server. Check the network and try again.')
+      err.network = true
+      throw err
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function request(path, options = {}) {
   const base = getApiBase()
   const url = `${base}${path}`
@@ -79,7 +120,7 @@ async function request(path, options = {}) {
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const res = await fetch(url, { cache: 'no-store', ...options, headers })
+  const res = await fetchWithTimeout(url, { cache: 'no-store', ...options, headers })
   const data = await res.json().catch(() => ({}))
 
   if (res.status === 401) {
@@ -160,12 +201,16 @@ export function listNotifications(after = 0) {
   return request(`/api/notifications${q}`)
 }
 
+/**
+ * URL for the live notification stream. The token is NOT included — the API
+ * rejects query-param tokens (`bearer()` only reads headers), so the caller
+ * must stream this with `fetch()` + `authHeaders()` instead of `EventSource`.
+ */
 export function notificationsStreamUrl(after = 0) {
-  const token = getToken()
   const q = new URLSearchParams()
-  if (token) q.set('token', token)
   if (after) q.set('after', String(after))
-  return `${getApiBase()}/api/notifications/stream?${q}`
+  const qs = q.toString()
+  return `${getApiBase()}/api/notifications/stream${qs ? `?${qs}` : ''}`
 }
 
 export function createUser(body) {
@@ -497,7 +542,7 @@ export async function exportSubmissions(filters = {}) {
   ).toString()
   const url = `${base}/api/admin/export${q ? `?${q}` : ''}`
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: { Authorization: `Bearer ${getToken()}` },
     })
     if (!res.ok) {
@@ -905,7 +950,7 @@ export async function fetchMediaBlobUrl(pathOrUrl) {
   const headers = { Accept: '*/*' }
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
-  const res = await fetch(path, { headers })
+  const res = await fetchWithTimeout(path, { headers })
   if (!res.ok) throw new Error(`Media load failed (${res.status})`)
   const blob = await res.blob()
   return URL.createObjectURL(blob)
@@ -935,7 +980,7 @@ export async function fetchMediaBytes(pathOrUrl) {
   if (token) headers.Authorization = `Bearer ${token}`
   let res
   try {
-    res = await fetch(url, { headers, redirect: 'manual' })
+    res = await fetchWithTimeout(url, { headers, redirect: 'manual' })
   } catch (e) {
     throw new Error(
       e?.message || 'NetworkError when fetching media — redeploy the API so files are proxied.',
@@ -963,26 +1008,26 @@ export async function downloadMediaFile(pathOrUrl, filename = 'media-file') {
   } catch {
     urlObj = new URL(url, window.location.origin)
   }
-  if (token && !urlObj.searchParams.has('token')) {
-    urlObj.searchParams.set('token', token)
-  }
   urlObj.searchParams.set('download', '1')
 
   try {
     const headers = {}
     if (token) headers.Authorization = `Bearer ${token}`
-    const res = await fetch(urlObj.toString(), { headers })
+    const res = await fetchWithTimeout(urlObj.toString(), { headers })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const blob = await res.blob()
     const blobUrl = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = blobUrl
     a.download = filename
+    document.body.appendChild(a)
     a.click()
-    URL.revokeObjectURL(blobUrl)
+    a.remove()
+    // Revoke after the browser has started the download. Revoking at once fails in some browsers.
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
   } catch (e) {
-    console.warn('Direct fetch download failed, attempting window open fallback:', e)
-    window.open(urlObj.toString(), '_blank')
+    // No window.open fallback: it would put the session token in a browser tab's address.
+    throw new Error(e?.message || 'Download failed')
   }
 }
 

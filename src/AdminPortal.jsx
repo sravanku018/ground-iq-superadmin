@@ -23,6 +23,7 @@ import VerifiedBadge from './VerifiedBadge'
 import { PortalEmpty, PortalSkeleton } from './PortalUI'
 import AdminBell from './AdminBell'
 import useIdleTimeout from './hooks/useIdleTimeout'
+import { useIsNarrow } from './hooks/useIsNarrow'
 import './App.css'
 import './portal.css'
 
@@ -1129,6 +1130,9 @@ export default function AdminPortal({ superAdminOnly = false }) {
   const [deepLink, setDeepLink] = useState(null)
 
   const isSuper = superAdminOnly || user?.role === 'super_admin'
+  // Desktop dock vs mobile topbar render the same controls; mount only one bell
+  // so we don't open two notification streams to the API.
+  const isNarrow = useIsNarrow(960)
 
   const canPage = useCallback(
     (p) => {
@@ -1490,7 +1494,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#16a34a' }}></span>
           Synced just now
         </div>
-        <AdminBell user={user} onGoPage={goPage} />
+        <AdminBell user={user} onGoPage={goPage} enabled={!isNarrow} />
       </div>
 
 
@@ -1518,7 +1522,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           >
             {loadingData ? '…' : '↻'}
           </button>
-          <AdminBell user={user} onGoPage={goPage} />
+          <AdminBell user={user} onGoPage={goPage} enabled={isNarrow} />
         </div>
       </header>
 

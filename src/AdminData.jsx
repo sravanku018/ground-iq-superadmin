@@ -288,7 +288,9 @@ export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
           String(k).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 
         const esc = (v) => {
-          const s = String(v ?? '')
+          let s = String(v ?? '')
+          // Spreadsheets run a cell that starts with = + - @ as a formula. Prefix it so it stays plain text.
+          if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
           return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
         }
 
@@ -320,7 +322,7 @@ export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
           const headerRow = ['Field / Question', ...filtered.map((r, idx) => `Record #${r.id || idx + 1}`)]
           lines.push(headerRow.map(esc).join(','))
           fixed.forEach((c) => {
-            const rowVals = [humanize(c)]
+            const rowVals = [esc(humanize(c))]
             filtered.forEach((r) => {
               const base = getBaseRecord(r)
               rowVals.push(esc(base[c]))

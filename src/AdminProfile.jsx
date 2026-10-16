@@ -1,5 +1,6 @@
 import { resetSuperAdminTotp, updateUser } from './api'
 import CredentialsCard from './components/CredentialsCard'
+import { APP_VERSION } from './version'
 import ShareAppLink from './components/ShareAppLink'
 
 
@@ -76,20 +77,19 @@ export default function AdminProfileScreen({ user, onToast, onUserUpdated }) {
               onClick={async () => {
                 onToast?.('Checking for latest version…', 'ok')
                 try {
-                  const res = await fetch(`/api/app-version?t=${Date.now()}`, { cache: 'no-store' }).catch(() => null)
-                  if (res && res.ok) {
-                    const data = await res.json()
-                    if (data?.version) {
-                      onToast?.(`Latest app version is v${data.version}`, 'ok')
-                    } else {
-                      onToast?.('Portal is up to date ✓', 'ok')
-                    }
+                  const res = await fetch(`/api/app-version?t=${Date.now()}`, { cache: 'no-store' })
+                  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                  const data = await res.json()
+                  const latest = String(data?.version || '')
+                  if (latest && latest !== APP_VERSION) {
+                    onToast?.(`New version v${latest} found. Reloading…`, 'ok')
+                    setTimeout(() => window.location.reload(), 1200)
                   } else {
                     onToast?.('Portal is up to date ✓', 'ok')
                   }
-                  setTimeout(() => window.location.reload(), 1200)
                 } catch {
-                  window.location.reload()
+                  // Offline or server unreachable: say so, and do not reload.
+                  onToast?.('Could not check for updates. Check your connection and try again.', 'error')
                 }
               }}
             >
@@ -183,4 +183,3 @@ export default function AdminProfileScreen({ user, onToast, onUserUpdated }) {
     </div>
   )
 }
-

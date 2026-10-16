@@ -925,8 +925,8 @@
 
 @media (max-width: 960px) {
   :root {
-    /* Height of the 3 × 2 bottom nav grid; .portal-main reserves room for it. */
-    --portal-bottom-nav-h: 136px;
+    /* Height of the single-row bottom nav; .portal-main reserves room for it. */
+    --portal-bottom-nav-h: 72px;
   }
 
   .portal-shell {
@@ -1102,11 +1102,11 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  /* ── Mobile Bottom Navigation Bar — 3 × 2 grid of outline icons ── */
+  /* ── Mobile Bottom Navigation Bar — one row of outline icons ── */
   .portal-bottom-nav {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 2px 6px;
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
     position: fixed;
     bottom: 0;
     left: 0;
@@ -1117,21 +1117,22 @@
     -webkit-backdrop-filter: blur(16px);
     border-top: 1px solid rgba(226, 232, 240, 0.85);
     /* Keep --portal-bottom-nav-h in sync with this box. */
-    padding: 8px 8px max(10px, env(safe-area-inset-bottom));
+    padding: 6px 4px max(8px, env(safe-area-inset-bottom));
     box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.06);
   }
 
   .portal-tab-btn {
+    flex: 1 1 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 5px;
-    padding: 8px 4px;
-    min-height: 54px;
+    gap: 4px;
+    padding: 7px 1px;
+    min-height: 52px;
     background: none;
     border: none;
-    border-radius: 16px;
+    border-radius: 14px;
     color: #475569;
     cursor: pointer;
     transition: background-color 140ms cubic-bezier(0.4, 0, 0.2, 1),
@@ -1162,9 +1163,9 @@
   }
 
   .portal-tab-label {
-    font-size: 11.5px;
+    font-size: 10.5px;
     font-weight: 600;
-    letter-spacing: -0.1px;
+    letter-spacing: -0.2px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

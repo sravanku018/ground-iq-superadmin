@@ -19,6 +19,8 @@
  *   npm run release -- --yes       # no prompt (unattended)
  *   npm run release -- --dry-run   # print the plan, change nothing
  *   npm run release -- --skip-api  # skip the API deploy
+ *   npm run release -- --skip-build  # reuse the APK already built + published
+ *   npm run release -- --no-bump   # ship the current version (finish/backfill)
  *
  * Env:
  *   VPS_DIR  (default "<home>/Downloads/vps oracle", holds push_vps.py + key)
@@ -37,10 +39,15 @@ const has = (name) => args.includes(`--${name}`)
 const dryRun = has('dry-run')
 const assumeYes = has('yes')
 const skipApi = has('skip-api')
+const skipBuild = has('skip-build')
+const noBump = has('no-bump')
 const kind = has('major') ? 'major' : has('minor') ? 'minor' : 'patch'
 const vpsDir = process.env.VPS_DIR || path.join(os.homedir(), 'Downloads', 'vps oracle')
 
-/** Files the version bump itself rewrites. Everything else in the tree is left alone. */
+/**
+ * Files the version bump rewrites. android/ is gitignored in this repo (the
+ * gradle project is local-only), so only the tracked ones are ever staged.
+ */
 const VERSION_FILES = ['package.json', 'android/app/build.gradle', 'hono-api/legacy/handler.ts']
 const RELEASE_APK = 'ElectionSurvey-release.apk'
 
@@ -79,8 +86,16 @@ function versionCodeFor(version) {
 
 // ---------------------------------------------------------------- preflight
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
-const version = nextVersion(pkg.version, kind)
+const version = noBump ? pkg.version : nextVersion(pkg.version, kind)
 const versionCode = versionCodeFor(version)
+
+/**
+ * Version files that git actually tracks. android/ is gitignored here, so
+ * android/app/build.gradle stays local-only and must not be staged.
+ */
+const trackedVersionFiles = VERSION_FILES.filter(
+  (file) => fs.existsSync(path.join(root, file)) && read('git', ['ls-files', '--error-unmatch', '--', file]) !== '',
+)
 
 if (!fs.existsSync(path.join(root, 'android', 'gradlew'))) fail('android/gradlew not found — run from the app repo')
 if (!fs.existsSync(path.join(root, 'scripts', 'publish-apk.mjs'))) fail('scripts/publish-apk.mjs not found')
@@ -94,8 +109,9 @@ const upstream = read('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name
 const remote = upstream.includes('/') ? upstream.split('/')[0] : 'ground-iq'
 
 console.log(`\nSmart Survey X release`)
-console.log(`  version   : ${pkg.version} → ${version} (${versionCode})`)
+console.log(`  version   : ${noBump ? `${version} (no bump)` : `${pkg.version} → ${version}`} (${versionCode})`)
 console.log(`  branch    : ${branch} → ${remote}`)
+console.log(`  artifacts : ${skipBuild ? 'reuse existing APK + manifest' : 'build APK + publish to server'}`)
 console.log(`  api deploy: ${skipApi ? 'skipped' : vpsDir}`)
 console.log(`  website   : not touched (rebuilds by itself on push)`)
 if (dryRun) console.log(`  mode      : DRY RUN — nothing will change`)
@@ -112,27 +128,31 @@ if (!dryRun && !assumeYes) {
 }
 
 // ------------------------------------------------------------- 1. bump/sync
-step('node', ['scripts/sync-version.mjs', `--${kind}`])
+step('node', noBump ? ['scripts/sync-version.mjs'] : ['scripts/sync-version.mjs', `--${kind}`])
 
-// ------------------------------------------------------------- 2. build
-step('npm', ['run', 'build:apk:release'])
-
+// ------------------------------------------------------- 2. build + publish
 const apkPath = path.join(root, RELEASE_APK)
-if (!dryRun) {
-  if (!fs.existsSync(apkPath)) fail(`${RELEASE_APK} was not produced by the build`)
-  const bytes = fs.statSync(apkPath).size
-  console.log(`\n✔ APK built (${bytes} bytes)`)
+if (!skipBuild) {
+  step('npm', ['run', 'build:apk:release'])
+  if (!dryRun) {
+    if (!fs.existsSync(apkPath)) fail(`${RELEASE_APK} was not produced by the build`)
+    console.log(`\n✔ APK built (${fs.statSync(apkPath).size} bytes)`)
+  }
+  step('npm', ['run', 'publish:apk'])
 }
+if (!dryRun && !fs.existsSync(apkPath)) fail(`${RELEASE_APK} not found — drop --skip-build`)
 
-// ---------------------------------------------- 3. publish APK + manifest
-step('npm', ['run', 'publish:apk'])
-
-// ------------------------------------------------------------- 4. API deploy
+// ------------------------------------------------------------- 3. API deploy
 if (!skipApi) step('python3', ['push_vps.py', '--service', 'survey'], { cwd: vpsDir })
 
-// ----------------------------------------------------------- 5. git + GitHub
-step('git', ['add', ...VERSION_FILES])
-step('git', ['commit', '-m', `Bump version to v${version} (versionCode ${versionCode})`])
+// ----------------------------------------------------------- 4. git + GitHub
+if (!trackedVersionFiles.length) fail('no tracked version files to commit')
+step('git', ['add', ...trackedVersionFiles])
+if (read('git', ['diff', '--cached', '--name-only'])) {
+  step('git', ['commit', '-m', `Bump version to v${version} (versionCode ${versionCode})`])
+} else {
+  console.log('\n(version files already committed — nothing to commit)')
+}
 step('git', ['tag', version])
 step('git', ['push', remote, branch])
 step('git', ['push', remote, version])

@@ -1,8 +1,8 @@
 {
   "name": "neondbapp",
   "private": true,
-  "version": "2.0.86",
-  "versionCode": 20086,
+  "version": "2.0.87",
+  "versionCode": 20087,
   "type": "module",
   "scripts": {
     "dev": "concurrently -n api,web -c green,cyan \"npm run server\" \"npm run client\"",

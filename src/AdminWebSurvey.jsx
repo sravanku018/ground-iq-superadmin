@@ -720,17 +720,17 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
       )}
 
       {/* ── Quick Link Generator Card ── */}
-      <div className="card" style={{ padding: 18, marginBottom: 20, background: 'linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)', border: '1.5px solid #86efac', borderRadius: 14, boxShadow: '0 4px 12px rgba(22, 163, 74, 0.08)' }}>
+      <div className="card" style={{ padding: 18, marginBottom: 20, background: 'linear-gradient(135deg, #eef3fb 0%, #ffffff 100%)', border: '1.5px solid #bfdbfe', borderRadius: 14, boxShadow: '0 4px 12px rgba(79, 125, 198, 0.08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#14532d', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#223f75', display: 'flex', alignItems: 'center', gap: 8 }}>
               ⚡ Quick Public Survey Link Generator
             </h3>
             <p className="muted" style={{ margin: '3px 0 0', fontSize: 12 }}>
               Select any survey by name, set response quota, and generate a shareable WhatsApp/Web link instantly.
             </p>
           </div>
-          <span style={{ fontSize: 11, background: '#dcfce7', color: '#15803d', fontWeight: 700, padding: '3px 10px', borderRadius: 99, border: '1px solid #86efac' }}>
+          <span style={{ fontSize: 11, background: '#eef3fb', color: '#3f6cbe', fontWeight: 700, padding: '3px 10px', borderRadius: 99, border: '1px solid #bfdbfe' }}>
             Public Access · No Login Required
           </span>
         </div>
@@ -787,9 +787,9 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
               onClick={handleQuickGenerate}
               style={{
                 flex: 1, minHeight: 42, fontSize: 14, fontWeight: 700,
-                background: genLinkClosed ? '#94a3b8' : '#16a34a',
-                borderColor: genLinkClosed ? '#64748b' : '#15803d',
-                boxShadow: genLinkClosed ? 'none' : '0 2px 6px rgba(22, 163, 74, 0.3)',
+                background: genLinkClosed ? '#94a3b8' : '#4f7dc6',
+                borderColor: genLinkClosed ? '#64748b' : '#3f6cbe',
+                boxShadow: genLinkClosed ? 'none' : '0 2px 6px rgba(79, 125, 198, 0.3)',
               }}
             >
               {genBusy ? 'Generating…' : genLinkClosed ? 'Sharing off' : genFrozen ? '📋 Copy link' : '🔗 Generate & Copy Link'}

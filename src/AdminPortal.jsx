@@ -415,7 +415,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                         <td style={{ textAlign: 'right' }}>
                           {ca.field_remaining != null ? (
                             <span style={{
-                              color: Number(ca.field_remaining) === 0 ? '#dc2626' : '#15803d',
+                              color: Number(ca.field_remaining) === 0 ? '#dc2626' : '#4f7dc6',
                               fontWeight: 700,
                             }}>
                               {Number(ca.field_remaining).toLocaleString()}
@@ -550,7 +550,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                   <td style={{ textAlign: 'right' }}>
                     {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.total_used) || 0), 0).toLocaleString()}
                   </td>
-                  <td style={{ textAlign: 'right', color: '#15803d' }}>
+                  <td style={{ textAlign: 'right', color: '#4f7dc6' }}>
                     {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.field_remaining) || 0), 0).toLocaleString()}
                   </td>
                   <td style={{ textAlign: 'center' }}>
@@ -581,9 +581,9 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                   <span style={{ fontSize: 11, color: '#1d4ed8', display: 'block', fontWeight: 600 }}>Allocated for Web</span>
                   <strong style={{ fontSize: 14, color: '#1e40af' }}>{webReserved.toLocaleString()}</strong>
                 </div>
-                <div style={{ padding: '6px 12px', borderRadius: 8, background: '#f0fdf4', border: '1px solid #bbf7d0', textAlign: 'center' }}>
-                  <span style={{ fontSize: 11, color: '#15803d', display: 'block', fontWeight: 600 }}>Remaining for Field</span>
-                  <strong style={{ fontSize: 14, color: '#16a34a' }}>{fieldLeft != null ? fieldLeft.toLocaleString() : '∞'}</strong>
+                <div style={{ padding: '6px 12px', borderRadius: 8, background: '#eef3fb', border: '1px solid #bfdbfe', textAlign: 'center' }}>
+                  <span style={{ fontSize: 11, color: '#3f6cbe', display: 'block', fontWeight: 600 }}>Remaining for Field</span>
+                  <strong style={{ fontSize: 14, color: '#223f75' }}>{fieldLeft != null ? fieldLeft.toLocaleString() : '∞'}</strong>
                 </div>
                 <div style={{ padding: '6px 12px', borderRadius: 8, background: rejectedTotal > 0 ? '#fef2f2' : '#f8fafc', border: `1px solid ${rejectedTotal > 0 ? '#fecaca' : '#e2e8f0'}`, textAlign: 'center' }}>
                   <span style={{ fontSize: 11, color: rejectedTotal > 0 ? '#b91c1c' : '#64748b', display: 'block', fontWeight: 600 }}>Rejected</span>
@@ -731,7 +731,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
               <span className="muted">
                 Total Allocated: <strong>{allotCap > 0 ? allotCap.toLocaleString() : '∞'}</strong> · Web Reserved: <strong>{webReserved.toLocaleString()}</strong> · Field Used: <strong>{fieldUsed.toLocaleString()}</strong> · Rejected: <strong style={{ color: rejectedTotal > 0 ? '#dc2626' : undefined }}>{rejectedTotal.toLocaleString()}</strong>
               </span>
-              <span style={{ color: '#15803d', fontWeight: 700 }}>
+              <span style={{ color: '#3f6cbe', fontWeight: 700 }}>
                 Remaining for Field: {fieldLeft != null ? fieldLeft.toLocaleString() : '∞'} records
               </span>
             </div>

@@ -365,7 +365,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
                                   display: 'flex',
                                   alignItems: 'center',
                                   gap: 10,
-                                  background: on ? '#c8f5df' : 'rgba(15,23,42,0.05)',
+                                  background: on ? '#eef3fb' : 'rgba(15,23,42,0.05)',
                                   border: on ? '1px solid #4f7dc6' : '1px solid #e2e8f0',
                                   borderRadius: 8,
                                   padding: '9px 12px',

@@ -60,12 +60,12 @@ export default function ShareAppLink({ onToast }) {
       </p>
 
       {/* Option 1: PWA Web Link */}
-      <div style={{ padding: 12, borderRadius: 10, background: '#f0fdf4', border: '1px solid #bbf7d0', marginBottom: 12 }}>
+      <div style={{ padding: 12, borderRadius: 10, background: '#eef3fb', border: '1px solid #bfdbfe', marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-          <strong style={{ fontSize: 13, color: '#166534', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <strong style={{ fontSize: 13, color: '#223f75', display: 'flex', alignItems: 'center', gap: 6 }}>
             📱 PWA App Link (Android &amp; iPhone)
           </strong>
-          <span style={{ fontSize: 10, background: '#dcfce7', color: '#15803d', fontWeight: 700, padding: '2px 8px', borderRadius: 999 }}>
+          <span style={{ fontSize: 10, background: '#eef3fb', color: '#3f6cbe', fontWeight: 700, padding: '2px 8px', borderRadius: 999 }}>
             Recommended · No Play Store needed
           </span>
         </div>
@@ -82,7 +82,7 @@ export default function ShareAppLink({ onToast }) {
           <button
             type="button"
             className="btn primary"
-            style={{ background: '#16a34a', borderColor: '#15803d' }}
+            style={{ background: '#4f7dc6', borderColor: '#3f6cbe' }}
             onClick={() => void copy(pwaLink, 'pwa', 'PWA App link copied')}
           >
             {copied === 'pwa' ? 'Copied ✓' : 'Copy PWA link'}

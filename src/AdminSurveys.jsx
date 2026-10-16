@@ -832,7 +832,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
                       display: 'flex',
                       alignItems: 'center',
                       gap: 10,
-                      background: checkedAdmins[String(u.id)] ? '#c8f5df' : 'rgba(15,23,42,0.05)',
+                      background: checkedAdmins[String(u.id)] ? '#eef3fb' : 'rgba(15,23,42,0.05)',
                       border: checkedAdmins[String(u.id)] ? '1px solid #4f7dc6' : '1px solid #e2e8f0',
                       borderRadius: 8,
                       padding: '9px 12px',
@@ -1560,7 +1560,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
                       <td style={{ textAlign: 'right' }}>
                         {ca.field_remaining != null ? (
                           <span style={{
-                            color: Number(ca.field_remaining) === 0 ? '#dc2626' : '#15803d',
+                            color: Number(ca.field_remaining) === 0 ? '#dc2626' : '#4f7dc6',
                             fontWeight: 700,
                           }}>
                             {Number(ca.field_remaining).toLocaleString()}
@@ -1602,7 +1602,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
                     <td style={{ textAlign: 'right' }}>
                       {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.total_used) || 0), 0).toLocaleString()}
                     </td>
-                    <td style={{ textAlign: 'right', color: '#15803d' }}>
+                    <td style={{ textAlign: 'right', color: '#4f7dc6' }}>
                       {clientBreakdown.reduce((sum, ca) => sum + (Number(ca.field_remaining) || 0), 0).toLocaleString()}
                     </td>
                     <td style={{ textAlign: 'center' }}>

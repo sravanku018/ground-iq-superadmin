@@ -545,9 +545,9 @@ h1, h2, h3, h4, .topbar-title, .hero-name, .mission-title, .fl-title, .qa-title,
   font-size: 17px;
   font-weight: var(--fw-bold);
   cursor: pointer;
-  color: #04140e;
-  background: linear-gradient(180deg, #34ffb8 0%, #00d98a 100%);
-  box-shadow: 0 10px 28px rgba(143, 179, 230, 0.4);
+  color: #ffffff;
+  background: linear-gradient(180deg, #4f7dc6 0%, #3f6cbe 100%);
+  box-shadow: 0 10px 28px rgba(79, 125, 198, 0.4);
 }
 
 .fl-submit:active {

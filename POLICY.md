@@ -125,12 +125,15 @@ voice is required only when the survey `voice_required` flag is on.
   (private bucket; served via authenticated `/api/media/:id/file`, `hono-api/legacy/handler.ts`).
   `survey_media.url` is stored as the relative API path, expanded to absolute URLs only
   on export with the request origin.
-- **Front door:** CORS allowlist (`hono-api/legacy/handler.ts`): GitHub Pages
-  `https://sravanku018.github.io`, `ground-iq-web*` / `ground-iq-superadmin*` Vercel hosts,
-  localhost/127.0.0.1, `capacitor://localhost`, `ionic://localhost`, plus `ALLOWED_ORIGINS`
-  env merge. Disallowed origins get **no** `Access-Control-Allow-Origin` (blocked).
-- **Web hosting:** Client Admin on GitHub Pages / Vercel (`vercel.json` SPA rewrite);
-  PWA service worker (`public/sw.js`) registers on web only, never inside the Capacitor APK.
+- **Front door:** CORS allowlist (`hono-api/legacy/handler.ts`): `ground-iq-web*` /
+  `ground-iq-superadmin*` Vercel hosts, localhost/127.0.0.1, `capacitor://localhost`,
+  `ionic://localhost`, plus `ALLOWED_ORIGINS` env merge. The GitHub Pages origin
+  `https://sravanku018.github.io` is still accepted but is **legacy — nothing is served
+  from there any more**. Disallowed origins get **no** `Access-Control-Allow-Origin` (blocked).
+- **Web hosting:** Client Admin and the field PWA run on **Vercel**
+  (`ground-iq-web-lake.vercel.app`, `vercel.json` SPA rewrite, auto-deploys on push to
+  `main`). The GitHub Pages workflow was removed — do not re-add it. PWA service worker
+  (`public/sw.js`) registers on web only, never inside the Capacitor APK.
 - **Maps:** Leaflet + bundled Telangana GeoJSON (`public/geojson/`); no respondent data
   is sent to any map provider.
 

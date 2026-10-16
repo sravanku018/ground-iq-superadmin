@@ -45,7 +45,10 @@ Branch here: `ground-sync` → push as `HEAD:main` on those remotes. Nested `git
 
 ### CORS (login blocked in Firefox)
 
-Portals are on **GitHub Pages**. Origin is `https://sravanku018.github.io`.  
+Portals now run on **Vercel** (`https://ground-iq-web-lake.vercel.app`). At the time of this
+fix they were served from **GitHub Pages**, origin `https://sravanku018.github.io` — which is
+why that origin is still in the allow-list. GitHub Pages is no longer used and its workflow
+was removed (see POLICY.md §"Web hosting").  
 Allow-list had only Vercel + localhost, so OPTIONS `/api/auth/login` returned **204 with no `Access-Control-Allow-Origin`**.
 
 Fix (in `hono-api/legacy/handler.ts` and `deno-deploy/main.ts`): allow GitHub Pages, Vercel previews, localhost/Capacitor; merge `ALLOWED_ORIGINS` env instead of replacing; allow `cache-control` on preflight.

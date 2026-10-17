@@ -21,6 +21,7 @@ import QuotaIndicator from './components/QuotaIndicator'
 import AdminLogin from './AdminLogin'
 import VerifiedBadge from './VerifiedBadge'
 import { PortalEmpty, PortalSkeleton } from './PortalUI'
+import { claimReload, isChunkLoadError, reloadSoon } from './reloadGuard'
 import AdminBell from './AdminBell'
 import useIdleTimeout from './hooks/useIdleTimeout'
 import { useIsNarrow } from './hooks/useIsNarrow'
@@ -111,25 +112,12 @@ class ChunkErrorBoundary extends Component {
     return { failed: true }
   }
   componentDidCatch(error) {
-    const isChunk =
-      String(error?.message || '').includes('dynamically imported module') ||
-      String(error?.message || '').includes('Loading chunk') ||
-      String(error?.name || '').includes('ChunkLoadError')
-    if (!isChunk || this.state.reloading) return
-    let last = 0
-    try {
-      last = Number(localStorage.getItem('esurvey_chunk_reload') || 0)
-    } catch {
-      /* ignore */
-    }
-    if (Date.now() - last < 30_000) return // recently tried — show the manual card instead
+    if (!isChunkLoadError(error) || this.state.reloading) return
+    // One attempt per shared cooldown; past that the card below stands, so a
+    // genuinely broken deploy cannot put the tab in a reload loop.
+    if (!claimReload()) return
     this.setState({ reloading: true })
-    try {
-      localStorage.setItem('esurvey_chunk_reload', Date.now().toString())
-    } catch {
-      /* ignore */
-    }
-    setTimeout(() => window.location.reload(), 350)
+    reloadSoon()
   }
   render() {
     if (this.state.failed) {

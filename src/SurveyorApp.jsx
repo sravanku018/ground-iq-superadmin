@@ -43,6 +43,7 @@ import PhoneIndiaField from './PhoneIndiaField'
 import { isValidInMobile, toE164In } from './phoneIn'
 import VerifiedBadge from './VerifiedBadge'
 import { PortalSkeleton } from './PortalUI'
+import { claimReload, isChunkLoadError, reloadSoon } from './reloadGuard'
 import {
   getNavMode,
   setNavMode as persistNavMode,
@@ -70,6 +71,9 @@ class ScreenErrorBoundary extends Component {
   }
   componentDidCatch(error, info) {
     console.error(`${this.props.title || 'Screen'} error:`, error, info)
+    // A chunk that failed to fetch is not this screen's bug: the deployed build
+    // moved on. Heal it once (shared cooldown); otherwise the card below stands.
+    if (isChunkLoadError(error) && claimReload()) reloadSoon()
   }
   render() {
     if (this.state.hasError) {

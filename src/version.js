@@ -3,6 +3,8 @@
  * Stored in localStorage so UI always shows the running build.
  */
 
+import { claimReload } from './reloadGuard'
+
 export const APP_NAME = 'Smart Survey X'
 export const APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0-dev'
@@ -51,8 +53,6 @@ export function isNewerBuild(remote) {
   return false
 }
 
-const RELOAD_KEY = 'esurvey_reloaded_after_upgrade'
-
 /**
  * Persist running version so we can detect upgrades.
  * upgraded=true when the stored bundle differs from the one running now —
@@ -90,22 +90,14 @@ export function storeAppVersion() {
  * Detect upgrade and persist the running build in one step.
  * When a newer build was deployed, hard-reloads once (stale-bundle self-heal)
  * so the fresh index.html → new hashed chunks are served.
- * Cooldown: skips the auto-reload if one already happened in the last 30s,
- * which is exactly the window before the fresh bundle takes over (upgraded=false).
+ * The cooldown is shared with the chunk-load guard (see reloadGuard.js), so an
+ * upgrade reload and a failed-chunk reload cannot stack into a loop.
  * Returns the upgrade info so callers can log/title without re-detecting.
  */
 export function reloadOnceIfUpgraded() {
   const info = storeAppVersion()
-  if (info.upgraded) {
-    try {
-      const last = Number(localStorage.getItem(RELOAD_KEY) || 0)
-      if (Date.now() - last >= 30_000) {
-        localStorage.setItem(RELOAD_KEY, Date.now().toString())
-        window.location.reload()
-      }
-    } catch {
-      /* ignore */
-    }
+  if (info.upgraded && claimReload()) {
+    window.location.reload()
   }
   return info
 }

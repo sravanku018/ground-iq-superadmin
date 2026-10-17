@@ -2,6 +2,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import { installChunkReloadGuard } from './reloadGuard'
+
+// Chunk-fetch failures can happen outside any render, so the guard lives at the
+// entry rather than in an error boundary.
+installChunkReloadGuard()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

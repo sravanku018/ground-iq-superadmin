@@ -240,7 +240,7 @@ const QuestionChartsBlock = memo(function QuestionChartsBlock({ questions = [], 
     if (!buckets.has(name)) buckets.set(name, [])
     buckets.get(name).push(q)
   }
-  const names = [...order.filter((n) => buckets.has(n))]
+  const names = order.filter((n) => buckets.has(n))
   for (const n of buckets.keys()) if (!names.includes(n) && n) names.push(n)
   if (buckets.has('')) names.push('')
 

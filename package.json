@@ -19,6 +19,7 @@
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
     "lint": "oxlint",
+    "lint:strict": "oxlint src test --deny-warnings",
     "test": "vitest run",
     "preview": "vite preview"
   },

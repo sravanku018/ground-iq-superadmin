@@ -23,11 +23,6 @@ function thisMonthStr() {
   return new Date().toISOString().slice(0, 7)
 }
 
-function pickFirstSurveyKey(items) {
-  void items
-  return ''
-}
-
 export default function AdminAnalyzeScreen({ onToast }) {
   const [period, setPeriod] = useState('total') // total | today | day | month
   const [day, setDay] = useState(todayStr())

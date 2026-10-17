@@ -24,11 +24,15 @@ jobs:
 
       - run: npm ci
 
-      # oxlint exits 0 on warnings and non-zero on errors: a real gate today,
-      # with the 23 pre-existing warnings in hono-api/legacy/handler.ts left
-      # visible rather than hidden behind --deny-warnings.
+      # Whole-repo lint, warnings visible but not fatal: the 11 remaining ones
+      # are all pre-existing, in the legacy API files and a parked deno folder.
       - name: Lint
         run: npm run lint
+
+      # The gate: src and test must stay warning-free. Verified to exit 1 on a
+      # new unused variable, so dead code cannot quietly accumulate again.
+      - name: Lint strict
+        run: npm run lint:strict
 
       - name: Test
         run: npm test

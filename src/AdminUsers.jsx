@@ -1089,7 +1089,6 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
   const webReserved = Number(me?.web_reserved) || 0
   const allotUsed = fieldUsed + webReserved
   const allotLeft = allotCap > 0 ? (me?.field_remaining != null ? Number(me.field_remaining) : Math.max(0, allotCap - allotUsed)) : null
-  const allotPct = allotCap > 0 ? Math.min(100, Math.round((allotUsed / allotCap) * 100)) : 0
   const admins = useMemo(
     () => users.filter((u) => u.role === 'admin' || u.role === 'super_admin'),
     [users],

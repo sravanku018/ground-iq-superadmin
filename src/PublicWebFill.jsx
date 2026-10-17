@@ -9,10 +9,6 @@ function qid(q) {
   return String(q?.id || slugQuestionKey(q?.label) || '').trim()
 }
 
-function isMeter(q) {
-  return (q?.type || '') === 'meter'
-}
-
 function meterNum(val) {
   const n = Number(String(val ?? '').replace(/%/g, ''))
   return n >= 1 && n <= 100 ? n : 50

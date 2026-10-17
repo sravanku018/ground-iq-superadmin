@@ -5,7 +5,6 @@ export default function AppUpdateModal() {
   const [updateInfo, setUpdateInfo] = useState(null);
   const [loading, setLoading] = useState(false);
   const isNative = typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform?.();
-  const isPwa = typeof window !== 'undefined' && (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone);
 
   useEffect(() => {
     // Check for updates on startup with a gentle delay (after main screen paints)

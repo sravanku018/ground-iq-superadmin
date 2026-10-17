@@ -17,7 +17,7 @@ import {
 import { PortalEmpty, PortalError, PortalSkeleton } from './PortalUI'
 import SubmissionEditor from './SubmissionEditor'
 import FeedCard from './components/FeedCard'
-import { getQuestionAliases, getQuestionDisplayLabel, parseQuestionsArray, resolveAnswerValue, slugQuestionKey } from './questionKey'
+import { getQuestionDisplayLabel, parseQuestionsArray, resolveAnswerValue, slugQuestionKey } from './questionKey'
 
 
 function partyColor(p) {
@@ -616,7 +616,6 @@ export default function ReviewQAScreen({
               ? surveyQuestions
                   .map((q, idx) => {
                     const qIndex = idx + 1
-                    const id = String(q.id || `q_${qIndex}`).trim()
                     const v = resolveAnswerValue(a, q, qIndex)
                     const label = getQuestionDisplayLabel(q, qIndex)
                     return {

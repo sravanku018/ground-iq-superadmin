@@ -17,11 +17,6 @@ import { getDisplayLang } from './prefs'
 import { slugQuestionKey } from './questionKey'
 import { PortalSkeleton } from './PortalUI'
 
-function pickFirstSurveyKey(items) {
-  void items
-  return ''
-}
-
 /**
  * Admin-only: 2 tabs
  * 1) Geography — uploaded districts, mandals, assembly, MP + map

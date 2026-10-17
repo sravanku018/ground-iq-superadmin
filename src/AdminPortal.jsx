@@ -168,7 +168,6 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
   const [recentItems, setRecentItems] = useState([])
   const [surveyBreak, setSurveyBreak] = useState([])
   const [surveyorCount, setSurveyorCount] = useState(0)
-  const [totalAllocations, setTotalAllocations] = useState(null)
   const [loadingRecent, setLoadingRecent] = useState(true)
   const [activityFilter, setActivityFilter] = useState('all')
   const [clientBreakdown, setClientBreakdown] = useState([])
@@ -195,12 +194,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
     (n, s) => n + (Number(s.web_link?.max_uses) || 0),
     0,
   ) || Number(user?.web_reserved) || 0
-  const allotUsed = fieldUsed
   const fieldLeft = allotCap > 0 ? Math.max(0, allotCap - fieldUsed - webReserved) : null
-  const allotLeft = fieldLeft
-  const allotPct = allotCap > 0
-    ? Math.min(100, Math.round(((fieldUsed + webReserved) / allotCap) * 100))
-    : 0
 
   const surveysQuestionsSum = surveyBreak.reduce(
     (sum, s) => sum + (Number(s.question_count) || (Array.isArray(s.questions) ? s.questions.length : 0)),
@@ -238,8 +232,6 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         if (!alive) return
         const surveyors = d.users || d.surveyors || (Array.isArray(d) ? d : [])
         setSurveyorCount(surveyors.length)
-        const total = surveyors.reduce((sum, u) => sum + (Number(u.target) || 0), 0)
-        setTotalAllocations(total)
       })
       .catch((e) => console.warn('[portal] surveyor list failed', e))
 

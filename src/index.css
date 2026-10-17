@@ -133,7 +133,11 @@ html, body, #root {
   border: none; background: none; cursor: pointer;
   padding: 6px 14px; border-radius: var(--r-pill);
   font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--ink-muted);
-  transition: all var(--dur-fast) var(--ease-out); white-space: nowrap;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+  white-space: nowrap;
 }
 .role-tab:hover { color: var(--ink); }
 .role-tab.active { background: var(--surface); color: var(--accent); font-weight: var(--fw-bold); box-shadow: var(--shadow-sm); }
@@ -165,7 +169,8 @@ html, body, #root {
 .survey-stage .phone-subnav button {
   flex: 1; border: none; background: var(--surface-alt); cursor: pointer;
   padding: 7px 0; border-radius: var(--r-sm); font-size: var(--fs-xs);
-  font-weight: var(--fw-medium); color: var(--ink-muted); transition: all var(--dur-fast);
+  font-weight: var(--fw-medium); color: var(--ink-muted);
+  transition: background-color var(--dur-fast), color var(--dur-fast);
 }
 .survey-stage .phone-subnav button.active { background: var(--accent-bg); color: var(--accent); font-weight: var(--fw-bold); }
 .survey-stage .phone-body { flex: 1; overflow-y: auto; }
@@ -220,7 +225,7 @@ html, body, #root {
 .survey-stage .q-number { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--accent); text-transform: uppercase; letter-spacing: .5px; }
 .survey-stage .q-text { font-size: var(--fs-md); font-weight: var(--fw-bold); margin: 6px 0 var(--sp-4); line-height: 1.4; text-align: center; }
 .survey-stage .options { display: flex; flex-direction: column; gap: var(--sp-2); }
-.survey-stage .opt-btn { width: 100%; min-height: 48px; border: 2px solid var(--surface-hover); border-radius: var(--r-md); background: var(--surface); font-size: var(--fs-base); font-weight: var(--fw-medium); color: var(--ink); cursor: pointer; transition: all var(--dur-fast) var(--ease-out); display: flex; align-items: center; justify-content: center; gap: 8px; }
+.survey-stage .opt-btn { width: 100%; min-height: 48px; border: 2px solid var(--surface-hover); border-radius: var(--r-md); background: var(--surface); font-size: var(--fs-base); font-weight: var(--fw-medium); color: var(--ink); cursor: pointer; transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); display: flex; align-items: center; justify-content: center; gap: 8px; }
 .survey-stage .opt-btn:active { transform: scale(.97); }
 .survey-stage .opt-btn .swatch { width: 10px; height: 10px; border-radius: 3px; }
 .survey-stage .opt-btn.selected { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); font-weight: var(--fw-bold); }
@@ -271,7 +276,7 @@ html, body, #root {
 .side-brand .role-tag { margin-left: auto; font-size: 10px; font-weight: var(--fw-bold); color: var(--accent); background: var(--accent-bg); padding: 2px 7px; border-radius: var(--r-sm); }
 .side-item { display: block; }
 .side-item > .lbl { font-size: 10px; font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .5px; color: var(--ink-faint); padding: var(--sp-3) 6px 4px; }
-.side-sub { border: none; background: none; width: 100%; text-align: left; cursor: pointer; padding: 8px 10px; border-radius: var(--r-sm); font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--ink-secondary); transition: all var(--dur-fast); }
+.side-sub { border: none; background: none; width: 100%; text-align: left; cursor: pointer; padding: 8px 10px; border-radius: var(--r-sm); font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--ink-secondary); transition: background-color var(--dur-fast), color var(--dur-fast); }
 .side-sub:hover { background: var(--surface-alt); }
 .side-sub.active { background: var(--accent-bg); color: var(--accent); font-weight: var(--fw-bold); }
 .side-foot { margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--surface-alt); font-size: var(--fs-xs); color: var(--ink-muted); }

@@ -2079,7 +2079,10 @@ h1, h2, h3, h4, .topbar-title, .hero-name, .mission-title, .fl-title, .qa-title,
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
   flex-shrink: 0;
 }
 
@@ -2680,7 +2683,12 @@ textarea:focus,
   align-items: center;
   justify-content: center;
   line-height: 1.3;
-  transition: all 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
   box-sizing: border-box;
 }
 
@@ -2926,7 +2934,11 @@ textarea:focus,
   height: 7px;
   border-radius: 50%;
   background: #cbd5e1;
-  transition: all 0.25s ease;
+  /* .qa-dot.on grows the dot (7px -> 18px), so width must stay animated. */
+  transition:
+    background-color 0.25s ease,
+    width 0.25s ease,
+    border-radius 0.25s ease;
 }
 
 .qa-dot.on {
@@ -3044,7 +3056,10 @@ textarea:focus,
   background: var(--surface-alt, #f1f5f9);
   color: var(--ink-muted, #64748b);
   border: 2px solid var(--surface-hover, #e2e8f0);
-  transition: all 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
 }
 .step.done .dot {
   background: var(--ok, #16a34a);
@@ -3152,7 +3167,11 @@ textarea:focus,
   font-weight: 500;
   color: var(--ink, #1e293b);
   cursor: pointer;
-  transition: all 0.15s ease-out;
+  transition:
+    background-color 0.15s ease-out,
+    border-color 0.15s ease-out,
+    color 0.15s ease-out,
+    box-shadow 0.15s ease-out;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3307,7 +3326,10 @@ textarea:focus,
   color: var(--ink-secondary, #475569);
   border: 1px solid var(--surface-hover, #e2e8f0);
   cursor: pointer;
-  transition: all 120ms ease;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
   user-select: none;
 }
 .id-tile:hover {

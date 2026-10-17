@@ -445,7 +445,11 @@
   font-size: 13.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 150ms ease;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .portal-subtab:hover {
@@ -551,7 +555,10 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  transition: all 150ms ease;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
 }
 
 .portal-action:hover {
@@ -780,7 +787,11 @@
   background: #ffffff;
   color: #3c4043;
   cursor: pointer;
-  transition: all 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
   text-decoration: none;
   line-height: 1.25;
 }
@@ -835,7 +846,11 @@
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 120ms ease;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .portal-main .chip:hover {
@@ -897,7 +912,9 @@
   padding: 16px 18px;
   background: #ffffff;
   margin-bottom: 10px;
-  transition: all 140ms ease;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .portal-main .review-item:hover,
@@ -992,7 +1009,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 120ms ease;
+    transition:
+      background-color 120ms ease,
+      transform 120ms ease;
   }
 
   .portal-refresh-pill:active {

@@ -1,4 +1,4 @@
-import { resetSuperAdminTotp, updateUser } from './api'
+import { getApiBase, resetSuperAdminTotp, updateUser } from './api'
 import CredentialsCard from './components/CredentialsCard'
 import { isNewerBuild } from './version'
 import ShareAppLink from './components/ShareAppLink'
@@ -77,7 +77,7 @@ export default function AdminProfileScreen({ user, onToast, onUserUpdated }) {
               onClick={async () => {
                 onToast?.('Checking for latest version…', 'ok')
                 try {
-                  const res = await fetch(`/api/app-version?t=${Date.now()}`, { cache: 'no-store' })
+                  const res = await fetch(`${getApiBase()}/api/app-version?t=${Date.now()}`, { cache: 'no-store' })
                   if (!res.ok) throw new Error(`HTTP ${res.status}`)
                   const data = await res.json()
                   const latest = String(data?.version || '')

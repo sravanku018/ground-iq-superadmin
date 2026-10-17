@@ -1,0 +1,34 @@
+# The gate this repo was missing. Until now the only workflow was the manual
+# Deno-deploy fallback, so nothing ever ran `npm run lint` or `npm run build`
+# except a human — oxlint was installed and configured but wired to nothing.
+#
+# This runs alongside the Vercel deploy, it does not gate it. To make it block a
+# merge, require the "gate" check in the repo's branch protection rules.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # oxlint exits 0 on warnings and non-zero on errors: a real gate today,
+      # with the 23 pre-existing warnings in hono-api/legacy/handler.ts left
+      # visible rather than hidden behind --deny-warnings.
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build

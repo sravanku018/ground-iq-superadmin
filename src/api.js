@@ -1,4 +1,4 @@
-/** API client — always uses Deno Deploy (Neon behind Deno) */
+/** API client — production is the Oracle Cloud VPS host baked in below (Neon for data). */
 
 const TOKEN_KEY = 'esurvey_token'
 const USER_KEY = 'esurvey_user'

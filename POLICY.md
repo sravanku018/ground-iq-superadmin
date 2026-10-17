@@ -113,8 +113,8 @@ voice is required only when the survey `voice_required` flag is on.
 ## 4. Where data lives and how it moves
 
 - **On device:** offline-first queue. Record packages (answers + geo + photo/audio data URLs)
-  persist in IndexedDB; small meta index in localStorage. Queue drains via
-  `syncEngine`/`syncBackground` + `sync.worker.js`. Auth token in localStorage
+  persist in IndexedDB; small meta index in localStorage. The field app's queue drains via
+  `src/syncEngine.js` (retries when the network allows). Auth token in localStorage
   (`esurvey_token`), user profile (`esurvey_user`), app version keys.
 - **In transit:** HTTPS/TLS everywhere. Production API base is fixed in-app
   (`src/api.js` `DENO_API_URL`, override `VITE_API_BASE_URL`); no HTTP fallback.

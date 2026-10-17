@@ -10,6 +10,7 @@ import {
   updateQuestionBank,
 } from './api'
 import { isQuestionVisible, labelPatch, nextQuestionId, teluguFields } from './questionKey'
+import { PortalSkeleton } from './PortalUI'
 
 const EMPTY_Q = {
   id: '',
@@ -398,7 +399,7 @@ export default function AdminQuestionBankScreen({ onToast, user }) {
       )}
 
       {loading ? (
-        <p className="muted">Loading question bank…</p>
+        <PortalSkeleton rows={4} label="Loading question bank…" />
       ) : templates.length === 0 ? (
         <div className="card">
           <p className="muted" style={{ margin: 0 }}>

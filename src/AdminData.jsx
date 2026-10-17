@@ -15,6 +15,7 @@ import { FilterSection } from './PortalUI'
 import SurveyMap from './SurveyMap'
 import { getDisplayLang } from './prefs'
 import { slugQuestionKey } from './questionKey'
+import { PortalSkeleton } from './PortalUI'
 
 function pickFirstSurveyKey(items) {
   void items
@@ -407,7 +408,7 @@ export default function AdminDataScreen({ onToast, initialTab = 'export' }) {
       {tab === 'geography' && (
         <div className="admin-pane">
           {loading ? (
-            <p className="muted">Loading geo data…</p>
+            <PortalSkeleton rows={4} label="Loading geo data…" />
           ) : (
             <>
               <div className="stat-row">

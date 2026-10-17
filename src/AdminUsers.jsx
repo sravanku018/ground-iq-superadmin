@@ -28,6 +28,7 @@ import PhoneIndiaField from './PhoneIndiaField'
 import ShareAppLink from './components/ShareAppLink'
 import { digits10, isValidInMobile, toE164In, formatInMobile } from './phoneIn'
 import { compressImageFile } from './mediaOptimize'
+import { PortalSkeleton } from './PortalUI'
 
 function formatIstStamp(v) {
   if (!v) return ''
@@ -1771,7 +1772,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
             Surveyors ({surveyorRows.length}) · Admins ({admins.length})
           </h3>
           {loading ? (
-            <p className="muted">Loading…</p>
+            <PortalSkeleton rows={5} label="Loading…" />
           ) : surveyorRows.length === 0 ? (
             <p className="muted">
               No surveyors yet. Use <strong>Bulk create</strong> or{' '}
@@ -2562,7 +2563,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                 </div>
 
                 {profileLoading ? (
-                  <p className="muted">Loading records…</p>
+                  <PortalSkeleton rows={5} label="Loading records…" />
                 ) : profileData ? (
                   <>
                     {profileData.items.length === 0 ? (

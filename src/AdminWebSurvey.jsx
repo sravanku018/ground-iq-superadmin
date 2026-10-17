@@ -8,6 +8,7 @@ import {
   mintWebFillUrl,
   webFillUrl,
 } from './api'
+import { PortalSkeleton } from './PortalUI'
 
 /* ─── helpers ─────────────────────────────────────────────────── */
 function fmt(v) {
@@ -409,7 +410,7 @@ function SurveyWebCard({ survey, onToast, expanded, onToggle, canDeactivate, rel
               </span>
             </p>
             {recLoading ? (
-              <p className="muted" style={{ fontSize: 13 }}>Loading…</p>
+              <PortalSkeleton rows={4} label="Loading…" />
             ) : recents.length === 0 ? (
               <p className="muted" style={{ fontSize: 13 }}>No web responses yet.</p>
             ) : (
@@ -653,7 +654,7 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
             </h3>
           </div>
           {activeLoading ? (
-            <p className="muted" style={{ margin: 0, fontSize: 13 }}>Loading live links…</p>
+            <PortalSkeleton rows={3} label="Loading live links…" />
           ) : activeLinks.length === 0 ? (
             <p className="muted" style={{ margin: 0, fontSize: 13 }}>No active web links right now.</p>
           ) : (
@@ -863,7 +864,7 @@ export default function AdminWebSurveyScreen({ onToast, user }) {
       {/* ── survey cards ── */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40 }}>
-          <p className="muted">Loading surveys…</p>
+          <PortalSkeleton rows={4} label="Loading surveys…" />
         </div>
       ) : filtered.length === 0 ? (
         <div style={{

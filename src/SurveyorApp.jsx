@@ -42,6 +42,7 @@ import { compressImageFile } from './mediaOptimize'
 import PhoneIndiaField from './PhoneIndiaField'
 import { isValidInMobile, toE164In } from './phoneIn'
 import VerifiedBadge from './VerifiedBadge'
+import { PortalSkeleton } from './PortalUI'
 import {
   getNavMode,
   setNavMode as persistNavMode,
@@ -555,7 +556,7 @@ function MyRecordsScreen({ user, onToast, questions }) {
       </p>
 
       {records === null && !loadError ? (
-        <p className="muted">Loading activity…</p>
+        <PortalSkeleton rows={3} label="Loading activity…" />
       ) : records.length === 0 && loadError ? (
         <div className="card" style={{ marginTop: 10, padding: 14 }}>
           <p className="muted" style={{ margin: '0 0 8px' }}>Couldn't load your activity. {loadError}</p>

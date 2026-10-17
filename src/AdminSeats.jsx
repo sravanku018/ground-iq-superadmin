@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Icon from './Icons'
 import { approveSeatRequest, denySeatRequest, getSeatRequests } from './api'
+import { PortalSkeleton } from './PortalUI'
 
 function fmtTime(v) {
   if (!v) return '—'
@@ -98,7 +99,7 @@ export default function AdminSeatsScreen({ onToast }) {
       </div>
 
       {loading ? (
-        <p className="muted">Loading seat requests…</p>
+        <PortalSkeleton rows={4} label="Loading seat requests…" />
       ) : (
         <>
           <h3 style={{ fontSize: 14, margin: '14px 0 8px' }}>

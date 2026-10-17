@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Icon from './Icons'
 import CompanyClientDashboard from './CompanyClientDashboard'
+import { PortalSkeleton } from './PortalUI'
 import {
   createCompany,
   createSurvey,
@@ -266,7 +267,7 @@ export default function AdminCompaniesScreen({ onToast, onNav }) {
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Registered companies ({companies.length})</h3>
         {loading ? (
-          <p className="muted">Loading…</p>
+          <PortalSkeleton rows={5} label="Loading…" />
         ) : companies.length === 0 ? (
           <p className="muted">No companies yet — create one above.</p>
         ) : (

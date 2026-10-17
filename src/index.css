@@ -511,3 +511,37 @@ html, body, #root {
     scroll-behavior: auto !important;
   }
 }
+
+/* ── Loading skeletons (PortalUI.PortalSkeleton) ──────────────────────────────
+   These classes existed only in JSX until now, so the "skeleton" rendered as a
+   bare label plus zero-height divs — invisible. Defined in index.css because it
+   is the one sheet both the field app and the client-admin portal load. */
+.portal-state {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.portal-state-label {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.portal-skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.portal-skeleton-row {
+  height: 14px;
+  border-radius: var(--r-sm);
+  background: var(--surface-alt);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 1; }
+}
+/* The global reduced-motion rule above freezes the pulse on its last keyframe
+   (opacity 0.45), so stop the animation outright and let the bars sit at full. */
+@media (prefers-reduced-motion: reduce) {
+  .portal-skeleton-row { animation: none; }
+}

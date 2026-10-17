@@ -13,6 +13,7 @@ import {
   updateUser,
 } from './api'
 import VerifiedBadge from './VerifiedBadge'
+import { PortalSkeleton } from './PortalUI'
 
 /**
  * Grant-based powers (least privilege).
@@ -516,7 +517,7 @@ export default function AdminClientAdminsScreen({ onToast }) {
           Client Admin accounts ({admins.length})
         </h3>
         {loading ? (
-          <p className="muted">Loading…</p>
+          <PortalSkeleton rows={5} label="Loading…" />
         ) : admins.length === 0 ? (
           <p className="muted">No Client Admin accounts yet — create one above.</p>
         ) : (

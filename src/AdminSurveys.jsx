@@ -16,6 +16,7 @@ import {
 import CopyWebFillLink from './components/CopyWebFillLink'
 import { CategoryField, CategoryPanel } from './QuestionCategory'
 import QuestionTelugu, { fillTeluguFromEnglish } from './QuestionTelugu'
+import { PortalSkeleton } from './PortalUI'
 import {
   canTeluguQuestions,
   isQuestionVisible,
@@ -1464,7 +1465,7 @@ export default function AdminSurveysScreen({ onToast, user }) {
         </label>
       </div>
 
-      {loading && <p className="muted">Loading projects…</p>}
+      {loading && <PortalSkeleton rows={4} label="Loading projects…" />}
 
       {!loading && visibleSurveys.length === 0 && (
         <p className="muted">

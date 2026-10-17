@@ -4,6 +4,7 @@ import { getQuestions, getSurvey, listSurveys, saveQuestions, updateSurvey } fro
 import OptionPills from './OptionPills'
 import { CategoryField, CategoryPanel } from './QuestionCategory'
 import QuestionTelugu, { fillTeluguFromEnglish } from './QuestionTelugu'
+import { PortalSkeleton } from './PortalUI'
 import {
   canTeluguQuestions,
   isQuestionVisible,
@@ -331,7 +332,7 @@ export default function AdminQuestionsScreen({ onToast, user }) {
   if (!surveysReady || loading) {
     return (
       <div className="screen">
-        <p className="muted">Loading questions…</p>
+        <PortalSkeleton rows={4} label="Loading questions…" />
       </div>
     )
   }

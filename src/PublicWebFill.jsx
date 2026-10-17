@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getPublicWebSurvey, submitPublicWebSurvey } from './api'
 import { multiMaxChoices, slugQuestionKey } from './questionKey'
+import { PortalSkeleton } from './PortalUI'
 import './App.css'
 import './portal.css'
 
@@ -161,7 +162,7 @@ export default function PublicWebFill({ formKey, fillToken }) {
           </div>
         ) : null}
 
-        {loading ? <p className="muted">Loading…</p> : null}
+        {loading ? <PortalSkeleton rows={3} label="Loading…" /> : null}
         {err ? <p style={{ color: '#b91c1c' }}>{err}</p> : null}
 
         {done ? (

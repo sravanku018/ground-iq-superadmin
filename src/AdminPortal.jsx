@@ -352,7 +352,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
           </div>
 
           {loadingBreakdown ? (
-            <p className="muted" style={{ fontSize: 13, padding: '12px 0' }}>Loading Client Admin breakdown…</p>
+            <PortalSkeleton rows={3} label="Loading Client Admin breakdown…" />
           ) : clientBreakdown.length === 0 ? (
             <p className="muted" style={{ fontSize: 13, padding: '12px 0' }}>No Client Admins registered yet.</p>
           ) : (
@@ -860,7 +860,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         </div>
 
         {loadingRecent ? (
-          <p className="muted" style={{ fontSize: 13, margin: '14px 0 8px' }}>Loading live stream…</p>
+          <PortalSkeleton rows={3} label="Loading live stream…" />
         ) : displayedItems.length === 0 ? (
           <p className="muted" style={{ fontSize: 13, margin: '14px 0 8px' }}>No submissions matching this filter.</p>
         ) : (

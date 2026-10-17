@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Icon from './Icons'
 import { getAuditLog } from './api'
+import { PortalSkeleton } from './PortalUI'
 
 const ACTION_LABELS = {
   login: { icon: 'key', text: 'Login' },
@@ -138,7 +139,7 @@ export default function AdminAuditScreen({ onToast }) {
       </div>
 
       {loading ? (
-        <p className="muted" style={{ padding: '12px 0' }}>Loading audit trail…</p>
+        <PortalSkeleton rows={5} label="Loading audit trail…" />
       ) : entries.length === 0 ? (
         <div className="card">
           <p className="muted" style={{ margin: 0 }}>

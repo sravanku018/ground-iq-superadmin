@@ -2385,11 +2385,16 @@ export default function FieldCollectScreen({
             className="btn small"
             style={{ marginTop: 8 }}
             onClick={() => {
-              void forceSyncNow().then(() => {
-                refreshQueue()
-                refreshProgress()
-                onToast?.('Queue sync started', 'ok')
-              })
+              void forceSyncNow()
+                .then(() => {
+                  refreshQueue()
+                  refreshProgress()
+                  onToast?.('Queue sync started', 'ok')
+                })
+                .catch((e) => {
+                  console.warn('[sync] manual sync failed', e)
+                  onToast?.('Could not start sync — check your connection', 'error')
+                })
             }}
           >
             Sync queue now

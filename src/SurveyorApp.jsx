@@ -1663,7 +1663,9 @@ export default function SurveyorApp() {
     }, { intervalMs: 60_000 })
     startSyncEngine()
     setPendingSync(queueCount())
-    void refreshQueueCountCache().then(setPendingSync)
+    void refreshQueueCountCache()
+      .then(setPendingSync)
+      .catch((e) => console.warn('[queue] refresh count failed', e))
     void collapseDuplicateDrafts()
       .catch(() => {})
       .then(() => getQueueSnapshot())
@@ -1693,18 +1695,22 @@ export default function SurveyorApp() {
         }
       }
       if (ev.type === 'package-done') {
-        void getQueueSnapshot().then((s) => {
-          setPendingSync(s.pending)
-          setDraftsCount((s.drafts ?? 0) + (s.pending ?? 0))
-        })
+        void getQueueSnapshot()
+          .then((s) => {
+            setPendingSync(s.pending)
+            setDraftsCount((s.drafts ?? 0) + (s.pending ?? 0))
+          })
+          .catch((e) => console.warn('[queue] snapshot failed', e))
       }
     })
 
     const onQueue = () => {
-      void getQueueSnapshot().then((s) => {
-        setPendingSync(s.pending)
-        setDraftsCount((s.drafts ?? 0) + (s.pending ?? 0))
-      })
+      void getQueueSnapshot()
+        .then((s) => {
+          setPendingSync(s.pending)
+          setDraftsCount((s.drafts ?? 0) + (s.pending ?? 0))
+        })
+        .catch((e) => console.warn('[queue] snapshot failed', e))
     }
     window.addEventListener('esurvey-queue-change', onQueue)
 
@@ -2013,7 +2019,12 @@ export default function SurveyorApp() {
                 setTab('submissions')
               }}
               onSync={() => {
-                forceSyncNow().then(() => notify('Syncing device queue…', 'ok'))
+                forceSyncNow()
+                  .then(() => notify('Syncing device queue…', 'ok'))
+                  .catch((e) => {
+                    console.warn('[sync] manual sync failed', e)
+                    notify('Could not start sync — check your connection', 'error')
+                  })
               }}
               onLogout={handleLogout}
             />

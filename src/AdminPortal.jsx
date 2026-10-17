@@ -253,7 +253,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         const total = surveyors.reduce((sum, u) => sum + (Number(u.target) || 0), 0)
         setTotalAllocations(total)
       })
-      .catch(() => {})
+      .catch((e) => console.warn('[portal] surveyor list failed', e))
 
     if (isSuper) {
       setLoadingBreakdown(true)
@@ -261,7 +261,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         .then((d) => {
           if (alive) setClientBreakdown(d.items || [])
         })
-        .catch(() => {})
+        .catch((e) => console.warn('[portal] client admin breakdown failed', e))
         .finally(() => {
           if (alive) setLoadingBreakdown(false)
         })
@@ -1400,7 +1400,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
             setUser((prev) => ({ ...prev, ...data.user }))
           }
         })
-        .catch(() => {})
+        .catch((e) => console.warn('[portal] profile refresh failed', e))
     }
     window.addEventListener('focus', refreshUser)
     const interval = setInterval(refreshUser, 15_000)
@@ -1433,7 +1433,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
         const key = String((real[0] || items[0])?.form_key || '')
         if (key) setSurveyFilter((cur) => cur || key)
       })
-      .catch(() => {})
+      .catch((e) => console.warn('[portal] survey list failed', e))
   }, [user, authReady, page, surveys.length])
 
   if (!authReady) {

@@ -51,6 +51,7 @@ import {
   deleteDraft,
   findOpenDraft,
   getPackage,
+  listAllPackages,
   savePackageLocal,
 } from './localStore'
 
@@ -260,8 +261,7 @@ export default function FieldCollectScreen({
   // saved on this phone by this surveyor (drafts included)
   useEffect(() => {
     let alive = true
-    import('./localStore')
-      .then(({ listAllPackages }) => listAllPackages())
+    listAllPackages()
       .then((all) => {
         if (!alive) return
         const list = Array.isArray(all) ? all : []

@@ -1030,31 +1030,3 @@ export async function downloadMediaFile(pathOrUrl, filename = 'media-file') {
     throw new Error(e?.message || 'Download failed')
   }
 }
-
-/**
- * Always save to device queue first (systematic sync later).
- * No direct upload from callers.
- */
-export async function submitSurveyOrQueue({
-  form_id,
-  source,
-  submitted_by,
-  answers,
-  geo,
-  photoDataUrl,
-  audioDataUrl,
-}) {
-  const { savePackageLocal } = await import('./localStore')
-  const { forceSyncNow } = await import('./syncEngine')
-  const id = await savePackageLocal({
-    form_id: form_id || `field-${Date.now()}`,
-    source: source || 'mobile-field-survey',
-    submitted_by: submitted_by || null,
-    answers,
-    geo,
-    photoDataUrl: photoDataUrl || null,
-    audioDataUrl: audioDataUrl || null,
-  })
-  void forceSyncNow()
-  return { mode: 'queued', id }
-}

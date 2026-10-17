@@ -5,14 +5,21 @@ function normKey(s) {
     .toLowerCase()
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\(.*?\)/g, ' ')
+    // Bracketed text is one of two things. A reservation marker — 'Bellampalli
+    // (SC)' is the same place as 'Bellampalli' — is noise and gets dropped. A
+    // place qualifier is the opposite: 'Nizamabad (Rural)' and 'Nizamabad
+    // (Urban)' are two different constituencies, so it is kept as a word.
+    // Dropping both is what collapsed those two onto one key, leaving the two
+    // alias entries written to prevent that unable to ever fire.
+    .replace(/\((?:sc|st|bc|gen|general)\)/gi, ' ')
+    .replace(/[()]/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
 
 /** Known spelling variants → preferred geo form (normalized key) */
-const ALIASES = {
+export const ALIASES = {
   // districts (survey / neon labels → GeoJSON D_NAME keys)
   jagtial: 'jagitial',
   jagityal: 'jagitial',
@@ -73,6 +80,12 @@ export function lookup(map, name) {
   if (map.has(c)) return map.get(c)
   const n = normKey(name)
   if (map.has(n)) return map.get(n)
+  // A label that carries a qualifier the layer writes plainly, e.g. a district
+  // answer "Hyderabad (Urban)" against a "Hyderabad" feature: retry with the
+  // qualifier dropped before falling through to the fuzzy pass. Every match the
+  // old always-strip behaviour found is still found here.
+  const bare = canonicalKey(String(name).replace(/\(.*?\)/g, ' '))
+  if (bare && bare !== c && bare !== n && map.has(bare)) return map.get(bare)
   // Safe fuzzy only: unique longest contains match (no cross-boundary bleed)
   if (!c || c.length < 5) return null
   let best = null

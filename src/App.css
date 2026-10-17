@@ -3369,3 +3369,40 @@ textarea:focus,
 .fc-check b { font-weight: var(--fw-bold); }
 .fc-check.done b { color: var(--ok); }
 .fc-check.todo b { color: var(--warn); }
+
+/* ── Touch targets ───────────────────────────────────────────────────────────
+   On a coarse pointer (phone, tablet, the field app on Android) every control
+   gets a 44px minimum; a mouse keeps the denser desktop sizing, so the portal on
+   a desktop is unchanged. This block belongs at the very end of App.css: it has
+   to come after the .btn.small (34px) and .chip (40px) rules above that set
+   smaller min-heights, and App.css is the last sheet both apps load.
+
+   Measured before this rule: nav 36px, subtabs 33px, .btn.small 34px, .map-tab
+   34px, chips 40px, bell 38px, inline segmented filters 20px.
+   button:not([class]) catches those segmented filters — they are built from
+   inline styles and carry no class at all. */
+@media (pointer: coarse) {
+  .side-sub,
+  .btn,
+  .btn.small,
+  .chip,
+  .map-tab,
+  .portal-subtab,
+  .portal-link,
+  button:not([class]) {
+    min-height: var(--tap);
+  }
+  .admin-bell-btn {
+    min-height: var(--tap);
+    min-width: var(--tap);
+  }
+  /* Leaflet's zoom buttons ship at 30px. The compound selector outranks
+     Leaflet's own `.leaflet-bar a` whatever order the lazy chunk's stylesheet
+     lands in. */
+  .leaflet-bar a.leaflet-control-zoom-in,
+  .leaflet-bar a.leaflet-control-zoom-out {
+    min-height: var(--tap);
+    min-width: var(--tap);
+    line-height: var(--tap);
+  }
+}

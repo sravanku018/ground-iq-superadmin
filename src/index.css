@@ -86,6 +86,8 @@
   --max-w: 1200px;
   --bar-h: 26px;
   --card-p: 20px;
+  /* Minimum target on a coarse pointer (WCAG 2.5.5 / Material). */
+  --tap: 44px;
 
   font-family: var(--font);
   font-size: 14px;
@@ -545,3 +547,12 @@ html, body, #root {
 @media (prefers-reduced-motion: reduce) {
   .portal-skeleton-row { animation: none; }
 }
+
+/* ── Touch targets ───────────────────────────────────────────────────────────
+   The 44px touch-target rules live at the end of App.css, not here: they must
+   come after the component definitions that set .btn.small/.chip heights.
+   On a coarse pointer (phone, tablet, the field app on Android) every control
+   gets a 44px minimum; a mouse keeps the denser desktop sizing, so the portal on
+   a desktop is unchanged. Measured before that rule: nav 36px, subtabs 33px,
+   .btn.small 34px, .map-tab 34px, chips 40px, bell 38px, and the inline
+   segmented filters 20px. */

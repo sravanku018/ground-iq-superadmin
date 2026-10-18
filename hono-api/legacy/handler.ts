@@ -23,6 +23,12 @@ import { neon } from "npm:@neondatabase/serverless@0.10.4";
 import postgres from "npm:postgres@3.4.5";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
+import {
+  deleteSonioxFile,
+  pollSonioxTranscription,
+  sonioxConfigInfo,
+  startSonioxTranscription,
+} from "../lib/soniox.ts";
 
 // ── Geo aliases (inlined so the Deno Playground deploys a single file) ──
 
@@ -874,8 +880,8 @@ const GITHUB_REPO = "sravanku018/ground-iq-web";
  * API all carry one number.
  */
 const APP_RELEASE = {
-  version: "2.0.91",
-  versionCode: 20091,
+  version: "2.0.92",
+  versionCode: 20092,
   minSupportedVersionCode: 20000,
 };
 
@@ -2012,6 +2018,31 @@ async function ensureSchema(): Promise<void> {
     () => sql`CREATE INDEX IF NOT EXISTS idx_web_survey_links_form ON web_survey_links (form_key)`,
     () => sql`ALTER TABLE web_survey_links ADD COLUMN IF NOT EXISTS max_uses INTEGER NOT NULL DEFAULT 1`,
     () => sql`ALTER TABLE web_survey_links ADD COLUMN IF NOT EXISTS use_count INTEGER NOT NULL DEFAULT 0`,
+    // Offline field conversations: audio + English batch transcript per surveyor.
+    () => sql`
+      CREATE TABLE IF NOT EXISTS conversations (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        local_id TEXT,
+        form_key TEXT,
+        title TEXT,
+        recorded_at TIMESTAMPTZ,
+        duration_ms INTEGER,
+        audio_mime TEXT,
+        audio_data TEXT,
+        audio_bytes INTEGER,
+        transcript TEXT,
+        transcript_original TEXT,
+        transcript_status TEXT NOT NULL DEFAULT 'stored',
+        transcript_error TEXT,
+        soniox_file_id TEXT,
+        soniox_transcription_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `,
+    () => sql`CREATE INDEX IF NOT EXISTS idx_conversations_user_time ON conversations (user_id, recorded_at DESC)`,
+    () => sql`CREATE UNIQUE INDEX IF NOT EXISTS conversations_user_local_uidx ON conversations (user_id, local_id) WHERE local_id IS NOT NULL`,
     () => sql`
       ALTER TABLE survey_form
       ADD CONSTRAINT survey_form_company_id_fkey
@@ -5455,6 +5486,399 @@ async function rawHandler(req: Request): Promise<Response> {
     const token = bearer(req);
     const me = await getUser(token);
 
+    // ── Offline field conversations (voice note + batch English translation) ──
+    // The phone records and stores audio locally; when it has connectivity it
+    // uploads once here. Soniox runs server-side (API key never ships in the app).
+    const CONVERSATION_MAX_BYTES = 2_000_000;
+
+    function conversationPublic(r: Record<string, unknown>) {
+      const id = Number(r.id);
+      const hasAudio = Number(r.audio_bytes || 0) > 0;
+      return {
+        id,
+        user_id: r.user_id != null ? Number(r.user_id) : null,
+        username: r.username ? String(r.username) : "",
+        submitted_by: r.display_name
+          ? String(r.display_name)
+          : r.username
+            ? String(r.username)
+            : "",
+        local_id: r.local_id ? String(r.local_id) : null,
+        form_key: r.form_key ? String(r.form_key) : null,
+        title: r.title ? String(r.title) : "",
+        recorded_at: isoStamp(r.recorded_at),
+        duration_ms: r.duration_ms != null ? Number(r.duration_ms) : null,
+        audio_mime: r.audio_mime ? String(r.audio_mime) : "audio/webm",
+        audio_bytes: r.audio_bytes != null ? Number(r.audio_bytes) : null,
+        has_audio: hasAudio,
+        audio_url: hasAudio ? `/api/conversations/${id}/audio` : null,
+        transcript: r.transcript ? String(r.transcript) : "",
+        transcript_original: r.transcript_original ? String(r.transcript_original) : "",
+        transcript_status: r.transcript_status ? String(r.transcript_status) : "stored",
+        transcript_error: r.transcript_error ? String(r.transcript_error) : null,
+        created_at: isoStamp(r.created_at),
+        updated_at: isoStamp(r.updated_at),
+      };
+    }
+
+    async function loadConversation(id: number, opts: { audio?: boolean } = {}) {
+      if (!me) return null;
+      // Polling must not drag the base64 audio through every status check.
+      const rows = opts.audio
+        ? await sql`SELECT * FROM conversations WHERE id = ${id} LIMIT 1`.catch(() => [])
+        : await sql`
+            SELECT id, user_id, local_id, form_key, title, recorded_at, duration_ms,
+                   audio_mime, audio_bytes, transcript, transcript_original,
+                   transcript_status, transcript_error, soniox_file_id,
+                   soniox_transcription_id, created_at, updated_at
+            FROM conversations
+            WHERE id = ${id}
+            LIMIT 1
+          `.catch(() => []);
+      if (!rows.length) return null;
+      const row = rows[0] as Record<string, unknown>;
+      const owner = Number(row.user_id) === Number(me.id);
+      if (!owner && !isPortalAdmin(me.role)) return null;
+      return row;
+    }
+
+    /** Ask Soniox for the current state and persist whatever it reports. */
+    async function refreshConversationTranscript(row: Record<string, unknown>) {
+      const transcriptionId = String(row.soniox_transcription_id || "");
+      const id = Number(row.id);
+      if (!transcriptionId) return row;
+      try {
+        const result = await pollSonioxTranscription(transcriptionId);
+        if (result.status === "completed") {
+          const rows = await sql`
+            UPDATE conversations
+            SET transcript = ${result.transcript || ""},
+                transcript_original = ${result.transcriptOriginal || ""},
+                transcript_status = 'completed',
+                transcript_error = NULL,
+                updated_at = NOW()
+            WHERE id = ${id}
+            RETURNING *
+          `;
+          void deleteSonioxFile(String(row.soniox_file_id || ""));
+          return (rows[0] as Record<string, unknown>) || { ...row, transcript_status: "completed" };
+        }
+        if (result.status === "error") {
+          const rows = await sql`
+            UPDATE conversations
+            SET transcript_status = 'error',
+                transcript_error = ${result.error || "Transcription failed"},
+                updated_at = NOW()
+            WHERE id = ${id}
+            RETURNING *
+          `;
+          // A retry re-uploads from the audio stored in our DB, so the failed
+          // Soniox copy is no longer useful.
+          void deleteSonioxFile(String(row.soniox_file_id || ""));
+          return (rows[0] as Record<string, unknown>) || row;
+        }
+        const rows = await sql`
+          UPDATE conversations
+          SET transcript_status = ${result.status || "processing"},
+              updated_at = NOW()
+          WHERE id = ${id}
+          RETURNING *
+        `.catch(() => []);
+        return (rows[0] as Record<string, unknown>) || row;
+      } catch (e) {
+        const message = (e as Error)?.message || "Soniox request failed";
+        const rows = await sql`
+          UPDATE conversations
+          SET transcript_status = 'error',
+              transcript_error = ${message},
+              updated_at = NOW()
+          WHERE id = ${id}
+          RETURNING *
+        `.catch(() => []);
+        return (rows[0] as Record<string, unknown>) || row;
+      }
+    }
+
+    if (path === "/api/conversations/config" && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      return json({
+        ...sonioxConfigInfo(),
+        max_duration_sec: 600,
+        max_audio_bytes: CONVERSATION_MAX_BYTES,
+        note: "Record offline; audio uploads and is translated to English when connectivity returns.",
+      });
+    }
+
+    if (path === "/api/conversations" && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      const adminView = isPortalAdmin(me.role) && url.searchParams.get("all") === "1";
+      // Admins use this list for the Analyze & Export tab, so allow more rows
+      // than a single surveyor needs for their own history.
+      const maxLimit = adminView ? 1000 : 200;
+      const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 100), 1), maxLimit);
+      const rows = adminView
+        ? await sql`
+            SELECT c.id, c.user_id, c.local_id, c.form_key, c.title, c.recorded_at,
+                   c.duration_ms, c.audio_mime, c.audio_bytes, c.transcript,
+                   c.transcript_original, c.transcript_status, c.transcript_error,
+                   c.created_at, c.updated_at, u.username, u.display_name
+            FROM conversations c
+            LEFT JOIN app_users u ON u.id = c.user_id
+            ORDER BY COALESCE(c.recorded_at, c.created_at) DESC, c.id DESC
+            LIMIT ${limit}
+          `.catch(() => [])
+        : await sql`
+            SELECT id, user_id, local_id, form_key, title, recorded_at, duration_ms,
+                   audio_mime, audio_bytes, transcript, transcript_original,
+                   transcript_status, transcript_error, created_at, updated_at
+            FROM conversations
+            WHERE user_id = ${me.id}
+            ORDER BY COALESCE(recorded_at, created_at) DESC, id DESC
+            LIMIT ${limit}
+          `.catch(() => []);
+      return json({
+        items: (rows as Record<string, unknown>[]).map(conversationPublic),
+        count: rows.length,
+        soniox_enabled: sonioxConfigInfo().enabled,
+      });
+    }
+
+    if (path === "/api/conversations" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      const body = await readBody(req);
+      const localId = String(body.local_id || "").trim().slice(0, 120);
+      if (localId) {
+        const existing = await sql`
+          SELECT * FROM conversations
+          WHERE user_id = ${me.id} AND local_id = ${localId}
+          LIMIT 1
+        `.catch(() => []);
+        if (existing.length) {
+          return json({
+            ok: true,
+            duplicate: true,
+            conversation: conversationPublic(existing[0] as Record<string, unknown>),
+          });
+        }
+      }
+      const parsed = splitDataUrl(String(body.audio || body.data || ""));
+      const bytes = b64ToBytes(parsed.b64);
+      if (!bytes.length) return json({ error: "audio (base64 data URL) is required" }, 400);
+      if (bytes.length > CONVERSATION_MAX_BYTES) {
+        return json({
+          error: `Conversation audio too large (${bytes.length} bytes). Maximum is ${CONVERSATION_MAX_BYTES} bytes.`,
+          code: "audio_too_large",
+        }, 413);
+      }
+      const mime = String(body.mime || parsed.mime || "audio/webm").split(";")[0].trim() || "audio/webm";
+      const recorded = new Date(String(body.recorded_at || ""));
+      const recordedAt = Number.isNaN(recorded.getTime()) ? new Date() : recorded;
+      const title = String(body.title || "").trim().slice(0, 160) || "Conversation";
+      const formKey = body.form_key ? String(body.form_key).trim().slice(0, 120) : null;
+      const durationMs = Number(body.duration_ms);
+      const transcript = body.transcript ? String(body.transcript).trim().slice(0, 20_000) : null;
+
+      const inserted = await sql`
+        INSERT INTO conversations (
+          user_id, local_id, form_key, title, recorded_at, duration_ms,
+          audio_mime, audio_data, audio_bytes, transcript, transcript_status
+        ) VALUES (
+          ${me.id}, ${localId || null}, ${formKey}, ${title}, ${recordedAt},
+          ${Number.isFinite(durationMs) && durationMs > 0 ? Math.round(durationMs) : null},
+          ${mime}, ${bytesToBase64(bytes)}, ${bytes.length},
+          ${transcript}, ${transcript ? "completed" : "stored"}
+        )
+        ON CONFLICT DO NOTHING
+        RETURNING *
+      `.catch((e: unknown) => {
+        console.error("conversation insert:", (e as Error)?.message || e);
+        return [];
+      });
+      if (!inserted.length) {
+        // Lost an insert race on local_id — return the row the other request made.
+        if (localId) {
+          const rows = await sql`
+            SELECT * FROM conversations WHERE user_id = ${me.id} AND local_id = ${localId} LIMIT 1
+          `.catch(() => []);
+          if (rows.length) {
+            return json({
+              ok: true,
+              duplicate: true,
+              conversation: conversationPublic(rows[0] as Record<string, unknown>),
+            });
+          }
+        }
+        return json({ error: "Could not save conversation" }, 500);
+      }
+      return json({
+        ok: true,
+        conversation: conversationPublic(inserted[0] as Record<string, unknown>),
+      }, 201);
+    }
+
+    const convAudioMatch = path.match(/^\/api\/conversations\/(\d+)\/audio$/);
+    if (convAudioMatch && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      const row = await loadConversation(Number(convAudioMatch[1]), { audio: true });
+      if (!row) return json({ error: "Not found" }, 404);
+      const bytes = b64ToBytes(String(row.audio_data || ""));
+      if (!bytes.length) return json({ error: "No audio stored for this conversation" }, 404);
+      return new Response(bytes, {
+        status: 200,
+        headers: {
+          ...CORS_HEADERS,
+          "content-type": String(row.audio_mime || "audio/webm"),
+          "content-length": String(bytes.length),
+          "cache-control": "private, max-age=3600",
+          "x-content-type-options": "nosniff",
+        },
+      });
+    }
+
+    const convTranscribeMatch = path.match(/^\/api\/conversations\/(\d+)\/transcribe$/);
+    if (convTranscribeMatch && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      let row = await loadConversation(Number(convTranscribeMatch[1]), { audio: true });
+      if (!row) return json({ error: "Not found" }, 404);
+      if (String(row.transcript_status || "") === "completed" && row.transcript) {
+        return json({ ok: true, conversation: conversationPublic(row) });
+      }
+      // A failed Soniox job is retryable: start a fresh one from the audio we
+      // already stored, instead of polling the dead transcription forever.
+      if (String(row.transcript_status || "") === "error") {
+        row.soniox_transcription_id = null;
+        row.soniox_file_id = null;
+      }
+      if (!row.soniox_transcription_id) {
+        if (!sonioxConfigInfo().enabled) {
+          return json({
+            error: "Voice translation is not enabled on the server.",
+            code: "soniox_not_configured",
+          }, 503);
+        }
+        const bytes = b64ToBytes(String(row.audio_data || ""));
+        if (!bytes.length) return json({ error: "No audio stored for this conversation" }, 400);
+        try {
+          const job = await startSonioxTranscription(
+            bytes,
+            String(row.audio_mime || "audio/webm"),
+          );
+          const rows = await sql`
+            UPDATE conversations
+            SET soniox_file_id = ${job.fileId},
+                soniox_transcription_id = ${job.transcriptionId},
+                transcript_status = 'processing',
+                transcript_error = NULL,
+                updated_at = NOW()
+            WHERE id = ${Number(row.id)}
+            RETURNING *
+          `;
+          row = (rows[0] as Record<string, unknown>) || {
+            ...row,
+            soniox_file_id: job.fileId,
+            soniox_transcription_id: job.transcriptionId,
+            transcript_status: "processing",
+          };
+        } catch (e) {
+          const message = (e as Error)?.message || "Soniox request failed";
+          await sql`
+            UPDATE conversations
+            SET transcript_status = 'error', transcript_error = ${message}, updated_at = NOW()
+            WHERE id = ${Number(row.id)}
+          `.catch(() => null);
+          return json({ error: message }, 502);
+        }
+      }
+      // Short clips often finish before the first poll; one cheap check usually
+      // saves the client a round trip. Longer clips keep polling via GET /:id.
+      await new Promise((r) => setTimeout(r, 600));
+      row = await refreshConversationTranscript(row);
+      return json({ ok: true, conversation: conversationPublic(row) });
+    }
+
+    const convIdMatch = path.match(/^\/api\/conversations\/(\d+)$/);
+    if (convIdMatch && (method === "GET" || method === "DELETE")) {
+      if (!me) return json({ error: "Login required" }, 401);
+      const id = Number(convIdMatch[1]);
+      let row = await loadConversation(id);
+      if (!row) return json({ error: "Not found" }, 404);
+      if (method === "DELETE") {
+        await sql`DELETE FROM conversations WHERE id = ${id}`.catch(() => null);
+        void deleteSonioxFile(String(row.soniox_file_id || ""));
+        return json({ ok: true, deleted: id });
+      }
+      if (
+        row.soniox_transcription_id &&
+        String(row.transcript_status || "") !== "completed" &&
+        String(row.transcript_status || "") !== "error"
+      ) {
+        row = await refreshConversationTranscript(row);
+      }
+      return json({ ok: true, conversation: conversationPublic(row) });
+    }
+
+    // ── Batch transcription for the field app's survey voice recordings ──
+    // Client posts the recorded blob once, then polls the job id. The audio is
+    // uploaded to Soniox by the server, so the phone only needs connectivity now.
+    if (path === "/api/transcribe" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (!sonioxConfigInfo().enabled) {
+        return json({
+          error: "Voice translation is not enabled on the server.",
+          code: "soniox_not_configured",
+        }, 503);
+      }
+      let mime = (req.headers.get("content-type") || "audio/webm").split(";")[0].trim() ||
+        "audio/webm";
+      let bytes: Uint8Array;
+      if (mime.includes("application/json")) {
+        const body = await readBody(req);
+        const parsed = splitDataUrl(String(body.audio || body.data || ""));
+        bytes = b64ToBytes(parsed.b64);
+        mime = String(body.mime || parsed.mime || "audio/webm").split(";")[0].trim() ||
+          "audio/webm";
+      } else {
+        const buf = await req.arrayBuffer();
+        bytes = new Uint8Array(buf);
+      }
+      if (!bytes.length) return json({ error: "Audio body is required" }, 400);
+      if (bytes.length > 12_000_000) {
+        return json({ error: "Audio too large (max 12 MB)" }, 413);
+      }
+      try {
+        const job = await startSonioxTranscription(bytes, mime);
+        return json({
+          ok: true,
+          job_id: `${job.transcriptionId}.${job.fileId}`,
+          status: "processing",
+        }, 202);
+      } catch (e) {
+        const message = (e as Error)?.message || "Soniox request failed";
+        const status = Number((e as Error & { status?: number })?.status) || 502;
+        return json({ error: message }, status === 401 ? 502 : status);
+      }
+    }
+
+    const transcribeJobMatch = path.match(/^\/api\/transcribe\/([A-Za-z0-9_.-]+)$/);
+    if (transcribeJobMatch && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      const [transcriptionId] = transcribeJobMatch[1].split(".");
+      if (!transcriptionId) return json({ error: "Invalid job id" }, 400);
+      try {
+        const result = await pollSonioxTranscription(transcriptionId);
+        return json({
+          ok: result.status !== "error",
+          status: result.status,
+          text: result.transcript || "",
+          source_text: result.transcriptOriginal || "",
+          error: result.error || null,
+        });
+      } catch (e) {
+        const message = (e as Error)?.message || "Soniox request failed";
+        return json({ status: "error", error: message }, 502);
+      }
+    }
+
     // ── Removed routes → explicit 410 Gone ───────────────────
     const REMOVED: Array<[RegExp, string]> = [
       [/^\/api\/super-admin\/seed-slots$/, "Slots are seeded automatically at deploy time (ensureSchema)."],
@@ -7692,6 +8116,9 @@ async function rawHandler(req: Request): Promise<Response> {
           confirmed_by: payload?.confirmed_by || null,
           answers,
           qa: qaFromAnswers(answers || {}, qByKey.get(String(payload?.form_key || "")) || []),
+          voice_transcript: String(
+            payload?.voice_transcript || answers?._voice_transcript_en || "",
+          ),
           has_geo: verify.geo_ok,
           has_voice: verify.voice_ok,
           has_photo: verify.photo_ok,
@@ -8431,6 +8858,9 @@ async function rawHandler(req: Request): Promise<Response> {
         has_photo: verify.photo_ok && !verify.legacy ? true : !!payload.has_photo,
         answers,
         qa: qaFromAnswers(answers),
+        voice_transcript: String(
+          payload.voice_transcript || answers._voice_transcript_en || "",
+        ),
         edit_history: Array.isArray(payload.edit_history)
           ? payload.edit_history
           : [],
@@ -8606,6 +9036,9 @@ async function rawHandler(req: Request): Promise<Response> {
         submitted_by: payload.submitted_by || answers.data_collector || "",
         answers,
         qa: qaFromAnswers(answers),
+        voice_transcript: String(
+          payload.voice_transcript || answers._voice_transcript_en || "",
+        ),
         changed,
         updated_by: payload.updated_by,
         updated_at: payload.updated_at,
@@ -10990,6 +11423,20 @@ async function rawHandler(req: Request): Promise<Response> {
         location_details: body.location_details || null,
         locks: body.locks || { geo: true },
         voice_required: body.voice_required === true || answers._voice_required === true,
+        // Telugu interview → English transcript (batch Soniox, client-supplied).
+        voice_transcript: (() => {
+          const t = body.voice_transcript ?? (answers as Record<string, unknown>)._voice_transcript_en;
+          const s = String(t || "").trim();
+          return s ? s.slice(0, 20_000) : null;
+        })(),
+        voice_transcript_language: (() => {
+          const t = body.voice_transcript ?? (answers as Record<string, unknown>)._voice_transcript_en;
+          return String(t || "").trim() ? "en" : null;
+        })(),
+        voice_transcript_status: (() => {
+          const t = body.voice_transcript ?? (answers as Record<string, unknown>)._voice_transcript_en;
+          return String(t || "").trim() ? "completed" : "missing";
+        })(),
         has_photo: false,
         has_audio: false,
         answers: stripPii({

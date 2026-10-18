@@ -33,6 +33,7 @@ const AdminUsersScreen = lazy(() => import('./AdminUsers'))
 const AdminSurveysScreen = lazy(() => import('./AdminSurveys'))
 const AdminQuestionsScreen = lazy(() => import('./AdminQuestions'))
 const AdminAnalyzeScreen = lazy(() => import('./AdminAnalyze'))
+const AdminConversationsScreen = lazy(() => import('./AdminConversations'))
 const ReviewQAScreen = lazy(() => import('./ReviewQA'))
 const DashboardScreen = lazy(() => import('./Dashboard'))
 const AdminDataScreen = lazy(() => import('./AdminData'))
@@ -47,7 +48,7 @@ const AdminProfileScreen = lazy(() => import('./AdminProfile'))
 // Matches the sidebar: each group’s `pages` become the subtabs on that screen.
 const NAV = [
   { id: 'overview', label: 'Dashboard', icon: 'grid', pages: ['overview'] },
-  { id: 'analyze', label: 'Analyze & Export', icon: 'chart', pages: ['analyze', 'report', 'upload', 'data'] },
+  { id: 'analyze', label: 'Analyze & Export', icon: 'chart', pages: ['analyze', 'report', 'conversations', 'upload', 'data'] },
   { id: 'review', label: 'Review QA', icon: 'check', pages: ['review'] },
   { id: 'surveyors', label: 'Surveyors', icon: 'user', pages: ['users'] },
   { id: 'surveys', label: 'Surveys & Forms', icon: 'clipboard', pages: ['surveys', 'questions', 'web', 'bank'] },
@@ -84,6 +85,7 @@ const PAGE_LABELS = {
   questions: 'Questions',
   review: 'Review',
   upload: 'Export',
+  conversations: 'Conversations',
   data: 'Raw data',
   audit: 'Audit Log',
   bank: 'Question Bank',
@@ -1523,7 +1525,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
         <nav className="portal-nav">
           <div className="side-section-label">MONITORING</div>
           <button className={`side-sub ${page === 'overview' ? 'active' : ''}`} onClick={() => goPage('overview')}><Icon name="grid" size={18} />Dashboard</button>
-          <button className={`side-sub ${['analyze', 'report', 'upload', 'data'].includes(page) ? 'active' : ''}`} onClick={() => goPage('analyze')}><Icon name="chartUp" size={18} />Analyze &amp; Export</button>
+          <button className={`side-sub ${['analyze', 'report', 'upload', 'data', 'conversations'].includes(page) ? 'active' : ''}`} onClick={() => goPage('analyze')}><Icon name="chartUp" size={18} />Analyze &amp; Export</button>
           <button className={`side-sub ${page === 'review' ? 'active' : ''}`} onClick={() => goPage('review')}><Icon name="clipboardCheck" size={18} />Review QA</button>
 
           <div className="side-section-label" style={{ marginTop: 14 }}>SETUP &amp; TEAM</div>
@@ -1670,6 +1672,9 @@ export default function AdminPortal({ superAdminOnly = false }) {
             />
           )}
           {page === 'upload' && canPage('upload') && <AdminDataScreen onToast={notify} />}
+          {page === 'conversations' && canPage('conversations') && (
+            <AdminConversationsScreen onToast={notify} />
+          )}
           {page === 'audit' && canPage('audit') && <AdminAuditScreen onToast={notify} />}
           {page === 'bank' && canPage('bank') && (
             <AdminQuestionBankScreen onToast={notify} user={user} />
@@ -1727,7 +1732,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
 
         <button
           type="button"
-          className={`portal-tab-btn ${['analyze', 'report', 'upload', 'data'].includes(page) ? 'active' : ''}`}
+          className={`portal-tab-btn ${['analyze', 'report', 'upload', 'data', 'conversations'].includes(page) ? 'active' : ''}`}
           onClick={() => goPage('analyze')}
         >
           <span className="portal-tab-icon"><Icon name="chartUp" size={22} /></span>

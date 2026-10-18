@@ -24,6 +24,8 @@ import {
 } from './syncEngine'
 import LoginScreen from './Login'
 import FieldCollectScreen from './FieldCollect'
+import ConversationsScreen from './ConversationsScreen'
+import { startConversationSync, stopConversationSync } from './conversationSync'
 import PullToRefresh from './PullToRefresh'
 import {
   collapseDuplicateDrafts,
@@ -119,10 +121,11 @@ const NAV_MODE_INFO = {
   scroll: { title: 'Vertical scroll', desc: 'All questions in one scrollable page.' },
 }
 
-/** Surveyor-only field app (mobile / APK) — 4 focused tabs */
+/** Surveyor-only field app (mobile / APK) — 5 focused tabs */
 const TABS = [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'collect', label: 'Collect', icon: 'pencil' },
+  { id: 'conversations', label: 'Voice', icon: 'mic' },
   { id: 'submissions', label: 'Submissions', icon: 'box' },
   { id: 'profile', label: 'Profile', icon: 'user' },
 ]
@@ -1650,6 +1653,7 @@ export default function SurveyorApp() {
 
   const handleLogout = useCallback(async () => {
     stopSyncEngine()
+    stopConversationSync()
     await logout()
     setUser(null)
     setMyProgress(null)
@@ -1667,6 +1671,7 @@ export default function SurveyorApp() {
       })
     }, { intervalMs: 60_000 })
     startSyncEngine()
+    startConversationSync()
     setPendingSync(queueCount())
     void refreshQueueCountCache()
       .then(setPendingSync)
@@ -1724,6 +1729,7 @@ export default function SurveyorApp() {
       offSync()
       window.removeEventListener('esurvey-queue-change', onQueue)
       stopSyncEngine()
+      stopConversationSync()
     }
   }, [engineOn, notify])
 
@@ -2047,6 +2053,16 @@ export default function SurveyorApp() {
                 onDone={onCollectDone}
                 onSavedDraft={onCollectSavedDraft}
                 onIdleHome={onCollectIdleHome}
+              />
+            </ScreenErrorBoundary>
+          </div>
+
+          <div style={{ display: tab === 'conversations' ? 'block' : 'none' }}>
+            <ScreenErrorBoundary title="Voice conversations">
+              <ConversationsScreen
+                user={user}
+                active={tab === 'conversations'}
+                onToast={notify}
               />
             </ScreenErrorBoundary>
           </div>

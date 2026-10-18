@@ -10,6 +10,7 @@ import {
   AUDIO_SAMPLE_RATE,
 } from './mediaOptimize'
 import { multiMaxChoices, slugQuestionKey } from './questionKey'
+import { transcribeVoiceToEnglish, VOICE_TRANSCRIPT_KEY } from './voiceTranscribe'
 
 function mapAnswersToQuestions(answers, questions) {
   const src = answers || {}
@@ -246,6 +247,8 @@ export default function FieldCollectScreen({
   const [cameraLive, setCameraLive] = useState(false)
   const [cameraBusy, setCameraBusy] = useState(false)
   const [audioBlob, setAudioBlob] = useState(null)
+  const [voiceTranscript, setVoiceTranscript] = useState('')
+  const [transcriptState, setTranscriptState] = useState('idle')
   const [, setAudioUrl] = useState('')
   const [recording, setRecording] = useState(false)
   const [voiceActivated, setVoiceActivated] = useState(false)
@@ -300,6 +303,9 @@ export default function FieldCollectScreen({
   const audioTimerRef = useRef(null)
   const recordingRef = useRef(false)
   recordingRef.current = recording
+  const transcriptPromiseRef = useRef(null)
+  const transcriptTokenRef = useRef(0)
+  const transcriptTextRef = useRef('')
   const timingRef = useRef(emptyTiming())
 
   function markTiming(key) {
@@ -363,6 +369,12 @@ export default function FieldCollectScreen({
       } catch {
         /* ignore */
       }
+    }
+    const savedTranscript = String(pkg?.qa?.answers?.[VOICE_TRANSCRIPT_KEY] || '').trim()
+    if (savedTranscript) {
+      transcriptTextRef.current = savedTranscript
+      setVoiceTranscript(savedTranscript)
+      setTranscriptState('done')
     }
     const hasGeo = g && Number.isFinite(Number(g.lat))
     const hasPhoto = !!(pkg.photoDataUrl && String(pkg.photoDataUrl).length >= MIN_PHOTO_CHARS)
@@ -994,6 +1006,7 @@ export default function FieldCollectScreen({
       })
       streamRef.current = stream
       chunks.current = []
+      resetTranscript()
       let recStream = stream
       try {
         const Ctx = window.AudioContext || window.webkitAudioContext
@@ -1020,6 +1033,7 @@ export default function FieldCollectScreen({
         void toSpeechWav16k(raw).then((blob) => {
           setAudioBlob(blob)
           assignAudioUrl(URL.createObjectURL(blob))
+          void runTranscript(blob)
         })
         try {
           stream.getTracks().forEach((t) => t.stop())
@@ -1117,6 +1131,61 @@ export default function FieldCollectScreen({
       /* ignore */
     }
     setListening(false)
+  }
+
+  function resetTranscript() {
+    transcriptTokenRef.current += 1
+    transcriptPromiseRef.current = null
+    transcriptTextRef.current = ''
+    setVoiceTranscript('')
+    setTranscriptState('idle')
+  }
+
+  /**
+   * Batch Telugu → English translation. Uploads only when called; offline
+   * failures are harmless because the sync engine retries from the queued audio.
+   */
+  function runTranscript(blob) {
+    if (!voiceRequired || !blob || blob.size < MIN_AUDIO_BYTES) return Promise.resolve('')
+    if (transcriptPromiseRef.current) return transcriptPromiseRef.current
+    const token = transcriptTokenRef.current + 1
+    transcriptTokenRef.current = token
+    setTranscriptState('uploading')
+    const promise = (async () => {
+      try {
+        const result = await transcribeVoiceToEnglish(blob, {
+          maxWaitMs: 90_000,
+          onStatus: (s) => {
+            if (transcriptTokenRef.current === token) setTranscriptState(s)
+          },
+        })
+        if (transcriptTokenRef.current !== token) return ''
+        const text = String(result.text || '').trim()
+        transcriptTextRef.current = text
+        setVoiceTranscript(text)
+        setTranscriptState(text ? 'done' : 'error')
+        if (text) onToast?.('Telugu voice translated to English', 'ok')
+        return text
+      } catch (e) {
+        if (transcriptTokenRef.current === token) setTranscriptState('error')
+        // Offline is normal in the field — the queued record retries on sync.
+        console.info('[voice] transcript deferred:', e?.message || e)
+        return ''
+      } finally {
+        if (transcriptPromiseRef.current === promise) transcriptPromiseRef.current = null
+      }
+    })()
+    transcriptPromiseRef.current = promise
+    return promise
+  }
+
+  /** Never make the user wait forever: save now, let sync finish the text. */
+  function waitForTranscript(promise, ms = 20_000) {
+    if (!promise) return Promise.resolve(transcriptTextRef.current)
+    return Promise.race([
+      promise.catch(() => transcriptTextRef.current),
+      new Promise((resolve) => setTimeout(() => resolve(transcriptTextRef.current), ms)),
+    ])
   }
 
   function blobToBase64(blob) {
@@ -1257,6 +1326,12 @@ export default function FieldCollectScreen({
 
     setSaving(true)
     try {
+      // Include the English transcript when it is ready; remain offline-safe when not.
+      let transcriptText = transcriptTextRef.current
+      if (voiceRequired && blob && blob.size >= MIN_AUDIO_BYTES && !transcriptText) {
+        transcriptText = await waitForTranscript(runTranscript(blob), 20_000)
+      }
+
       let audioDataUrl = null
       let audioMime = 'audio/webm'
       if (blob && blob.size >= MIN_AUDIO_BYTES) {
@@ -1284,6 +1359,7 @@ export default function FieldCollectScreen({
         _photo_locked: true,
         _voice_locked: voiceRequired ? true : !!audioDataUrl,
         _voice_required: voiceRequired,
+        ...(transcriptText ? { [VOICE_TRANSCRIPT_KEY]: transcriptText } : {}),
         _location_locked: true,
         _recordIndex: localSeq,
         geo_lat: geo.lat,
@@ -1467,6 +1543,13 @@ export default function FieldCollectScreen({
         return false
       }
 
+      // Final saves wait briefly for the English text; background sync retries
+      // anything that is still pending because the phone was offline.
+      let transcriptText = transcriptTextRef.current
+      if (!checkpoint && voiceRequired && blob && blob.size >= MIN_AUDIO_BYTES && !transcriptText) {
+        transcriptText = await waitForTranscript(runTranscript(blob), 20_000)
+      }
+
       // If this collect remounted, adopt any leftover draft for the same record.
       const existing = await findOpenDraft({
         userId: user?.id,
@@ -1490,6 +1573,7 @@ export default function FieldCollectScreen({
         ...buildTimingPayload(),
         _draft: true,
         _voice_required: voiceRequired,
+        ...(transcriptText ? { [VOICE_TRANSCRIPT_KEY]: transcriptText } : {}),
         _recordIndex: workingRecordIndexRef.current,
         geo_lat: geo?.lat,
         geo_lng: geo?.lng,
@@ -2636,19 +2720,40 @@ export default function FieldCollectScreen({
               ))}
             </div>
             {voiceRequired && voiceActivated ? (
-              <div className="voice-strip">
-                {recording ? <span className="live-dot" aria-hidden /> : <span className="pill ok" style={{ margin: 0 }}>Voice on</span>}
-                <strong>{recording ? 'Recording interview' : 'Voice locked'}</strong>
-                {editingDraft && voiceLocked ? null : recording ? (
-                  <button type="button" className="btn secondary" onClick={stopAudio}>
-                    Stop
-                  </button>
-                ) : (
-                  <button type="button" className="btn secondary" onClick={startAudio}>
-                    Re-record
-                  </button>
-                )}
-              </div>
+              <>
+                <div className="voice-strip">
+                  {recording ? <span className="live-dot" aria-hidden /> : <span className="pill ok" style={{ margin: 0 }}>Voice on</span>}
+                  <strong>{recording ? 'Recording interview' : 'Voice locked'}</strong>
+                  {editingDraft && voiceLocked ? null : recording ? (
+                    <button type="button" className="btn secondary" onClick={stopAudio}>
+                      Stop
+                    </button>
+                  ) : (
+                    <button type="button" className="btn secondary" onClick={startAudio}>
+                      Re-record
+                    </button>
+                  )}
+                </div>
+                {transcriptState === 'uploading' || transcriptState === 'translating' ? (
+                  <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
+                    Translating Telugu → English…
+                  </p>
+                ) : transcriptState === 'error' ? (
+                  <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
+                    English translation pending · it will retry when the server is reachable
+                  </p>
+                ) : null}
+                {voiceTranscript ? (
+                  <div className="card" style={{ marginBottom: 10, padding: 10 }}>
+                    <span className="muted" style={{ fontSize: 11, fontWeight: 600 }}>
+                      ENGLISH TRANSLATION
+                    </span>
+                    <p style={{ margin: '4px 0 0', fontSize: 13, whiteSpace: 'pre-wrap' }}>
+                      {voiceTranscript}
+                    </p>
+                  </div>
+                ) : null}
+              </>
             ) : voiceRequired ? (
               <div className="card" style={{ marginBottom: 10 }}>
                 <h3>3 · Voice activation (required)</h3>

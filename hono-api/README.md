@@ -28,3 +28,21 @@ That is the whole deploy.
 After that, every push updates the live API. Do not paste into the Deno editor.
 
 Edit files under `hono-api/` (routes, `legacy/handler.ts`). `deno-deploy/main.ts` is the old paste file — leave it.
+
+## Voice translation (Soniox)
+
+Field voice notes and survey voice recordings are transcribed in batch with
+Soniox, with a one-way translation to English. The key is **server-side only** —
+never put it in the Vite/APK build.
+
+Set the environment variable in the Deno Deploy project (Settings → Environment
+Variables):
+
+```
+SONIOX_API_KEY = snx_proj_...
+```
+
+For a local `deno task dev`, `hono-api/.env` is loaded automatically and is
+gitignored. Without the key, `/api/conversations/config` reports
+`enabled: false`; recordings still save on the phone and translate after the key
+is added.

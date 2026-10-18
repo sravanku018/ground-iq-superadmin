@@ -25,6 +25,11 @@ android/app/*.keystore
 *.jks
 *.keystore
 
+# Local API keys — deploy flow uses `git add -A`, so keep these out of git
+sonioxkey.txt
+sonixkey.txt
+hono-api/.env
+
 
 # Editor directories and files
 .vscode/*

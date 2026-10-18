@@ -1030,3 +1030,89 @@ export async function downloadMediaFile(pathOrUrl, filename = 'media-file') {
     throw new Error(e?.message || 'Download failed')
   }
 }
+
+/* ── Voice conversations (offline record → batch Telugu→English translation) ── */
+
+/** Server-side Soniox availability + recording limits. */
+export function getConversationConfig() {
+  return request('/api/conversations/config')
+}
+
+/** Upload one conversation (audio as data URL). Idempotent via local_id. */
+export function createConversation(payload) {
+  return request('/api/conversations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  })
+}
+
+export function listConversations({ limit = 100, all = false } = {}) {
+  const params = new URLSearchParams({ limit: String(Number(limit) || 100) })
+  if (all) params.set('all', '1')
+  return request(`/api/conversations?${params.toString()}`)
+}
+
+export function getConversationRecord(id) {
+  return request(`/api/conversations/${id}`)
+}
+
+/** Start (or poll) the server-side Soniox batch job for a stored conversation. */
+export function transcribeConversation(id) {
+  return request(`/api/conversations/${id}/transcribe`, { method: 'POST' })
+}
+
+export function deleteConversation(id) {
+  return request(`/api/conversations/${id}`, { method: 'DELETE' })
+}
+
+/** Authenticated audio URL — pass through fetchMediaBlobUrl before <audio src>. */
+export function conversationAudioPath(id) {
+  return `/api/conversations/${id}/audio`
+}
+
+/**
+ * Upload a recorded voice blob for batch transcription. Used by the survey
+ * voice lock; conversations use the stored-audio endpoints above.
+ */
+export async function startVoiceTranscription(blob, { mime } = {}) {
+  const base = getApiBase()
+  const token = getToken()
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 180_000)
+  try {
+    const res = await fetch(`${base}/api/transcribe`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': mime || blob?.type || 'audio/webm',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: blob,
+      signal: controller.signal,
+      cache: 'no-store',
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const err = new Error(data.error || `Transcription failed (HTTP ${res.status})`)
+      err.status = res.status
+      err.data = data
+      throw err
+    }
+    return data
+  } catch (e) {
+    if (e?.name === 'AbortError') {
+      throw new Error('Voice upload timed out. It will retry when you are online.')
+    }
+    if (e instanceof TypeError) {
+      throw new Error('No connection to the server. The recording stays on this phone.')
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export function getVoiceTranscription(jobId) {
+  return request(`/api/transcribe/${encodeURIComponent(jobId)}`)
+}

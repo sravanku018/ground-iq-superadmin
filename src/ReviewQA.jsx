@@ -657,6 +657,9 @@ export default function ReviewQAScreen({
               (mediaById[item.id] || []).find((m) => m.kind === 'audio') || null
             const photoSrc = photo?.playUrl || photo?.url || item.photo_url
             const audioSrc = audio?.playUrl || audio?.url || item.audio_url
+            const voiceTranscript = String(
+              item.voice_transcript || a._voice_transcript_en || '',
+            ).trim()
 
             const pills = surveyQuestions.length > 0
               ? surveyQuestions.slice(0, 4).map((q, idx) => {
@@ -858,6 +861,24 @@ export default function ReviewQAScreen({
                                 </button>
                               </div>
                               <audio controls src={audioSrc} style={{ width: '100%' }} />
+                            </div>
+                          ) : null}
+                          {voiceTranscript ? (
+                            <div
+                              style={{
+                                marginTop: 8,
+                                padding: 10,
+                                borderRadius: 8,
+                                border: '1px solid #e2e8f0',
+                                background: '#f8fafc',
+                              }}
+                            >
+                              <span className="muted" style={{ fontSize: 11, fontWeight: 600 }}>
+                                ENGLISH TRANSLATION
+                              </span>
+                              <p style={{ margin: '4px 0 0', fontSize: 13, whiteSpace: 'pre-wrap' }}>
+                                {voiceTranscript}
+                              </p>
                             </div>
                           ) : null}
                           {!photoSrc && !audioSrc && (

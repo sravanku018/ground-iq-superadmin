@@ -12,6 +12,7 @@
 
 import { getApiBase, getToken } from './api'
 import { mediaTypeOnly, mimeFromDataUrl, normalizeMediaDataUrl } from './mediaOptimize'
+import { transcribeVoiceToEnglish, VOICE_TRANSCRIPT_KEY } from './voiceTranscribe'
 import {
   getPackage,
   listPendingPackages,
@@ -142,7 +143,7 @@ export async function syncOnePackage(id) {
   emit({ type: 'package-start', id })
 
   try {
-    const answers = pkg.qa?.answers || {}
+    let answers = pkg.qa?.answers || {}
     const voiceNeeded =
       answers._voice_required === true ||
       (answers._voice_required !== false && pkg.locks?.voice !== false)
@@ -157,9 +158,37 @@ export async function syncOnePackage(id) {
             : 'Package incomplete: GPS and photo are required',
         )
       }
+
+      // Batch English translation for the interview audio. Best effort: the
+      // survey must still sync when Soniox is temporarily unavailable, so this
+      // never blocks the upload for more than two attempts.
+      if (
+        voiceNeeded &&
+        pkg.audioDataUrl &&
+        !String(answers[VOICE_TRANSCRIPT_KEY] || '').trim() &&
+        Number(pkg.transcriptAttempts || 0) < 2
+      ) {
+        pkg = (await updatePackage(id, {
+          transcriptAttempts: Number(pkg.transcriptAttempts || 0) + 1,
+        })) || pkg
+        try {
+          const result = await transcribeVoiceToEnglish(pkg.audioDataUrl, {
+            maxWaitMs: 90_000,
+          })
+          const text = String(result.text || '').trim()
+          if (text) {
+            answers = { ...answers, [VOICE_TRANSCRIPT_KEY]: text }
+            pkg = (await updatePackage(id, { qa: { ...pkg.qa, answers } })) || pkg
+            emit({ type: 'phase', id, phase: 'transcript_done' })
+          }
+        } catch (e) {
+          console.info('[sync] voice transcript deferred:', e?.message || e)
+        }
+      }
+
       const recIdx = Number(pkg.recordIndex)
       const cleanAnswers = stripDraftAnswers({
-        ...pkg.qa.answers,
+        ...answers,
         client_package_id: pkg.id,
         ...(Number.isFinite(recIdx) && recIdx > 0 ? { _recordIndex: recIdx } : {}),
       })
@@ -186,6 +215,7 @@ export async function syncOnePackage(id) {
         location_details: pkg.qa.location_details || null,
         locks: pkg.locks || pkg.qa.locks || { geo: true, photo: true, voice: voiceNeeded },
         voice_required: voiceNeeded,
+        voice_transcript: String(answers[VOICE_TRANSCRIPT_KEY] || '').trim() || undefined,
         record_index: Number.isFinite(recIdx) && recIdx > 0 ? recIdx : null,
         answers: cleanAnswers,
         app_version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : pkg.app_version,

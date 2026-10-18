@@ -21,6 +21,12 @@ import {
   pickAudioRecorderOptions,
   toSpeechWav16k,
 } from './mediaOptimize'
+import {
+  backgroundRecordingAvailable,
+  backgroundRecordingStatus,
+  startBackgroundRecording,
+  stopBackgroundRecording,
+} from './converseRecorder'
 
 const DEFAULT_MAX_SECONDS = 600
 const MIN_RECORDING_MS = 1200
@@ -98,6 +104,8 @@ export default function ConversationsScreen({ user, active, onToast }) {
   const recorderEnded = useRef(false)
   const mountedRef = useRef(true)
   const audioUrlsRef = useRef({})
+  const userRef = useRef(user)
+  userRef.current = user
 
   const maxSeconds = Number(config?.max_duration_sec) > 0
     ? Number(config.max_duration_sec)
@@ -106,7 +114,15 @@ export default function ConversationsScreen({ user, active, onToast }) {
   const refresh = useCallback(async () => {
     try {
       const rows = await listConversationsLocal()
-      if (mountedRef.current) setItems(rows)
+      const uid = userRef.current?.id
+      // A shared phone must not show one surveyor's notes to the next login.
+      const mine =
+        uid != null
+          ? rows.filter(
+              (c) => c.userId == null || String(c.userId) === String(uid),
+            )
+          : rows
+      if (mountedRef.current) setItems(mine)
     } catch (e) {
       console.warn('[conversations] list failed', e)
     } finally {
@@ -123,22 +139,162 @@ export default function ConversationsScreen({ user, active, onToast }) {
     streamRef.current = null
   }, [])
 
-  const stopRecording = useCallback(() => {
-    const rec = mediaRec.current
-    if (!rec) return
+  const nativeRecorder = backgroundRecordingAvailable()
+  const recordingRef = useRef(false)
+  recordingRef.current = recording
+  const savingRef = useRef(false)
+
+  const persistRecording = useCallback(
+    async ({ audioDataUrl, audioMime, durationMs }) => {
+      if (savingRef.current) return
+      savingRef.current = true
+      if (mountedRef.current) setSaving(true)
+      try {
+        const who = userRef.current
+        await saveConversationLocal({
+          userId: who?.id ?? null,
+          userName: who?.name || who?.username || '',
+          title: conversationTitle(),
+          recordedAt: new Date().toISOString(),
+          durationMs: Math.max(0, Math.round(Number(durationMs) || 0)),
+          audioDataUrl,
+          audioMime: audioMime || 'audio/webm',
+          transcriptStatus: 'queued',
+          status: 'local',
+          attempts: 0,
+          nextAttemptAt: 0,
+          lastError: '',
+        })
+        await refresh()
+        onToast?.('Saved on phone · English translation starts when online', 'ok')
+        void triggerConversationSync().finally(() => {
+          if (mountedRef.current) setSyncing(false)
+        })
+      } catch (e) {
+        onToast?.(e.message || 'Could not save the recording', 'error')
+      } finally {
+        savingRef.current = false
+        if (mountedRef.current) setSaving(false)
+      }
+    },
+    [onToast, refresh],
+  )
+
+  const syncNativeRecording = useCallback(async () => {
+    if (!nativeRecorder) return
+    try {
+      const st = await backgroundRecordingStatus()
+      if (!st) return
+      if (st.recording) {
+        if (!recordingRef.current) {
+          startedAt.current = Number(st.startedAt) || Date.now()
+          if (mountedRef.current) {
+            setRecording(true)
+            setElapsedMs(Date.now() - startedAt.current)
+          }
+          clearInterval(tickRef.current)
+          tickRef.current = setInterval(() => {
+            if (mountedRef.current) setElapsedMs(Date.now() - startedAt.current)
+          }, 250)
+        }
+        return
+      }
+      if (!recordingRef.current) return
+      // The native service reached its limit while the app was backgrounded.
+      clearInterval(tickRef.current)
+      tickRef.current = null
+      clearTimeout(maxTimerRef.current)
+      maxTimerRef.current = null
+      if (mountedRef.current) {
+        setRecording(false)
+        setElapsedMs(0)
+      }
+      const res = await stopBackgroundRecording()
+      if (res?.base64 && Number(res.size || 0) >= 800) {
+        await persistRecording({
+          audioDataUrl: `data:${res.mime || 'audio/mp4'};base64,${res.base64}`,
+          audioMime: res.mime || 'audio/mp4',
+          durationMs: Number(res.durationMs) || 0,
+        })
+      }
+    } catch {
+      /* ignore — the recording stays on the phone */
+    }
+  }, [nativeRecorder, persistRecording])
+
+  const stopRecording = useCallback(async () => {
     clearInterval(tickRef.current)
     tickRef.current = null
     clearTimeout(maxTimerRef.current)
     maxTimerRef.current = null
+
+    if (nativeRecorder) {
+      if (!recordingRef.current) return
+      const elapsed = Math.max(0, Date.now() - startedAt.current)
+      if (mountedRef.current) {
+        setRecording(false)
+        setElapsedMs(0)
+      }
+      try {
+        const res = await stopBackgroundRecording()
+        const durationMs = Number(res?.durationMs) || elapsed
+        if (
+          !res?.base64 ||
+          Number(res.size || 0) < 800 ||
+          durationMs < MIN_RECORDING_MS
+        ) {
+          onToast?.('Recording too short — hold the mic a little longer', 'error')
+          return
+        }
+        await persistRecording({
+          audioDataUrl: `data:${res.mime || 'audio/mp4'};base64,${res.base64}`,
+          audioMime: res.mime || 'audio/mp4',
+          durationMs,
+        })
+      } catch (e) {
+        onToast?.(e.message || 'Could not finish the recording', 'error')
+      }
+      return
+    }
+
+    const rec = mediaRec.current
+    if (!rec) return
     try {
       if (rec.state !== 'inactive') rec.stop()
     } catch {
       /* ignore */
     }
-  }, [])
+  }, [nativeRecorder, onToast, persistRecording])
 
   const startRecording = useCallback(async () => {
-    if (recording || saving) return
+    if (recordingRef.current || savingRef.current) return
+
+    if (nativeRecorder) {
+      try {
+        await startBackgroundRecording({ maxSeconds })
+        startedAt.current = Date.now()
+        setRecording(true)
+        setElapsedMs(0)
+        clearInterval(tickRef.current)
+        tickRef.current = setInterval(() => {
+          if (mountedRef.current) setElapsedMs(Date.now() - startedAt.current)
+        }, 250)
+        maxTimerRef.current = setTimeout(() => {
+          if (recordingRef.current) {
+            onToast?.(
+              `Stopped at the ${Math.round(maxSeconds / 60)} minute limit`,
+              'ok',
+            )
+            void stopRecording()
+          }
+        }, Math.max(5, maxSeconds) * 1000)
+        onToast?.('Recording continues in the background', 'ok')
+      } catch (e) {
+        onToast?.(e.message || 'Microphone permission is required', 'error')
+      }
+      return
+    }
+
     if (typeof MediaRecorder === 'undefined') {
       onToast?.('This device does not support audio recording', 'error')
       return
@@ -188,32 +344,13 @@ export default function ConversationsScreen({ user, active, onToast }) {
           onToast?.('Recording too short — hold the mic a little longer', 'error')
           return
         }
-        setSaving(true)
-        try {
-          const blob = await toSpeechWav16k(raw)
-          const audioDataUrl = await blobToDataUrl(blob)
-          await saveConversationLocal({
-            userId: user?.id ?? null,
-            userName: user?.name || user?.username || '',
-            title: conversationTitle(),
-            recordedAt: new Date().toISOString(),
-            durationMs,
-            audioDataUrl,
-            audioMime: blob.type || 'audio/webm',
-            transcriptStatus: 'queued',
-            status: 'local',
-            attempts: 0,
-            nextAttemptAt: 0,
-            lastError: '',
-          })
-          await refresh()
-          onToast?.('Saved on phone · English translation starts when online', 'ok')
-          void triggerConversationSync().finally(() => setSyncing(false))
-        } catch (e) {
-          onToast?.(e.message || 'Could not save the recording', 'error')
-        } finally {
-          if (mountedRef.current) setSaving(false)
-        }
+        const blob = await toSpeechWav16k(raw)
+        const audioDataUrl = await blobToDataUrl(blob)
+        await persistRecording({
+          audioDataUrl,
+          audioMime: blob.type || 'audio/webm',
+          durationMs,
+        })
       }
 
       rec.start(1000)
@@ -226,7 +363,7 @@ export default function ConversationsScreen({ user, active, onToast }) {
       maxTimerRef.current = setTimeout(() => {
         if (rec.state !== 'inactive') {
           onToast?.(`Stopped at the ${Math.round(maxSeconds / 60)} minute limit`, 'ok')
-          stopRecording()
+          void stopRecording()
         }
       }, Math.max(5, maxSeconds) * 1000)
     } catch (e) {
@@ -234,7 +371,7 @@ export default function ConversationsScreen({ user, active, onToast }) {
       setRecording(false)
       onToast?.(e.message || 'Microphone permission is required', 'error')
     }
-  }, [maxSeconds, onToast, recording, refresh, saving, stopRecording, stopTracks, user])
+  }, [maxSeconds, nativeRecorder, onToast, persistRecording, stopRecording, stopTracks])
 
   useEffect(() => {
     mountedRef.current = true
@@ -266,11 +403,45 @@ export default function ConversationsScreen({ user, active, onToast }) {
   }, [active, refresh])
 
   useEffect(() => {
+    if (!active || !nativeRecorder) return
+    void syncNativeRecording()
+  }, [active, nativeRecorder, syncNativeRecording])
+
+  useEffect(() => {
+    if (!nativeRecorder) return undefined
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void syncNativeRecording()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [nativeRecorder, syncNativeRecording])
+
+  useEffect(() => {
     audioUrlsRef.current = audioUrls
   }, [audioUrls])
 
   useEffect(() => {
     return () => {
+      // A native recording can outlive this screen; save it rather than lose it.
+      if (nativeRecorder && recordingRef.current) {
+        void stopBackgroundRecording()
+          .then((res) => {
+            if (!res?.base64 || Number(res.size || 0) < 800) return null
+            const who = userRef.current
+            return saveConversationLocal({
+              userId: who?.id ?? null,
+              userName: who?.name || who?.username || '',
+              title: conversationTitle(),
+              recordedAt: new Date().toISOString(),
+              durationMs: Number(res.durationMs) || 0,
+              audioDataUrl: `data:${res.mime || 'audio/mp4'};base64,${res.base64}`,
+              audioMime: res.mime || 'audio/mp4',
+              transcriptStatus: 'queued',
+              status: 'local',
+            })
+          })
+          .catch(() => null)
+      }
       // Keep the UI consistent if the component is ever unmounted mid-recording.
       try {
         if (mediaRec.current?.state !== 'inactive') mediaRec.current?.stop()
@@ -368,7 +539,7 @@ export default function ConversationsScreen({ user, active, onToast }) {
   return (
     <div className="screen conversations-screen" style={{ paddingBottom: 96 }}>
       <div className="screen-toolbar">
-        <h2 style={{ margin: 0 }}>Voice conversations</h2>
+        <h2 style={{ margin: 0 }}>Converse</h2>
         <span className="muted" style={{ fontSize: 12 }}>
           {counts.waiting + counts.translating + counts.ready} saved
         </span>
@@ -438,6 +609,11 @@ export default function ConversationsScreen({ user, active, onToast }) {
             Telugu speech is translated to English. Mixed English answers are kept as spoken.
           </p>
         )}
+        <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+          {nativeRecorder
+            ? 'Background recording is on — you can minimize the app or lock the screen.'
+            : 'Keep this screen open while recording. Background recording needs the Android app.'}
+        </p>
       </div>
 
       <div

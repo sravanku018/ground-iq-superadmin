@@ -9,6 +9,7 @@
 import {
   createConversation,
   getConversationRecord,
+  getStoredUser,
   getToken,
   transcribeConversation,
 } from './api'
@@ -212,7 +213,14 @@ async function runDrain(manual) {
   }
 
   const all = await listConversationsLocal()
-  const pending = all
+  const uid = getStoredUser()?.id
+  const mine =
+    uid != null
+      ? all.filter(
+          (c) => c.userId == null || String(c.userId) === String(uid),
+        )
+      : all
+  const pending = mine
     .filter(conversationNeedsWork)
     .sort(
       (a, b) =>
@@ -273,7 +281,14 @@ export function startConversationSync() {
 
   tickTimer = setInterval(async () => {
     const all = await listConversationsLocal()
-    if (all.some(conversationNeedsWork)) void drainConversations()
+    const uid = getStoredUser()?.id
+    const mine =
+      uid != null
+        ? all.filter(
+            (c) => c.userId == null || String(c.userId) === String(uid),
+          )
+        : all
+    if (mine.some(conversationNeedsWork)) void drainConversations()
   }, TICK_MS)
 
   if (typeof document !== 'undefined') {

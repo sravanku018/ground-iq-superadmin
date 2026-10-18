@@ -3,6 +3,7 @@ import Icon from './Icons'
 import logoMark from './assets/logo-mark.png'
 import {
   clearSession,
+  getConversationConfig,
   getMyProgress,
   getMySubmissions,
   getStoredUser,
@@ -125,7 +126,7 @@ const NAV_MODE_INFO = {
 const TABS = [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'collect', label: 'Collect', icon: 'pencil' },
-  { id: 'conversations', label: 'Voice', icon: 'mic' },
+  { id: 'conversations', label: 'Converse', icon: 'mic' },
   { id: 'submissions', label: 'Submissions', icon: 'box' },
   { id: 'profile', label: 'Profile', icon: 'user' },
 ]
@@ -1520,6 +1521,8 @@ export default function SurveyorApp() {
   const [pendingSync, setPendingSync] = useState(() => queueCount())
   const [myProgress, setMyProgress] = useState(null)
   const [questionsMeta, setQuestionsMeta] = useState(null)
+  const [converseEnabled, setConverseEnabled] = useState(false)
+  const [serverVoice, setServerVoice] = useState(null)
   const [toast, setToast] = useState(null)
   const [collectKey, setCollectKey] = useState(0)
   const [editDraft, setEditDraft] = useState(null)
@@ -1929,6 +1932,67 @@ export default function SurveyorApp() {
     lastVerified.current = now
   }, [user, notify])
 
+  // Super Admin / survey-level voice activation controls the Converse tab.
+  useEffect(() => {
+    if (!user?.id) return undefined
+    let cancelled = false
+    getConversationConfig()
+      .then((cfg) => {
+        if (!cancelled) setServerVoice(cfg?.voice_enabled === true)
+      })
+      .catch(() => {
+        /* offline — keep the cached flag */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user) return
+    try {
+      setConverseEnabled(
+        localStorage.getItem(`esurvey_converse_enabled_${user.id}`) === '1',
+      )
+    } catch {
+      /* ignore */
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user) return
+    const key = `esurvey_converse_enabled_${user.id}`
+    const surveys = questionsMeta?.surveys || []
+    const surveyVoice =
+      questionsMeta?.voice_required === true ||
+      surveys.some((s) => s?.voice_required === true)
+    const userVoice =
+      user?.role === 'super_admin' || user?.can_record_voice === true
+    const on = surveyVoice || userVoice || serverVoice === true
+    if (questionsMeta || serverVoice !== null) {
+      setConverseEnabled(on)
+      try {
+        localStorage.setItem(key, on ? '1' : '0')
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [
+    questionsMeta,
+    serverVoice,
+    user?.id,
+    user?.role,
+    user?.can_record_voice,
+  ])
+
+  useEffect(() => {
+    if (!converseEnabled && tab === 'conversations') setTab('home')
+  }, [converseEnabled, tab])
+
+  const visibleTabs = converseEnabled
+    ? TABS
+    : TABS.filter((t) => t.id !== 'conversations')
+
   if (!authReady) {
     return (
       <div className="mobile-shell login-screen">
@@ -1991,7 +2055,7 @@ export default function SurveyorApp() {
           <img className="topbar-logo" src={logoMark} alt="Smart Survey X" />
           <div className="topbar-title-group">
             <span className="topbar-title">Smart Survey X</span>
-            <span className="topbar-badge">{TABS.find((t) => t.id === tab)?.label || ''}</span>
+            <span className="topbar-badge">{visibleTabs.find((t) => t.id === tab)?.label || ''}</span>
           </div>
         </div>
         <div className="topbar-actions">
@@ -2057,15 +2121,17 @@ export default function SurveyorApp() {
             </ScreenErrorBoundary>
           </div>
 
-          <div style={{ display: tab === 'conversations' ? 'block' : 'none' }}>
-            <ScreenErrorBoundary title="Voice conversations">
-              <ConversationsScreen
-                user={user}
-                active={tab === 'conversations'}
-                onToast={notify}
-              />
-            </ScreenErrorBoundary>
-          </div>
+          {converseEnabled && (
+            <div style={{ display: tab === 'conversations' ? 'block' : 'none' }}>
+              <ScreenErrorBoundary title="Converse">
+                <ConversationsScreen
+                  user={user}
+                  active={tab === 'conversations'}
+                  onToast={notify}
+                />
+              </ScreenErrorBoundary>
+            </div>
+          )}
 
           {tab === 'submissions' && (
             <ScreenErrorBoundary title="Submissions">
@@ -2131,9 +2197,9 @@ export default function SurveyorApp() {
       <nav
         className="bottom-nav"
         aria-label="Main"
-        style={{ gridTemplateColumns: `repeat(${TABS.length}, 1fr)` }}
+        style={{ gridTemplateColumns: `repeat(${visibleTabs.length}, 1fr)` }}
       >
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <button
             key={t.id}
             type="button"

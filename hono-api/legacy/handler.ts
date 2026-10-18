@@ -880,8 +880,8 @@ const GITHUB_REPO = "sravanku018/ground-iq-web";
  * API all carry one number.
  */
 const APP_RELEASE = {
-  version: "2.0.92",
-  versionCode: 20092,
+  version: "2.0.93",
+  versionCode: 20093,
   minSupportedVersionCode: 20000,
 };
 
@@ -5601,8 +5601,40 @@ async function rawHandler(req: Request): Promise<Response> {
 
     if (path === "/api/conversations/config" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
+      // The Converse tab is shown only when voice is activated for this user:
+      // a Super Admin/Client Admin grant, or an assigned survey with voice on.
+      const voiceRows = await sql`
+        SELECT EXISTS (
+          SELECT 1
+          FROM survey_assignments sa
+          JOIN survey_form f ON f.id = sa.survey_id
+          WHERE sa.user_id = ${me.id}
+            AND COALESCE(f.voice_required, FALSE) = TRUE
+            AND f.ended_at IS NULL
+        ) AS on
+      `.catch(() => []);
+      // A surveyor inherits the Voice grant from the Client Admin who created
+      // the account, or from an admin in the same company (Super Admin grants
+      // Voice on that admin's profile).
+      const ownerRows = await sql`
+        SELECT EXISTS (
+          SELECT 1
+          FROM app_users u
+          JOIN app_users owner ON owner.id = u.created_by
+            OR (u.company_id IS NOT NULL AND owner.company_id = u.company_id)
+          WHERE u.id = ${me.id}
+            AND owner.role IN ('admin', 'super_admin')
+            AND COALESCE(owner.can_record_voice, FALSE) = TRUE
+        ) AS on
+      `.catch(() => []);
+      const voiceEnabled =
+        me.role === "super_admin" ||
+        (me as Record<string, unknown>).can_record_voice === true ||
+        (voiceRows[0] as { on?: boolean } | undefined)?.on === true ||
+        (ownerRows[0] as { on?: boolean } | undefined)?.on === true;
       return json({
         ...sonioxConfigInfo(),
+        voice_enabled: voiceEnabled,
         max_duration_sec: 600,
         max_audio_bytes: CONVERSATION_MAX_BYTES,
         note: "Record offline; audio uploads and is translated to English when connectivity returns.",

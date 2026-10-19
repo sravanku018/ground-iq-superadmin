@@ -26,8 +26,12 @@ import { Buffer } from "node:buffer";
 import {
   deleteSonioxFile,
   pollSonioxTranscription,
+  setSonioxRuntimeKey,
   sonioxConfigInfo,
+  sonioxKeyHint,
+  sonioxKeySource,
   startSonioxTranscription,
+  validateSonioxKey,
 } from "../lib/soniox.ts";
 
 // ── Geo aliases (inlined so the Deno Playground deploys a single file) ──
@@ -880,8 +884,8 @@ const GITHUB_REPO = "sravanku018/ground-iq-web";
  * API all carry one number.
  */
 const APP_RELEASE = {
-  version: "2.0.93",
-  versionCode: 20093,
+  version: "2.0.94",
+  versionCode: 20094,
   minSupportedVersionCode: 20000,
 };
 
@@ -2043,6 +2047,15 @@ async function ensureSchema(): Promise<void> {
     `,
     () => sql`CREATE INDEX IF NOT EXISTS idx_conversations_user_time ON conversations (user_id, recorded_at DESC)`,
     () => sql`CREATE UNIQUE INDEX IF NOT EXISTS conversations_user_local_uidx ON conversations (user_id, local_id) WHERE local_id IS NOT NULL`,
+    // Super-Admin-managed server settings (e.g. the Soniox key). Values are
+    // never returned to clients in full.
+    () => sql`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `,
     () => sql`
       ALTER TABLE survey_form
       ADD CONSTRAINT survey_form_company_id_fkey
@@ -5225,6 +5238,20 @@ async function retagCategoryInTenant(
 }
 
 // ── Router ────────────────────────────────────────────────
+/** Load the Super-Admin-saved Soniox key (cached briefly per isolate). */
+let sonioxDbKeyLoadedAt = 0;
+async function syncSonioxKeyFromDb(force = false): Promise<void> {
+  if (!sql) return;
+  if (!force && Date.now() - sonioxDbKeyLoadedAt < 60_000) return;
+  const rows = await sql`
+    SELECT value FROM app_settings WHERE key = 'soniox_api_key' LIMIT 1
+  `.catch(() => []);
+  setSonioxRuntimeKey(
+    String((rows[0] as { value?: unknown } | undefined)?.value || ""),
+  );
+  sonioxDbKeyLoadedAt = Date.now();
+}
+
 async function rawHandler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return corsPreflight(req);
 
@@ -5599,8 +5626,63 @@ async function rawHandler(req: Request): Promise<Response> {
       }
     }
 
+    // Super Admin: manage the Soniox key without shell/server access.
+    if (path === "/api/super-admin/soniox" && (method === "GET" || method === "PUT" || method === "DELETE")) {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+
+      if (method === "GET") {
+        await syncSonioxKeyFromDb(true);
+        return json({
+          enabled: sonioxConfigInfo().enabled,
+          source: sonioxKeySource(),
+          key_hint: sonioxKeyHint(),
+        });
+      }
+
+      if (method === "DELETE") {
+        await sql`DELETE FROM app_settings WHERE key = 'soniox_api_key'`.catch(() => null);
+        sonioxDbKeyLoadedAt = 0;
+        await syncSonioxKeyFromDb(true);
+        logAudit(me, "soniox_key_clear", "app_settings", null, {});
+        return json({
+          ok: true,
+          enabled: sonioxConfigInfo().enabled,
+          source: sonioxKeySource(),
+        });
+      }
+
+      const body = await readBody(req);
+      const key = String(body.api_key || body.key || "").trim();
+      if (!key) return json({ error: "api_key is required" }, 400);
+      try {
+        await validateSonioxKey(key);
+      } catch (e) {
+        return json({
+          error: (e as Error)?.message || "Soniox rejected the API key",
+        }, 400);
+      }
+      await sql`
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES ('soniox_api_key', ${key}, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+      `;
+      setSonioxRuntimeKey(key);
+      sonioxDbKeyLoadedAt = Date.now();
+      logAudit(me, "soniox_key_update", "app_settings", null, {
+        key_hint: sonioxKeyHint(),
+      });
+      return json({
+        ok: true,
+        enabled: true,
+        source: "database",
+        key_hint: sonioxKeyHint(),
+      });
+    }
+
     if (path === "/api/conversations/config" && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
+      await syncSonioxKeyFromDb();
       // The Converse tab is shown only when voice is activated for this user:
       // a Super Admin/Client Admin grant, or an assigned survey with voice on.
       const voiceRows = await sql`
@@ -5770,6 +5852,7 @@ async function rawHandler(req: Request): Promise<Response> {
     const convTranscribeMatch = path.match(/^\/api\/conversations\/(\d+)\/transcribe$/);
     if (convTranscribeMatch && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
+      await syncSonioxKeyFromDb();
       let row = await loadConversation(Number(convTranscribeMatch[1]), { audio: true });
       if (!row) return json({ error: "Not found" }, 404);
       if (String(row.transcript_status || "") === "completed" && row.transcript) {
@@ -5831,6 +5914,7 @@ async function rawHandler(req: Request): Promise<Response> {
     const convIdMatch = path.match(/^\/api\/conversations\/(\d+)$/);
     if (convIdMatch && (method === "GET" || method === "DELETE")) {
       if (!me) return json({ error: "Login required" }, 401);
+      await syncSonioxKeyFromDb();
       const id = Number(convIdMatch[1]);
       let row = await loadConversation(id);
       if (!row) return json({ error: "Not found" }, 404);
@@ -5854,6 +5938,7 @@ async function rawHandler(req: Request): Promise<Response> {
     // uploaded to Soniox by the server, so the phone only needs connectivity now.
     if (path === "/api/transcribe" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
+      await syncSonioxKeyFromDb();
       if (!sonioxConfigInfo().enabled) {
         return json({
           error: "Voice translation is not enabled on the server.",
@@ -5894,6 +5979,7 @@ async function rawHandler(req: Request): Promise<Response> {
     const transcribeJobMatch = path.match(/^\/api\/transcribe\/([A-Za-z0-9_.-]+)$/);
     if (transcribeJobMatch && method === "GET") {
       if (!me) return json({ error: "Login required" }, 401);
+      await syncSonioxKeyFromDb();
       const [transcriptionId] = transcribeJobMatch[1].split(".");
       if (!transcriptionId) return json({ error: "Invalid job id" }, 400);
       try {

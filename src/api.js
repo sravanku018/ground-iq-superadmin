@@ -1116,3 +1116,22 @@ export async function startVoiceTranscription(blob, { mime } = {}) {
 export function getVoiceTranscription(jobId) {
   return request(`/api/transcribe/${encodeURIComponent(jobId)}`)
 }
+
+/** Super Admin: Soniox voice-translation key status (never returns the full key). */
+export function getSonioxSettings() {
+  return request('/api/super-admin/soniox')
+}
+
+/** Super Admin: validate and store the Soniox key on the server. */
+export function saveSonioxKey(apiKey) {
+  return request('/api/super-admin/soniox', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key: apiKey }),
+  })
+}
+
+/** Super Admin: remove the key stored in the portal (falls back to server env). */
+export function clearSonioxKey() {
+  return request('/api/super-admin/soniox', { method: 'DELETE' })
+}

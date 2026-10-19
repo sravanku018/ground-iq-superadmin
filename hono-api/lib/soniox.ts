@@ -25,12 +25,59 @@ export type SonioxResult = {
   error?: string;
 };
 
+let runtimeKey = "";
+
 export function sonioxApiKey(): string {
+  // A key saved by Super Admin in the portal wins, so the key can be rotated
+  // without shell access to the server. Environment variables remain the
+  // fallback for deployments that prefer them.
   return (
+    runtimeKey ||
     Deno.env.get("SONIOX_API_KEY") ||
     Deno.env.get("SONIOX_KEY") ||
     ""
   ).trim();
+}
+
+/** Set/clear the key stored in the database (empty string clears it). */
+export function setSonioxRuntimeKey(key: string): void {
+  runtimeKey = String(key || "").trim();
+}
+
+/** Verify a key without changing the active one. */
+export async function validateSonioxKey(key: string): Promise<void> {
+  const candidate = String(key || "").trim();
+  if (!candidate) throw new Error("API key is required");
+  const res = await fetch(`${API_BASE}/v1/files?limit=1`, {
+    headers: { Authorization: `Bearer ${candidate}` },
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const data = (await res.json()) as Record<string, unknown>;
+      detail = String(
+        data.error_message || data.message || data.error || detail,
+      );
+    } catch {
+      /* keep status text */
+    }
+    throw new Error(`Soniox rejected the key: ${detail}`);
+  }
+}
+
+/** Masked hint for the Super Admin UI. */
+export function sonioxKeyHint(): string {
+  const key = sonioxApiKey();
+  if (!key) return "";
+  return key.length <= 4 ? "••••" : `••••${key.slice(-4)}`;
+}
+
+export function sonioxKeySource(): "database" | "environment" | "none" {
+  if (runtimeKey) return "database";
+  if ((Deno.env.get("SONIOX_API_KEY") || Deno.env.get("SONIOX_KEY") || "").trim()) {
+    return "environment";
+  }
+  return "none";
 }
 
 export function sonioxEnabled(): boolean {

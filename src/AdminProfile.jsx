@@ -1,7 +1,160 @@
-import { getApiBase, resetSuperAdminTotp, updateUser } from './api'
+import { useCallback, useEffect, useState } from 'react'
+import {
+  clearSonioxKey,
+  getApiBase,
+  getSonioxSettings,
+  resetSuperAdminTotp,
+  saveSonioxKey,
+  updateUser,
+} from './api'
 import CredentialsCard from './components/CredentialsCard'
 import { isNewerBuild } from './version'
 import ShareAppLink from './components/ShareAppLink'
+
+
+/** Super Admin: store the Soniox key server-side from the portal. */
+function SonioxKeyCard({ onToast }) {
+  const [settings, setSettings] = useState(null)
+  const [apiKey, setApiKey] = useState('')
+  const [show, setShow] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await getSonioxSettings()
+      setSettings(data || null)
+    } catch (e) {
+      onToast?.(e.message || 'Could not read the voice translation settings', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [onToast])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  async function save(e) {
+    e.preventDefault()
+    const key = apiKey.trim()
+    if (!key) return
+    setSaving(true)
+    try {
+      const data = await saveSonioxKey(key)
+      setSettings(data || { enabled: true, source: 'database' })
+      setApiKey('')
+      onToast?.('Soniox key saved and tested — voice translation is on', 'ok')
+    } catch (err) {
+      onToast?.(err.message || 'Could not save the Soniox key', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function remove() {
+    if (
+      !window.confirm(
+        'Remove the stored Soniox key? New voice translations will stop until a key is added.',
+      )
+    ) {
+      return
+    }
+    try {
+      const data = await clearSonioxKey()
+      setSettings(data || { enabled: false, source: 'none' })
+      onToast?.('Stored Soniox key removed', 'ok')
+    } catch (err) {
+      onToast?.(err.message || 'Could not remove the key', 'error')
+    }
+  }
+
+  const enabled = settings?.enabled === true
+  const source =
+    settings?.source === 'environment'
+      ? 'server environment'
+      : settings?.source === 'database'
+        ? 'saved in portal'
+        : 'no key'
+
+  return (
+    <div className="card" style={{ marginTop: 20, padding: 16 }}>
+      <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700 }}>
+        Voice translation · Soniox
+      </h3>
+      <p className="muted" style={{ margin: '0 0 12px', fontSize: 12, lineHeight: 1.5 }}>
+        Used for the field app&apos;s <strong>Converse</strong> recordings and survey voice
+        transcripts. The key is stored on the server and is never sent to field phones.
+        Saving tests the key first.
+      </p>
+
+      <p className={`pill ${enabled ? 'ok' : 'bad'}`} style={{ margin: '0 0 12px' }}>
+        <span className="dot" />
+        {loading
+          ? 'Checking…'
+          : enabled
+            ? `Configured · ${source}${settings?.key_hint ? ` · ${settings.key_hint}` : ''}`
+            : 'Not configured — translation is off'}
+      </p>
+
+      <form onSubmit={save}>
+        <label className="field" style={{ display: 'block', marginBottom: 8 }}>
+          <span>Soniox API key</span>
+          <input
+            type={show ? 'text' : 'password'}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="snx_proj_…"
+            autoComplete="off"
+            spellCheck={false}
+            style={{ width: '100%' }}
+          />
+        </label>
+        <label
+          className="muted"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 12,
+            marginBottom: 10,
+          }}
+        >
+          <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} />
+          Show key
+        </label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="submit"
+            className="btn primary"
+            disabled={saving || !apiKey.trim()}
+          >
+            {saving ? 'Testing key…' : 'Save & test key'}
+          </button>
+          {settings?.source === 'database' && (
+            <button type="button" className="btn danger" onClick={() => void remove()}>
+              Remove stored key
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => void load()}
+            disabled={loading}
+          >
+            ↻ Check status
+          </button>
+        </div>
+      </form>
+
+      <p className="muted" style={{ margin: '10px 0 0', fontSize: 11 }}>
+        The server environment variable <code>SONIOX_API_KEY</code> also works; a key saved
+        here overrides the server value.
+      </p>
+    </div>
+  )
+}
 
 
 /** Admin console — own account (name / password / TOTP for Super Admin; Granted powers for Client Admin). */
@@ -136,6 +289,8 @@ export default function AdminProfileScreen({ user, onToast, onUserUpdated }) {
             }
           } : undefined}
         />
+
+        {isSuper && <SonioxKeyCard onToast={onToast} />}
 
         {!isSuper && (
           <div className="card" style={{ marginTop: 20 }}>

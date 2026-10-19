@@ -130,6 +130,18 @@ export default function ConversationsScreen({ user, active, onToast }) {
     }
   }, [])
 
+  const refreshConfig = useCallback(async () => {
+    try {
+      const cfg = await getConversationConfig()
+      if (mountedRef.current) setConfig(cfg || null)
+    } catch {
+      // Offline is expected in the field — recording still works locally.
+      if (mountedRef.current) {
+        setConfig((prev) => prev || { enabled: false, offline: true })
+      }
+    }
+  }, [])
+
   const stopTracks = useCallback(() => {
     try {
       streamRef.current?.getTracks?.().forEach((t) => t.stop())
@@ -376,14 +388,7 @@ export default function ConversationsScreen({ user, active, onToast }) {
   useEffect(() => {
     mountedRef.current = true
     void refresh()
-    getConversationConfig()
-      .then((cfg) => {
-        if (mountedRef.current) setConfig(cfg || null)
-      })
-      .catch(() => {
-        // Offline is expected in the field — recording still works locally.
-        if (mountedRef.current) setConfig((prev) => prev || { enabled: false, offline: true })
-      })
+    void refreshConfig()
     const off = onConversationSync(() => {
       void refresh()
     })
@@ -391,16 +396,17 @@ export default function ConversationsScreen({ user, active, onToast }) {
       mountedRef.current = false
       off()
     }
-  }, [refresh])
+  }, [refresh, refreshConfig])
 
   useEffect(() => {
     if (!active) return
     void refresh()
+    void refreshConfig()
     setSyncing(true)
     void triggerConversationSync().finally(() => {
       if (mountedRef.current) setSyncing(false)
     })
-  }, [active, refresh])
+  }, [active, refresh, refreshConfig])
 
   useEffect(() => {
     if (!active || !nativeRecorder) return
@@ -600,10 +606,28 @@ export default function ConversationsScreen({ user, active, onToast }) {
         </div>
 
         {translationOff ? (
-          <p className="pill bad" style={{ marginTop: 10 }}>
-            <span className="dot" />
-            Server translation is off (Soniox key missing). Recordings stay on this phone.
-          </p>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              flexWrap: 'wrap',
+              marginTop: 10,
+            }}
+          >
+            <p className="pill bad" style={{ margin: 0 }}>
+              <span className="dot" />
+              Server translation is off. Super Admin can add the Soniox key in
+              Organization → Voice translation.
+            </p>
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => void refreshConfig()}
+            >
+              Check again
+            </button>
+          </div>
         ) : (
           <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
             Telugu speech is translated to English. Mixed English answers are kept as spoken.

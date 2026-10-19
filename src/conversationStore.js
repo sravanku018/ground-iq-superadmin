@@ -17,6 +17,19 @@ function newId() {
   return `conv_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
 }
 
+/** Let Home / nav badges react immediately, like esurvey-queue-change. */
+function emitChange(type) {
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('esurvey-conversation-change', { detail: { type } }),
+      )
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 function openDb() {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') {
@@ -134,6 +147,7 @@ export async function saveConversationLocal(input = {}) {
       }
     }
   }
+  emitChange(existing ? 'updated' : 'saved')
   return conv
 }
 
@@ -172,6 +186,7 @@ export async function deleteConversationLocal(id) {
   } catch {
     /* ignore */
   }
+  emitChange('deleted')
 }
 
 /** Newest first. */

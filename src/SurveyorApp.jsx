@@ -26,7 +26,8 @@ import {
 import LoginScreen from './Login'
 import FieldCollectScreen from './FieldCollect'
 import ConversationsScreen from './ConversationsScreen'
-import { startConversationSync, stopConversationSync } from './conversationSync'
+import { startConversationSync, stopConversationSync, onConversationSync, triggerConversationSync } from './conversationSync'
+import { conversationNeedsWork, listConversationsLocal } from './conversationStore'
 import PullToRefresh from './PullToRefresh'
 import {
   collapseDuplicateDrafts,
@@ -299,11 +300,14 @@ function HomeScreen({
   user,
   pendingSync,
   pendingLocal,
+  conversationPending,
   myProgress,
   questionsMeta,
   onNewSurvey,
   onViewRecords,
+  onViewConversations,
   onSync,
+  onSyncConversations,
 }) {
   const assignedSurveys = questionsMeta?.surveys || []
   const progressSurveys = Array.isArray(myProgress?.surveys) ? myProgress.surveys : []
@@ -497,6 +501,25 @@ function HomeScreen({
         </div>
       )}
 
+      {conversationPending > 0 && (
+        <div className="sync-banner">
+          <div className="sync-banner-text">
+            <strong>
+              {conversationPending} voice conversation
+              {conversationPending > 1 ? 's' : ''} pending sync
+            </strong>
+            <span>Saved on this phone · auto-syncs when online</span>
+          </div>
+          <button
+            type="button"
+            className="btn small primary sync-banner-btn"
+            onClick={onSyncConversations}
+          >
+            Sync now
+          </button>
+        </div>
+      )}
+
       {/* 5. Quick Nav to Submissions */}
       {typeof onViewRecords === 'function' && (
         <button
@@ -506,6 +529,16 @@ function HomeScreen({
         >
           <Icon name="box" size={15} />
           View Submissions ({done + localPending})
+        </button>
+      )}
+      {typeof onViewConversations === 'function' && (
+        <button
+          type="button"
+          className="cta secondary home-view-btn"
+          onClick={onViewConversations}
+        >
+          <Icon name="mic" size={15} />
+          Converse ({conversationPending} pending sync)
         </button>
       )}
     </div>
@@ -1519,6 +1552,7 @@ export default function SurveyorApp() {
   const [tab, setTab] = useState('home')
   const [network, setNetwork] = useState(null)
   const [pendingSync, setPendingSync] = useState(() => queueCount())
+  const [conversationPending, setConversationPending] = useState(0)
   const [myProgress, setMyProgress] = useState(null)
   const [questionsMeta, setQuestionsMeta] = useState(null)
   const [converseEnabled, setConverseEnabled] = useState(false)
@@ -1577,6 +1611,38 @@ export default function SurveyorApp() {
       }
     }
   }, [])
+
+  const refreshConversationPending = useCallback(async () => {
+    try {
+      const rows = await listConversationsLocal()
+      const uid = user?.id
+      const mine =
+        uid != null
+          ? rows.filter(
+              (c) => c.userId == null || String(c.userId) === String(uid),
+            )
+          : rows
+      setConversationPending(mine.filter(conversationNeedsWork).length)
+    } catch {
+      setConversationPending(0)
+    }
+  }, [user?.id])
+
+  const syncConversationsNow = useCallback(async () => {
+    try {
+      const res = await triggerConversationSync()
+      await refreshConversationPending()
+      const done = Number(res?.ok) || 0
+      notify(
+        done > 0
+          ? `Voice conversations synced: ${done}`
+          : 'Voice conversation sync started',
+        done > 0 ? 'ok' : 'error',
+      )
+    } catch (e) {
+      notify(e.message || 'Could not sync voice conversations', 'error')
+    }
+  }, [notify, refreshConversationPending])
 
   const toastTimer = useRef(0)
   const notify = useCallback((message, type = 'ok') => {
@@ -1675,6 +1741,7 @@ export default function SurveyorApp() {
     }, { intervalMs: 60_000 })
     startSyncEngine()
     startConversationSync()
+    void refreshConversationPending()
     setPendingSync(queueCount())
     void refreshQueueCountCache()
       .then(setPendingSync)
@@ -1727,14 +1794,27 @@ export default function SurveyorApp() {
     }
     window.addEventListener('esurvey-queue-change', onQueue)
 
+    const offConversations = onConversationSync((ev) => {
+      void refreshConversationPending()
+      if (ev.type === 'conversation-drain-done' && Number(ev.ok) > 0) {
+        notify(`Voice conversations synced: ${ev.ok}`, 'ok')
+      }
+    })
+    const onConversations = () => {
+      void refreshConversationPending()
+    }
+    window.addEventListener('esurvey-conversation-change', onConversations)
+
     return () => {
       stopNet()
       offSync()
+      offConversations()
       window.removeEventListener('esurvey-queue-change', onQueue)
+      window.removeEventListener('esurvey-conversation-change', onConversations)
       stopSyncEngine()
       stopConversationSync()
     }
-  }, [engineOn, notify])
+  }, [engineOn, notify, refreshConversationPending])
 
   const loadAppData = useCallback(async () => {
     if (!getToken()) return
@@ -2080,6 +2160,13 @@ export default function SurveyorApp() {
               network={network}
               pendingSync={pendingSync}
               pendingLocal={draftsCount}
+              conversationPending={conversationPending}
+              onViewConversations={
+                converseEnabled ? () => setTab('conversations') : undefined
+              }
+              onSyncConversations={() => {
+                void syncConversationsNow()
+              }}
               myProgress={myProgress}
               questionsMeta={questionsMeta}
               onNewSurvey={() => {
@@ -2220,6 +2307,14 @@ export default function SurveyorApp() {
               {t.id === 'submissions' && draftsCount > 0 && (
                 <span className="nav-badge" aria-label={`${draftsCount} pending`}>
                   {draftsCount > 99 ? '99+' : draftsCount}
+                </span>
+              )}
+              {t.id === 'conversations' && conversationPending > 0 && (
+                <span
+                  className="nav-badge"
+                  aria-label={`${conversationPending} conversations pending sync`}
+                >
+                  {conversationPending > 99 ? '99+' : conversationPending}
                 </span>
               )}
             </span>

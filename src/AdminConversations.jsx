@@ -110,17 +110,25 @@ export default function AdminConversationsScreen({ onToast }) {
   const [audioUrls, setAudioUrls] = useState({})
   const [busyId, setBusyId] = useState(null)
   const [exporting, setExporting] = useState(false)
+  const [lastSynced, setLastSynced] = useState(null)
   const mountedRef = useRef(true)
   const audioUrlsRef = useRef({})
+  const loadingRef = useRef(false)
 
   const load = useCallback(async () => {
+    if (loadingRef.current) return
+    loadingRef.current = true
     setLoading(true)
     try {
       const d = await listConversations({ all: true, limit: 1000 })
-      if (mountedRef.current) setItems(Array.isArray(d.items) ? d.items : [])
+      if (mountedRef.current) {
+        setItems(Array.isArray(d.items) ? d.items : [])
+        setLastSynced(new Date())
+      }
     } catch (e) {
       onToast?.(e.message || 'Could not load conversations', 'error')
     } finally {
+      loadingRef.current = false
       if (mountedRef.current) setLoading(false)
     }
   }, [onToast])
@@ -128,8 +136,13 @@ export default function AdminConversationsScreen({ onToast }) {
   useEffect(() => {
     mountedRef.current = true
     void load()
+    // New field recordings appear here automatically, like the field queue.
+    const timer = setInterval(() => {
+      if (!loadingRef.current) void load()
+    }, 60_000)
     return () => {
       mountedRef.current = false
+      clearInterval(timer)
       Object.values(audioUrlsRef.current).forEach((url) => {
         try {
           if (url?.startsWith('blob:')) URL.revokeObjectURL(url)
@@ -250,8 +263,9 @@ export default function AdminConversationsScreen({ onToast }) {
       <header className="screen-head">
         <h2>Client Admin · Voice conversations</h2>
         <p>
-          Field-recorded conversations translated to English in batch (Soniox). Browse,
-          listen, filter, and export transcripts.
+          Field-recorded conversations translated to English in batch (Soniox). New
+          recordings sync automatically from phones; this list also refreshes every minute.
+          Browse, listen, filter, and export transcripts.
         </p>
       </header>
 
@@ -351,7 +365,7 @@ export default function AdminConversationsScreen({ onToast }) {
             disabled={loading}
             onClick={() => void load()}
           >
-            {loading ? 'Refreshing…' : 'Refresh'}
+            {loading ? 'Syncing…' : 'Sync now'}
           </button>
           <button
             type="button"
@@ -361,6 +375,11 @@ export default function AdminConversationsScreen({ onToast }) {
           >
             {exporting ? 'Exporting…' : `Export CSV (${filtered.length})`}
           </button>
+          {lastSynced ? (
+            <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>
+              Last synced {formatWhen(lastSynced)}
+            </span>
+          ) : null}
           <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>
             CSV includes English, original speech text, surveyor, duration, and audio link.
           </span>

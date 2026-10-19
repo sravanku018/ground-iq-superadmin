@@ -68,10 +68,10 @@ function statusOf(c) {
     return { label: 'Translation failed', tone: 'bad' }
   }
   if (!c.serverId) {
-    return { label: 'On phone · waiting for internet', tone: 'warn' }
+    return { label: 'Waiting to sync · on this phone', tone: 'warn' }
   }
   if (c.status === 'uploading') {
-    return { label: 'Uploading…', tone: 'warn' }
+    return { label: 'Syncing to server…', tone: 'warn' }
   }
   return { label: 'Translating to English…', tone: 'warn' }
 }
@@ -651,7 +651,7 @@ export default function ConversationsScreen({ user, active, onToast }) {
       >
         {counts.waiting > 0 && (
           <span className="pill warn" style={{ margin: 0 }}>
-            {counts.waiting} waiting
+            {counts.waiting} waiting to sync
           </span>
         )}
         {counts.translating > 0 && (
@@ -716,6 +716,15 @@ export default function ConversationsScreen({ user, active, onToast }) {
                   <button type="button" className="btn small" onClick={() => void toggleExpand(c)}>
                     {open ? 'Hide' : 'Open'}
                   </button>
+                  {!c.serverId && (
+                    <button
+                      type="button"
+                      className="btn small primary"
+                      onClick={() => void retry(c)}
+                    >
+                      Sync now
+                    </button>
+                  )}
                   {c.transcriptStatus === 'error' && (
                     <button type="button" className="btn small secondary" onClick={() => void retry(c)}>
                       Retry

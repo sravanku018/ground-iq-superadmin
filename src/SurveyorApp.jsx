@@ -1612,6 +1612,15 @@ export default function SurveyorApp() {
     }
   }, [])
 
+
+  const toastTimer = useRef(0)
+  const notify = useCallback((message, type = 'ok') => {
+    setToast({ message, type })
+    window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToast(null), 3200)
+  }, [])
+  useEffect(() => () => window.clearTimeout(toastTimer.current), [])
+
   const refreshConversationPending = useCallback(async () => {
     try {
       const rows = await listConversationsLocal()
@@ -1643,14 +1652,6 @@ export default function SurveyorApp() {
       notify(e.message || 'Could not sync voice conversations', 'error')
     }
   }, [notify, refreshConversationPending])
-
-  const toastTimer = useRef(0)
-  const notify = useCallback((message, type = 'ok') => {
-    setToast({ message, type })
-    window.clearTimeout(toastTimer.current)
-    toastTimer.current = window.setTimeout(() => setToast(null), 3200)
-  }, [])
-  useEffect(() => () => window.clearTimeout(toastTimer.current), [])
 
   /** App-wide pull-to-refresh: tab-aware — refreshes right data for active tab */
   const pullRefreshAll = useCallback(async () => {

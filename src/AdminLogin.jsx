@@ -28,6 +28,11 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
   const [error, setError] = useState('')
   const nativeBio = nativeBiometricSupported() && !superAdminOnly
   const webPasskey = !nativeBio && !superAdminOnly && webPasskeySupported()
+  const iosHint = (() => {
+    if (typeof navigator === 'undefined' || nativeBio) return false
+    if (!/iPad|iPhone|iPod/.test(navigator.userAgent)) return false
+    return window.navigator?.standalone === true || !webPasskey
+  })()
 
   useEffect(() => {
     if (!nativeBio) return undefined
@@ -67,12 +72,6 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
 
   async function handlePasskey() {
     setError('')
-    if (!username.trim()) {
-      const msg = 'Enter your username first, then use fingerprint.'
-      setError(msg)
-      onToast?.(msg, 'error')
-      return
-    }
     setPasskeyLoading(true)
     try {
       const data = await passkeyLogin(username.trim(), 'admin')
@@ -170,6 +169,64 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
             ? 'Sign in to manage the platform, all tenants and teams.'
             : 'Sign in to manage surveys and surveyors.'}
         </p>
+        {bioReady || webPasskey || iosHint || (nativeBio && bioStatus && !bioStatus.hasToken) ? (
+          <div style={{ marginBottom: 12 }}>
+            {bioReady ? (
+              <>
+                <button
+                  type="button"
+                  className="btn primary"
+                  style={{ marginTop: 0, width: '100%' }}
+                  onClick={handleNativeUnlock}
+                  disabled={loading || bioLoading}
+                >
+                  {bioLoading ? 'Waiting for fingerprint…' : '🔒 Unlock with fingerprint'}
+                </button>
+                <p className="muted" style={{ margin: '8px 0 0', fontSize: 11 }}>
+                  Uses the fingerprint saved on this phone. No passkey.
+                </p>
+              </>
+            ) : null}
+            {webPasskey ? (
+              <>
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ marginTop: 0, width: '100%' }}
+                  onClick={handlePasskey}
+                  disabled={loading || bioLoading || passkeyLoading}
+                >
+                  {passkeyLoading ? 'Waiting for fingerprint…' : '🔒 Sign in with fingerprint / passkey'}
+                </button>
+                <p className="muted" style={{ margin: '8px 0 0', fontSize: 11 }}>
+                  Use the passkey saved on this device — no username or password needed.
+                  First time? Sign in with your password below, then enable it under Organization.
+                </p>
+              </>
+            ) : null}
+            {!bioReady && !webPasskey && nativeBio && bioStatus && !bioStatus.hasToken ? (
+              <p className="muted" style={{ margin: 0, fontSize: 11 }}>
+                {bioStatus.available
+                  ? 'Fingerprint unlock is not set up yet. Sign in with your password below, then enable it under Organization → Fingerprint unlock.'
+                  : 'No fingerprint is enrolled on this phone. Add one in Android Settings, then enable fingerprint unlock under Organization.'}
+              </p>
+            ) : null}
+            {!nativeBio && iosHint ? (
+              <p className="muted" style={{ margin: '8px 0 0', fontSize: 11 }}>
+                Fingerprint/passkey sign-in is not available in this installed iOS app.
+                Open this site in Safari, or sign in with your password below.
+              </p>
+            ) : null}
+            {bioReady || webPasskey ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0 10px', color: '#94a3b8', fontSize: 11 }}>
+                <span style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+                or sign in with password
+                <span style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <form onSubmit={handleLogin} className="login-form">
           <label className="field">
             <span>Username</span>
@@ -234,46 +291,6 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
           <button type="submit" className="btn primary" disabled={loading || bioLoading || passkeyLoading}>
             {loading ? 'Signing in…' : totpStep ? 'Verify & sign in' : 'Sign in'}
           </button>
-          {bioReady ? (
-            <>
-              <button
-                type="button"
-                className="btn"
-                style={{ marginTop: 10 }}
-                onClick={handleNativeUnlock}
-                disabled={loading || bioLoading}
-              >
-                {bioLoading ? 'Waiting for fingerprint…' : '🔒 Unlock with fingerprint'}
-              </button>
-              <p className="muted" style={{ margin: '8px 0 0', fontSize: 11 }}>
-                Uses the fingerprint saved on this phone. No passkey.
-              </p>
-            </>
-          ) : null}
-          {webPasskey ? (
-            <>
-              <button
-                type="button"
-                className="btn"
-                style={{ marginTop: 10 }}
-                onClick={handlePasskey}
-                disabled={loading || bioLoading || passkeyLoading}
-              >
-                {passkeyLoading ? 'Waiting for fingerprint…' : '🔒 Sign in with fingerprint / passkey'}
-              </button>
-              <p className="muted" style={{ margin: '8px 0 0', fontSize: 11 }}>
-                Web browsers call this a “passkey”. First sign in with your password,
-                then enable it under Organization → Fingerprint / passkey.
-              </p>
-            </>
-          ) : null}
-          {nativeBio && bioStatus && !bioStatus.hasToken ? (
-            <p className="fl-lead" style={{ margin: '10px 0 0', fontSize: 11 }}>
-              {bioStatus.available
-                ? 'Fingerprint unlock is not set up yet. Sign in with your password once, then enable it in Profile → Fingerprint unlock.'
-                : 'No fingerprint is enrolled on this phone. Add one in Android Settings, then enable fingerprint unlock in Profile.'}
-            </p>
-          ) : null}
         </form>
 
         <div style={{ marginTop: 20, textAlign: 'center', borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>

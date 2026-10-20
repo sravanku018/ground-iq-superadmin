@@ -30,6 +30,11 @@ export default function LoginScreen({ onSuccess, onToast }) {
   const [error, setError] = useState('')
   const nativeBio = nativeBiometricSupported()
   const webPasskey = !nativeBio && webPasskeySupported()
+  const iosHint = (() => {
+    if (typeof navigator === 'undefined' || nativeBio) return false
+    if (!/iPad|iPhone|iPod/.test(navigator.userAgent)) return false
+    return window.navigator?.standalone === true || !webPasskey
+  })()
 
   useEffect(() => {
     if (!nativeBio) return undefined
@@ -73,12 +78,6 @@ export default function LoginScreen({ onSuccess, onToast }) {
 
   async function handlePasskey() {
     setError('')
-    if (!username.trim()) {
-      const msg = 'Enter your username first, then use fingerprint.'
-      setError(msg)
-      onToast?.(msg, 'error')
-      return
-    }
     setPasskeyLoading(true)
     try {
       const data = await passkeyLogin(username.trim(), 'surveyor')
@@ -169,6 +168,74 @@ export default function LoginScreen({ onSuccess, onToast }) {
         <h1 className="fl-title">Sign in</h1>
         <p className="fl-lead">Surveyor access only.</p>
 
+        {bioReady || webPasskey || iosHint || (nativeBio && bioStatus && !bioStatus.hasToken) ? (
+          <div style={{ marginBottom: 12 }}>
+            {bioReady ? (
+              <>
+                <button
+                  type="button"
+                  className="fl-submit"
+                  style={{
+                    marginTop: 0,
+                    background: 'rgba(255,255,255,0.10)',
+                    color: '#e2e8f0',
+                    border: '1px solid rgba(255,255,255,0.18)',
+                  }}
+                  onClick={handleNativeUnlock}
+                  disabled={loading || bioLoading}
+                >
+                  {bioLoading ? 'Waiting for fingerprint…' : '🔒 Unlock with fingerprint'}
+                </button>
+                <p className="fl-lead" style={{ margin: '8px 0 0', fontSize: 11 }}>
+                  Uses the fingerprint saved on this phone. No passkey.
+                </p>
+              </>
+            ) : null}
+            {webPasskey ? (
+              <>
+                <button
+                  type="button"
+                  className="fl-submit"
+                  style={{
+                    marginTop: 0,
+                    background: 'rgba(255,255,255,0.10)',
+                    color: '#e2e8f0',
+                    border: '1px solid rgba(255,255,255,0.18)',
+                  }}
+                  onClick={handlePasskey}
+                  disabled={loading || bioLoading || passkeyLoading}
+                >
+                  {passkeyLoading ? 'Waiting for fingerprint…' : '🔒 Sign in with fingerprint / passkey'}
+                </button>
+                <p className="fl-lead" style={{ margin: '8px 0 0', fontSize: 11 }}>
+                  Use the passkey saved on this device — no username or password needed.
+                  First time? Sign in with your password below, then enable it in Profile.
+                </p>
+              </>
+            ) : null}
+            {!bioReady && !webPasskey && nativeBio && bioStatus && !bioStatus.hasToken ? (
+              <p className="fl-lead" style={{ margin: 0, fontSize: 11 }}>
+                {bioStatus.available
+                  ? 'Fingerprint unlock is not set up yet. Sign in with your password below, then enable it in Profile → Fingerprint unlock.'
+                  : 'No fingerprint is enrolled on this phone. Add one in Android Settings, then enable fingerprint unlock in Profile.'}
+              </p>
+            ) : null}
+            {!nativeBio && iosHint ? (
+              <p className="fl-lead" style={{ margin: '8px 0 0', fontSize: 11 }}>
+                Fingerprint/passkey sign-in is not available in this installed iOS app.
+                Open this site in Safari, or sign in with your password below.
+              </p>
+            ) : null}
+            {bioReady || webPasskey ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0 10px', color: '#94a3b8', fontSize: 11 }}>
+                <span style={{ flex: 1, height: 1, background: 'rgba(148,163,184,0.35)' }} />
+                or sign in with password
+                <span style={{ flex: 1, height: 1, background: 'rgba(148,163,184,0.35)' }} />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <form className="fl-form" onSubmit={handleLogin} autoComplete="on">
           <label className="fl-label">
             Username
@@ -219,56 +286,6 @@ export default function LoginScreen({ onSuccess, onToast }) {
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
 
-          {bioReady ? (
-            <>
-              <button
-                type="button"
-                className="fl-submit"
-                style={{
-                  marginTop: 10,
-                  background: 'rgba(255,255,255,0.10)',
-                  color: '#e2e8f0',
-                  border: '1px solid rgba(255,255,255,0.18)',
-                }}
-                onClick={handleNativeUnlock}
-                disabled={loading || bioLoading}
-              >
-                {bioLoading ? 'Waiting for fingerprint…' : '🔒 Unlock with fingerprint'}
-              </button>
-              <p className="fl-lead" style={{ margin: '8px 0 0', fontSize: 11 }}>
-                Uses the fingerprint saved on this phone. No passkey.
-              </p>
-            </>
-          ) : null}
-          {webPasskey ? (
-            <>
-              <button
-                type="button"
-                className="fl-submit"
-                style={{
-                  marginTop: 10,
-                  background: 'rgba(255,255,255,0.10)',
-                  color: '#e2e8f0',
-                  border: '1px solid rgba(255,255,255,0.18)',
-                }}
-                onClick={handlePasskey}
-                disabled={loading || bioLoading || passkeyLoading}
-              >
-                {passkeyLoading ? 'Waiting for fingerprint…' : '🔒 Sign in with fingerprint / passkey'}
-              </button>
-              <p className="fl-lead" style={{ margin: '8px 0 0', fontSize: 11 }}>
-                Web browsers call this a “passkey”. First sign in with your password,
-                then enable it in Profile — confirm with fingerprint or screen lock.
-              </p>
-            </>
-          ) : null}
-          {nativeBio && bioStatus && !bioStatus.hasToken ? (
-            <p className="fl-lead" style={{ margin: '10px 0 0', fontSize: 11 }}>
-              {bioStatus.available
-                ? 'Fingerprint unlock is not set up yet. Sign in with your password once, then enable it in Profile → Fingerprint unlock.'
-                : 'No fingerprint is enrolled on this phone. Add one in Android Settings, then enable fingerprint unlock in Profile.'}
-            </p>
-          ) : null}
         </form>
 
         {/* Hide Client Admin link when launched as installed standalone PWA app */}

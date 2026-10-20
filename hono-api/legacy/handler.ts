@@ -890,7 +890,7 @@ const GITHUB_REPO = "sravanku018/ground-iq-web";
  * API all carry one number.
  */
 const APP_RELEASE = {
-  version: "2.0.100",
+  version: "2.0.101",
   versionCode: 20099,
   minSupportedVersionCode: 20000,
 };
@@ -5897,9 +5897,6 @@ async function rawHandler(req: Request): Promise<Response> {
       }
       const body = await readBody(req);
       const username = String(body.username || "").trim().toLowerCase();
-      if (!username) {
-        return json({ error: "Enter your username first, then use fingerprint." }, 400);
-      }
       let origin: string;
       try {
         origin = webauthnOrigin(body.origin);
@@ -5907,22 +5904,28 @@ async function rawHandler(req: Request): Promise<Response> {
         return json({ error: (e as Error).message }, 400);
       }
       const rpID = webauthnRpId(origin);
-      const userRows = await sql`
-        SELECT id, role, active FROM app_users WHERE LOWER(username) = ${username} LIMIT 1
-      `.catch(() => []);
-      const user = userRows[0] as
-        | { id?: number; role?: string; active?: boolean }
-        | undefined;
-      const userId =
-        user && user.active && user.role !== "super_admin"
-          ? Number(user.id)
-          : null;
-      const credRows = userId
-        ? await sql`
-            SELECT credential_id, transports
-            FROM webauthn_credentials WHERE user_id = ${userId}
-          `.catch(() => [])
-        : [];
+      // With a username we filter to that user's credentials. Without one, the
+      // browser shows the device's discoverable passkeys (one-tap sign-in).
+      let userId: number | null = null;
+      let credRows: Record<string, unknown>[] = [];
+      if (username) {
+        const userRows = await sql`
+          SELECT id, role, active FROM app_users WHERE LOWER(username) = ${username} LIMIT 1
+        `.catch(() => []);
+        const user = userRows[0] as
+          | { id?: number; role?: string; active?: boolean }
+          | undefined;
+        userId =
+          user && user.active && user.role !== "super_admin"
+            ? Number(user.id)
+            : null;
+        credRows = userId
+          ? (await sql`
+              SELECT credential_id, transports
+              FROM webauthn_credentials WHERE user_id = ${userId}
+            `.catch(() => [])) as Record<string, unknown>[]
+          : [];
+      }
       try {
         const options = await generateAuthenticationOptions({
           rpID,
@@ -5967,22 +5970,30 @@ async function rawHandler(req: Request): Promise<Response> {
       if (!flow || String(flow.origin) !== origin) {
         return json({ error: "Fingerprint sign-in expired — try again." }, 400);
       }
-      const userId = flow.user_id != null ? Number(flow.user_id) : null;
-      if (!userId) return json({ error: "Fingerprint sign-in failed." }, 401);
       const response = body.response as Record<string, unknown> | undefined;
       const responseId = String(response?.id || "");
       if (!responseId) {
         return json({ error: "Invalid fingerprint response." }, 400);
       }
-      const credRows = await sql`
-        SELECT * FROM webauthn_credentials
-        WHERE user_id = ${userId} AND credential_id = ${responseId}
-        LIMIT 1
-      `.catch(() => []);
+      // With a username, the credential must belong to that user. Without one,
+      // the credential id identifies the user for a discoverable passkey.
+      const flowUserId = flow.user_id != null ? Number(flow.user_id) : null;
+      const credRows = flowUserId
+        ? await sql`
+            SELECT * FROM webauthn_credentials
+            WHERE user_id = ${flowUserId} AND credential_id = ${responseId}
+            LIMIT 1
+          `.catch(() => [])
+        : await sql`
+            SELECT * FROM webauthn_credentials
+            WHERE credential_id = ${responseId}
+            LIMIT 1
+          `.catch(() => []);
       if (!credRows.length) {
         return json({ error: "Fingerprint sign-in failed." }, 401);
       }
       const credential = credRows[0] as Record<string, unknown>;
+      const userId = Number(credential.user_id);
       try {
         const result = await verifyAuthenticationResponse({
           response: response as never,

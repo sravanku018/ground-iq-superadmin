@@ -70,11 +70,12 @@ export async function enableWebPasskey() {
 
 export async function passkeyLogin(username, expectedRole) {
   const origin = currentOrigin()
+  const name = String(username || '').trim()
   const opts = await send('/api/auth/webauthn/login/options', {
-    body: { username, origin },
+    body: { username: name, origin },
   })
   const allowed = opts?.options?.allowCredentials
-  if (!Array.isArray(allowed) || allowed.length === 0) {
+  if (name && (!Array.isArray(allowed) || allowed.length === 0)) {
     throw new Error(
       'No fingerprint/passkey is set up for this username on this device. Sign in with your password, then open Profile → Fingerprint / passkey → Enable.',
     )

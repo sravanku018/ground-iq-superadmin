@@ -1,10 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { clearSession, login } from './api'
 import { versionLabel } from './version'
 import {
-  fingerprintError,
-  fingerprintLogin,
-  fingerprintSupported,
+  authenticateBiometric,
+  biometricStatus,
+  nativeBiometricSupported,
+  offerBiometricAfterLogin,
+} from './nativeBiometric'
+import {
+  passkeyError,
+  passkeyLogin,
+  webPasskeySupported,
 } from './webauthn'
 import logoMark from './assets/logo-mark.png'
 
@@ -18,10 +24,50 @@ export default function LoginScreen({ onSuccess, onToast }) {
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading] = useState(false)
   const [bioLoading, setBioLoading] = useState(false)
+  const [bioReady, setBioReady] = useState(false)
+  const [passkeyLoading, setPasskeyLoading] = useState(false)
   const [error, setError] = useState('')
-  const bioAvailable = fingerprintSupported()
+  const nativeBio = nativeBiometricSupported()
+  const webPasskey = !nativeBio && webPasskeySupported()
 
-  async function handleFingerprint() {
+  useEffect(() => {
+    if (!nativeBio) return undefined
+    let cancelled = false
+    biometricStatus()
+      .then((st) => {
+        if (!cancelled) setBioReady(!!st?.available && !!st?.hasToken)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [nativeBio])
+
+  async function handleNativeUnlock() {
+    setError('')
+    setBioLoading(true)
+    try {
+      const data = await authenticateBiometric('surveyor')
+      if (data.user?.role !== 'surveyor') {
+        clearSession()
+        throw new Error('This fingerprint is not a surveyor login.')
+      }
+      if (data.user?.active === false) {
+        clearSession()
+        throw new Error('Account disabled.')
+      }
+      onToast?.(`Hi ${data.user.name}`, 'ok')
+      onSuccess?.(data.user)
+    } catch (e) {
+      const msg = e?.message || 'Fingerprint unlock failed'
+      setError(msg)
+      onToast?.(msg, 'error')
+    } finally {
+      setBioLoading(false)
+    }
+  }
+
+  async function handlePasskey() {
     setError('')
     if (!username.trim()) {
       const msg = 'Enter your username first, then use fingerprint.'
@@ -29,9 +75,9 @@ export default function LoginScreen({ onSuccess, onToast }) {
       onToast?.(msg, 'error')
       return
     }
-    setBioLoading(true)
+    setPasskeyLoading(true)
     try {
-      const data = await fingerprintLogin(username.trim(), 'surveyor')
+      const data = await passkeyLogin(username.trim(), 'surveyor')
       if (data.user?.role !== 'surveyor') {
         clearSession()
         throw new Error('This fingerprint is not a surveyor login.')
@@ -44,12 +90,12 @@ export default function LoginScreen({ onSuccess, onToast }) {
       onSuccess?.(data.user)
     } catch (e) {
       const msg = e?.name
-        ? fingerprintError(e)
-        : e.message || 'Fingerprint sign-in failed'
+        ? passkeyError(e)
+        : e.message || 'Fingerprint/passkey sign-in failed'
       setError(msg)
       onToast?.(msg, 'error')
     } finally {
-      setBioLoading(false)
+      setPasskeyLoading(false)
     }
   }
 
@@ -82,6 +128,12 @@ export default function LoginScreen({ onSuccess, onToast }) {
         const msg = 'Account disabled.'
         setError(msg)
         throw new Error(msg)
+      }
+      if (nativeBio) {
+        const enabled = await offerBiometricAfterLogin(
+          data.user?.username || username.trim(),
+        )
+        if (enabled) onToast?.('Fingerprint unlock enabled', 'ok')
       }
       onToast?.(`Hi ${data.user.name}`, 'ok')
       onSuccess?.(data.user)
@@ -159,11 +211,11 @@ export default function LoginScreen({ onSuccess, onToast }) {
             </div>
           ) : null}
 
-          <button type="submit" className="fl-submit" disabled={loading || bioLoading}>
+          <button type="submit" className="fl-submit" disabled={loading || bioLoading || passkeyLoading}>
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
 
-          {bioAvailable ? (
+          {bioReady ? (
             <>
               <button
                 type="button"
@@ -174,13 +226,35 @@ export default function LoginScreen({ onSuccess, onToast }) {
                   color: '#e2e8f0',
                   border: '1px solid rgba(255,255,255,0.18)',
                 }}
-                onClick={handleFingerprint}
+                onClick={handleNativeUnlock}
                 disabled={loading || bioLoading}
               >
-                {bioLoading ? 'Waiting for fingerprint…' : '🔒 Sign in with fingerprint'}
+                {bioLoading ? 'Waiting for fingerprint…' : '🔒 Unlock with fingerprint'}
               </button>
               <p className="fl-lead" style={{ margin: '8px 0 0', fontSize: 11 }}>
-                Use your username and the fingerprint set up after a password sign-in.
+                Uses the fingerprint saved on this phone. No passkey.
+              </p>
+            </>
+          ) : null}
+          {webPasskey ? (
+            <>
+              <button
+                type="button"
+                className="fl-submit"
+                style={{
+                  marginTop: 10,
+                  background: 'rgba(255,255,255,0.10)',
+                  color: '#e2e8f0',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                }}
+                onClick={handlePasskey}
+                disabled={loading || bioLoading || passkeyLoading}
+              >
+                {passkeyLoading ? 'Waiting for fingerprint…' : '🔒 Sign in with fingerprint / passkey'}
+              </button>
+              <p className="fl-lead" style={{ margin: '8px 0 0', fontSize: 11 }}>
+                Web browsers call this a “passkey”. First sign in with your password,
+                then enable it in Profile — confirm with fingerprint or screen lock.
               </p>
             </>
           ) : null}

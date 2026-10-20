@@ -47,7 +47,8 @@ import PhoneIndiaField from './PhoneIndiaField'
 import { isValidInMobile, toE164In } from './phoneIn'
 import VerifiedBadge from './VerifiedBadge'
 import { PortalSkeleton } from './PortalUI'
-import FingerprintCard from './components/FingerprintCard'
+import BiometricCard from './components/BiometricCard'
+import PasskeyCard from './components/PasskeyCard'
 import { claimReload, isChunkLoadError, reloadSoon } from './reloadGuard'
 import {
   getNavMode,
@@ -991,7 +992,8 @@ function SurveyorProfileScreen({
       </div>
 
       {/* Fingerprint / passkey sign-in for this phone/browser */}
-      <FingerprintCard onToast={onToast} />
+      <BiometricCard user={user} onToast={onToast} />
+      <PasskeyCard onToast={onToast} />
 
       {/* App Preferences & Settings */}
       <div className="card" style={{ marginTop: 14, padding: 16 }}>

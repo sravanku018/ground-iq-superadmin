@@ -484,6 +484,22 @@
   @media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 
 </style>
+<script>
+  // Existing users opening the root should go straight back to their app;
+  // new visitors stay on the landing.
+  (function () {
+    try {
+      var token = localStorage.getItem('esurvey_token');
+      var user = JSON.parse(localStorage.getItem('esurvey_user') || 'null');
+      if (!token || !user) return;
+      if (user.role === 'admin' || user.role === 'super_admin') {
+        location.replace('/admin');
+      } else if (user.role === 'surveyor') {
+        location.replace('/field');
+      }
+    } catch (e) {}
+  })();
+</script>
 </head>
 <body>
 

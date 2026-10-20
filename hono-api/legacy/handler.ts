@@ -890,8 +890,8 @@ const GITHUB_REPO = "sravanku018/ground-iq-web";
  * API all carry one number.
  */
 const APP_RELEASE = {
-  version: "2.0.98",
-  versionCode: 20098,
+  version: "2.0.99",
+  versionCode: 20099,
   minSupportedVersionCode: 20000,
 };
 
@@ -2091,6 +2091,19 @@ async function ensureSchema(): Promise<void> {
       )
     `,
     () => sql`CREATE INDEX IF NOT EXISTS idx_webauthn_challenges_exp ON webauthn_challenges(expires_at)`,
+    // Native Android fingerprint unlock: long-lived device tokens (hashed).
+    () => sql`
+      CREATE TABLE IF NOT EXISTS app_device_tokens (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        label TEXT,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_used_at TIMESTAMPTZ
+      )
+    `,
+    () => sql`CREATE INDEX IF NOT EXISTS idx_app_device_tokens_user ON app_device_tokens(user_id)`,
     () => sql`
       ALTER TABLE survey_form
       ADD CONSTRAINT survey_form_company_id_fkey
@@ -5334,7 +5347,7 @@ function webauthnTransports(raw: unknown): string[] {
 }
 
 /** Same shape as /api/auth/login, without password/TOTP secrets. */
-function webauthnUserPayload(u: Record<string, unknown>) {
+function authUserPayload(u: Record<string, unknown>) {
   return {
     id: Number(u.id),
     username: String(u.username || ""),
@@ -5659,6 +5672,104 @@ async function rawHandler(req: Request): Promise<Response> {
     const token = bearer(req);
     const me = await getUser(token);
 
+    // ── Native Android fingerprint unlock (BiometricPrompt) ──
+    // The device stores a long-lived token, encrypted with AndroidKeyStore.
+    // This is not WebAuthn/passkeys; it exchanges the token for a session.
+    if (path === "/api/auth/device-token" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role === "super_admin") {
+        return json({ error: "Fingerprint unlock is for field and client-admin accounts." }, 403);
+      }
+      const deviceToken = `dev_${randomBytes(32).toString("base64url")}`;
+      const expires = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000);
+      await sql`
+        INSERT INTO app_device_tokens (user_id, token_hash, label, expires_at)
+        VALUES (${me.id}, ${await sha256Hex(deviceToken)}, ${"Android fingerprint"}, ${expires.toISOString()})
+      `;
+      await sql`DELETE FROM app_device_tokens WHERE expires_at < NOW()`.catch(() => null);
+      logAudit(me, "device_token_create", "user", me.id, {});
+      return json({ device_token: deviceToken, expires_at: expires.toISOString() });
+    }
+
+    if (path === "/api/auth/device-login" && method === "POST") {
+      const ip = req.headers.get("x-forwarded-for") ||
+        req.headers.get("cf-connecting-ip") || "unknown";
+      if (!checkRateLimit(ip)) {
+        return json({ error: "Too many login attempts. Try again later." }, 429);
+      }
+      const body = await readBody(req);
+      const deviceToken = String(body.device_token || "").trim();
+      if (!deviceToken) return json({ error: "device_token is required" }, 400);
+      const rows = await sql`
+        SELECT * FROM app_device_tokens
+        WHERE token_hash = ${await sha256Hex(deviceToken)} AND expires_at > NOW()
+        LIMIT 1
+      `.catch(() => []);
+      if (!rows.length) {
+        return json({
+          error: "Fingerprint unlock expired. Sign in with your password.",
+        }, 401);
+      }
+      const deviceRow = rows[0] as Record<string, unknown>;
+      const userRows = await sql`
+        SELECT * FROM app_users WHERE id = ${Number(deviceRow.user_id)} LIMIT 1
+      `.catch(() => []);
+      const user = userRows[0] as Record<string, unknown> | undefined;
+      if (!user || !sqlBool(user.active)) {
+        return json({ error: "Account is disabled." }, 403);
+      }
+      if (user.role === "super_admin") {
+        return json({ error: "Fingerprint unlock is for field and client-admin accounts." }, 403);
+      }
+      const expectedRole = String(body.expected_role || "").trim().toLowerCase();
+      if (expectedRole === "surveyor" && user.role !== "surveyor") {
+        return json({ error: "This fingerprint is not a surveyor login." }, 403);
+      }
+      if (expectedRole === "admin" && user.role !== "admin") {
+        return json({ error: "Client Admin portal only." }, 403);
+      }
+      const sessionToken = newToken();
+      const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await sql`
+        INSERT INTO app_sessions (token, user_id, expires_at)
+        VALUES (${sessionToken}, ${Number(user.id)}, ${expires.toISOString()})
+      `;
+      await sql`
+        UPDATE app_device_tokens SET last_used_at = NOW() WHERE id = ${Number(deviceRow.id)}
+      `.catch(() => null);
+      logAudit(
+        {
+          id: Number(user.id),
+          username: String(user.username || ""),
+          role: String(user.role || ""),
+        },
+        "login_device_fingerprint",
+        "user",
+        Number(user.id),
+        { expected_role: expectedRole || null },
+      );
+      return json({
+        token: sessionToken,
+        user: authUserPayload(user),
+        expires_at: expires.toISOString(),
+        access:
+          user.role === "surveyor"
+            ? "surveyor_field_app"
+            : "client_admin_portal",
+        note: "Signed in with Android fingerprint unlock",
+      });
+    }
+
+    if (path === "/api/auth/device-token" && method === "DELETE") {
+      const body = await readBody(req);
+      const deviceToken = String(body.device_token || "").trim();
+      if (!deviceToken) return json({ error: "device_token is required" }, 400);
+      await sql`
+        DELETE FROM app_device_tokens WHERE token_hash = ${await sha256Hex(deviceToken)}
+      `.catch(() => null);
+      return json({ ok: true });
+    }
+
     // ── Fingerprint / passkey login (WebAuthn) ─────────────
     if (path === "/api/auth/webauthn/register/options" && method === "POST") {
       if (!me) return json({ error: "Login required" }, 401);
@@ -5936,7 +6047,7 @@ async function rawHandler(req: Request): Promise<Response> {
         );
         return json({
           token: sessionToken,
-          user: webauthnUserPayload(user),
+          user: authUserPayload(user),
           expires_at: expires.toISOString(),
           access:
             user.role === "surveyor"
@@ -7686,6 +7797,7 @@ async function rawHandler(req: Request): Promise<Response> {
       if (body.revoke_sessions === true && body.password == null && body.username == null &&
           body.active == null && body.name == null && body.target_quota == null && body.role == null) {
         const del = await sql`DELETE FROM app_sessions WHERE user_id = ${id}`;
+        await sql`DELETE FROM app_device_tokens WHERE user_id = ${id}`.catch(() => null);
         return json({
           ok: true,
           revoked: true,
@@ -7889,6 +8001,7 @@ async function rawHandler(req: Request): Promise<Response> {
       let sessionsCleared = 0;
       if (shouldRevoke) {
         const del = await sql`DELETE FROM app_sessions WHERE user_id = ${id}`;
+        await sql`DELETE FROM app_device_tokens WHERE user_id = ${id}`.catch(() => null);
         sessionsCleared = Array.isArray(del) ? del.length : 0;
       }
 
@@ -7975,6 +8088,7 @@ async function rawHandler(req: Request): Promise<Response> {
         return json({ error: "Forbidden — that account belongs to another Client Admin" }, 403);
       }
       await sql`DELETE FROM app_sessions WHERE user_id = ${id}`;
+      await sql`DELETE FROM app_device_tokens WHERE user_id = ${id}`.catch(() => null);
       await sql`DELETE FROM app_users WHERE id = ${id}`;
       logAudit(me, "user_delete", "user", id, {
         username: (existing[0] as { username: string }).username,

@@ -34,14 +34,16 @@ async function send(path, { method = 'POST', body } = {}) {
   return data
 }
 
-/** Fingerprint/passkeys need HTTPS (or localhost) and WebAuthn support. */
-export function fingerprintSupported() {
+/**
+ * Web fingerprint login is implemented with WebAuthn. Browsers call this a
+ * "passkey"; there is no non-passkey browser fingerprint API. The Android app
+ * uses native BiometricPrompt instead (see nativeBiometric.js).
+ */
+export function webPasskeySupported() {
   try {
-    return (
-      typeof window !== 'undefined' &&
-      window.isSecureContext === true &&
-      browserSupportsWebAuthn()
-    )
+    if (typeof window === 'undefined') return false
+    if (window.Capacitor?.isNativePlatform?.()) return false
+    return window.isSecureContext === true && browserSupportsWebAuthn()
   } catch {
     return false
   }
@@ -51,12 +53,11 @@ function currentOrigin() {
   return typeof window !== 'undefined' ? window.location.origin : ''
 }
 
-export function getFingerprintStatus() {
+export function getPasskeyStatus() {
   return send('/api/auth/webauthn/credentials', { method: 'GET' })
 }
 
-/** Register this device's fingerprint / passkey for the signed-in account. */
-export async function enableFingerprint() {
+export async function enableWebPasskey() {
   const origin = currentOrigin()
   const opts = await send('/api/auth/webauthn/register/options', {
     body: { origin },
@@ -67,12 +68,17 @@ export async function enableFingerprint() {
   })
 }
 
-/** Sign in with the fingerprint / passkey registered for this username. */
-export async function fingerprintLogin(username, expectedRole) {
+export async function passkeyLogin(username, expectedRole) {
   const origin = currentOrigin()
   const opts = await send('/api/auth/webauthn/login/options', {
     body: { username, origin },
   })
+  const allowed = opts?.options?.allowCredentials
+  if (!Array.isArray(allowed) || allowed.length === 0) {
+    throw new Error(
+      'No fingerprint/passkey is set up for this username on this device. Sign in with your password, then open Profile → Fingerprint / passkey → Enable.',
+    )
+  }
   const response = await startAuthentication({ optionsJSON: opts.options })
   const data = await send('/api/auth/webauthn/login/verify', {
     body: {
@@ -86,24 +92,23 @@ export async function fingerprintLogin(username, expectedRole) {
   return data
 }
 
-export function removeFingerprint() {
+export function removeWebPasskey() {
   return send('/api/auth/webauthn/credentials', { method: 'DELETE' })
 }
 
-/** Friendly text for the browser's WebAuthn errors. */
-export function fingerprintError(e) {
+export function passkeyError(e) {
   const name = String(e?.name || '')
   if (name === 'NotAllowedError') {
-    return 'Fingerprint was cancelled or timed out. Try again.'
+    return 'Fingerprint/passkey was cancelled or timed out. Try again.'
   }
   if (name === 'InvalidStateError') {
-    return 'This device is already set up for fingerprint login.'
+    return 'This device is already set up for fingerprint/passkey login.'
   }
   if (name === 'NotSupportedError') {
-    return 'This browser/device does not support fingerprint login.'
+    return 'This browser/device does not support fingerprint/passkey login.'
   }
   if (name === 'SecurityError') {
-    return 'Fingerprint login needs HTTPS and the correct website domain.'
+    return 'Fingerprint/passkey login needs HTTPS and the correct website domain.'
   }
-  return e?.message || 'Fingerprint sign-in failed.'
+  return e?.message || 'Fingerprint/passkey sign-in failed.'
 }

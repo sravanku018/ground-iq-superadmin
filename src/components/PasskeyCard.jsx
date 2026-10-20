@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  enableFingerprint,
-  fingerprintError,
-  fingerprintSupported,
-  getFingerprintStatus,
-  removeFingerprint,
+  enableWebPasskey,
+  getPasskeyStatus,
+  passkeyError,
+  removeWebPasskey,
+  webPasskeySupported,
 } from '../webauthn'
 
 /**
- * Profile card: register/remove this device's fingerprint or passkey.
- * Visible only when the browser supports WebAuthn on a secure origin.
+ * Web-only fingerprint/passkey setup card. Hidden in the Android app, where
+ * native fingerprint unlock is used instead.
  */
-export default function FingerprintCard({ onToast }) {
-  const supported = fingerprintSupported()
+export default function PasskeyCard({ onToast }) {
+  const supported = webPasskeySupported()
   const [count, setCount] = useState(null)
   const [loading, setLoading] = useState(supported)
   const [busy, setBusy] = useState(false)
@@ -21,7 +21,7 @@ export default function FingerprintCard({ onToast }) {
     if (!supported) return
     setLoading(true)
     try {
-      const data = await getFingerprintStatus()
+      const data = await getPasskeyStatus()
       setCount(Number(data?.count) || 0)
     } catch (e) {
       onToast?.(e.message || 'Could not read fingerprint settings', 'error')
@@ -34,57 +34,47 @@ export default function FingerprintCard({ onToast }) {
     void load()
   }, [load])
 
+  if (!supported) return null
+
   async function enable() {
     setBusy(true)
     try {
-      await enableFingerprint()
+      await enableWebPasskey()
       await load()
-      onToast?.('Fingerprint login enabled on this device', 'ok')
+      onToast?.('Fingerprint / passkey login enabled on this device', 'ok')
     } catch (e) {
-      onToast?.(fingerprintError(e), 'error')
+      onToast?.(passkeyError(e), 'error')
     } finally {
       setBusy(false)
     }
   }
 
   async function remove() {
-    if (!window.confirm('Remove fingerprint login from all devices for this account?')) {
+    if (!window.confirm('Remove fingerprint/passkey login from all devices for this account?')) {
       return
     }
     setBusy(true)
     try {
-      await removeFingerprint()
+      await removeWebPasskey()
       setCount(0)
-      onToast?.('Fingerprint login removed', 'ok')
+      onToast?.('Fingerprint / passkey login removed', 'ok')
     } catch (e) {
-      onToast?.(e.message || 'Could not remove fingerprint login', 'error')
+      onToast?.(e.message || 'Could not remove fingerprint/passkey login', 'error')
     } finally {
       setBusy(false)
     }
   }
 
-  if (!supported) {
-    return (
-      <div className="card" style={{ marginTop: 16, padding: 16 }}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700 }}>
-          Fingerprint login
-        </h3>
-        <p className="muted" style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}>
-          This browser or device does not support fingerprint / passkey sign-in.
-          Use the Android app or a modern browser over HTTPS.
-        </p>
-      </div>
-    )
-  }
-
   return (
     <div className="card" style={{ marginTop: 16, padding: 16 }}>
       <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700 }}>
-        Fingerprint login
+        Fingerprint / passkey (web)
       </h3>
       <p className="muted" style={{ margin: '0 0 12px', fontSize: 12, lineHeight: 1.5 }}>
-        Sign in with your phone or laptop fingerprint instead of typing the
-        password. The fingerprint itself never leaves your device.
+        Browsers can only use the fingerprint sensor through a passkey. Your
+        browser may say “Create a passkey” or “Use a passkey” — confirm with
+        your fingerprint, face, or screen lock. The fingerprint itself never
+        leaves your device.
       </p>
       <p className={`pill ${count > 0 ? 'ok' : 'warn'}`} style={{ margin: '0 0 12px' }}>
         <span className="dot" />
@@ -96,7 +86,7 @@ export default function FingerprintCard({ onToast }) {
       </p>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button type="button" className="btn primary" disabled={busy} onClick={() => void enable()}>
-          {busy ? 'Waiting for fingerprint…' : count > 0 ? 'Add this device' : 'Enable fingerprint'}
+          {busy ? 'Waiting for fingerprint…' : count > 0 ? 'Add this device' : 'Enable fingerprint / passkey'}
         </button>
         {count > 0 && (
           <button type="button" className="btn danger" disabled={busy} onClick={() => void remove()}>
@@ -108,7 +98,7 @@ export default function FingerprintCard({ onToast }) {
         </button>
       </div>
       <p className="muted" style={{ margin: '10px 0 0', fontSize: 11 }}>
-        Set up one device per browser. Passkeys may sync with your Google/Apple account.
+        In the Android app, fingerprint unlock uses the native sensor with no passkey.
       </p>
     </div>
   )

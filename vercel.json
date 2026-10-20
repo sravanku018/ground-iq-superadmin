@@ -1,11 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    { "source": "/", "has": [{ "type": "query", "key": "app", "value": "1" }], "destination": "/field", "permanent": false },
+    { "source": "/", "has": [{ "type": "query", "key": "admin", "value": "1" }], "destination": "/admin", "permanent": false },
+    { "source": "/", "has": [{ "type": "query", "key": "super", "value": "1" }], "destination": "/super", "permanent": false },
+    { "source": "/", "has": [{ "type": "query", "key": "superadmin", "value": "1" }], "destination": "/super", "permanent": false }
+  ],
   "rewrites": [
-    { "source": "/", "has": [{ "type": "query", "key": "app", "value": "1" }], "destination": "/index.html" },
-    { "source": "/", "has": [{ "type": "query", "key": "admin", "value": "1" }], "destination": "/index.html" },
-    { "source": "/", "has": [{ "type": "query", "key": "super", "value": "1" }], "destination": "/index.html" },
-    { "source": "/", "has": [{ "type": "query", "key": "superadmin", "value": "1" }], "destination": "/index.html" },
-    { "source": "/", "destination": "/landing.html" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/(.*)", "destination": "/app.html" }
   ]
 }

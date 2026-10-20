@@ -2,18 +2,19 @@
  * Entry router:
  *   /admin  → Client Admin web portal (desktop)
  *   /       → Surveyor field app (phone / APK) when field build
- *   /?app=1 → Field app even on portal-only Client Admin builds (share link)
+ *   /field  → Surveyor field app (stable route; /?app=1 still supported)
+ *   /       → Public landing page (landing.html on Vercel)
  *   Super Admin console when VITE_SUPER_ADMIN=1
  *
  * SurveyorApp is lazy-loaded so GitHub Pages admin builds never download
  * the field-collect bundle on first paint (major Pages speed win).
  */
 import { lazy, Suspense, useEffect } from 'react'
-import AdminPortal from './AdminPortal'
 import { reloadOnceIfUpgraded } from './version'
 import { getStoredUser } from './api'
 import AppUpdateModal from './AppUpdateModal'
 
+const AdminPortal = lazy(() => import('./AdminPortal'))
 const SurveyorApp = lazy(() => import('./SurveyorApp'))
 const PublicWebFill = lazy(() => import('./PublicWebFill'))
 
@@ -45,6 +46,12 @@ function isAdminPath() {
     q.get('admin') === '1' ||
     q.get('portal') === '1'
   )
+}
+
+function isFieldPath() {
+  if (typeof window === 'undefined') return false
+  const p = window.location.pathname || ''
+  return p === '/field' || p === '/field/' || p === '/app' || p === '/app/'
 }
 
 function publicFillKey() {
@@ -90,7 +97,7 @@ function FieldBoot() {
         fontWeight: 600,
       }}
     >
-      Loading field app…
+      Loading…
     </div>
   )
 }
@@ -105,7 +112,7 @@ export default function App() {
     !fillKey &&
     !SUPER_ADMIN_CONSOLE &&
     !isAdminPath() &&
-    (wantFieldApp() || (FIELD_APP_ENABLED && !isAdminUser))
+    (wantFieldApp() || isFieldPath() || (FIELD_APP_ENABLED && !isAdminUser))
 
   const portalOnly = !fillKey && !openFieldApp
 
@@ -134,13 +141,17 @@ export default function App() {
           <PublicWebFill formKey={fillKey} fillToken={publicFillToken()} />
         </Suspense>
       ) : isSuper ? (
-        <AdminPortal superAdminOnly />
+        <Suspense fallback={<FieldBoot />}>
+          <AdminPortal superAdminOnly />
+        </Suspense>
       ) : openFieldApp ? (
         <Suspense fallback={<FieldBoot />}>
           <SurveyorApp />
         </Suspense>
       ) : (
-        <AdminPortal />
+        <Suspense fallback={<FieldBoot />}>
+          <AdminPortal />
+        </Suspense>
       )}
       {fillKey || portalOnly ? null : <AppUpdateModal />}
     </>

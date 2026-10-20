@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import { clearSession, login } from './api'
 import { versionLabel } from './version'
+import {
+  fingerprintError,
+  fingerprintLogin,
+  fingerprintSupported,
+} from './webauthn'
 import logoMark from './assets/logo-mark.png'
 
 /**
@@ -12,7 +17,41 @@ export default function LoginScreen({ onSuccess, onToast }) {
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [bioLoading, setBioLoading] = useState(false)
   const [error, setError] = useState('')
+  const bioAvailable = fingerprintSupported()
+
+  async function handleFingerprint() {
+    setError('')
+    if (!username.trim()) {
+      const msg = 'Enter your username first, then use fingerprint.'
+      setError(msg)
+      onToast?.(msg, 'error')
+      return
+    }
+    setBioLoading(true)
+    try {
+      const data = await fingerprintLogin(username.trim(), 'surveyor')
+      if (data.user?.role !== 'surveyor') {
+        clearSession()
+        throw new Error('This fingerprint is not a surveyor login.')
+      }
+      if (data.user?.active === false) {
+        clearSession()
+        throw new Error('Account disabled.')
+      }
+      onToast?.(`Hi ${data.user.name}`, 'ok')
+      onSuccess?.(data.user)
+    } catch (e) {
+      const msg = e?.name
+        ? fingerprintError(e)
+        : e.message || 'Fingerprint sign-in failed'
+      setError(msg)
+      onToast?.(msg, 'error')
+    } finally {
+      setBioLoading(false)
+    }
+  }
 
   async function handleLogin(e) {
     e.preventDefault()
@@ -120,9 +159,31 @@ export default function LoginScreen({ onSuccess, onToast }) {
             </div>
           ) : null}
 
-          <button type="submit" className="fl-submit" disabled={loading}>
+          <button type="submit" className="fl-submit" disabled={loading || bioLoading}>
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
+
+          {bioAvailable ? (
+            <>
+              <button
+                type="button"
+                className="fl-submit"
+                style={{
+                  marginTop: 10,
+                  background: 'rgba(255,255,255,0.10)',
+                  color: '#e2e8f0',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                }}
+                onClick={handleFingerprint}
+                disabled={loading || bioLoading}
+              >
+                {bioLoading ? 'Waiting for fingerprint…' : '🔒 Sign in with fingerprint'}
+              </button>
+              <p className="fl-lead" style={{ margin: '8px 0 0', fontSize: 11 }}>
+                Use your username and the fingerprint set up after a password sign-in.
+              </p>
+            </>
+          ) : null}
         </form>
 
         {/* Hide Client Admin link when launched as installed standalone PWA app */}

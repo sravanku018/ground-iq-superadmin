@@ -2,7 +2,7 @@
   "name": "Smart Survey X",
   "short_name": "Survey X",
   "description": "Smart Survey X — make surveys better, digitally.",
-  "start_url": "/",
+  "start_url": "/field",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#4f7dc6",

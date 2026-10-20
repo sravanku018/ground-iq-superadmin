@@ -47,6 +47,7 @@ import PhoneIndiaField from './PhoneIndiaField'
 import { isValidInMobile, toE164In } from './phoneIn'
 import VerifiedBadge from './VerifiedBadge'
 import { PortalSkeleton } from './PortalUI'
+import FingerprintCard from './components/FingerprintCard'
 import { claimReload, isChunkLoadError, reloadSoon } from './reloadGuard'
 import {
   getNavMode,
@@ -989,6 +990,9 @@ function SurveyorProfileScreen({
         </div>
       </div>
 
+      {/* Fingerprint / passkey sign-in for this phone/browser */}
+      <FingerprintCard onToast={onToast} />
+
       {/* App Preferences & Settings */}
       <div className="card" style={{ marginTop: 14, padding: 16 }}>
         <h4 style={{ marginTop: 0, marginBottom: 8, fontSize: 15 }}>🌐 Display Language</h4>
@@ -1546,15 +1550,48 @@ function SubmissionsScreen({ user, onToast, onEdit, questions, onStartNew, initi
   )
 }
 
+const CACHE_QUESTIONS = 'esurvey_questions_meta'
+const CACHE_PROGRESS = 'esurvey_my_progress'
+
+function readCache(key) {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function writeCache(key, value) {
+  try {
+    if (value == null) localStorage.removeItem(key)
+    else localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    /* storage blocked */
+  }
+}
+
 export default function SurveyorApp() {
-  const [user, setUser] = useState(null)
-  const [authReady, setAuthReady] = useState(false)
+  // Render instantly from the last session/data, then revalidate in the
+  // background. Waiting for /api/auth/me before first paint made every open
+  // take seconds on a weak field connection.
+  const [user, setUser] = useState(() => {
+    const cached = getStoredUser()
+    return cached?.role === 'surveyor' ? cached : null
+  })
+  const [authReady, setAuthReady] = useState(() => {
+    try {
+      return !!getToken() && getStoredUser()?.role === 'surveyor'
+    } catch {
+      return false
+    }
+  })
   const [tab, setTab] = useState('home')
   const [network, setNetwork] = useState(null)
   const [pendingSync, setPendingSync] = useState(() => queueCount())
   const [conversationPending, setConversationPending] = useState(0)
-  const [myProgress, setMyProgress] = useState(null)
-  const [questionsMeta, setQuestionsMeta] = useState(null)
+  const [myProgress, setMyProgress] = useState(() => readCache(CACHE_PROGRESS))
+  const [questionsMeta, setQuestionsMeta] = useState(() => readCache(CACHE_QUESTIONS))
   const [converseEnabled, setConverseEnabled] = useState(false)
   const [serverVoice, setServerVoice] = useState(null)
   const [toast, setToast] = useState(null)
@@ -1567,6 +1604,14 @@ export default function SurveyorApp() {
   const [displayLang, setDisplayLangState] = useState(getDisplayLang)
   // null = no user seen yet this session; avoids a toast on every launch.
   const lastVerified = useRef(null)
+
+  // Keep the last server snapshot on the phone so Home paints immediately.
+  useEffect(() => {
+    if (myProgress) writeCache(CACHE_PROGRESS, myProgress)
+  }, [myProgress])
+  useEffect(() => {
+    if (questionsMeta) writeCache(CACHE_QUESTIONS, questionsMeta)
+  }, [questionsMeta])
 
   const changeNavMode = useCallback((mode) => {
     setNavModeState(persistNavMode(mode))
@@ -1725,8 +1770,11 @@ export default function SurveyorApp() {
     stopSyncEngine()
     stopConversationSync()
     await logout()
+    writeCache(CACHE_PROGRESS, null)
+    writeCache(CACHE_QUESTIONS, null)
     setUser(null)
     setMyProgress(null)
+    setQuestionsMeta(null)
     setTab('home')
     notify('Logged out', 'ok')
   }, [notify])
@@ -1847,8 +1895,10 @@ export default function SurveyorApp() {
 
     const timeout = setTimeout(() => {
       if (!cancelled) {
-        setUser(null)
         setAuthReady(true)
+        // A slow API must not log out a cached surveyor; only clear when
+        // there was no stored session in the first place.
+        if (!getStoredUser()) setUser(null)
       }
     }, 4000)
 

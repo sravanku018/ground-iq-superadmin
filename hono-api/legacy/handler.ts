@@ -33,6 +33,12 @@ import {
   startSonioxTranscription,
   validateSonioxKey,
 } from "../lib/soniox.ts";
+import {
+  generateAuthenticationOptions,
+  generateRegistrationOptions,
+  verifyAuthenticationResponse,
+  verifyRegistrationResponse,
+} from "npm:@simplewebauthn/server@14.0.3";
 
 // ── Geo aliases (inlined so the Deno Playground deploys a single file) ──
 
@@ -884,8 +890,8 @@ const GITHUB_REPO = "sravanku018/ground-iq-web";
  * API all carry one number.
  */
 const APP_RELEASE = {
-  version: "2.0.96",
-  versionCode: 20096,
+  version: "2.0.97",
+  versionCode: 20097,
   minSupportedVersionCode: 20000,
 };
 
@@ -2056,6 +2062,35 @@ async function ensureSchema(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `,
+    // Fingerprint / passkey login (WebAuthn).
+    () => sql`
+      CREATE TABLE IF NOT EXISTS webauthn_credentials (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        credential_id TEXT NOT NULL UNIQUE,
+        public_key TEXT NOT NULL,
+        counter BIGINT NOT NULL DEFAULT 0,
+        transports TEXT,
+        device_type TEXT,
+        backed_up BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_used_at TIMESTAMPTZ
+      )
+    `,
+    () => sql`CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user ON webauthn_credentials(user_id)`,
+    () => sql`
+      CREATE TABLE IF NOT EXISTS webauthn_challenges (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER,
+        kind TEXT NOT NULL,
+        challenge TEXT NOT NULL,
+        origin TEXT NOT NULL,
+        rp_id TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `,
+    () => sql`CREATE INDEX IF NOT EXISTS idx_webauthn_challenges_exp ON webauthn_challenges(expires_at)`,
     () => sql`
       ALTER TABLE survey_form
       ADD CONSTRAINT survey_form_company_id_fkey
@@ -5252,6 +5287,117 @@ async function syncSonioxKeyFromDb(force = false): Promise<void> {
   sonioxDbKeyLoadedAt = Date.now();
 }
 
+// ── WebAuthn (fingerprint / passkey) ─────────────────────
+const WEBAUTHN_DEFAULT_ORIGINS = [
+  "https://ground-iq-web-lake.vercel.app",
+  "https://sravanku018.github.io",
+  "http://localhost:5173",
+  "http://localhost:4173",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:4173",
+  "https://localhost",
+];
+
+/** Only these web origins may register/assert passkeys. */
+function webauthnOrigin(raw: unknown): string {
+  const origin = String(raw || "").trim().replace(/\/+$/, "");
+  const extra = (Deno.env.get("WEBAUTHN_ORIGINS") || "")
+    .split(",")
+    .map((s) => s.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  const allowed = new Set([...WEBAUTHN_DEFAULT_ORIGINS, ...extra]);
+  if (!allowed.has(origin)) {
+    throw new Error("Fingerprint login is not enabled for this site.");
+  }
+  return origin;
+}
+
+function webauthnRpId(origin: string): string {
+  return new URL(origin).hostname;
+}
+
+function bytesToBase64Url(bytes: Uint8Array): string {
+  return bytesToBase64(bytes)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function webauthnTransports(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.map(String);
+  try {
+    const parsed = JSON.parse(String(raw || "[]"));
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Same shape as /api/auth/login, without password/TOTP secrets. */
+function webauthnUserPayload(u: Record<string, unknown>) {
+  return {
+    id: Number(u.id),
+    username: String(u.username || ""),
+    name: String(u.display_name || u.username || ""),
+    role: String(u.role || ""),
+    active: sqlBool(u.active),
+    created_at: u.created_at,
+    company_id: u.company_id != null ? Number(u.company_id) : null,
+    company_name: u.company_name ? String(u.company_name) : null,
+    key_id: u.key_id || null,
+    phone: u.phone || null,
+    verified: sqlBool(u.verified),
+    can_manage_questions: sqlBool(u.can_manage_questions),
+    can_edit_surveys: sqlBool(u.can_edit_surveys),
+    can_review_data: sqlBool(u.can_review_data),
+    can_verify_surveyors: sqlBool(u.can_verify_surveyors),
+    can_assign_surveyors: sqlBool(u.can_assign_surveyors),
+    can_crud_questionnaire: sqlBool(u.can_crud_questionnaire),
+    can_validate_proof: sqlBool(u.can_validate_proof),
+    can_web_survey: sqlBool(u.can_web_survey),
+    can_record_voice: sqlBool(u.can_record_voice),
+    can_translate_telugu: sqlBool(u.can_translate_telugu),
+    totp_enabled: u.role === "super_admin" ? sqlBool(u.totp_enabled) : undefined,
+    max_questions_per_survey: Number(u.max_questions_per_survey) || 0,
+    max_surveys: Number(u.max_surveys) || 0,
+    max_surveyors: Number(u.max_surveyors) || 0,
+    max_records: Number(u.max_records) || 0,
+    max_categories: Number(u.max_categories) || 0,
+  };
+}
+
+async function createWebAuthnFlow(opts: {
+  userId: number | null;
+  kind: "registration" | "authentication";
+  challenge: string;
+  origin: string;
+  rpId: string;
+}): Promise<string> {
+  const id = newToken();
+  await sql`
+    INSERT INTO webauthn_challenges (id, user_id, kind, challenge, origin, rp_id, expires_at)
+    VALUES (
+      ${id}, ${opts.userId}, ${opts.kind}, ${opts.challenge},
+      ${opts.origin}, ${opts.rpId}, NOW() + INTERVAL '5 minutes'
+    )
+  `;
+  await sql`DELETE FROM webauthn_challenges WHERE expires_at < NOW()`.catch(() => null);
+  return id;
+}
+
+async function takeWebAuthnFlow(
+  id: string,
+  kind: "registration" | "authentication",
+): Promise<Record<string, unknown> | null> {
+  if (!id) return null;
+  const rows = await sql`
+    DELETE FROM webauthn_challenges
+    WHERE id = ${id} AND kind = ${kind} AND expires_at > NOW()
+    RETURNING *
+  `.catch(() => []);
+  return (rows[0] as Record<string, unknown>) || null;
+}
+
 async function rawHandler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return corsPreflight(req);
 
@@ -5512,6 +5658,316 @@ async function rawHandler(req: Request): Promise<Response> {
     // Auth-required helpers
     const token = bearer(req);
     const me = await getUser(token);
+
+    // ── Fingerprint / passkey login (WebAuthn) ─────────────
+    if (path === "/api/auth/webauthn/register/options" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role === "super_admin") {
+        return json({ error: "Super Admin uses password + authenticator sign-in." }, 403);
+      }
+      const body = await readBody(req);
+      let origin: string;
+      try {
+        origin = webauthnOrigin(body.origin);
+      } catch (e) {
+        return json({ error: (e as Error).message }, 400);
+      }
+      const rpID = webauthnRpId(origin);
+      const existing = await sql`
+        SELECT credential_id, transports FROM webauthn_credentials WHERE user_id = ${me.id}
+      `.catch(() => []);
+      try {
+        const options = await generateRegistrationOptions({
+          rpName: "Smart Survey X",
+          rpID,
+          userID: new TextEncoder().encode(String(me.id)),
+          userName: String(me.username || ""),
+          userDisplayName: String(me.name || me.username || ""),
+          attestationType: "none",
+          excludeCredentials: (existing as Record<string, unknown>[]).map((c) => ({
+            id: String(c.credential_id),
+            transports: webauthnTransports(c.transports),
+          })),
+          authenticatorSelection: {
+            residentKey: "preferred",
+            userVerification: "required",
+            authenticatorAttachment: "platform",
+          },
+        });
+        const flow_id = await createWebAuthnFlow({
+          userId: Number(me.id),
+          kind: "registration",
+          challenge: options.challenge,
+          origin,
+          rpId: rpID,
+        });
+        return json({ options, flow_id });
+      } catch (e) {
+        return json({
+          error: (e as Error).message || "Could not start fingerprint setup",
+        }, 400);
+      }
+    }
+
+    if (path === "/api/auth/webauthn/register/verify" && method === "POST") {
+      if (!me) return json({ error: "Login required" }, 401);
+      if (me.role === "super_admin") {
+        return json({ error: "Super Admin uses password + authenticator sign-in." }, 403);
+      }
+      const body = await readBody(req);
+      let origin: string;
+      try {
+        origin = webauthnOrigin(body.origin);
+      } catch (e) {
+        return json({ error: (e as Error).message }, 400);
+      }
+      const flow = await takeWebAuthnFlow(
+        String(body.flow_id || ""),
+        "registration",
+      );
+      if (
+        !flow ||
+        Number(flow.user_id) !== Number(me.id) ||
+        String(flow.origin) !== origin
+      ) {
+        return json({ error: "Fingerprint setup expired — start again." }, 400);
+      }
+      try {
+        const result = await verifyRegistrationResponse({
+          response: body.response as never,
+          expectedChallenge: String(flow.challenge),
+          expectedOrigin: origin,
+          expectedRPID: String(flow.rp_id),
+          requireUserVerification: true,
+        });
+        if (!result.verified || !result.registrationInfo) {
+          return json({ error: "Fingerprint could not be verified." }, 400);
+        }
+        const info = result.registrationInfo;
+        const cred = info.credential;
+        await sql`
+          INSERT INTO webauthn_credentials (
+            user_id, credential_id, public_key, counter, transports,
+            device_type, backed_up
+          ) VALUES (
+            ${me.id}, ${cred.id}, ${bytesToBase64Url(cred.publicKey)},
+            ${cred.counter || 0}, ${JSON.stringify(cred.transports || [])},
+            ${info.credentialDeviceType}, ${info.credentialBackedUp}
+          )
+          ON CONFLICT (credential_id) DO UPDATE SET
+            user_id = EXCLUDED.user_id,
+            public_key = EXCLUDED.public_key,
+            counter = EXCLUDED.counter,
+            transports = EXCLUDED.transports,
+            device_type = EXCLUDED.device_type,
+            backed_up = EXCLUDED.backed_up
+        `;
+        const countRows = await sql`
+          SELECT COUNT(*)::int AS n FROM webauthn_credentials WHERE user_id = ${me.id}
+        `.catch(() => []);
+        logAudit(me, "webauthn_register", "user", me.id, {});
+        return json({
+          ok: true,
+          enabled: true,
+          count: sqlCountN(countRows[0]),
+        });
+      } catch (e) {
+        return json({
+          error: (e as Error).message || "Fingerprint setup failed.",
+        }, 400);
+      }
+    }
+
+    if (path === "/api/auth/webauthn/login/options" && method === "POST") {
+      const ip = req.headers.get("x-forwarded-for") ||
+        req.headers.get("cf-connecting-ip") || "unknown";
+      if (!checkRateLimit(ip)) {
+        return json({ error: "Too many login attempts. Try again later." }, 429);
+      }
+      const body = await readBody(req);
+      const username = String(body.username || "").trim().toLowerCase();
+      if (!username) {
+        return json({ error: "Enter your username first, then use fingerprint." }, 400);
+      }
+      let origin: string;
+      try {
+        origin = webauthnOrigin(body.origin);
+      } catch (e) {
+        return json({ error: (e as Error).message }, 400);
+      }
+      const rpID = webauthnRpId(origin);
+      const userRows = await sql`
+        SELECT id, role, active FROM app_users WHERE LOWER(username) = ${username} LIMIT 1
+      `.catch(() => []);
+      const user = userRows[0] as
+        | { id?: number; role?: string; active?: boolean }
+        | undefined;
+      const userId =
+        user && user.active && user.role !== "super_admin"
+          ? Number(user.id)
+          : null;
+      const credRows = userId
+        ? await sql`
+            SELECT credential_id, transports
+            FROM webauthn_credentials WHERE user_id = ${userId}
+          `.catch(() => [])
+        : [];
+      try {
+        const options = await generateAuthenticationOptions({
+          rpID,
+          allowCredentials: (credRows as Record<string, unknown>[]).map((c) => ({
+            id: String(c.credential_id),
+            transports: webauthnTransports(c.transports),
+          })),
+          userVerification: "required",
+        });
+        const flow_id = await createWebAuthnFlow({
+          userId,
+          kind: "authentication",
+          challenge: options.challenge,
+          origin,
+          rpId: rpID,
+        });
+        return json({ options, flow_id });
+      } catch (e) {
+        return json({
+          error: (e as Error).message || "Could not start fingerprint sign-in",
+        }, 400);
+      }
+    }
+
+    if (path === "/api/auth/webauthn/login/verify" && method === "POST") {
+      const ip = req.headers.get("x-forwarded-for") ||
+        req.headers.get("cf-connecting-ip") || "unknown";
+      if (!checkRateLimit(ip)) {
+        return json({ error: "Too many login attempts. Try again later." }, 429);
+      }
+      const body = await readBody(req);
+      let origin: string;
+      try {
+        origin = webauthnOrigin(body.origin);
+      } catch (e) {
+        return json({ error: (e as Error).message }, 400);
+      }
+      const flow = await takeWebAuthnFlow(
+        String(body.flow_id || ""),
+        "authentication",
+      );
+      if (!flow || String(flow.origin) !== origin) {
+        return json({ error: "Fingerprint sign-in expired — try again." }, 400);
+      }
+      const userId = flow.user_id != null ? Number(flow.user_id) : null;
+      if (!userId) return json({ error: "Fingerprint sign-in failed." }, 401);
+      const response = body.response as Record<string, unknown> | undefined;
+      const responseId = String(response?.id || "");
+      if (!responseId) {
+        return json({ error: "Invalid fingerprint response." }, 400);
+      }
+      const credRows = await sql`
+        SELECT * FROM webauthn_credentials
+        WHERE user_id = ${userId} AND credential_id = ${responseId}
+        LIMIT 1
+      `.catch(() => []);
+      if (!credRows.length) {
+        return json({ error: "Fingerprint sign-in failed." }, 401);
+      }
+      const credential = credRows[0] as Record<string, unknown>;
+      try {
+        const result = await verifyAuthenticationResponse({
+          response: response as never,
+          expectedChallenge: String(flow.challenge),
+          expectedOrigin: origin,
+          expectedRPID: String(flow.rp_id),
+          credential: {
+            id: String(credential.credential_id),
+            publicKey: b64ToBytes(String(credential.public_key)),
+            counter: Number(credential.counter) || 0,
+            transports: webauthnTransports(credential.transports),
+          },
+          requireUserVerification: true,
+        });
+        if (!result.verified) {
+          return json({ error: "Fingerprint sign-in failed." }, 401);
+        }
+        await sql`
+          UPDATE webauthn_credentials
+          SET counter = ${result.authenticationInfo.newCounter}, last_used_at = NOW()
+          WHERE id = ${credential.id}
+        `.catch(() => null);
+        const rows = await sql`
+          SELECT * FROM app_users WHERE id = ${userId} LIMIT 1
+        `.catch(() => []);
+        const user = rows[0] as Record<string, unknown> | undefined;
+        if (!user || !sqlBool(user.active)) {
+          return json({ error: "Account is disabled." }, 403);
+        }
+        if (user.role === "super_admin") {
+          return json({
+            error: "Super Admin uses password + authenticator sign-in.",
+          }, 403);
+        }
+        const expectedRole = String(body.expected_role || "").trim().toLowerCase();
+        if (expectedRole === "surveyor" && user.role !== "surveyor") {
+          return json({ error: "This fingerprint is not a surveyor login." }, 403);
+        }
+        if (
+          expectedRole === "admin" &&
+          user.role !== "admin" &&
+          user.role !== "super_admin"
+        ) {
+          return json({ error: "Client Admin portal only." }, 403);
+        }
+        const sessionToken = newToken();
+        const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        await sql`
+          INSERT INTO app_sessions (token, user_id, expires_at)
+          VALUES (${sessionToken}, ${userId}, ${expires.toISOString()})
+        `;
+        logAudit(
+          {
+            id: Number(user.id),
+            username: String(user.username || ""),
+            role: String(user.role || ""),
+          },
+          "login_webauthn",
+          "user",
+          Number(user.id),
+          { expected_role: expectedRole || null },
+        );
+        return json({
+          token: sessionToken,
+          user: webauthnUserPayload(user),
+          expires_at: expires.toISOString(),
+          access:
+            user.role === "surveyor"
+              ? "surveyor_field_app"
+              : "client_admin_portal",
+          note: "Signed in with fingerprint / passkey",
+        });
+      } catch (e) {
+        return json({
+          error: (e as Error).message || "Fingerprint sign-in failed.",
+        }, 401);
+      }
+    }
+
+    if (path === "/api/auth/webauthn/credentials" && method === "GET") {
+      if (!me) return json({ error: "Login required" }, 401);
+      const rows = await sql`
+        SELECT id, created_at, last_used_at, device_type, backed_up
+        FROM webauthn_credentials
+        WHERE user_id = ${me.id}
+        ORDER BY id DESC
+      `.catch(() => []);
+      return json({ count: rows.length, items: rows });
+    }
+
+    if (path === "/api/auth/webauthn/credentials" && method === "DELETE") {
+      if (!me) return json({ error: "Login required" }, 401);
+      await sql`DELETE FROM webauthn_credentials WHERE user_id = ${me.id}`
+        .catch(() => null);
+      return json({ ok: true, count: 0 });
+    }
 
     // ── Offline field conversations (voice note + batch English translation) ──
     // The phone records and stores audio locally; when it has connectivity it

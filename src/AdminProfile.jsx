@@ -8,6 +8,7 @@ import {
   updateUser,
 } from './api'
 import CredentialsCard from './components/CredentialsCard'
+import FingerprintCard from './components/FingerprintCard'
 import { isNewerBuild } from './version'
 import ShareAppLink from './components/ShareAppLink'
 
@@ -291,6 +292,7 @@ export default function AdminProfileScreen({ user, onToast, onUserUpdated }) {
         />
 
         {isSuper && <SonioxKeyCard onToast={onToast} />}
+        {!isSuper && <FingerprintCard onToast={onToast} />}
 
         {!isSuper && (
           <div className="card" style={{ marginTop: 20 }}>

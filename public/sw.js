@@ -7,7 +7,7 @@
  * Not registered inside the Capacitor APK — the APK updates as a whole,
  * and a cached shell could serve stale assets after an app update.
  */
-const CACHE = 'giq-shell-v1';
+const CACHE = 'giq-shell-v2';
 const CORE = ['/', '/index.html'];
 
 self.addEventListener('install', (event) => {
@@ -37,10 +37,12 @@ self.addEventListener('fetch', (event) => {
       fetch(req)
         .then((res) => {
           const copy = res.clone();
-          caches.open(CACHE).then((cache) => cache.put('/index.html', copy)).catch(() => {});
+          // Cache under the real URL: / is the landing page, /admin and /field
+          // are the SPA shell. Never overwrite the SPA shell with the landing.
+          caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
           return res;
         })
-        .catch(() => caches.match('/index.html'))
+        .catch(async () => (await caches.match(req)) || caches.match('/index.html'))
     );
     return;
   }

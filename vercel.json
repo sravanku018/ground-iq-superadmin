@@ -1,4 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/", "has": [{ "type": "query", "key": "app", "value": "1" }], "destination": "/index.html" },
+    { "source": "/", "has": [{ "type": "query", "key": "admin", "value": "1" }], "destination": "/index.html" },
+    { "source": "/", "has": [{ "type": "query", "key": "super", "value": "1" }], "destination": "/index.html" },
+    { "source": "/", "has": [{ "type": "query", "key": "superadmin", "value": "1" }], "destination": "/index.html" },
+    { "source": "/", "destination": "/landing.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }

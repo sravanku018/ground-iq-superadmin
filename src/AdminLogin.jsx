@@ -1,5 +1,10 @@
 import { useState } from 'react'
 import { clearSession, login } from './api'
+import {
+  fingerprintError,
+  fingerprintLogin,
+  fingerprintSupported,
+} from './webauthn'
 import logoMark from './assets/logo-mark.png'
 
 /** Client Admin web portal login — clean form, no demo credentials.
@@ -10,7 +15,39 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
   const [totp, setTotp] = useState('')
   const [totpStep, setTotpStep] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [bioLoading, setBioLoading] = useState(false)
   const [error, setError] = useState('')
+  const bioAvailable = !superAdminOnly && fingerprintSupported()
+
+  async function handleFingerprint() {
+    setError('')
+    if (!username.trim()) {
+      const msg = 'Enter your username first, then use fingerprint.'
+      setError(msg)
+      onToast?.(msg, 'error')
+      return
+    }
+    setBioLoading(true)
+    try {
+      const data = await fingerprintLogin(username.trim(), 'admin')
+      const okRole =
+        data.user?.role === 'admin' || data.user?.role === 'super_admin'
+      if (!okRole) {
+        clearSession()
+        throw new Error('Client Admin portal only.')
+      }
+      onToast?.(`Welcome ${data.user.name}`, 'ok')
+      onSuccess?.(data.user)
+    } catch (e) {
+      const msg = e?.name
+        ? fingerprintError(e)
+        : e.message || 'Fingerprint sign-in failed'
+      setError(msg)
+      onToast?.(msg, 'error')
+    } finally {
+      setBioLoading(false)
+    }
+  }
 
   async function handleLogin(e) {
     e.preventDefault()
@@ -144,9 +181,26 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
               {error}
             </div>
           ) : null}
-          <button type="submit" className="btn primary" disabled={loading}>
+          <button type="submit" className="btn primary" disabled={loading || bioLoading}>
             {loading ? 'Signing in…' : totpStep ? 'Verify & sign in' : 'Sign in'}
           </button>
+          {bioAvailable ? (
+            <>
+              <button
+                type="button"
+                className="btn"
+                style={{ marginTop: 10 }}
+                onClick={handleFingerprint}
+                disabled={loading || bioLoading}
+              >
+                {bioLoading ? 'Waiting for fingerprint…' : '🔒 Sign in with fingerprint'}
+              </button>
+              <p className="muted" style={{ margin: '8px 0 0', fontSize: 11 }}>
+                Use your username and a fingerprint set up from Organization →
+                Fingerprint login.
+              </p>
+            </>
+          ) : null}
         </form>
 
         <div style={{ marginTop: 20, textAlign: 'center', borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
@@ -168,7 +222,7 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
             <>
               <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 8px' }}>Surveyor collecting field data?</p>
               <a
-                href="/?app=1"
+                href="/field"
                 className="btn secondary small"
                 style={{ display: 'inline-block', textDecoration: 'none', fontWeight: 600, padding: '8px 16px' }}
               >

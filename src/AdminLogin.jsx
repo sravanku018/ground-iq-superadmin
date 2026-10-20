@@ -23,6 +23,7 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
   const [loading, setLoading] = useState(false)
   const [bioLoading, setBioLoading] = useState(false)
   const [bioReady, setBioReady] = useState(false)
+  const [bioStatus, setBioStatus] = useState(null)
   const [passkeyLoading, setPasskeyLoading] = useState(false)
   const [error, setError] = useState('')
   const nativeBio = nativeBiometricSupported() && !superAdminOnly
@@ -33,7 +34,10 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
     let cancelled = false
     biometricStatus()
       .then((st) => {
-        if (!cancelled) setBioReady(!!st?.available && !!st?.hasToken)
+        if (!cancelled) {
+          setBioStatus(st || null)
+          setBioReady(!!st?.available && !!st?.hasToken)
+        }
       })
       .catch(() => {})
     return () => {
@@ -262,6 +266,13 @@ export default function AdminLogin({ onSuccess, onToast, superAdminOnly = false 
                 then enable it under Organization → Fingerprint / passkey.
               </p>
             </>
+          ) : null}
+          {nativeBio && bioStatus && !bioStatus.hasToken ? (
+            <p className="fl-lead" style={{ margin: '10px 0 0', fontSize: 11 }}>
+              {bioStatus.available
+                ? 'Fingerprint unlock is not set up yet. Sign in with your password once, then enable it in Profile → Fingerprint unlock.'
+                : 'No fingerprint is enrolled on this phone. Add one in Android Settings, then enable fingerprint unlock in Profile.'}
+            </p>
           ) : null}
         </form>
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { nativeBiometricSupported } from '../nativeBiometric'
 import {
   enableWebPasskey,
   getPasskeyStatus,
@@ -12,6 +13,7 @@ import {
  * native fingerprint unlock is used instead.
  */
 export default function PasskeyCard({ onToast }) {
+  const isNative = nativeBiometricSupported()
   const supported = webPasskeySupported()
   const [count, setCount] = useState(null)
   const [loading, setLoading] = useState(supported)
@@ -34,7 +36,21 @@ export default function PasskeyCard({ onToast }) {
     void load()
   }, [load])
 
-  if (!supported) return null
+  if (isNative) return null
+  if (!supported) {
+    return (
+      <div className="card" style={{ marginTop: 16, padding: 16 }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700 }}>
+          Fingerprint / passkey (web)
+        </h3>
+        <p className="muted" style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}>
+          This browser does not support fingerprint/passkey login. Use Chrome,
+          Edge, or Safari over HTTPS. The Android APK has native fingerprint
+          unlock with no passkey.
+        </p>
+      </div>
+    )
+  }
 
   async function enable() {
     setBusy(true)

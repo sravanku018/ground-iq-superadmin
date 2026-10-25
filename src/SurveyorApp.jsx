@@ -1672,14 +1672,16 @@ export default function SurveyorApp() {
 
   // Detect when the Client Admin confirms new records → notify the surveyor.
   // Must live below `notify` — the deps array reads it during render.
+  // Watches `confirmed`, NOT `done`: done counts pending records too, so it
+  // never moves when an admin confirms and the toast would never fire.
   useEffect(() => {
     if (!myProgress) return
-    const done = Number(myProgress.done ?? myProgress.done_count ?? 0)
-    if (!Number.isFinite(done)) return
+    const confirmed = Number(myProgress.confirmed ?? myProgress.done ?? 0)
+    if (!Number.isFinite(confirmed)) return
     const prev = lastConfirmedRef.current
-    lastConfirmedRef.current = done
+    lastConfirmedRef.current = confirmed
     if (prev == null) return // first load, don't notify
-    const diff = done - prev
+    const diff = confirmed - prev
     if (diff > 0) {
       notify(
         diff === 1

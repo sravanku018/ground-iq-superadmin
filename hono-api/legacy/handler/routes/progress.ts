@@ -10,6 +10,7 @@ import {
   readBody,
 } from "../lib/http.ts";
 import {
+  countConfirmedForUser,
   countDoneByFormKeyForUser,
   countDoneForUser,
   progressStatus,
@@ -93,12 +94,18 @@ export async function handleProgress(c: Ctx): Promise<Response | null> {
     const status = progressStatus(done, target);
     const withTargets = perSurveyTargets.filter((s) => s.target > 0);
     const complete = withTargets.length > 0 && withTargets.every((s) => s.complete);
+    const confirmed = await countConfirmedForUser({
+      id: u.id,
+      username: u.username,
+      display_name: u.display_name,
+    });
     return json({
       user_id: u.id,
       username: u.username,
       name: u.display_name || u.username,
       target,
       done,
+      confirmed,
       remaining,
       pct,
       status,

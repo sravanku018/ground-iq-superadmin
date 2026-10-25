@@ -256,6 +256,37 @@ def publish_github_apk(new_v, apk_path, on_line, *, as_latest=True):
     return ok
 
 
+def refresh_hosted_apk(on_line):
+    """After the GitHub release is live, make the VPS cache and the Cloudflare
+    R2 mirror serve the new APK immediately (no waiting for a phone request).
+    The service restart clears the 10-min GitHub-version cache so the fresh
+    release is guaranteed to be seen."""
+    import time as _time
+    vps_key = ROOT_DIR.parent / "vps oracle" / "id_ed25519"
+    base = "https://162.35.96.65.sslip.io"
+    if vps_key.exists():
+        on_line("==> Restart API (clears release cache)…")
+        stream_cmd(
+            ["ssh", "-i", str(vps_key), "-o", "ConnectTimeout=10",
+             "root@162.35.96.65", "systemctl restart smart-survey-x"],
+            on_line,
+        )
+        _time.sleep(3)
+    on_line("==> Refresh VPS APK cache + Cloudflare mirror…")
+    stream_cmd(["curl", "-sk", "-o", "/dev/null", f"{base}/api/app-version"], lambda l: None)
+    stream_cmd(["curl", "-sk", "-o", "/dev/null", f"{base}/api/app.apk"], lambda l: None)
+    _time.sleep(2)
+    out = subprocess.run(
+        ["curl", "-sk", f"{base}/api/app-version"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    try:
+        info = json.loads(out)
+        on_line(f"Live advert: v{info.get('version')} (code {info.get('versionCode')}) → {info.get('apkUrl')}")
+    except Exception:
+        on_line("Advert check: " + (out[:200] or "no response"))
+
+
 def auto_tag_and_upload(new_v, apk_path, on_line, *, as_latest=True):
     """Git tag + GitHub Release APK (what Check for updates downloads)."""
     tag = version_tag(new_v)
@@ -450,6 +481,7 @@ def launch_tk():
             if do_tag and apk_ok and dest:
                 log("==> Git tag + GitHub Release APK (Latest)…")
                 auto_tag_and_upload(new_v, dest, log, as_latest=True)
+                refresh_hosted_apk(log)
 
             log("Done.")
             extra = f" · GitHub v{new_v}" if do_tag and apk_ok else ""
@@ -803,13 +835,16 @@ def main():
                 return
         if want_push:
             git_push(target, code, print)
+            push_vps(print)
         if dest and release and want_push:
             auto_tag_and_upload(target, dest, print, as_latest=True)
+            refresh_hosted_apk(print)
         return
 
     if "--push-only" in args or "--push" in args:
         v, c = get_current_version()
         git_push(v, c, print)
+        push_vps(print)
         return
 
     launch_tk()

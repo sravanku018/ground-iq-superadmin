@@ -55,6 +55,41 @@ export async function countDoneForUser(u: {
   return n;
 }
 
+/**
+ * Records a Client Admin has actually confirmed. `done` (above) counts pending
+ * too, so it never moves when an admin confirms — the surveyor notification
+ * must watch this number instead.
+ */
+export async function countConfirmedForUser(u: {
+  id: number;
+  username: string;
+  name?: string;
+  display_name?: string;
+}): Promise<number> {
+  if (!sql) return 0;
+  const uid = String(u.id);
+  const uname = u.username;
+  const dname = u.name || u.display_name || uname;
+  const rows = await sql`
+        SELECT COUNT(*)::int AS n
+        FROM submissions
+        WHERE (
+             payload->>'user_id' = ${uid}
+          OR payload->>'submitted_by' = ${uname}
+          OR payload->>'submitted_by' = ${dname}
+          OR payload->'answers'->>'data_collector' = ${uname}
+          OR payload->'answers'->>'data_collector' = ${dname}
+        )
+          AND COALESCE(payload->>'source', '') NOT IN ('web-survey', 'web')
+          AND payload->>'status' = 'confirmed'
+          AND COALESCE(payload->>'draft', 'false') NOT IN ('true', 't', '1')
+          AND COALESCE(payload->'answers'->>'_draft', 'false') NOT IN ('true', 't', '1')
+          AND COALESCE(payload->'answers'->>'draft', 'false') NOT IN ('true', 't', '1')
+          AND COALESCE(payload->>'content_type', '') <> 'draft'
+      `.catch(() => []);
+  return rows.length ? Number((rows[0] as { n?: number }).n) || 0 : 0;
+}
+
 export function progressStatus(done: number, target: number) {
   if (!target || target <= 0) {
     return done > 0 ? "in_progress" : "no_target";

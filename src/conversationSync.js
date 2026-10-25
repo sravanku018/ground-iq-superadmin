@@ -11,12 +11,14 @@ import {
   getConversationRecord,
   getStoredUser,
   getToken,
+  listConversations,
   transcribeConversation,
 } from './api'
 import {
   conversationNeedsWork,
   getConversationLocal,
   listConversationsLocal,
+  saveConversationLocal,
   updateConversationLocal,
 } from './conversationStore'
 import { checkNetwork, isUsableForSync, watchNetwork } from './network'
@@ -191,6 +193,68 @@ async function withLock(fn) {
   return fn()
 }
 
+/**
+ * Download the surveyor's server-side history into the local store.
+ * The sync used to be upload-only, so conversations recorded on another
+ * device (or before a reinstall) never appeared on this phone — the history
+ * screen reads local storage only. Also refreshes transcripts the server
+ * finished translating. Returns how many rows were added/updated.
+ */
+async function pullServerConversations() {
+  if (!getToken()) return 0
+  try {
+    const res = await listConversations({ limit: 200 })
+    const items = Array.isArray(res?.items) ? res.items : []
+    if (!items.length) return 0
+    const local = await listConversationsLocal()
+    const byServerId = new Map(
+      local.filter((c) => c.serverId).map((c) => [String(c.serverId), c]),
+    )
+    let changed = 0
+    for (const s of items) {
+      const sid = String(s.id)
+      const existing = byServerId.get(sid)
+      if (existing) {
+        const serverDone = s.transcript_status === 'completed'
+        if (serverDone && existing.transcriptStatus !== 'completed') {
+          await updateConversationLocal(existing.id, {
+            transcript: s.transcript || '',
+            transcriptOriginal: s.transcript_original || '',
+            transcriptStatus: 'completed',
+            lastError: '',
+            attempts: 0,
+            nextAttemptAt: 0,
+          })
+          changed += 1
+        }
+        continue
+      }
+      // Recorded elsewhere — insert as a server-backed item. Audio is not
+      // downloaded; the screen streams it from the API on demand.
+      await saveConversationLocal({
+        id: `srv_${sid}`,
+        userId: s.user_id ?? null,
+        userName: s.submitted_by || s.username || '',
+        title: s.title || '',
+        formKey: s.form_key || '',
+        recordedAt: s.recorded_at || s.created_at || new Date().toISOString(),
+        durationMs: s.duration_ms || 0,
+        audioDataUrl: '',
+        audioMime: s.audio_mime || 'audio/webm',
+        transcript: s.transcript || '',
+        transcriptOriginal: s.transcript_original || '',
+        transcriptStatus: s.transcript_status || 'stored',
+        serverId: sid,
+        status: 'sent',
+      })
+      changed += 1
+    }
+    return changed
+  } catch {
+    return 0
+  }
+}
+
 /** Process pending conversations FIFO. Manual runs bypass backoff/network gates. */
 export async function drainConversations(opts = {}) {
   if (running) return { skipped: true, reason: 'busy' }
@@ -227,38 +291,42 @@ async function runDrain(manual) {
         new Date(a.recordedAt || a.createdAt || 0).getTime() -
         new Date(b.recordedAt || b.createdAt || 0).getTime(),
     )
-  if (!pending.length) {
-    emit({ type: 'conversation-empty' })
-    return { skipped: true, reason: 'empty' }
-  }
-
-  emit({ type: 'conversation-drain-start', count: pending.length })
   let ok = 0
   let fail = 0
-  for (const c of pending) {
-    if (!manual) {
-      if ((c.attempts || 0) >= MAX_ATTEMPTS) continue
-      if (c.nextAttemptAt && c.nextAttemptAt > Date.now()) continue
+  if (!pending.length) {
+    emit({ type: 'conversation-empty' })
+  } else {
+    emit({ type: 'conversation-drain-start', count: pending.length })
+    for (const c of pending) {
+      if (!manual) {
+        if ((c.attempts || 0) >= MAX_ATTEMPTS) continue
+        if (c.nextAttemptAt && c.nextAttemptAt > Date.now()) continue
+      }
+      try {
+        await syncOneConversation(c.id)
+        ok += 1
+      } catch (e) {
+        fail += 1
+        const kind = classifyError(e)
+        const attempts = (c.attempts || 0) + 1
+        await updateConversationLocal(c.id, {
+          status: c.serverId ? 'sent' : 'local',
+          lastError: e?.message || 'Sync failed',
+          attempts,
+          nextAttemptAt: Date.now() + backoffMs(attempts),
+        }).catch(() => null)
+        emit({ type: 'conversation-error', id: c.id, error: e?.message || 'Sync failed' })
+        if (kind === 'auth') break
+      }
     }
-    try {
-      await syncOneConversation(c.id)
-      ok += 1
-    } catch (e) {
-      fail += 1
-      const kind = classifyError(e)
-      const attempts = (c.attempts || 0) + 1
-      await updateConversationLocal(c.id, {
-        status: c.serverId ? 'sent' : 'local',
-        lastError: e?.message || 'Sync failed',
-        attempts,
-        nextAttemptAt: Date.now() + backoffMs(attempts),
-      }).catch(() => null)
-      emit({ type: 'conversation-error', id: c.id, error: e?.message || 'Sync failed' })
-      if (kind === 'auth') break
-    }
+    emit({ type: 'conversation-drain-done', ok, fail })
   }
-  emit({ type: 'conversation-drain-done', ok, fail })
-  return { ok, fail }
+
+  // Pull the server-side history so recordings from other devices (and
+  // finished transcripts) appear on this phone too.
+  const pulled = await pullServerConversations()
+  if (pulled > 0) emit({ type: 'conversation-pulled', count: pulled })
+  return { ok, fail, pulled }
 }
 
 export function triggerConversationSync() {

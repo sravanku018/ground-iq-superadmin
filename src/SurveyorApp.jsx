@@ -1613,24 +1613,6 @@ export default function SurveyorApp() {
     if (myProgress) writeCache(CACHE_PROGRESS, myProgress)
   }, [myProgress])
 
-  // Detect when the Client Admin confirms new records → notify the surveyor.
-  useEffect(() => {
-    if (!myProgress) return
-    const done = Number(myProgress.done ?? myProgress.done_count ?? 0)
-    if (!Number.isFinite(done)) return
-    const prev = lastConfirmedRef.current
-    lastConfirmedRef.current = done
-    if (prev == null) return // first load, don't notify
-    const diff = done - prev
-    if (diff > 0) {
-      notify(
-        diff === 1
-          ? '✓ 1 record confirmed by admin'
-          : `✓ ${diff} records confirmed by admin`,
-        'ok',
-      )
-    }
-  }, [myProgress, notify])
   useEffect(() => {
     if (questionsMeta) writeCache(CACHE_QUESTIONS, questionsMeta)
   }, [questionsMeta])
@@ -1687,6 +1669,26 @@ export default function SurveyorApp() {
     toastTimer.current = window.setTimeout(() => setToast(null), 3200)
   }, [])
   useEffect(() => () => window.clearTimeout(toastTimer.current), [])
+
+  // Detect when the Client Admin confirms new records → notify the surveyor.
+  // Must live below `notify` — the deps array reads it during render.
+  useEffect(() => {
+    if (!myProgress) return
+    const done = Number(myProgress.done ?? myProgress.done_count ?? 0)
+    if (!Number.isFinite(done)) return
+    const prev = lastConfirmedRef.current
+    lastConfirmedRef.current = done
+    if (prev == null) return // first load, don't notify
+    const diff = done - prev
+    if (diff > 0) {
+      notify(
+        diff === 1
+          ? '✓ 1 record confirmed by admin'
+          : `✓ ${diff} records confirmed by admin`,
+        'ok',
+      )
+    }
+  }, [myProgress, notify])
 
   const refreshConversationPending = useCallback(async () => {
     try {

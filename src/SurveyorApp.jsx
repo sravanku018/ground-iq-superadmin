@@ -1672,80 +1672,6 @@ export default function SurveyorApp() {
   }, [])
   useEffect(() => () => window.clearTimeout(toastTimer.current), [])
 
-  // Server event feed → real system notifications (tray + lock screen,
-  // stays until dismissed): record confirmations with the record numbers and
-  // survey names the surveyor recognises, new survey assignments, and
-  // finished conversation transcriptions. Toast only as fallback.
-  // Must live below `notify` — the deps array reads it during render.
-  useEffect(() => {
-    if (!engineOn) return undefined
-    let cancelled = false
-
-    const summarize = (items) => {
-      const confirms = items.filter((e) => e.type === 'record_confirmed')
-      const assigned = items.filter((e) => e.type === 'survey_assigned')
-      const conversations = items.filter((e) => e.type === 'conversation_ready')
-      if (confirms.length) {
-        const bySurvey = new Map()
-        for (const c of confirms) {
-          const list = bySurvey.get(c.survey) || []
-          list.push(c)
-          bySurvey.set(c.survey, list)
-        }
-        const lines = [...bySurvey.entries()].map(([survey, list]) => {
-          const nos = list.map((c) => c.record_no).filter((n) => n != null).sort((a, b) => a - b)
-          const which = nos.length === 0
-            ? ''
-            : nos.length === 1
-              ? ` · record #${nos[0]}`
-              : ` · records #${nos[0]}–#${nos[nos.length - 1]}`
-          return `✓ ${list.length} record${list.length > 1 ? 's' : ''} confirmed${which} · ${survey}`
-        })
-        void systemNotify('Smart Survey X', lines.join('\n')).then((ok) => {
-          if (!ok) notify(lines.join(' · '), 'ok')
-        })
-      }
-      if (assigned.length) {
-        const names = assigned.map((e) => e.survey).join(', ')
-        void systemNotify('New survey assigned', names)
-      }
-      if (conversations.length) {
-        void systemNotify(
-          'Voice notes transcribed',
-          `${conversations.length} conversation${conversations.length > 1 ? 's' : ''} ready in Converse history`,
-        )
-      }
-    }
-
-    const check = async (first) => {
-      try {
-        const after = first || !lastEventAtRef.current
-          ? new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
-          : lastEventAtRef.current
-        const res = await getMyEvents(after)
-        if (cancelled || !Array.isArray(res?.items)) return
-        if (res.items.length) {
-          summarize(res.items)
-          lastEventAtRef.current = res.items[res.items.length - 1].at
-        } else if (res.now) {
-          lastEventAtRef.current = res.now
-        }
-      } catch {
-        /* offline — retried on the next tick */
-      }
-    }
-
-    void check(true)
-    const interval = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
-      void check(false)
-    }, 30_000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [engineOn, notify])
-
   const refreshConversationPending = useCallback(async () => {
     try {
       const rows = await listConversationsLocal()
@@ -1949,6 +1875,80 @@ export default function SurveyorApp() {
     }, 30_000)
     return () => clearInterval(interval)
   }, [engineOn])
+
+  // Server event feed → real system notifications (tray + lock screen,
+  // stays until dismissed): record confirmations with the record numbers and
+  // survey names the surveyor recognises, new survey assignments, and
+  // finished conversation transcriptions. Toast only as fallback.
+  // Must live below `notify` — the deps array reads it during render.
+  useEffect(() => {
+    if (!engineOn) return undefined
+    let cancelled = false
+
+    const summarize = (items) => {
+      const confirms = items.filter((e) => e.type === 'record_confirmed')
+      const assigned = items.filter((e) => e.type === 'survey_assigned')
+      const conversations = items.filter((e) => e.type === 'conversation_ready')
+      if (confirms.length) {
+        const bySurvey = new Map()
+        for (const c of confirms) {
+          const list = bySurvey.get(c.survey) || []
+          list.push(c)
+          bySurvey.set(c.survey, list)
+        }
+        const lines = [...bySurvey.entries()].map(([survey, list]) => {
+          const nos = list.map((c) => c.record_no).filter((n) => n != null).sort((a, b) => a - b)
+          const which = nos.length === 0
+            ? ''
+            : nos.length === 1
+              ? ` · record #${nos[0]}`
+              : ` · records #${nos[0]}–#${nos[nos.length - 1]}`
+          return `✓ ${list.length} record${list.length > 1 ? 's' : ''} confirmed${which} · ${survey}`
+        })
+        void systemNotify('Smart Survey X', lines.join('\n')).then((ok) => {
+          if (!ok) notify(lines.join(' · '), 'ok')
+        })
+      }
+      if (assigned.length) {
+        const names = assigned.map((e) => e.survey).join(', ')
+        void systemNotify('New survey assigned', names)
+      }
+      if (conversations.length) {
+        void systemNotify(
+          'Voice notes transcribed',
+          `${conversations.length} conversation${conversations.length > 1 ? 's' : ''} ready in Converse history`,
+        )
+      }
+    }
+
+    const check = async (first) => {
+      try {
+        const after = first || !lastEventAtRef.current
+          ? new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
+          : lastEventAtRef.current
+        const res = await getMyEvents(after)
+        if (cancelled || !Array.isArray(res?.items)) return
+        if (res.items.length) {
+          summarize(res.items)
+          lastEventAtRef.current = res.items[res.items.length - 1].at
+        } else if (res.now) {
+          lastEventAtRef.current = res.now
+        }
+      } catch {
+        /* offline — retried on the next tick */
+      }
+    }
+
+    void check(true)
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+      void check(false)
+    }, 30_000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [engineOn, notify])
 
   const loadAppData = useCallback(async () => {
     if (!getToken()) return

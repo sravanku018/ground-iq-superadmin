@@ -1,13 +1,17 @@
 import { useMemo, useState } from 'react'
 import Icon from '../Icons'
-import { apkDownloadUrl, fieldAppShareText, fieldAppUrl } from '../api'
+import { apkDownloadUrl, fieldAppUrl } from '../api'
+import useAppRelease from '../useAppRelease'
 
 async function copyText(text) {
   await navigator.clipboard.writeText(text)
 }
 
 export default function ShareAppLink({ onToast }) {
-  const apkLink = useMemo(() => apkDownloadUrl(), [])
+  // Live release from the API — the APK link follows the Cloudflare mirror
+  // automatically whenever a new version is published.
+  const release = useAppRelease()
+  const apkLink = release?.apkUrl || apkDownloadUrl()
   const pwaLink = useMemo(() => fieldAppUrl(), [])
   const [copied, setCopied] = useState('')
 
@@ -23,7 +27,7 @@ export default function ShareAppLink({ onToast }) {
   }
 
   async function shareApk() {
-    const text = fieldAppShareText()
+    const text = `Smart Survey X — Android app${release ? ` (v${release.version})` : ''}\n${apkLink}`
     try {
       if (typeof navigator.share === 'function') {
         await navigator.share({ title: 'Smart Survey X', text, url: apkLink })
@@ -103,7 +107,7 @@ export default function ShareAppLink({ onToast }) {
             🤖 Android APK (Direct Installer)
           </strong>
           <span style={{ fontSize: 10, background: '#e2e8f0', color: '#475569', fontWeight: 600, padding: '2px 8px', borderRadius: 999 }}>
-            Standalone APK
+            {release ? `v${release.version} · Cloudflare CDN` : 'Standalone APK'}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>

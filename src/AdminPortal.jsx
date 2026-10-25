@@ -17,6 +17,7 @@ import {
   me,
 } from './api'
 import ShareAppLink from './components/ShareAppLink'
+import useAppRelease from './useAppRelease'
 import QuotaIndicator from './components/QuotaIndicator'
 import AdminLogin from './AdminLogin'
 import VerifiedBadge from './VerifiedBadge'
@@ -1091,6 +1092,8 @@ function DataList({ items, loading, onRefresh, surveys, surveyFilter, onSurveyCh
 }
 
 export default function AdminPortal({ superAdminOnly = false }) {
+  // Live APK release — sidebar download link follows the Cloudflare mirror.
+  const appRelease = useAppRelease()
   const [user, setUser] = useState(() => {
     const u = getStoredUser()
     return u &&
@@ -1607,8 +1610,8 @@ export default function AdminPortal({ superAdminOnly = false }) {
             <a className="portal-link" href={fieldAppUrl()} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }} title="Open surveyor app / PWA in browser">
               <Icon name="smartphone" size={14} />PWA App ↗
             </a>
-            <a className="portal-link" href={apkDownloadUrl()} target="_blank" rel="noreferrer" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }} title="Download Android APK">
-              <Icon name="download" size={14} />Download APK ↗
+            <a className="portal-link" href={appRelease?.apkUrl || apkDownloadUrl()} target="_blank" rel="noreferrer" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }} title={`Download Android APK${appRelease ? ` v${appRelease.version}` : ''} (Cloudflare CDN)`}>
+              <Icon name="download" size={14} />Download APK{appRelease ? ` · v${appRelease.version}` : ''} ↗
             </a>
           </div>
           <button type="button" className="btn small danger" onClick={handleLogout}>

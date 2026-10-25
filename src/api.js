@@ -683,6 +683,11 @@ export function apkDownloadUrl() {
   return `${getApiBase()}/api/app.apk`
 }
 
+/** Live release advert — version + Cloudflare-mirrored APK URL. */
+export function getAppRelease() {
+  return request('/api/app-version')
+}
+
 /** Shareable field-app URL. Always the Client Admin / field site, never Super Admin. */
 export function fieldAppUrl() {
   const u = new URL(fieldWebOrigin())

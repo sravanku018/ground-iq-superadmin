@@ -13,7 +13,8 @@ import {
 
 // ── WebAuthn (fingerprint / passkey) ─────────────────────
 export const WEBAUTHN_DEFAULT_ORIGINS = [
-  "https://ground-iq-web-lake.vercel.app",
+  "https://smartsurveyx.com",
+  "https://www.smartsurveyx.com",
   "https://sravanku018.github.io",
   "http://localhost:5173",
   "http://localhost:4173",

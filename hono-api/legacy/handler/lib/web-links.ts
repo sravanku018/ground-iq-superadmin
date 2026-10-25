@@ -13,7 +13,7 @@ export function newWebFillToken(): string {
 }
 
 /** Public fill page — field Vercel app, survey name in the path, never Super Admin. */
-export const CANONICAL_FIELD_APP = "https://ground-iq-web-lake.vercel.app/";
+export const CANONICAL_FIELD_APP = "https://www.smartsurveyx.com/";
 
 export function publicWebFillUrl(formKey: string, token: string): string {
   const slug = String(formKey || "")

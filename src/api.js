@@ -614,7 +614,7 @@ export function createWebSurvey({ form_key, form_id, submitted_by, answers }) {
 }
 
 /** Field / public-fill site on Vercel — never Super Admin, never current portal origin. */
-const CANONICAL_FIELD_APP = 'https://ground-iq-web-lake.vercel.app/'
+const CANONICAL_FIELD_APP = 'https://www.smartsurveyx.com/'
 
 function fieldWebOrigin() {
   return CANONICAL_FIELD_APP

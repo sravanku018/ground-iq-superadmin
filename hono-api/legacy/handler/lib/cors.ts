@@ -3,8 +3,8 @@
 // The Android WebView origin is https://localhost (androidScheme: "https").
 // ALLOWED_ORIGINS env (comma-separated) is merged with the defaults, not a replace.
 export const DEFAULT_ALLOWED_ORIGINS = [
-  "https://ground-iq-web-lake.vercel.app",
-  "https://ground-iq-superadmin.vercel.app",
+  "https://smartsurveyx.com",
+  "https://www.smartsurveyx.com",
   "https://sravanku018.github.io",
   "https://localhost",
   "http://localhost",
@@ -31,12 +31,7 @@ export function originIsAllowed(origin: string): boolean {
   const host = u.hostname;
   if (host === "localhost" || host === "127.0.0.1") return true;
   if (host === "sravanku018.github.io") return true;
-  if (
-    host.endsWith(".vercel.app") &&
-    (host.startsWith("ground-iq-web") || host.startsWith("ground-iq-superadmin"))
-  ) {
-    return true;
-  }
+  if (host === "smartsurveyx.com" || host === "www.smartsurveyx.com") return true;
   return false;
 }
 

@@ -88,12 +88,16 @@ function quotasPayload(ids, quotas, fallback) {
   const seed = defaultSurveyQuota(fallback)
   const multi = (ids || []).length >= 2
   for (const id of ids || []) {
-    const n = Number(quotas?.[String(id)])
-    if (Number.isFinite(n) && (multi ? n > 0 : true)) {
-      out[String(id)] = clampSurveyQuota(n)
-    } else {
-      out[String(id)] = multi ? seed : fb
+    if (!multi) {
+      // Single survey: the per-survey stepper is hidden, so the visible
+      // "Target quota" input is the editor. A value seeded into `quotas`
+      // when the editor opened must never override what was just typed —
+      // that was exactly why saving a new quota did nothing.
+      out[String(id)] = fb
+      continue
     }
+    const n = Number(quotas?.[String(id)])
+    out[String(id)] = Number.isFinite(n) && n > 0 ? clampSurveyQuota(n) : seed
   }
   return out
 }
@@ -2299,7 +2303,7 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
                       />
                     </label>
                     <label className="field compact" style={{ margin: 0 }}>
-                      <span style={{ fontSize: 11 }}>Default target (used when a survey has no quota yet)</span>
+                      <span style={{ fontSize: 11 }}>Target quota — with one survey this is its quota; with 2+ edit per survey below</span>
                       <input
                         type="number"
                         min={0}

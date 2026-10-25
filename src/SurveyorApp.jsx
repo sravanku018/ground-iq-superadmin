@@ -69,7 +69,7 @@ const VERIFY_PENDING_MSG =
   'Surveyor profile verification is pending. Client Admin must verify your profile before you can open Home or collect.'
 
 /** Catch ReferenceError / render crashes so a tab does not go fully blank. */
-class ScreenErrorBoundary extends Component {
+export class ScreenErrorBoundary extends Component {
   constructor(props) {
     super(props)
     this.state = { hasError: false, error: null }
@@ -313,7 +313,9 @@ function HomeScreen({
   onSync,
   onSyncConversations,
 }) {
-  const assignedSurveys = questionsMeta?.surveys || []
+  // Cached data survives app upgrades — an older build may have stored
+  // `surveys` as a non-array, and .some/.map on it would crash the app.
+  const assignedSurveys = Array.isArray(questionsMeta?.surveys) ? questionsMeta.surveys : []
   const progressSurveys = Array.isArray(myProgress?.surveys) ? myProgress.surveys : []
   const stacked = progressSurveys.length
     ? progressSurveys.map((s) => {
@@ -861,9 +863,9 @@ function SurveyorProfileScreen({
         <div className="keychip">
           Key ID: {user?.key_id || `GROUND-KEY-${String(user?.id || '0000').padStart(4, '0')}`}
         </div>
-        {(questionsMeta?.surveys || []).length > 0 && (
+        {Array.isArray(questionsMeta?.surveys) && questionsMeta.surveys.length > 0 && (
           <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
-            {(questionsMeta.surveys || []).map((s) => (
+            {questionsMeta.surveys.map((s) => (
               <span
                 key={s.form_key || s.id || s.title}
                 className={`pill ${s.voice_required ? 'warn' : 'ok'}`}
@@ -1575,7 +1577,19 @@ function writeCache(key, value) {
   }
 }
 
-export default function SurveyorApp() {
+export default function SurveyorAppRoot() {
+  // Root boundary: the five screens have their own boundaries, but a crash
+  // in an app-level effect, the header or the nav unmounted the whole tree
+  // and left a white screen. This way any crash shows a readable error card
+  // with a reload button instead.
+  return (
+    <ScreenErrorBoundary title="App" onReset={() => window.location.reload()}>
+      <SurveyorApp />
+    </ScreenErrorBoundary>
+  )
+}
+
+function SurveyorApp() {
   // Render instantly from the last session/data, then revalidate in the
   // background. Waiting for /api/auth/me before first paint made every open
   // take seconds on a weak field connection.
@@ -2211,7 +2225,7 @@ export default function SurveyorApp() {
   useEffect(() => {
     if (!user) return
     const key = `esurvey_converse_enabled_${user.id}`
-    const surveys = questionsMeta?.surveys || []
+    const surveys = Array.isArray(questionsMeta?.surveys) ? questionsMeta.surveys : []
     const surveyVoice =
       questionsMeta?.voice_required === true ||
       surveys.some((s) => s?.voice_required === true)

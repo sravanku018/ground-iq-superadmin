@@ -2,14 +2,17 @@
 
 Mobile app for Telangana election field surveys.
 
-- **API:** Deno Deploy → Neon PostgreSQL  
+- **API:** Oracle VPS (Deno systemd service → PostgreSQL 18.6, database `smart_survey_x`)  
 - **UI:** React + Capacitor Android  
 
 API is fixed in the app (no URL settings):
 
 ```
-https://jazzy-crocodile-7790.sravanku018.deno.net
+https://162.35.96.65.sslip.io
 ```
+
+(Deno Deploy is retired — the old `jazzy-crocodile-7790` / `ground-iq-api`
+deno.net URLs are dead. `hono-api/README.md` has the deploy steps.)
 
 ## Install APK
 
@@ -71,4 +74,4 @@ npm install
 npm run dev
 ```
 
-Uses the same Deno API by default.
+Uses the VPS API by default (`src/api.js` → `https://162.35.96.65.sslip.io`).

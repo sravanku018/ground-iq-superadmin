@@ -2,7 +2,7 @@
 /**
  * Push package.json version into:
  *   - Android build.gradle (versionName + versionCode)
- *   - the API's /api/app-version metadata (hono-api/legacy/handler.ts), which is
+ *   - the API's /api/app-version metadata (hono-api/legacy/handler/lib/apk.ts), which is
  *     what installed apps read to decide whether a newer release exists.
  * Usage:
  *   node scripts/sync-version.mjs           # sync only
@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const pkgPath = path.join(root, 'package.json')
 const gradlePath = path.join(root, 'android', 'app', 'build.gradle')
-const apiHandlerPath = path.join(root, 'hono-api', 'legacy', 'handler.ts')
+const apiHandlerPath = path.join(root, 'hono-api', 'legacy', 'handler', 'lib', 'apk.ts')
 
 function parseSemver(v) {
   const m = String(v).trim().match(/^(\d+)\.(\d+)\.(\d+)/)
@@ -75,7 +75,7 @@ if (fs.existsSync(apiHandlerPath)) {
   const versionRe = /(\bversion:\s*")\d+\.\d+\.\d+(")/
   const versionCodeRe = /(\bversionCode:\s*)\d+/
   if (!versionRe.test(api) || !versionCodeRe.test(api)) {
-    console.error('Could not find version/versionCode in hono-api/legacy/handler.ts')
+    console.error('Could not find version/versionCode in hono-api/legacy/handler/lib/apk.ts')
     process.exit(1)
   }
   api = api.replace(versionRe, `$1${version}$2`)
@@ -83,7 +83,7 @@ if (fs.existsSync(apiHandlerPath)) {
   fs.writeFileSync(apiHandlerPath, api)
   console.log(`Synced API: version=${version} versionCode=${versionCode}`)
 } else {
-  console.warn('hono-api/legacy/handler.ts not found — API version not synced')
+  console.warn('hono-api/legacy/handler/lib/apk.ts not found — API version not synced')
 }
 
 console.log(`package.json version=${version} versionCode=${versionCode}`)

@@ -561,7 +561,7 @@ export async function exportSubmissions(filters = {}) {
 }
 
 export function getGeoSummary() {
-  return request('/api/admin/geo-summary')
+  return request('/api/analytics?group_by=geo')
 }
 
 export function uploadSurveys(rows, { source, form_id } = {}) {

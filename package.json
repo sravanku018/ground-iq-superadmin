@@ -1,7 +1,7 @@
 {
   "name": "neondbapp",
   "private": true,
-  "version": "2.0.102",
+  "version": "2.0.103",
   "versionCode": 20099,
   "type": "module",
   "scripts": {

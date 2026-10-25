@@ -1593,6 +1593,7 @@ export default function SurveyorApp() {
   const [pendingSync, setPendingSync] = useState(() => queueCount())
   const [conversationPending, setConversationPending] = useState(0)
   const [myProgress, setMyProgress] = useState(() => readCache(CACHE_PROGRESS))
+  const lastConfirmedRef = useRef(null)
   const [questionsMeta, setQuestionsMeta] = useState(() => readCache(CACHE_QUESTIONS))
   const [converseEnabled, setConverseEnabled] = useState(false)
   const [serverVoice, setServerVoice] = useState(null)
@@ -1611,6 +1612,25 @@ export default function SurveyorApp() {
   useEffect(() => {
     if (myProgress) writeCache(CACHE_PROGRESS, myProgress)
   }, [myProgress])
+
+  // Detect when the Client Admin confirms new records → notify the surveyor.
+  useEffect(() => {
+    if (!myProgress) return
+    const done = Number(myProgress.done ?? myProgress.done_count ?? 0)
+    if (!Number.isFinite(done)) return
+    const prev = lastConfirmedRef.current
+    lastConfirmedRef.current = done
+    if (prev == null) return // first load, don't notify
+    const diff = done - prev
+    if (diff > 0) {
+      notify(
+        diff === 1
+          ? '✓ 1 record confirmed by admin'
+          : `✓ ${diff} records confirmed by admin`,
+        'ok',
+      )
+    }
+  }, [myProgress, notify])
   useEffect(() => {
     if (questionsMeta) writeCache(CACHE_QUESTIONS, questionsMeta)
   }, [questionsMeta])
@@ -1790,8 +1810,12 @@ export default function SurveyorApp() {
         return s
       })
     }, { intervalMs: 60_000 })
-    startSyncEngine()
-    startConversationSync()
+    // Delay background sync engines so their health-check round-trips do not
+    // compete with the parallel startup data loading above (~600ms per call).
+    const engineDelay = setTimeout(() => {
+      startSyncEngine()
+      startConversationSync()
+    }, 5000)
     void refreshConversationPending()
     setPendingSync(queueCount())
     void refreshQueueCountCache()
@@ -1805,17 +1829,6 @@ export default function SurveyorApp() {
         setDraftsCount((s.drafts ?? 0) + (s.pending ?? 0))
       })
     void refreshDraftCount()
-    void getSurveyForm()
-      .then((data) => {
-        setQuestionsMeta({
-          title: data.title,
-          count: (data.questions || []).length,
-          questions: data.questions,
-          surveys: data.surveys || [],
-          updated_at: data.updated_at,
-        })
-      })
-      .catch(() => {})
 
     const offSync = onSyncEngine((ev) => {
       if (ev.type === 'drain-done') {
@@ -1857,6 +1870,7 @@ export default function SurveyorApp() {
     window.addEventListener('esurvey-conversation-change', onConversations)
 
     return () => {
+      clearTimeout(engineDelay)
       stopNet()
       offSync()
       offConversations()
@@ -1866,6 +1880,17 @@ export default function SurveyorApp() {
       stopConversationSync()
     }
   }, [engineOn, notify, refreshConversationPending])
+
+  // Poll for admin confirmations every 30s while the app is visible.
+  // Detects when a Client Admin confirms records and notifies the surveyor.
+  useEffect(() => {
+    if (!engineOn) return undefined
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+      getMyProgress().then(setMyProgress).catch(() => {})
+    }, 30_000)
+    return () => clearInterval(interval)
+  }, [engineOn])
 
   const loadAppData = useCallback(async () => {
     if (!getToken()) return
@@ -1914,7 +1939,25 @@ export default function SurveyorApp() {
         return
       }
       try {
-        const data = await me()
+        // Fire every startup call in parallel. Sequential round-trips on a
+        // high-latency link (each ~600ms) made Home take 2-3s to show real data.
+        const [data, prog, form, convCfg] = await Promise.all([
+          me(),
+          getMyProgress().catch(() => null),
+          getSurveyForm().catch(() => null),
+          getConversationConfig().catch(() => null),
+        ])
+        if (!cancelled && prog) setMyProgress(prog)
+        if (!cancelled && form) {
+          setQuestionsMeta({
+            title: form.title,
+            count: (form.questions || []).length,
+            questions: form.questions,
+            surveys: form.surveys || [],
+            updated_at: form.updated_at,
+          })
+        }
+        if (!cancelled && convCfg) setServerVoice(convCfg?.voice_enabled === true)
         const role = data.user?.role
         // Field app: only surveyor accounts created by Client Admin
         if (role !== 'surveyor') {
@@ -2037,8 +2080,15 @@ export default function SurveyorApp() {
     }
   }, [userId, authReady, notify])
 
+  const startupLoadedRef = useRef(false)
   useEffect(() => {
-    if (user && authReady) loadAppData()
+    if (user && authReady) {
+      // The startup effect already fetched this data in parallel; only
+      // re-fetch on pull-to-refresh (loadAppData is called explicitly).
+      if (startupLoadedRef.current) return
+      startupLoadedRef.current = true
+      loadAppData()
+    }
   }, [user, authReady, loadAppData])
 
   useEffect(() => {

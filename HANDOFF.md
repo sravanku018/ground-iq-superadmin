@@ -2,6 +2,12 @@
 
 Other CLI / next session: this is the state after 27 Aug 2026. Do **not** paste `main.ts` into Deno Playground. Do **not** point the app back at `jazzy-crocodile-7790`.
 
+**2026-10-24 update:** the API no longer runs on Deno Deploy at all. It runs on
+the Oracle VPS as the `smart-survey-x` systemd service (port 8000 behind Caddy)
+against **PostgreSQL 18.6** (`smart_survey_x`), served at
+`https://162.35.96.65.sslip.io`. `src/api.js` already points there. Everything
+below about the GitHub → Deno Deploy flow is historical.
+
 ## Live API (GitHub → Deno, no paste)
 
 | | |

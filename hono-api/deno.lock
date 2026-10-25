@@ -3,8 +3,9 @@
   "specifiers": {
     "npm:@neondatabase/serverless@0.10.4": "0.10.4",
     "npm:@simplewebauthn/server@14.0.3": "14.0.3",
-    "npm:hono@4": "4.13.5",
-    "npm:postgres@3.4.5": "3.4.5"
+    "npm:hono@^4.13.13": "4.13.13",
+    "npm:postgres@3.4.5": "3.4.5",
+    "npm:postgres@3.4.9": "3.4.9"
   },
   "npm": {
     "@hexagon/base64@1.1.28": {
@@ -202,8 +203,8 @@
         "tslib@2.8.1"
       ]
     },
-    "hono@4.13.5": {
-      "integrity": "sha512-O6+/eCYRkzzzy0rPWwKLiGBR1nFuUPZynnwjxN1MBA62NNqbT0wQEzQyK2gSO5yDIDB336sXQleAhOHrzlYyKw=="
+    "hono@4.13.13": {
+      "integrity": "sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA=="
     },
     "obuf@1.1.2": {
       "integrity": "sha512-PX1wu0AmAdPqOL1mWhqmlOd8kOIZQwGZw6rh7uby9fTc5lhaOWFLX3I6R1hrF9k3zUY40e6igsLGkDXK92LJNg=="
@@ -250,6 +251,9 @@
     "postgres@3.4.5": {
       "integrity": "sha512-cDWgoah1Gez9rN3H4165peY9qfpEo+SA61oQv65O3cRUE1pOEoJWwddwcqKE8XZYjbblOJlYDlLV4h67HrEVDg=="
     },
+    "postgres@3.4.9": {
+      "integrity": "sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw=="
+    },
     "pvtsutils@1.3.6": {
       "integrity": "sha512-PLgQXQ6H2FWCaeRak8vvk1GW462lMxB5s3Jm673N82zI4vqtVUPuZdffdZbPDFRoU8kAhItWFtPCWiPpp4/EDg==",
       "dependencies": [
@@ -280,7 +284,7 @@
   },
   "workspace": {
     "dependencies": [
-      "npm:hono@4"
+      "npm:hono@^4.13.13"
     ]
   }
 }

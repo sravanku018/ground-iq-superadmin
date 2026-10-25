@@ -36,7 +36,7 @@ PACKAGE_JSON = ROOT_DIR / "package.json"
 PACKAGE_LOCK = ROOT_DIR / "package-lock.json"
 BUILD_GRADLE = ROOT_DIR / "android" / "app" / "build.gradle"
 DENO_MAIN = ROOT_DIR / "deno-deploy" / "main.ts"
-HONO_HANDLER = ROOT_DIR / "hono-api" / "legacy" / "handler.ts"
+HONO_HANDLER = ROOT_DIR / "hono-api" / "legacy" / "handler" / "lib" / "apk.ts"
 HONO_DIR = ROOT_DIR / "hono-api"
 API_REPO = "https://github.com/sravanku018/ground-iq-api.git"
 GITHUB_WEB_REPO = "sravanku018/ground-iq-web"
@@ -136,9 +136,9 @@ def update_files(new_version, new_code):
             content = re.sub(r'version:\s*["\'][^"\']+["\']', f'version: "{new_version}"', content, count=1)
             content = re.sub(r"versionCode:\s*\d+", f"versionCode: {new_code}", content, count=1)
             HONO_HANDLER.write_text(content, encoding="utf-8")
-            logs.append("Updated hono-api/legacy/handler.ts /api/app-version")
+            logs.append("Updated hono-api/legacy/handler/lib/apk.ts /api/app-version")
     except Exception as e:
-        logs.append(f"Failed hono-api handler: {e}")
+        logs.append(f"Failed hono-api apk.ts: {e}")
 
     return logs
 

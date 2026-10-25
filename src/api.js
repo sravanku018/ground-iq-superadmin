@@ -688,6 +688,11 @@ export function getAppRelease() {
   return request('/api/app-version')
 }
 
+/** Surveyor event feed: confirmations (with record IDs), assignments, transcriptions. */
+export function getMyEvents(after = '') {
+  return request(`/api/my/events${after ? `?after=${encodeURIComponent(after)}` : ''}`)
+}
+
 /** Shareable field-app URL. Always the Client Admin / field site, never Super Admin. */
 export function fieldAppUrl() {
   const u = new URL(fieldWebOrigin())

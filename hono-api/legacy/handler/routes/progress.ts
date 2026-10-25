@@ -16,6 +16,9 @@ import {
   progressStatus,
 } from "../lib/progress.ts";
 import {
+  isoStamp,
+} from "../lib/time.ts";
+import {
   listAssignedSurveys,
 } from "../lib/survey-assignments.ts";
 import {
@@ -119,6 +122,82 @@ export async function handleProgress(c: Ctx): Promise<Response | null> {
           ? `${done} / ${target} records · ${status}`
           : `${done} records (no target set)`,
     });
+  }
+
+  // ── Surveyor event feed: what happened since the last check ──────────────
+  // Drives the surveyor's system notifications: record confirmations (with
+  // the record numbers and survey titles the surveyor recognises), new survey
+  // assignments, and finished conversation transcriptions.
+  if (path === "/api/my/events" && method === "GET") {
+    if (!me) return json({ error: "Login required" }, 401);
+    const url = new URL(req.url);
+    const afterParam = String(url.searchParams.get("after") || "").trim();
+    // Missing/invalid cursor → last 12h catch-up window, so a fresh install
+    // summarizes the day without dragging a year of rows.
+    const after = /^\d{4}-\d{2}-\d{2}T/.test(afterParam)
+      ? new Date(afterParam)
+      : new Date(Date.now() - 12 * 60 * 60 * 1000);
+    const afterIso = after.toISOString();
+    const uid = String(me.id);
+    const uname = me.username;
+    const dname = (me as { display_name?: string }).display_name || uname;
+
+    const confirms = await sql`
+        SELECT s.payload->>'confirmed_at' AS at,
+               s.payload->>'record_index' AS record_no,
+               s.payload->>'confirmed_by' AS confirmed_by,
+               f.title AS survey_title,
+               f.form_key AS form_key
+        FROM submissions s
+        LEFT JOIN survey_form f ON f.form_key = s.payload->>'form_key'
+        WHERE (s.payload->>'user_id' = ${uid}
+            OR s.payload->>'submitted_by' = ${uname}
+            OR s.payload->>'submitted_by' = ${dname})
+          AND s.payload->>'status' = 'confirmed'
+          AND s.payload->>'confirmed_at' IS NOT NULL
+          AND s.payload->>'confirmed_at' > ${afterIso}
+        ORDER BY s.payload->>'confirmed_at' ASC
+        LIMIT 100
+      `.catch(() => []);
+    const assignments = await sql`
+        SELECT a.created_at AS at, f.title AS survey_title
+        FROM survey_assignments a
+        JOIN survey_form f ON f.id = a.survey_id
+        WHERE a.user_id = ${Number(me.id)} AND a.created_at > ${afterIso}
+        ORDER BY a.created_at ASC
+        LIMIT 20
+      `.catch(() => []);
+    const transcribed = await sql`
+        SELECT id, title, updated_at AS at
+        FROM conversations
+        WHERE user_id = ${Number(me.id)}
+          AND transcript_status = 'completed'
+          AND updated_at > ${afterIso}
+        ORDER BY updated_at ASC
+        LIMIT 20
+      `.catch(() => []);
+
+    const items = [
+      ...(confirms as Record<string, unknown>[]).map((r) => ({
+        type: "record_confirmed",
+        at: isoStamp(r.at),
+        record_no: Number(r.record_no) || null,
+        survey: String(r.survey_title || r.form_key || "survey"),
+        by: r.confirmed_by ? String(r.confirmed_by) : "",
+      })),
+      ...(assignments as Record<string, unknown>[]).map((r) => ({
+        type: "survey_assigned",
+        at: isoStamp(r.at),
+        survey: String(r.survey_title || "New survey"),
+      })),
+      ...(transcribed as Record<string, unknown>[]).map((r) => ({
+        type: "conversation_ready",
+        at: isoStamp(r.at),
+        survey: String(r.title || "Conversation"),
+      })),
+    ].sort((a, b) => String(a.at).localeCompare(String(b.at)));
+
+    return json({ items, count: items.length, now: new Date().toISOString() });
   }
 
   if (path === "/api/progress" && method === "GET") {

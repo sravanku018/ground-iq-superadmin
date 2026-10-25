@@ -4,6 +4,9 @@ import {
 import {
   json,
 } from "./http.ts";
+import {
+  uploadToCloudflareR2,
+} from "./r2-media.ts";
 
 export const GITHUB_RELEASE_APK =
   "https://github.com/sravanku018/ground-iq-web/releases/latest/download/ElectionSurvey-release.apk";
@@ -40,6 +43,8 @@ export type ApkRelease = {
   sha256?: string;
   size?: number;
   publishedAt?: string;
+  /** Cloudflare R2 copy of this exact version (set once mirrored), else unset. */
+  mirrorUrl?: string;
 };
 
 /** "2.0.83" → 20083, "2.0.106" → 200106 — patch keeps 3 digits so codes never collapse. */
@@ -60,6 +65,7 @@ export async function readApkSidecar(): Promise<ApkRelease | null> {
       sha256: typeof m?.sha256 === "string" ? m.sha256 : undefined,
       size: Number(m?.size) || undefined,
       publishedAt: typeof m?.publishedAt === "string" ? m.publishedAt : undefined,
+      mirrorUrl: typeof m?.mirrorUrl === "string" ? m.mirrorUrl : undefined,
     };
   } catch {
     return null; // absent or unreadable — the caller falls back
@@ -121,9 +127,39 @@ export async function refreshApkCache(): Promise<boolean> {
     if (!isZipApk(buf)) return false;
     await Deno.writeFile(LOCAL_APK_PATHS[0], buf);
     await writeApkSidecar(buf);
+    await mirrorApkToR2(buf);
     return true;
   } catch {
     return false;
+  }
+}
+
+/** Object key for the Cloudflare R2 copy served to phones at the edge. */
+export const R2_APK_OBJECT_KEY = Deno.env.get("R2_APK_KEY") || "releases/app.apk";
+
+/**
+ * Push the APK to Cloudflare R2 and stamp the sidecar. Phones then download
+ * from Cloudflare's edge instead of this VPS; falls back silently when R2
+ * is not configured. Returns the public mirror URL, or null.
+ */
+export async function mirrorApkToR2(bytes: Uint8Array<ArrayBuffer>): Promise<string | null> {
+  try {
+    const r2 = await uploadToCloudflareR2(
+      bytes,
+      "application/vnd.android.package-archive",
+      R2_APK_OBJECT_KEY,
+    );
+    if (!r2?.url) return null;
+    const m = await readApkSidecar();
+    if (m) {
+      await Deno.writeTextFile(
+        APK_SIDECAR_PATH,
+        JSON.stringify({ ...m, mirrorUrl: r2.url }, null, 2) + "\n",
+      );
+    }
+    return r2.url;
+  } catch {
+    return null;
   }
 }
 
@@ -189,6 +225,7 @@ export async function proxyPublishedApk(method: string, cache: boolean): Promise
   if (cache) {
     Deno.writeFile(LOCAL_APK_PATHS[0], buf).catch(() => null);
     await writeApkSidecar(buf);
+    mirrorApkToR2(buf).catch(() => null); // edge copy, not blocking the phone
   }
   return apkFileResponse(method, buf);
 }
@@ -219,6 +256,9 @@ export async function serveAppApk(method: string): Promise<Response> {
             console.error(`apk: ${p} (${file.byteLength}B) does not match manifest ${manifest.version} (${manifest.size}B)`);
             continue;
           }
+          // A cache without an edge copy yet (e.g. mirrored code just deployed)
+          // heals itself on the first download.
+          if (!manifest.mirrorUrl) mirrorApkToR2(file).catch(() => null);
           return apkFileResponse(method, file);
         } catch {
           /* try next path */

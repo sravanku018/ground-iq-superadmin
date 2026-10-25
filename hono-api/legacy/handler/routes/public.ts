@@ -71,7 +71,8 @@ export async function handlePublic(c: Ctx): Promise<Response | null> {
         version: release.version,
         versionCode: release.versionCode,
         minSupportedVersionCode: APP_RELEASE.minSupportedVersionCode,
-        apkUrl: `https://${req.headers.get("x-forwarded-host") || url.hostname}/api/app.apk`,
+        apkUrl: release.mirrorUrl ||
+          `https://${req.headers.get("x-forwarded-host") || url.hostname}/api/app.apk`,
         apkDebugUrl: `https://github.com/${GITHUB_REPO}/releases/latest/download/ElectionSurvey-debug.apk`,
         releaseUrl: `https://github.com/${GITHUB_REPO}/releases/latest`,
         changelog: "In-app APK install, voice only when Super Admin/Client Admin requires it, IST timestamps.",

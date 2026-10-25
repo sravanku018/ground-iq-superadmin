@@ -28,6 +28,7 @@ import FieldCollectScreen from './FieldCollect'
 import ConversationsScreen from './ConversationsScreen'
 import { startConversationSync, stopConversationSync, onConversationSync, triggerConversationSync } from './conversationSync'
 import { conversationNeedsWork, listConversationsLocal } from './conversationStore'
+import { enableSystemNotifications, systemNotify } from './systemNotify'
 import PullToRefresh from './PullToRefresh'
 import {
   collapseDuplicateDrafts,
@@ -1670,10 +1671,12 @@ export default function SurveyorApp() {
   }, [])
   useEffect(() => () => window.clearTimeout(toastTimer.current), [])
 
-  // Detect when the Client Admin confirms new records → notify the surveyor.
+  // Detect when the Client Admin confirms new records → real system
+  // notification (tray + lock screen, stays until dismissed); the toast is
+  // only a fallback when notifications are unavailable.
   // Must live below `notify` — the deps array reads it during render.
   // Watches `confirmed`, NOT `done`: done counts pending records too, so it
-  // never moves when an admin confirms and the toast would never fire.
+  // never moves when an admin confirms and the alert would never fire.
   useEffect(() => {
     if (!myProgress) return
     const confirmed = Number(myProgress.confirmed ?? myProgress.done ?? 0)
@@ -1683,12 +1686,13 @@ export default function SurveyorApp() {
     if (prev == null) return // first load, don't notify
     const diff = confirmed - prev
     if (diff > 0) {
-      notify(
+      const body =
         diff === 1
           ? '✓ 1 record confirmed by admin'
-          : `✓ ${diff} records confirmed by admin`,
-        'ok',
-      )
+          : `✓ ${diff} records confirmed by admin`
+      void systemNotify('Smart Survey X', body).then((ok) => {
+        if (!ok) notify(body, 'ok')
+      })
     }
   }, [myProgress, notify])
 
@@ -2085,6 +2089,14 @@ export default function SurveyorApp() {
   }, [userId, authReady, notify])
 
   const startupLoadedRef = useRef(false)
+  // Ask for notification permission once per login — Android 13+ shows a
+  // system prompt, web shows the browser prompt. Tapping Allow is all it takes.
+  const notifPermissionRef = useRef(false)
+  useEffect(() => {
+    if (!user || notifPermissionRef.current) return
+    notifPermissionRef.current = true
+    void enableSystemNotifications()
+  }, [user])
   useEffect(() => {
     if (user && authReady) {
       // The startup effect already fetched this data in parallel; only

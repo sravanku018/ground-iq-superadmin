@@ -841,9 +841,9 @@ function SurveyorProfileScreen({
               boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
               border: '1px solid #e2e8f0',
             }}
-            title={user?.verified ? 'Photo locked' : 'Upload photo'}
+            title={user?.verified ? 'Verified — details are managed by your admin' : 'Upload photo'}
           >
-            {user?.verified ? '🔒' : uploading.photo ? '…' : '📷'}
+            {uploading.photo ? '…' : '📷'}
             {!user?.verified && (
               <input
                 type="file"
@@ -882,7 +882,7 @@ function SurveyorProfileScreen({
       {/* Phone Card */}
       <div className="idcard">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h4>📞 Phone {user?.verified ? '🔒' : ''}</h4>
+          <h4>📞 Phone</h4>
           {!user?.verified && !editingPhone && (
             <button
               type="button"
@@ -934,7 +934,7 @@ function SurveyorProfileScreen({
 
       {/* Aadhaar Card with Compact Tiles */}
       <div className="idcard">
-        <h4>🪪 Aadhaar Identity {user?.verified ? '🔒' : ''}</h4>
+        <h4>🪪 Aadhaar Identity</h4>
         <p style={{ margin: '2px 0 0' }}>
           {user?.verified ? 'Verified documents locked' : 'Upload front & back to verify'}
         </p>

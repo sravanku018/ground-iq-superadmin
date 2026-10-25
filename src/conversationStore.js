@@ -127,6 +127,9 @@ export async function saveConversationLocal(input = {}) {
     attempts: input.attempts ?? existing?.attempts ?? 0,
     lastError: input.lastError ?? existing?.lastError ?? '',
     nextAttemptAt: input.nextAttemptAt ?? existing?.nextAttemptAt ?? 0,
+    // One-shot guard so the "transcribing…" tray notification posts once per
+    // conversation, not on every sync tick until it finishes.
+    processingNotified: input.processingNotified ?? existing?.processingNotified ?? false,
   }
 
   try {

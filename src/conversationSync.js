@@ -22,6 +22,7 @@ import {
   updateConversationLocal,
 } from './conversationStore'
 import { checkNetwork, isUsableForSync, watchNetwork } from './network'
+import { systemNotify } from './systemNotify'
 
 const TICK_MS = 45_000
 const MAX_ATTEMPTS = 8
@@ -75,6 +76,22 @@ function conversationLabel(c) {
   return c?.title || 'Voice conversation'
 }
 
+/**
+ * Tray notification while translation runs, once per conversation. The
+ * completion side posts "Voice notes transcribed" when the server finishes,
+ * so the pair brackets the whole wait.
+ */
+async function notifyProcessingOnce(c) {
+  if (!c || c.processingNotified) return
+  const ok = await systemNotify(
+    'Smart Survey X',
+    `🎙 "${conversationLabel(c)}" is translating to English — we will notify you when it's ready`,
+  )
+  if (ok) {
+    await updateConversationLocal(c.id, { processingNotified: true }).catch(() => null)
+  }
+}
+
 async function saveServerConversation(id, conv, patch = {}) {
   const existing = await getConversationLocal(id)
   const serverId = conv?.id ?? existing?.serverId ?? null
@@ -108,6 +125,12 @@ export async function syncOneConversation(id) {
   let c = await getConversationLocal(id)
   if (!c) return { skipped: true }
 
+  // Already on the server but the phone re-opened before translation
+  // finished — announce it once so the tray shows work in progress.
+  if (c.serverId && c.transcriptStatus !== 'completed') {
+    await notifyProcessingOnce(c)
+  }
+
   // 1) Upload the audio once (idempotent by local_id on the server).
   if (!c.serverId) {
     if (!c.audioDataUrl) {
@@ -135,6 +158,7 @@ export async function syncOneConversation(id) {
       lastError: '',
     })
     emit({ type: 'conversation-uploaded', id, serverId: conv.id })
+    await notifyProcessingOnce(c)
   }
 
   // 2) Ask the server to translate (safe to repeat; it reuses the stored audio).

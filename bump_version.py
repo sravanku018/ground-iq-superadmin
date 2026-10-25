@@ -317,6 +317,23 @@ def git_push_api(on_line):
     stream_cmd(["git", "-C", str(clone), "push", "origin", "main"], on_line)
 
 
+def push_vps(on_line):
+    """Deploy the API to the Oracle VPS (same as push_vps.py --service survey)."""
+    import shlex
+    vps_dir = ROOT_DIR.parent / "vps oracle"
+    script = vps_dir / "push_vps.py"
+    if not script.exists():
+        on_line("VPS push script not found: " + str(script))
+        return False
+    on_line("==> Deploying API to VPS…")
+    ok = stream_cmd(
+        [sys.executable, str(script), "--cli", "--service", "survey", "--skip-diff"],
+        on_line,
+    )
+    on_line("VPS deploy done." if ok else "VPS deploy failed.")
+    return ok
+
+
 def git_push(new_v, new_c, on_line):
     git_push_websites(f"Bump version to v{new_v} (versionCode {new_c})", on_line)
     git_push_api(on_line)
@@ -428,6 +445,7 @@ def launch_tk():
             if do_push:
                 log("==> Git: Client Admin + Super Admin + API…")
                 git_push(new_v, new_c, log)
+                push_vps(log)
 
             if do_tag and apk_ok and dest:
                 log("==> Git tag + GitHub Release APK (Latest)…")

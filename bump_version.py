@@ -57,7 +57,7 @@ def semver_to_code(version_str):
     major = int(parts[0]) if len(parts) > 0 and parts[0] else 0
     minor = int(parts[1]) if len(parts) > 1 and parts[1] else 0
     patch = int(parts[2]) if len(parts) > 2 and parts[2] else 0
-    return major * 10000 + minor * 100 + min(patch, 99)
+    return major * 100000 + minor * 1000 + min(patch, 999)
 
 
 def bump_patch(v_str):

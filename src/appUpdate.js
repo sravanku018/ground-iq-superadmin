@@ -73,7 +73,7 @@ export async function checkForAppUpdate(options = { ignoreDismissed: false }) {
           version: tag,
           versionCode: (() => {
             const p = tag.split(".").map((n) => Number(n) || 0)
-            return (p[0] || 0) * 10000 + (p[1] || 0) * 100 + Math.min(p[2] || 0, 99)
+            return (p[0] || 0) * 100000 + (p[1] || 0) * 1000 + Math.min(p[2] || 0, 999)
           })(),
           apkUrl: apkAsset ? apkAsset.browser_download_url : defaultApkUrl(),
           releaseUrl: latest.html_url || `https://github.com/${GITHUB_REPO}/releases/latest`,

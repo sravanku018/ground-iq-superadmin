@@ -27,7 +27,7 @@ function parseSemver(v) {
 
 function toVersionCode({ major, minor, patch }) {
   // 1.6.2 → 10602 (max patch 99)
-  return major * 10000 + minor * 100 + Math.min(patch, 99)
+  return major * 100000 + minor * 1000 + Math.min(patch, 999)
 }
 
 function bump(ver, kind) {

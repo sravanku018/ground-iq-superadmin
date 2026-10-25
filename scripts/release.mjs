@@ -81,7 +81,7 @@ function nextVersion(version, bump) {
 
 function versionCodeFor(version) {
   const [major, minor, patch] = version.split('.').map(Number)
-  return major * 10000 + minor * 100 + Math.min(patch, 99)
+  return major * 100000 + minor * 1000 + Math.min(patch, 999)
 }
 
 // ---------------------------------------------------------------- preflight

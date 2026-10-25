@@ -42,10 +42,10 @@ export type ApkRelease = {
   publishedAt?: string;
 };
 
-/** "2.0.83" → 20083, matching scripts/sync-version.mjs and src/appUpdate.js. */
+/** "2.0.83" → 20083, "2.0.106" → 200106 — patch keeps 3 digits so codes never collapse. */
 export function versionCodeFromSemver(v: string): number {
   const p = String(v || "").replace(/^v/, "").split(".").map((n) => Number(n) || 0);
-  return (p[0] || 0) * 10000 + (p[1] || 0) * 100 + Math.min(p[2] || 0, 99);
+  return (p[0] || 0) * 100000 + (p[1] || 0) * 1000 + Math.min(p[2] || 0, 999);
 }
 
 export async function readApkSidecar(): Promise<ApkRelease | null> {
@@ -66,7 +66,7 @@ export async function readApkSidecar(): Promise<ApkRelease | null> {
   }
 }
 
-export let ghLatestCache: { version: string; at: number } | null = null;
+export let ghLatestCache: { version: string | null; at: number } | null = null;
 
 /** Latest published GitHub release tag — the trusted artifact when no manifest exists. */
 export async function githubLatestVersion(): Promise<string | null> {
@@ -89,19 +89,46 @@ export async function githubLatestVersion(): Promise<string | null> {
 }
 
 /**
- * What a client will actually receive: the published APK's manifest when it
- * exists, else the latest published release, else this build's compiled number.
+ * What a client will actually receive. The published release outranks the
+ * on-disk cache — without that check the VPS froze at whatever release was
+ * current when the cache was first written (2.0.89 for a week while GitHub
+ * moved to 2.0.10x) because nothing ever invalidated the manifest.
  */
 export async function servedApkRelease(): Promise<ApkRelease> {
   const sidecar = await readApkSidecar();
-  if (sidecar) return sidecar;
   const gh = await githubLatestVersion();
-  if (gh) return { version: gh, versionCode: versionCodeFromSemver(gh) };
+  const ghCode = gh ? versionCodeFromSemver(gh) : 0;
+  if (gh && ghCode > 0 && (!sidecar || ghCode > sidecar.versionCode)) {
+    if (sidecar) refreshApkCache().catch(() => null); // warm the file cache
+    return { version: gh, versionCode: ghCode };
+  }
+  if (sidecar) return sidecar;
   return { version: APP_RELEASE.version, versionCode: APP_RELEASE.versionCode };
 }
 
+/** Re-download the published APK so the cached file and manifest match the release. */
+export async function refreshApkCache(): Promise<boolean> {
+  try {
+    const upstream = await fetch(GITHUB_RELEASE_APK, {
+      redirect: "follow",
+      headers: {
+        "User-Agent": "Mozilla/5.0 SmartSurveyX-APK",
+        Accept: "application/vnd.android.package-archive,application/octet-stream,*/*",
+      },
+    });
+    if (!upstream.ok) return false;
+    const buf = new Uint8Array(await upstream.arrayBuffer());
+    if (!isZipApk(buf)) return false;
+    await Deno.writeFile(LOCAL_APK_PATHS[0], buf);
+    await writeApkSidecar(buf);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Persist the manifest for the APK we just cached, so advert and file agree. */
-export async function writeApkSidecar(bytes: Uint8Array): Promise<void> {
+export async function writeApkSidecar(bytes: Uint8Array<ArrayBuffer>): Promise<void> {
   try {
     const gh = await githubLatestVersion();
     const version = gh || APP_RELEASE.version;
@@ -136,7 +163,7 @@ export function isZipApk(bytes: Uint8Array): boolean {
   return bytes.length > 100_000 && bytes[0] === 0x50 && bytes[1] === 0x4b;
 }
 
-export function apkFileResponse(method: string, file: Uint8Array): Response {
+export function apkFileResponse(method: string, file: Uint8Array<ArrayBuffer>): Response {
   if (method === "HEAD") {
     return new Response(null, { status: 200, headers: apkHeaders(file.byteLength) });
   }
@@ -170,6 +197,16 @@ export async function proxyPublishedApk(method: string, cache: boolean): Promise
 export async function serveAppApk(method: string): Promise<Response> {
   try {
     const manifest = await readApkSidecar();
+    const gh = await githubLatestVersion();
+    const ghCode = gh ? versionCodeFromSemver(gh) : 0;
+
+    // Cache behind the published release → refresh before serving so phones
+    // never download yesterday's build just because a cache file exists.
+    if (manifest && gh && ghCode > manifest.versionCode) {
+      const fresh = await proxyPublishedApk(method, true);
+      if (fresh.status === 200) return fresh;
+      console.error("apk: refresh from the release failed — serving the cached copy");
+    }
 
     if (manifest) {
       // A published manifest makes the on-disk APK trustworthy — and its size

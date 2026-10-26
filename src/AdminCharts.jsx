@@ -61,7 +61,107 @@ function Card({ title, subtitle, children, height = 300 }) {
   )
 }
 
-function FilterBar({ surveys, users, questions, filters, setFilters, onApply, loading, onReset, selectedQids, setSelectedQids, chartCount, setChartCount }) {
+/** Renders one question's answer distribution in the chosen chart type. */
+function QuestionChart({ q, type }) {
+  const rows = q.rows
+  const gradId = `qg_${String(q.id).replace(/[^a-zA-Z0-9]/g, '')}`
+  if (type === 'pie' || type === 'donut') {
+    return (
+      <PieChart>
+        <Tooltip contentStyle={tooltipStyle} />
+        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Pie
+          data={rows}
+          dataKey="count"
+          nameKey="name"
+          innerRadius={type === 'donut' ? 48 : 0}
+          outerRadius={92}
+          paddingAngle={type === 'donut' ? 3 : 0}
+          strokeWidth={2}
+          label={(e) => `${e.name}: ${e.value}`}
+        >
+          {rows.map((_, i) => <Cell key={i} fill={C[i % C.length]} />)}
+        </Pie>
+      </PieChart>
+    )
+  }
+  if (type === 'radar') {
+    return (
+      <RadarChart data={rows} outerRadius="74%">
+        <PolarGrid stroke="#e2e8f0" />
+        <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: '#475569' }} />
+        <PolarRadiusAxis tick={false} axisLine={false} />
+        <Tooltip contentStyle={tooltipStyle} />
+        <Radar name="Responses" dataKey="count" stroke={C[0]} fill={C[0]} fillOpacity={0.35} />
+      </RadarChart>
+    )
+  }
+  if (type === 'radial') {
+    const radial = rows.map((r, i) => ({ ...r, fill: C[i % C.length] }))
+    return (
+      <RadialBarChart data={radial} innerRadius="20%" outerRadius="98%" startAngle={90} endAngle={-270}>
+        <PolarAngleAxis type="number" tick={false} />
+        <RadialBar dataKey="count" background={{ fill: '#eef2f7' }} cornerRadius={7} />
+        <Tooltip contentStyle={tooltipStyle} formatter={(v, _n, pp) => [`${v} responses`, pp?.payload?.name]} />
+      </RadialBarChart>
+    )
+  }
+  if (type === 'line') {
+    return (
+      <LineChart data={rows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+        <XAxis dataKey="name" {...axisProps} interval={0} angle={-20} textAnchor="end" height={54} />
+        <YAxis {...axisProps} allowDecimals={false} />
+        <Tooltip contentStyle={tooltipStyle} />
+        <Line type="monotone" dataKey="count" name="Responses" stroke={C[0]} strokeWidth={2.5} dot={{ r: 4 }} />
+      </LineChart>
+    )
+  }
+  if (type === 'area') {
+    return (
+      <AreaChart data={rows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={C[0]} stopOpacity={0.6} />
+            <stop offset="95%" stopColor={C[0]} stopOpacity={0.05} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+        <XAxis dataKey="name" {...axisProps} interval={0} angle={-20} textAnchor="end" height={54} />
+        <YAxis {...axisProps} allowDecimals={false} />
+        <Tooltip contentStyle={tooltipStyle} />
+        <Area type="monotone" dataKey="count" name="Responses" stroke={C[0]} strokeWidth={2.5} fill={`url(#${gradId})`} />
+      </AreaChart>
+    )
+  }
+  if (type === 'composed') {
+    return (
+      <ComposedChart data={rows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+        <XAxis dataKey="name" {...axisProps} interval={0} angle={-20} textAnchor="end" height={54} />
+        <YAxis {...axisProps} allowDecimals={false} />
+        <Tooltip contentStyle={tooltipStyle} />
+        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Bar dataKey="count" name="Responses" fill={C[0]} radius={[5, 5, 0, 0]} maxBarSize={40} />
+        <Line type="monotone" dataKey="count" name="Trend" stroke={C[1]} strokeWidth={2} dot={{ r: 3 }} legendType="none" />
+      </ComposedChart>
+    )
+  }
+  // default: bar
+  return (
+    <BarChart data={rows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+      <XAxis dataKey="name" {...axisProps} interval={0} angle={-20} textAnchor="end" height={54} />
+      <YAxis {...axisProps} allowDecimals={false} />
+      <Tooltip contentStyle={tooltipStyle} />
+      <Bar dataKey="count" name="Responses" fill={C[0]} radius={[5, 5, 0, 0]} maxBarSize={42}>
+        {rows.map((_, i) => <Cell key={i} fill={C[i % C.length]} />)}
+      </Bar>
+    </BarChart>
+  )
+}
+
+function FilterBar({ surveys, users, questions, filters, setFilters, onApply, loading, onReset, selectedQids, setSelectedQids, chartCount, setChartCount, chartType, setChartType }) {
   const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }))
   const chosenQ = questions.find((q) => String(q.id) === String(filters.qid))
   const withAnswers = questions.filter((q) => q.answered > 0)
@@ -120,6 +220,19 @@ function FilterBar({ surveys, users, questions, filters, setFilters, onApply, lo
             {[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20].map((n) => (
               <option key={n} value={n}>{n} chart{n > 1 ? 's' : ''}</option>
             ))}
+          </select>
+        </label>
+        <label className="field" style={{ margin: 0 }}>
+          <span style={{ fontSize: 11 }}>Chart type</span>
+          <select value={chartType} onChange={(e) => setChartType(e.target.value)}>
+            <option value="bar">Bar</option>
+            <option value="line">Line</option>
+            <option value="area">Area</option>
+            <option value="composed">Composed (bar + line)</option>
+            <option value="pie">Pie</option>
+            <option value="donut">Donut</option>
+            <option value="radar">Radar</option>
+            <option value="radial">Radial</option>
           </select>
         </label>
         <label className="field" style={{ margin: 0 }}>
@@ -318,6 +431,7 @@ export default function AdminCharts() {
   // many of the ticked questions are drawn.
   const [selectedQids, setSelectedQids] = useState([])
   const [chartCount, setChartCount] = useState(5)
+  const [chartType, setChartType] = useState('bar')
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
@@ -616,6 +730,8 @@ export default function AdminCharts() {
         setSelectedQids={setSelectedQids}
         chartCount={chartCount}
         setChartCount={setChartCount}
+        chartType={chartType}
+        setChartType={setChartType}
         filters={filters}
         setFilters={setFilters}
         onApply={() => void load(filters)}
@@ -687,15 +803,7 @@ export default function AdminCharts() {
               subtitle={`${q.answered} answered · ${q.type} question`}
               height={240}
             >
-              <BarChart data={q.rows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis dataKey="name" {...axisProps} interval={0} angle={-20} textAnchor="end" height={54} />
-                <YAxis {...axisProps} allowDecimals={false} />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Bar dataKey="count" name="Responses" fill={C[0]} radius={[5, 5, 0, 0]} maxBarSize={42}>
-                  {q.rows.map((_, i) => <Cell key={i} fill={C[i % C.length]} />)}
-                </Bar>
-              </BarChart>
+              <QuestionChart q={q} type={chartType} />
             </Card>
           ))}
         </>

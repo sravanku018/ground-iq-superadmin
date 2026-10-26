@@ -159,6 +159,47 @@ export function answersByQuestionId(
   return out;
 }
 
+/**
+ * Map a payload's answers onto the CURRENT question definitions.
+ *
+ * Direct match by id/label/slug first (answerOf). Older submissions may store
+ * answers under ids from a previous definition snapshot that no longer exists
+ * (e.g. q_1786532261400 after a question id was regenerated). Those leftover
+ * q_<digits> keys fill the questions that had no direct answer, in definition
+ * order, sorted by numeric suffix — a positional fallback that recovers most
+ * historical answers instead of silently dropping them.
+ */
+export function answersForQuestions(
+  a: Record<string, unknown> | undefined | null,
+  questions: { id: string; label?: string }[],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!a) return out;
+  const missing: { id: string; label?: string }[] = [];
+
+  for (const q of questions) {
+    const v = answerOf(a, q.id, q.label);
+    if (v != null && v !== "") out[q.id] = v;
+    else missing.push(q);
+  }
+  if (!missing.length) return out;
+
+  const definedIds = new Set(questions.map((q) => String(q.id)));
+  const orphanKeys = Object.keys(a)
+    .filter((k) => /^q_\d+$/.test(k))
+    .filter((k) => !definedIds.has(k))
+    .filter((k) => {
+      const v = a[k];
+      return v != null && v !== "";
+    })
+    .sort((x, y) => Number(x.slice(2)) - Number(y.slice(2)));
+
+  for (let i = 0; i < missing.length && i < orphanKeys.length; i += 1) {
+    out[missing[i].id] = a[orphanKeys[i]];
+  }
+  return out;
+}
+
 export function answerOf(
   a: Record<string, unknown> | undefined | null,
   qid: string,

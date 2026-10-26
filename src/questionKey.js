@@ -69,20 +69,29 @@ export function labelPatch(q, label) {
 }
 
 /**
- * Generates or normalizes a database question key in standard q_1, q_2, ... format.
- * Preserves existing q_N identifiers or uses index/sequential number.
+ * Generates or normalizes a database question key.
+ *
+ * IDS ARE PERMANENT: submissions key their answers by the id that was live at
+ * push time (`answers[q.id]`), so rewriting an id (or renumbering on reorder)
+ * silently orphans every previously collected answer. The old behavior only
+ * preserved `q_<digits>` and rewrote custom ids (h, which_crop?, …) to
+ * positional q_N on every save — the root cause of the mapping gaps.
+ *
+ * Rules:
+ *   1) Any existing id is preserved VERBATIM (trimmed), whatever its shape.
+ *   2) Only questions without an id (new / duplicated) get a generated q_N.
  */
 export function nextQuestionId(label, existingId, used, index) {
   const set = used || new Set()
-  let id = String(existingId || '').trim().toLowerCase()
+  const existing = String(existingId || '').trim()
 
-  // If already a valid q_N format and not used yet, keep it
-  if (/^q_\d+$/i.test(id) && !set.has(id)) {
-    set.add(id)
-    return id
+  // 1) Keep the id exactly as stored — never renumber, never reshape.
+  if (existing && !set.has(existing)) {
+    set.add(existing)
+    return existing
   }
 
-  // If index is supplied (e.g. 1, 2, ...), try q_<index>
+  // 2) Generated ids only for new questions (positional, then lowest free).
   if (index != null && Number.isFinite(Number(index)) && Number(index) > 0) {
     const candidate = `q_${Number(index)}`
     if (!set.has(candidate)) {
@@ -90,11 +99,9 @@ export function nextQuestionId(label, existingId, used, index) {
       return candidate
     }
   }
-
-  // Otherwise, find the lowest unused sequential q_1, q_2, ...
   let n = 1
   while (set.has(`q_${n}`)) n++
-  id = `q_${n}`
+  const id = `q_${n}`
   set.add(id)
   return id
 }

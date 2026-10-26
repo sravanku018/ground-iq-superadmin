@@ -2,6 +2,7 @@ import type { Ctx } from "./ctx.ts";
 import {
   ageBucket,
   answerOf,
+  answersForQuestions,
   normParty,
 } from "../lib/analytics/answers.ts";
 import {
@@ -278,13 +279,17 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
           `.catch(() => []);
 
     const qids: string[] = [];
+    const qDefs: { id: string; label?: string }[] = [];
     for (const f of frows as { questions?: unknown }[]) {
       let qs = f.questions;
       if (typeof qs === "string") { try { qs = JSON.parse(qs); } catch { qs = []; } }
       if (!Array.isArray(qs)) continue;
       for (const q of qs as Record<string, unknown>[]) {
         const id = String(q.id || q.label || "");
-        if (id && !qids.includes(id)) qids.push(id);
+        if (id && !qids.includes(id)) {
+          qids.push(id);
+          qDefs.push({ id, label: String(q.label || q.text || id) });
+        }
       }
     }
 
@@ -307,10 +312,12 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
       if (isDraftSubmission(payload)) continue;
       const a = (payload.answers || {}) as Record<string, unknown>;
       // Multi-select answers stay as arrays — the analytics engine counts each
-      // chosen option, instead of one combined "A, B" pseudo-category.
+      // chosen option, instead of one combined "A, B" pseudo-category. The
+      // mapper also recovers answers stored under ids from older snapshots.
+      const mapped = answersForQuestions(a, qDefs);
       const answers: Record<string, string | string[]> = {};
       for (const qid of qids) {
-        const v = answerOf(a, qid);
+        const v = mapped[qid];
         if (v == null || v === "") continue;
         answers[qid] = Array.isArray(v)
           ? v.map(String).filter((x) => x !== "")
@@ -425,6 +432,8 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
         }
       }
     }
+    // Question definitions for the snapshot-tolerant mapper (id + label).
+    const qDefs = [...qMetaMap.entries()].map(([id, m]) => ({ id, label: m.label }));
     // per-question answer tallies for the filtered rows
     const qAnswers = new Map<string, Map<string, number>>();
     const qAnswered = new Map<string, number>();
@@ -519,9 +528,12 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
       }
       if (districtQ && !String(a.district || "").toLowerCase().includes(districtQ)) continue;
       if (constituencyQ && !String(a.constituency || a.assembly || "").toLowerCase().includes(constituencyQ)) continue;
+      // One snapshot-tolerant mapping per row: direct id/label match, with
+      // leftover q_<digits> keys filling missing questions positionally.
+      const mapped = answersForQuestions(a, qDefs);
       let qSkip = false;
       for (const [qid, want] of qFilters) {
-        const val = answerOf(a, qid);
+        const val = mapped[qid] ?? answerOf(a, qid);
         const hit = qTypeMap.get(qid) === "age"
           ? ageBucket(val) === want
           : Array.isArray(val)
@@ -557,7 +569,7 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
       });
       // tally answers for every question in scope (only rows that passed filters)
       for (const qid of qMetaMap.keys()) {
-        const val = answerOf(a, qid);
+        const val = mapped[qid];
         if (val == null || val === "") continue;
         const qType = qTypeMap.get(qid);
         const vals = Array.isArray(val) ? val.map(String) : [String(val)];

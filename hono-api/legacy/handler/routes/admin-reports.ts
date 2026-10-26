@@ -446,6 +446,8 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
     const byUser: Record<string, Bucket & { user: string }> = {};
     const bySurveyorDay: Record<string, Bucket & { surveyor: string; day: string }> = {};
     const bySurveyorMonth: Record<string, Bucket & { surveyor: string; month: string }> = {};
+    const byDistrict: Record<string, Bucket & { district: string }> = {};
+    const byParty: Record<string, Bucket & { party: string }> = {};
     for (const row of list) {
       if (!byDate[row.date]) byDate[row.date] = { date: row.date, ...emptyBucket() };
       bump(byDate[row.date], row);
@@ -456,6 +458,11 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
 
       if (!byUser[row.user]) byUser[row.user] = { user: row.user, ...emptyBucket() };
       bump(byUser[row.user], row);
+
+      if (!byDistrict[row.district]) byDistrict[row.district] = { district: row.district, ...emptyBucket() };
+      bump(byDistrict[row.district], row);
+      if (!byParty[row.party]) byParty[row.party] = { party: row.party, ...emptyBucket() };
+      bump(byParty[row.party], row);
 
       // Surveyor daily
       const sdk = `${row.user}::${row.date}`;
@@ -534,6 +541,16 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
         if (m !== 0) return m;
         return mb.total - ma.total || ma.surveyor.localeCompare(mb.surveyor);
       }),
+      by_district: Object.values(byDistrict).sort(
+        (a, b) =>
+          Number((b as { total: number }).total) -
+          Number((a as { total: number }).total),
+      ),
+      by_party: Object.values(byParty).sort(
+        (a, b) =>
+          Number((b as { total: number }).total) -
+          Number((a as { total: number }).total),
+      ),
       strict: {
         geo_tagging: "required",
         voice_detection: "required",

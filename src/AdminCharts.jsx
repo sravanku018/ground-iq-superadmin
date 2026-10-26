@@ -64,6 +64,8 @@ function Card({ title, subtitle, children, height = 300 }) {
 function FilterBar({ surveys, users, questions, filters, setFilters, onApply, loading, onReset, questionCount, setQuestionCount, chartCount, setChartCount }) {
   const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }))
   const chosenQ = questions.find((q) => String(q.id) === String(filters.qid))
+  const withAnswers = questions.filter((q) => q.answered > 0)
+  const chipList = (withAnswers.length ? withAnswers : questions).slice(0, 12)
   return (
     <div className="card" style={{ padding: 14, marginBottom: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
@@ -106,7 +108,9 @@ function FilterBar({ surveys, users, questions, filters, setFilters, onApply, lo
           >
             <option value="">All questions</option>
             {questions.map((q) => (
-              <option key={q.id} value={q.id}>{String(q.label || q.id).slice(0, 46)}</option>
+              <option key={q.id} value={q.id}>
+                {String(q.label || q.id).slice(0, 46)}{q.answered ? ` (${q.answered})` : ''}
+              </option>
             ))}
           </select>
         </label>
@@ -154,6 +158,47 @@ function FilterBar({ surveys, users, questions, filters, setFilters, onApply, lo
         </button>
         <button type="button" className="btn" onClick={onReset}>Reset</button>
       </div>
+      {chipList.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Questions in this survey — tap one to filter:</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {chipList.map((q) => {
+              const active = String(filters.qid) === String(q.id)
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() =>
+                    setFilters((f) => ({
+                      ...f,
+                      qid: active ? '' : q.id,
+                      qval: '',
+                    }))
+                  }
+                  title={q.answered ? `${q.answered} answered` : 'No answers yet in this selection'}
+                  style={{
+                    fontSize: 11,
+                    padding: '4px 10px',
+                    borderRadius: 999,
+                    border: active ? '1px solid #3f6cbe' : '1px solid #dbe3ef',
+                    background: active ? '#eef3fb' : '#fff',
+                    color: active ? '#223f75' : '#475569',
+                    cursor: 'pointer',
+                    maxWidth: 280,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {String(q.label || q.id).slice(0, 40)}
+                  {q.answered ? ` · ${q.answered}` : ''}
+                  {active ? ' ✕' : ''}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -519,6 +564,45 @@ export default function AdminCharts() {
       ? `Focused view — 1 filter (${activeFilters[0].k}: ${activeFilters[0].v})`
       : `Deep dive — ${fc} filters applied`
 
+  // Questions to filter = survey definition merged with live answered counts
+  // (labels shown, data-backed options where the definition has none).
+  const availableQuestions = useMemo(() => {
+    const byId = new Map()
+    for (const q of questions) {
+      const id = String(q.id ?? q.label ?? '')
+      if (!id) continue
+      byId.set(id, {
+        id,
+        label: String(q.label || q.text || id),
+        type: String(q.type || 'text'),
+        options: Array.isArray(q.options)
+          ? q.options
+            .map((o) => String(typeof o === 'string' ? o : o?.label ?? o?.value ?? ''))
+            .filter(Boolean)
+          : [],
+        answered: 0,
+      })
+    }
+    const bq = Array.isArray(data?.by_question) ? data.by_question : []
+    for (const item of bq) {
+      const id = String(item.question_id)
+      const prev = byId.get(id) || {
+        id,
+        label: String(item.label || id),
+        type: String(item.type || 'text'),
+        options: [],
+        answered: 0,
+      }
+      prev.answered = Number(item.answered) || 0
+      if (!prev.options.length) {
+        prev.options = (Array.isArray(item.options) ? item.options : []).map((o) => String(o.value)).filter(Boolean)
+      }
+      if (!prev.label || prev.label === id) prev.label = String(item.label || id)
+      byId.set(id, prev)
+    }
+    return [...byId.values()].sort((a, b) => b.answered - a.answered)
+  }, [questions, data])
+
   const insights = useMemo(
     () => buildInsights({ totals, timeRows, userRows, districtRows, partyRows, quotaRows, applied, fc, users, byQuestion: data?.by_question }),
     [totals, timeRows, userRows, districtRows, partyRows, quotaRows, applied, fc, users, data],
@@ -531,7 +615,7 @@ export default function AdminCharts() {
       <FilterBar
         surveys={surveys}
         users={users}
-        questions={questions}
+        questions={availableQuestions}
         questionCount={questionCount}
         setQuestionCount={setQuestionCount}
         chartCount={chartCount}

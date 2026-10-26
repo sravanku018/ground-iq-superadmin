@@ -214,10 +214,13 @@ export async function handleConversations(c: Ctx): Promise<Response | null> {
       (me as Record<string, unknown>).can_record_voice === true ||
       (voiceRows[0] as { on?: boolean } | undefined)?.on === true ||
       (ownerRows[0] as { on?: boolean } | undefined)?.on === true;
+    // selfGrant = an explicit grant ON THIS ACCOUNT (direct can_record_voice).
+    // The owner's old can_record_voice does NOT auto-enable Converse — the
+    // Super Admin's can_converse grant on the Client Admin is the org path.
     const grant = await orgConverseGrant(
       Number(me.id),
       me.role,
-      rawVoice || (me as Record<string, unknown>).can_record_voice === true,
+      (me as Record<string, unknown>).can_record_voice === true,
     );
     // Converse needs the explicit Super Admin grant on the owning Client Admin
     // (admins and Super Admin always have it). Per-record minutes come from the
@@ -277,7 +280,7 @@ export async function handleConversations(c: Ctx): Promise<Response | null> {
     const grant = await orgConverseGrant(
       Number(me.id),
       me.role,
-      isPortalAdmin(me.role) || (me as Record<string, unknown>).can_record_voice === true,
+      (me as Record<string, unknown>).can_record_voice === true,
     );
     if (!grant.enabled) {
       return json({ error: "Converse is not enabled for your team. Ask your admin." }, 403);

@@ -2231,7 +2231,10 @@ function SurveyorApp() {
       surveys.some((s) => s?.voice_required === true)
     const userVoice =
       user?.role === 'super_admin' || user?.can_record_voice === true
-    const on = surveyVoice || userVoice || serverVoice === true
+    // Server config is the authority: it folds in the Super Admin's Converse
+    // grant + limits for this surveyor's Client Admin. Local signals only fill
+    // in when the config call failed.
+    const on = serverVoice === true ? true : serverVoice === false ? false : surveyVoice || userVoice
     if (questionsMeta || serverVoice !== null) {
       setConverseEnabled(on)
       try {

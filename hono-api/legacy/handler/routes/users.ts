@@ -95,12 +95,16 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
                COALESCE(can_web_survey, FALSE) AS can_web_survey,
                COALESCE(can_record_voice, FALSE) AS can_record_voice,
                COALESCE(can_translate_telugu, FALSE) AS can_translate_telugu,
+               COALESCE(can_converse, FALSE) AS can_converse,
+               COALESCE(can_excel_charts, FALSE) AS can_excel_charts,
                    COALESCE(totp_enabled, FALSE) AS totp_enabled,
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                    COALESCE(max_surveys, 0) AS max_surveys,
                    COALESCE(max_surveyors, 0) AS max_surveyors,
                    COALESCE(max_records, 0) AS max_records,
-                   COALESCE(max_categories, 5) AS max_categories
+                   COALESCE(max_categories, 5) AS max_categories,
+                   COALESCE(converse_max_records, 0) AS converse_max_records,
+                   COALESCE(converse_max_minutes, 0) AS converse_max_minutes
             FROM app_users
             ORDER BY id
           `.catch(async () =>
@@ -109,8 +113,8 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
                      FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
                      FALSE AS can_assign_surveyors,
-                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey, FALSE AS can_record_voice, FALSE AS can_translate_telugu,
-                     0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records, 5 AS max_categories
+                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey, FALSE AS can_record_voice, FALSE AS can_translate_telugu, FALSE AS can_converse, FALSE AS can_excel_charts,
+                     0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records, 5 AS max_categories, 0 AS converse_max_records, 0 AS converse_max_minutes
               FROM app_users ORDER BY id
             `
         )
@@ -129,12 +133,16 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
                COALESCE(can_web_survey, FALSE) AS can_web_survey,
                COALESCE(can_record_voice, FALSE) AS can_record_voice,
                COALESCE(can_translate_telugu, FALSE) AS can_translate_telugu,
+               COALESCE(can_converse, FALSE) AS can_converse,
+               COALESCE(can_excel_charts, FALSE) AS can_excel_charts,
                    COALESCE(totp_enabled, FALSE) AS totp_enabled,
                    COALESCE(max_questions_per_survey, 0) AS max_questions_per_survey,
                    COALESCE(max_surveys, 0) AS max_surveys,
                    COALESCE(max_surveyors, 0) AS max_surveyors,
                    COALESCE(max_records, 0) AS max_records,
-                   COALESCE(max_categories, 5) AS max_categories
+                   COALESCE(max_categories, 5) AS max_categories,
+                   COALESCE(converse_max_records, 0) AS converse_max_records,
+                   COALESCE(converse_max_minutes, 0) AS converse_max_minutes
             FROM app_users
             WHERE (id = ${me.id} OR created_by = ${me.id})
             ORDER BY id
@@ -144,8 +152,8 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
                      FALSE AS can_manage_questions, FALSE AS can_edit_surveys,
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
                      FALSE AS can_assign_surveyors,
-                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey, FALSE AS can_record_voice, FALSE AS can_translate_telugu,
-                     0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records, 5 AS max_categories
+                     FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey, FALSE AS can_record_voice, FALSE AS can_translate_telugu, FALSE AS can_converse, FALSE AS can_excel_charts,
+                     0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records, 5 AS max_categories, 0 AS converse_max_records, 0 AS converse_max_minutes
               FROM app_users
               WHERE (id = ${me.id} OR created_by = ${me.id})
               ORDER BY id
@@ -259,6 +267,10 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
         can_validate_proof: sqlBool(r.can_validate_proof),
         can_web_survey: sqlBool(r.can_web_survey),
         can_record_voice: sqlBool(r.can_record_voice),
+        can_converse: sqlBool(r.can_converse),
+        can_excel_charts: sqlBool(r.can_excel_charts),
+        converse_max_records: Number(r.converse_max_records) || 0,
+        converse_max_minutes: Number(r.converse_max_minutes) || 0,
         can_translate_telugu: sqlBool(r.can_translate_telugu),
         totp_enabled: r.role === "super_admin" ? sqlBool(r.totp_enabled) : undefined,
         max_questions_per_survey: Number(r.max_questions_per_survey) || 0,
@@ -338,6 +350,8 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
       const canWebSurvey = canSuper && body.can_web_survey === true;
       const canRecordVoice = canSuper && body.can_record_voice === true;
       const canTranslateTeluguGrant = canSuper && body.can_translate_telugu === true;
+      const canConverse = canSuper && body.can_converse === true;
+      const canExcelCharts = canSuper && body.can_excel_charts === true;
       // A brand-new Client Admin starts with a usable allowance — 50 questions and
       // 500 field records — instead of 0 (which means unlimited). An explicit value
       // in the request always wins, including 0 for unlimited.
@@ -362,6 +376,12 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
     const maxCategoriesCreate = canSuper && body.max_categories !== undefined
       ? Math.max(0, Math.min(Number(body.max_categories) || 0, 1000))
       : 5;
+    const converseMaxRecordsCreate = canSuper
+      ? clampUserLimit(body.converse_max_records, 0, 1_000_000)
+      : 0;
+    const converseMaxMinutesCreate = canSuper
+      ? clampUserLimit(body.converse_max_minutes, 0, 180)
+      : 0;
     // Surveyor cap: a Client Admin may only create surveyors up to the Super-Admin-set
     // max_surveyors (0 = unlimited). Ownership is tracked via created_by.
     if (role === "surveyor" && me.role !== "super_admin") {
@@ -386,9 +406,9 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
         }
       }
       const inserted = await sql`
-          INSERT INTO app_users (username, password_hash, display_name, company_name, company_id, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, can_translate_telugu, max_questions_per_survey, max_surveys, max_surveyors, max_records, max_categories, created_by)
-          VALUES (${username}, ${password_hash}, ${name}, ${finalCompanyName}, ${companyId}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canAssignSurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${canWebSurvey}, ${canRecordVoice}, ${canTranslateTeluguGrant}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${maxRecordsCreate}, ${maxCategoriesCreate}, ${me.id})
-          RETURNING id, username, display_name, company_name, company_id, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, can_translate_telugu, max_questions_per_survey, max_surveys, max_surveyors, max_records, max_categories
+          INSERT INTO app_users (username, password_hash, display_name, company_name, company_id, role, target_quota, active, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, can_translate_telugu, can_converse, can_excel_charts, max_questions_per_survey, max_surveys, max_surveyors, max_records, max_categories, converse_max_records, converse_max_minutes, created_by)
+          VALUES (${username}, ${password_hash}, ${name}, ${finalCompanyName}, ${companyId}, ${role}, ${target_quota}, TRUE, ${key_id}, ${phone || null}, ${canManageQuestions}, ${canEditSurveys}, ${canReviewData}, ${canVerifySurveyors}, ${canAssignSurveyors}, ${canCrudQuestionnaire}, ${canValidateProof}, ${canWebSurvey}, ${canRecordVoice}, ${canTranslateTeluguGrant}, ${canConverse}, ${canExcelCharts}, ${maxQuestionsPerSurvey}, ${maxSurveysCreate}, ${maxSurveyorsCreate}, ${maxRecordsCreate}, ${maxCategoriesCreate}, ${converseMaxRecordsCreate}, ${converseMaxMinutesCreate}, ${me.id})
+          RETURNING id, username, display_name, company_name, company_id, role, active, created_at, target_quota, key_id, phone, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, can_translate_telugu, can_converse, can_excel_charts, max_questions_per_survey, max_surveys, max_surveyors, max_records, max_categories, converse_max_records, converse_max_minutes
         `;
       const u = inserted[0] as Record<string, unknown>;
 
@@ -408,6 +428,10 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
         can_web_survey: canWebSurvey,
         can_record_voice: canRecordVoice,
         can_translate_telugu: canTranslateTeluguGrant,
+        can_converse: canConverse,
+        can_excel_charts: canExcelCharts,
+        converse_max_records: converseMaxRecordsCreate,
+        converse_max_minutes: converseMaxMinutesCreate,
         max_questions_per_survey: maxQuestionsPerSurvey,
         max_surveys: maxSurveysCreate,
         max_surveyors: maxSurveyorsCreate,
@@ -813,6 +837,15 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
       body.max_categories !== undefined && me.role === "super_admin"
         ? Math.max(0, Math.min(Number(body.max_categories) || 0, 1000))
         : Number((ex as Record<string, unknown>).max_categories ?? 5);
+    // Converse limits — Super Admin only. 0 records = unlimited; 0 minutes = server default (10).
+    const nextConverseMaxRecords =
+      body.converse_max_records !== undefined && me.role === "super_admin"
+        ? Math.max(0, Math.min(Number(body.converse_max_records) || 0, 1_000_000))
+        : Number((ex as Record<string, unknown>).converse_max_records) || 0;
+    const nextConverseMaxMinutes =
+      body.converse_max_minutes !== undefined && me.role === "super_admin"
+        ? Math.max(0, Math.min(Number(body.converse_max_minutes) || 0, 180))
+        : Number((ex as Record<string, unknown>).converse_max_minutes) || 0;
     // Grant-based powers — only Super Admin grants/revokes them (least privilege)
     const POWER_KEYS = [
       "can_manage_questions",
@@ -825,6 +858,8 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
       "can_web_survey",
       "can_record_voice",
       "can_translate_telugu",
+      "can_converse",
+      "can_excel_charts",
     ] as const;
     const nextPowers: Record<string, boolean> = {};
     for (const k of POWER_KEYS) {
@@ -883,9 +918,13 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
               max_surveys = ${nextMaxSurveys},
               max_surveyors = ${nextMaxSurveyors},
               max_records = ${nextMaxRecords},
-              max_categories = ${nextMaxCategories}
+              max_categories = ${nextMaxCategories},
+              can_converse = ${nextPowers.can_converse},
+              can_excel_charts = ${nextPowers.can_excel_charts},
+              converse_max_records = ${nextConverseMaxRecords},
+              converse_max_minutes = ${nextConverseMaxMinutes}
           WHERE id = ${id}
-          RETURNING id, username, display_name, company_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, can_translate_telugu, max_questions_per_survey, max_surveys, max_surveyors, max_records, max_categories
+          RETURNING id, username, display_name, company_name, role, active, created_at, target_quota, key_id, phone, photo, aadhaar_front, aadhaar_back, verified, can_manage_questions, can_edit_surveys, can_review_data, can_verify_surveyors, can_assign_surveyors, can_crud_questionnaire, can_validate_proof, can_web_survey, can_record_voice, can_translate_telugu, max_questions_per_survey, max_surveys, max_surveyors, max_records, max_categories, can_converse, can_excel_charts, converse_max_records, converse_max_minutes
         `;
     } catch (e) {
       const msg = (e as Error).message || "";
@@ -932,6 +971,8 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
       body.max_surveyors !== undefined ||
       body.max_records !== undefined ||
       body.max_categories !== undefined ||
+      body.converse_max_records !== undefined ||
+      body.converse_max_minutes !== undefined ||
       POWER_KEYS.some((k) => body[k] !== undefined);
     if (adminChanged && isAdmin) {
       logAudit(me, "user_update", "user", id, {

@@ -30,6 +30,8 @@ const POWER_DEFS = [
   { key: 'can_web_survey', label: 'Web survey', icon: '✎', hint: 'Create web survey links, fill online & confirm web records' },
   { key: 'can_record_voice', label: 'Voice recording', icon: '🎙', hint: 'Turn field-app voice Off vs Required. Minute limits stay Super Admin only.' },
   { key: 'can_translate_telugu', label: 'Telugu translation', icon: 'తె', hint: 'Auto-translate and edit Telugu question text' },
+  { key: 'can_converse', label: 'Converse', icon: '🎧', hint: 'Voice conversations tab for their surveyors (with record + minute limits below)' },
+  { key: 'can_excel_charts', label: 'Excel Charts', icon: '📊', hint: 'Excel-style charts tab in their portal' },
 ]
 
 function powersFromUser(u) {
@@ -76,6 +78,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
   const [maxSrInputs, setMaxSrInputs] = useState({})
   const [maxRecInputs, setMaxRecInputs] = useState({})
   const [maxCatInputs, setMaxCatInputs] = useState({})
+  const [maxConvRecInputs, setMaxConvRecInputs] = useState({})
+  const [maxConvMinInputs, setMaxConvMinInputs] = useState({})
   /** Draft feature checkmarks per admin id — saved with Save all */
   const [powerDrafts, setPowerDrafts] = useState({})
   const [companyNames, setCompanyNames] = useState([])
@@ -144,6 +148,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
     setMaxSvInputs((m) => ({ ...m, [id]: Number(u.max_surveys) || 0 }))
     setMaxSrInputs((m) => ({ ...m, [id]: Number(u.max_surveyors) || 0 }))
     setMaxRecInputs((m) => ({ ...m, [id]: Number(u.max_records) || 0 }))
+    setMaxConvRecInputs((m) => ({ ...m, [id]: Number(u.converse_max_records) || 0 }))
+    setMaxConvMinInputs((m) => ({ ...m, [id]: Number(u.converse_max_minutes) || 0 }))
     setMaxCatInputs((m) => ({ ...m, [id]: Number(u.max_categories ?? 5) }))
   }
 
@@ -189,6 +195,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
       const catVal = catRaw === undefined || catRaw === null || catRaw === ''
         ? 5
         : Math.max(0, Math.min(1000, Number(catRaw) || 0))
+      const convRecVal = Math.max(0, Math.min(1_000_000, Number(maxConvRecInputs[id] ?? maxConvRecInputs[u.id] ?? u.converse_max_records) || 0))
+      const convMinVal = Math.max(0, Math.min(180, Number(maxConvMinInputs[id] ?? maxConvMinInputs[u.id] ?? u.converse_max_minutes) || 0))
 
       const body = {
         max_questions_per_survey: qVal,
@@ -196,6 +204,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
         max_surveyors: srVal,
         max_records: recVal,
         max_categories: catVal,
+        converse_max_records: convRecVal,
+        converse_max_minutes: convMinVal,
         // Always send every power key so partial drafts cannot wipe others
         ...Object.fromEntries(POWER_DEFS.map((p) => [p.key, !!powers[p.key]])),
       }
@@ -230,6 +240,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
         max_surveyors: savedUser.max_surveyors ?? body.max_surveyors,
         max_records: savedUser.max_records ?? body.max_records,
         max_categories: savedUser.max_categories ?? body.max_categories,
+        converse_max_records: savedUser.converse_max_records ?? body.converse_max_records,
+        converse_max_minutes: savedUser.converse_max_minutes ?? body.converse_max_minutes,
         username: savedUser.username || u.username,
         name: savedUser.name || u.name,
         company_name:
@@ -248,6 +260,8 @@ export default function AdminClientAdminsScreen({ onToast }) {
       setMaxSrInputs((m) => ({ ...m, [id]: merged.max_surveyors ?? 0 }))
       setMaxRecInputs((m) => ({ ...m, [id]: merged.max_records ?? 0 }))
       setMaxCatInputs((m) => ({ ...m, [id]: merged.max_categories ?? 5 }))
+      setMaxConvRecInputs((m) => ({ ...m, [id]: merged.converse_max_records ?? 0 }))
+      setMaxConvMinInputs((m) => ({ ...m, [id]: merged.converse_max_minutes ?? 0 }))
       setEdit({
         username: merged.username || '',
         name: merged.name || '',
@@ -841,6 +855,56 @@ export default function AdminClientAdminsScreen({ onToast }) {
                             }
                             onChange={(e) =>
                               setMaxRecInputs((m) => ({
+                                ...m,
+                                [Number(u.id)]: Math.max(0, Number(e.target.value) || 0),
+                              }))
+                            }
+                            style={{ width: 110, padding: '6px 8px' }}
+                          />
+                        </div>
+                      </label>
+                      <label className="field compact" style={{ margin: 0 }}>
+                        <span>
+                          Converse max records per surveyor ·{' '}
+                          <strong style={{ color: '#4f7dc6' }}>0 = unlimited</strong>
+                        </span>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="1000000"
+                            value={
+                              maxConvRecInputs[Number(u.id)] != null
+                                ? maxConvRecInputs[Number(u.id)]
+                                : (u.converse_max_records ?? 0)
+                            }
+                            onChange={(e) =>
+                              setMaxConvRecInputs((m) => ({
+                                ...m,
+                                [Number(u.id)]: Math.max(0, Number(e.target.value) || 0),
+                              }))
+                            }
+                            style={{ width: 110, padding: '6px 8px' }}
+                          />
+                        </div>
+                      </label>
+                      <label className="field compact" style={{ margin: 0 }}>
+                        <span>
+                          Converse max minutes per record ·{' '}
+                          <strong style={{ color: '#4f7dc6' }}>0 = 10 min default</strong>
+                        </span>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="180"
+                            value={
+                              maxConvMinInputs[Number(u.id)] != null
+                                ? maxConvMinInputs[Number(u.id)]
+                                : (u.converse_max_minutes ?? 0)
+                            }
+                            onChange={(e) =>
+                              setMaxConvMinInputs((m) => ({
                                 ...m,
                                 [Number(u.id)]: Math.max(0, Number(e.target.value) || 0),
                               }))

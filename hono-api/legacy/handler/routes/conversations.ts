@@ -147,6 +147,39 @@ export async function handleConversations(c: Ctx): Promise<Response | null> {
     }
   }
 
+  /**
+   * Converse entitlement + limits for this account. A surveyor inherits the
+   * grant from the Client Admin who created them / shares their company
+   * (same rule as can_record_voice). Limits: 0 = unlimited records, and
+   * 0 minutes falls back to the 10-minute server default.
+   */
+  async function orgConverseGrant(userId: number, role: string, selfGrant: boolean) {
+    if (role === "super_admin") {
+      return { enabled: true, maxRecords: 0, maxMinutes: 0 };
+    }
+    if (selfGrant || isPortalAdmin(role)) {
+      return { enabled: true, maxRecords: 0, maxMinutes: 0 };
+    }
+    const rows = await sql`
+        SELECT COALESCE(owner.can_converse, FALSE) AS granted,
+               COALESCE(owner.converse_max_records, 0) AS max_records,
+               COALESCE(owner.converse_max_minutes, 0) AS max_minutes
+        FROM app_users u
+        JOIN app_users owner
+          ON owner.id = u.created_by
+          OR (u.company_id IS NOT NULL AND owner.company_id = u.company_id AND owner.role = 'admin')
+        WHERE u.id = ${userId}
+        ORDER BY (owner.role = 'admin') DESC
+        LIMIT 1
+      `.catch(() => []);
+    const r = (rows[0] || {}) as Record<string, unknown>;
+    return {
+      enabled: r.granted === true,
+      maxRecords: Number(r.max_records) || 0,
+      maxMinutes: Number(r.max_minutes) || 0,
+    };
+  }
+
   if (path === "/api/conversations/config" && method === "GET") {
     if (!me) return json({ error: "Login required" }, 401);
     await syncSonioxKeyFromDb();
@@ -176,15 +209,28 @@ export async function handleConversations(c: Ctx): Promise<Response | null> {
             AND COALESCE(owner.can_record_voice, FALSE) = TRUE
         ) AS on
       `.catch(() => []);
-    const voiceEnabled =
+    const rawVoice =
       me.role === "super_admin" ||
       (me as Record<string, unknown>).can_record_voice === true ||
       (voiceRows[0] as { on?: boolean } | undefined)?.on === true ||
       (ownerRows[0] as { on?: boolean } | undefined)?.on === true;
+    const grant = await orgConverseGrant(
+      Number(me.id),
+      me.role,
+      rawVoice || (me as Record<string, unknown>).can_record_voice === true,
+    );
+    // Converse needs the explicit Super Admin grant on the owning Client Admin
+    // (admins and Super Admin always have it). Per-record minutes come from the
+    // grant; 0 keeps the 10-minute default.
+    const voiceEnabled = rawVoice && grant.enabled;
+    const maxMinutes = grant.maxMinutes > 0 ? grant.maxMinutes : 10;
     return json({
       ...sonioxConfigInfo(),
       voice_enabled: voiceEnabled,
-      max_duration_sec: 600,
+      can_converse: grant.enabled,
+      converse_max_records: grant.maxRecords,
+      converse_max_minutes: maxMinutes,
+      max_duration_sec: maxMinutes * 60,
       max_audio_bytes: CONVERSATION_MAX_BYTES,
       note: "Record offline; audio uploads and is translated to English when connectivity returns.",
     });
@@ -226,7 +272,37 @@ export async function handleConversations(c: Ctx): Promise<Response | null> {
 
   if (path === "/api/conversations" && method === "POST") {
     if (!me) return json({ error: "Login required" }, 401);
+    // Org-level Converse enforcement: grant, per-surveyor record quota and
+    // per-record minutes are all chosen by the Super Admin on the Client Admin.
+    const grant = await orgConverseGrant(
+      Number(me.id),
+      me.role,
+      isPortalAdmin(me.role) || (me as Record<string, unknown>).can_record_voice === true,
+    );
+    if (!grant.enabled) {
+      return json({ error: "Converse is not enabled for your team. Ask your admin." }, 403);
+    }
     const body = await readBody(req);
+    const maxMinutes = grant.maxMinutes > 0 ? grant.maxMinutes : 10;
+    const statedMs = Number(body.duration_ms) || 0;
+    if (statedMs > maxMinutes * 60_000 + 5_000) {
+      return json(
+        { error: `Recording is longer than the ${maxMinutes} minute limit set for your team. Split it into shorter conversations.` },
+        413,
+      );
+    }
+    if (grant.maxRecords > 0) {
+      const countRows = await sql`
+          SELECT COUNT(*)::int AS n FROM conversations WHERE user_id = ${me.id}
+        `.catch(() => []);
+      const used = Number((countRows[0] as { n?: number })?.n) || 0;
+      if (used >= grant.maxRecords) {
+        return json(
+          { error: `Conversation limit reached (${grant.maxRecords} records). Ask your admin for more.` },
+          403,
+        );
+      }
+    }
     const localId = String(body.local_id || "").trim().slice(0, 120);
     if (localId) {
       const existing = await sql`

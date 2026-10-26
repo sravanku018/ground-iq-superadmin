@@ -100,7 +100,10 @@ const PAGE_LABELS = {
 }
 
 // All standard survey management, analytics, export, review, and web survey screens are visible to Client Admin.
-const PAGE_POWER = {}
+const PAGE_POWER = {
+  charts: 'can_excel_charts',
+  conversations: 'can_converse',
+}
 
 
 /**

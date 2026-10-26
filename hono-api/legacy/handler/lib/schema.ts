@@ -38,6 +38,10 @@ export async function ensureSchema(): Promise<void> {
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_records INTEGER NOT NULL DEFAULT 0`,
     // Question categories a Client Admin may create. 0 = unlimited, like the other max_* grants.
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS max_categories INTEGER NOT NULL DEFAULT 5`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_converse BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_excel_charts BOOLEAN NOT NULL DEFAULT FALSE`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS converse_max_records INTEGER NOT NULL DEFAULT 0`,
+    () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS converse_max_minutes INTEGER NOT NULL DEFAULT 0`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_secret TEXT`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS target_quota INTEGER NOT NULL DEFAULT 0`,

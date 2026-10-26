@@ -540,6 +540,9 @@ export default function AdminCharts() {
   const qChosen = applied.qid
     ? qPool.filter((q) => String(q.question_id) === String(applied.qid))
     : qPool.filter((q) => selectedQids.map(String).includes(String(q.question_id)))
+  // Question mode: ticked questions (or a selected Question filter) own the
+  // chart area; the generic overview charts step aside.
+  const questionMode = qChosen.length > 0
 
   const partyRows = (Array.isArray(data?.by_party) ? data.by_party : []).map((r) => ({
     name: r.party || 'Unknown',

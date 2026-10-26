@@ -114,10 +114,10 @@ const PAGE_POWER = {
 class ChunkErrorBoundary extends Component {
   constructor(props) {
     super(props)
-    this.state = { failed: false, reloading: false }
+    this.state = { failed: false, reloading: false, error: null }
   }
-  static getDerivedStateFromError() {
-    return { failed: true }
+  static getDerivedStateFromError(error) {
+    return { failed: true, error }
   }
   componentDidCatch(error) {
     if (!isChunkLoadError(error) || this.state.reloading) return
@@ -133,8 +133,13 @@ class ChunkErrorBoundary extends Component {
         <div className="portal-page">
           <div className="card" style={{ padding: 24, textAlign: 'center' }}>
             <h3>{this.state.reloading ? 'Reloading…' : 'This screen could not be loaded'}</h3>
-            {!this.state.reloading && (
+            {!this.state.reloading && isChunkLoadError(this.state.error) && (
               <p className="muted">A new version may have been deployed. Reload to continue.</p>
+            )}
+            {!this.state.reloading && !isChunkLoadError(this.state.error) && this.state.error && (
+              <p style={{ color: 'var(--danger)', fontSize: 13 }}>
+                {String(this.state.error?.message || this.state.error)}
+              </p>
             )}
             {!this.state.reloading && (
               <button

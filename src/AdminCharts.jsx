@@ -114,6 +114,108 @@ function FilterBar({ surveys, users, filters, setFilters, onApply, loading, onRe
   )
 }
 
+/**
+ * Auto-generated reading of the current selection — the written counterpart
+ * to the charts. Every line is guarded; only findings with real data appear.
+ */
+function buildInsights({ totals, timeRows, userRows, districtRows, partyRows, quotaRows, applied, fc, users }) {
+  const out = []
+  if (!totals.records) {
+    out.push({ tone: 'muted', icon: '🫙', text: 'No records match the current filters. Widen the date range or clear a filter to see analysis.' })
+    return out
+  }
+  const pct = (n, d) => (d ? Math.round(((n || 0) / d) * 100) : 0)
+  const T = totals
+
+  // 1. headline
+  out.push({
+    tone: 'info', icon: '📌',
+    text: `${T.records} record${T.records > 1 ? 's' : ''} in this selection — ${pct(T.completed, T.records)}% confirmed, ${pct(T.pending, T.records)}% pending, ${pct(T.rejected, T.records)}% rejected.`,
+  })
+
+  // 2. momentum: last 3 buckets vs the 3 before them
+  if (timeRows.length >= 4) {
+    const recent = timeRows.slice(-3).reduce((n, r) => n + r.total, 0)
+    const prev = timeRows.slice(-6, -3).reduce((n, r) => n + r.total, 0)
+    if (prev > 0 || recent > 0) {
+      const delta = prev === 0 ? 100 : Math.round(((recent - prev) / prev) * 100)
+      if (delta >= 20) out.push({ tone: 'good', icon: '📈', text: `Momentum is building: the last 3 ${applied.grain === 'month' ? 'months' : 'days'} collected ${recent} records, up ${delta}% on the previous 3.` })
+      else if (delta <= -20) out.push({ tone: 'warn', icon: '📉', text: `Collection is slowing: the last 3 ${applied.grain === 'month' ? 'months' : 'days'} produced ${recent} records, down ${Math.abs(delta)}% from the 3 before.` })
+      else out.push({ tone: 'info', icon: '➖', text: `Collection is steady: ${recent} records in the last 3 ${applied.grain === 'month' ? 'months' : 'days'} vs ${prev} before.` })
+    }
+  }
+
+  // 3. leader
+  if (userRows.length > 1) {
+    const top = userRows[0]
+    out.push({ tone: 'info', icon: '🏆', text: `${top.name} leads with ${top.total} records (${pct(top.total, T.records)}% of this selection), ${top.confirmed} already confirmed.` })
+  }
+
+  // 4. backlog
+  if (T.pending > 0) {
+    const share = pct(T.pending, T.records)
+    out.push(share > 30
+      ? { tone: 'warn', icon: '⏳', text: `Backlog attention: ${T.pending} records (${share}%) are still pending review — confirming them moves the surveyor progress rings.` }
+      : { tone: 'info', icon: '⏳', text: `${T.pending} record${T.pending > 1 ? 's' : ''} awaiting review (${share}% of the selection).` })
+  }
+
+  // 5. rejections
+  if (T.rejected > 0 && pct(T.rejected, T.records) >= 10) {
+    out.push({ tone: 'warn', icon: '⚠️', text: `Rejection rate is high: ${T.rejected} records (${pct(T.rejected, T.records)}%) were rejected — worth reviewing why with the surveyors involved.` })
+  }
+
+  // 6. media quality
+  if (fc >= 1 && T.records > 0) {
+    const fails = [
+      ['geo-tag', T.geo_fail], ['voice', T.voice_fail], ['photo', T.photo_fail],
+    ].sort((a, b) => b[1] - a[1])
+    const worst = fails[0]
+    const good = pct(T.complete, T.records)
+    if (good >= 80) {
+      out.push({ tone: 'good', icon: '✅', text: `Field discipline is strong: ${good}% of records have complete media (geo + voice + photo).` })
+    } else {
+      out.push({ tone: 'info', icon: '🧪', text: `Media completeness is ${good}%.${worst && worst[1] > 0 ? ` Biggest gap: ${worst[0]} failures (${worst[1]} record${worst[1] > 1 ? 's' : ''}).` : ''}` })
+    }
+  }
+
+  // 7. quota rings
+  if (quotaRows.length) {
+    const done = quotaRows.filter((q) => q.pct >= 100)
+    const lead = quotaRows[0]
+    if (done.length) {
+      out.push({ tone: 'good', icon: '🎯', text: `${done.length} surveyor${done.length > 1 ? 's have' : ' has'} reached 100% of quota${lead && lead.pct >= 100 ? ` — ${lead.name} at the front` : ''}.` })
+    } else if (lead) {
+      out.push({ tone: 'info', icon: '🎯', text: `Quota progress: ${lead.name} is closest at ${lead.pct}%. No one has closed their target yet.` })
+    }
+  }
+
+  // 8. geography
+  if (districtRows.length && !applied.district) {
+    const d0 = districtRows[0]
+    out.push({ tone: 'info', icon: '🗺️', text: `${districtRows.length} district${districtRows.length > 1 ? 's' : ''} covered — ${d0.name} carries the most records (${d0.total}).${districtRows.length === 1 ? ' Reach is narrow so far.' : ''}` })
+  }
+
+  // 9. focused-surveyor read
+  if (fc >= 1 && applied.user && userRows.length === 1) {
+    const u = userRows[0]
+    const target = users.find((x) => (x.display_name || x.username) === u.name)
+    const t = Number(target?.target_quota) || 0
+    if (t > 0) out.push({ tone: 'info', icon: '🎯', text: `${u.name} is at ${Math.min(100, Math.round((u.total / t) * 100))}% of the assigned target (${u.total} of ${t}).` })
+    if (u.total > 0) {
+      const dayRows = (applied.grain === 'month' ? [] : timeRows.filter((r) => r.total > 0))
+      if (dayRows.length >= 2) out.push({ tone: 'info', icon: '📆', text: `Averaging ${Math.round(u.total / Math.max(1, dayRows.length))} records per active ${applied.grain === 'month' ? 'month' : 'day'} in this window.` })
+    }
+  }
+
+  // 10. party answers
+  if (partyRows.length > 1) {
+    const p0 = partyRows[0]
+    out.push({ tone: 'info', icon: '🗳️', text: `“${p0.name}” is the most common winning-party answer (${p0.value} responses, ${pct(p0.value, T.records)}%).` })
+  }
+
+  return out
+}
+
 export default function AdminCharts() {
   const [filters, setFilters] = useState({
     survey: '', user: '', district: '', date_from: '', date_to: '', grain: 'day',
@@ -300,6 +402,11 @@ export default function AdminCharts() {
     : fc === 1
       ? `Focused view — 1 filter (${activeFilters[0].k}: ${activeFilters[0].v})`
       : `Deep dive — ${fc} filters applied`
+
+  const insights = useMemo(
+    () => buildInsights({ totals, timeRows, userRows, districtRows, partyRows, quotaRows, applied, fc, users }),
+    [totals, timeRows, userRows, districtRows, partyRows, quotaRows, applied, fc, users],
+  )
 
   const rate = (n) => (totals.records ? Math.round(((n || 0) / totals.records) * 100) : 0)
 
@@ -508,6 +615,32 @@ export default function AdminCharts() {
           </PieChart>
         </Card>
       ) : null}
+
+      {/* DEPTH ANALYSIS — auto-generated reading of the selection */}
+      <div className="card" style={{ padding: 14, borderLeft: '4px solid #4472C4' }}>
+        <h3 style={{ margin: '0 0 2px', fontSize: 15 }}>🔍 Depth analysis</h3>
+        <p className="muted" style={{ margin: '0 0 10px', fontSize: 12 }}>
+          Auto-generated from the {fc === 0 ? 'whole survey' : `${fc} active filter${fc > 1 ? 's' : ''}`} — updates with Apply.
+        </p>
+        <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {insights.map((ins, i) => (
+            <li
+              key={i}
+              style={{
+                fontSize: 13,
+                lineHeight: 1.5,
+                display: 'flex',
+                gap: 8,
+                alignItems: 'flex-start',
+                color: ins.tone === 'warn' ? '#92400e' : ins.tone === 'good' ? '#166534' : ins.tone === 'muted' ? '#64748b' : '#1e293b',
+              }}
+            >
+              <span aria-hidden="true">{ins.icon}</span>
+              <span>{ins.text}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   )
 }

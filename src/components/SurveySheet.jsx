@@ -6,7 +6,7 @@
  */
 import { Fragment, useMemo, useState } from 'react'
 import { QChart } from './QuestionAnalytics'
-import { applyFilters, countBy, crossTab, options, sortOpts, suggestCharts } from '../surveyEngine'
+import { applyFilters, countBy, options, sortOpts, suggestCharts, summarize } from '../surveyEngine'
 
 const GREEN = '#107c41'
 const GRID = '#d1d5db'
@@ -64,14 +64,28 @@ export default function SurveySheet({ rows, questions, selectedQids, setSelected
   const [chartPick, setChartPick] = useState({}) // qid → type
   const [crossPick, setCrossPick] = useState({}) // qid → field
 
-  const qNum = (id) => questions.findIndex((q) => String(q.id) === String(id)) + 1
-  const selected = useMemo(
-    () => questions.filter((q) => selectedQids.map(String).includes(String(q.id))),
-    [questions, selectedQids],
+  // Only questions with a small closed set of answers are chartable (hides free text / ids).
+  const qlist = useMemo(
+    () => questions.filter((q) => {
+      const n = options(rows, String(q.id)).length
+      return n >= 1 && n <= 30
+    }),
+    [questions, rows],
   )
-  const fields = selected.map((q) => String(q.id))
+  const qNum = (id) => qlist.findIndex((q) => String(q.id) === String(id)) + 1
+  const selected = useMemo(
+    () => qlist.filter((q) => selectedQids.map(String).includes(String(q.id))),
+    [qlist, selectedQids],
+  )
+  const fieldsKey = selected.map((q) => String(q.id)).join('|')
 
-  const filtered = useMemo(() => applyFilters(rows, values), [rows, values])
+  // Value filters only count for questions that are currently picked, so a
+  // de-selected question can never leave a hidden filter behind.
+  const activeValues = useMemo(
+    () => Object.fromEntries(Object.entries(values).filter(([f, s]) => s?.size && fieldsKey.split('|').includes(f))),
+    [values, fieldsKey],
+  )
+  const filtered = useMemo(() => applyFilters(rows, activeValues), [rows, activeValues])
   const toggleV = (f, v) =>
     setValues((p) => {
       const s = new Set(p[f] ?? [])
@@ -87,9 +101,8 @@ export default function SurveySheet({ rows, questions, selectedQids, setSelected
       return has ? prev.filter((x) => String(x) !== key) : [...prev, key]
     })
 
-  const activeNotes = Object.keys(values)
-    .filter((f) => values[f]?.size)
-    .map((f) => `${(META_FIELDS[f] || f).toUpperCase()}=${[...values[f]].join('|')}`)
+  const activeNotes = Object.keys(activeValues)
+    .map((f) => `Q${qNum(f)}=${[...activeValues[f]].join('|')}`)
 
   const fx = selected.length
     ? `=Q${selected.map((q) => qNum(q.id)).join(',Q')}  n=${filtered.length}  ${activeNotes.length ? activeNotes.join(' · ') : 'no filters'}${filterNote ? `  ${filterNote}` : ''}`
@@ -98,7 +111,7 @@ export default function SurveySheet({ rows, questions, selectedQids, setSelected
   // ── chart configs ────────────────────────────────────────────────────────
   const charts = selected.map((q) => {
     const qq = { id: String(q.id), text: q.label, field: String(q.id), x: crossPick[q.id] || undefined }
-    const types = suggestCharts(filtered, qq, meta)
+    const types = suggestCharts(rows, qq, meta)
     const type = chartPick[q.id] && types.includes(chartPick[q.id]) ? chartPick[q.id] : types[0] || 'column'
     return { q, qq, types, type }
   })
@@ -123,8 +136,9 @@ export default function SurveySheet({ rows, questions, selectedQids, setSelected
     const top = counts[0]
     const second = counts[1]
     const last = counts[counts.length - 1]
-    let text = `${top[0]} leads with ${top[1]} (${p(top[1])})`
-    if (second) text += `, ${(((top[1] - second[1]) * 100) / answered).toFixed(1)} pts ahead of ${second[0]} (${p(second[1])})`
+    const sm = summarize(filtered, field)
+    let text = `${top[0]} leads with ${top[1]} (${p(top[1])}, ±${((sm?.moe ?? 0) * 100).toFixed(1)}%, n=${answered})`
+    if (second) text += `, ${(((top[1] - second[1]) * 100) / answered).toFixed(1)} pts ahead of ${second[0]} (${p(second[1])})${sm && !sm.significant ? ' — lead is within the margin of error' : ''}`
     text += `; lowest is ${last[0]} (${p(last[1])}).`
     if (activeNotes.length) {
       const full = countBy(rows, field)
@@ -184,7 +198,7 @@ export default function SurveySheet({ rows, questions, selectedQids, setSelected
           Select question no.
         </div>
         <div style={{ flex: 1, padding: '3px 6px', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-          {questions.map((q, i) => {
+          {qlist.map((q, i) => {
             const on = selectedQids.map(String).includes(String(q.id))
             return (
               <button key={q.id} type="button" style={tapChip(on)} title={q.label} onClick={() => toggleQ(q.id)}>
@@ -195,6 +209,9 @@ export default function SurveySheet({ rows, questions, selectedQids, setSelected
         </div>
       </div>
 
+      {selected.length === 0 ? (
+        <div className="muted" style={{ padding: 14, fontSize: 12 }}>Pick one or more question numbers above. Hover a chip to read the question.</div>
+      ) : (<>
       {/* value-filter rows */}
       {selected.map((q) => {
         const field = String(q.id)
@@ -256,9 +273,6 @@ export default function SurveySheet({ rows, questions, selectedQids, setSelected
             </div>
           </div>
         ))}
-        {!charts.length && (
-          <div className="muted" style={{ padding: 14, fontSize: 12 }}>Pick one or more question numbers above.</div>
-        )}
       </div>
 
       {/* sheet tabs */}
@@ -375,7 +389,7 @@ export default function SurveySheet({ rows, questions, selectedQids, setSelected
       {tab === 'summary' && (
         <Table minWidth={0} maxHeight={260}>
           <tbody>
-            {charts.map(({ q, qq }) => {
+            {charts.map(({ q, qq, type }) => {
               const field = String(q.id)
               const counts = countBy(filtered, field)
               const answered = [...counts.values()].reduce((a, b) => a + b, 0)
@@ -385,7 +399,7 @@ export default function SurveySheet({ rows, questions, selectedQids, setSelected
               return (
                 <Fragment key={q.id}>
                   <tr style={{ background: SEL, fontWeight: 700 }}>
-                    <td style={cell} colSpan={(xs ? xs.length : 2) + 2}>Q{qNum(q.id)}. {q.label} · {TYPE_LABEL[chartPick[q.id]] || ''}</td>
+                    <td style={cell} colSpan={(xs ? xs.length : 2) + 2}>Q{qNum(q.id)}. {q.label} · {TYPE_LABEL[type] || ''}</td>
                   </tr>
                   {xs ? (
                     <>
@@ -513,6 +527,7 @@ export default function SurveySheet({ rows, questions, selectedQids, setSelected
           ))}
         </ul>
       </div>
+      </>)}
     </div>
   )
 }

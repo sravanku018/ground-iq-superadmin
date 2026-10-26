@@ -22,7 +22,7 @@ import QuotaIndicator from './components/QuotaIndicator'
 import AdminLogin from './AdminLogin'
 import VerifiedBadge from './VerifiedBadge'
 import { PortalEmpty, PortalSkeleton } from './PortalUI'
-import { claimReload, isChunkLoadError, reloadSoon } from './reloadGuard'
+import { claimReload, isChunkLoadError, reloadSoon, hardReload } from './reloadGuard'
 import AdminBell from './AdminBell'
 import useIdleTimeout from './hooks/useIdleTimeout'
 import { useIsNarrow } from './hooks/useIsNarrow'
@@ -140,7 +140,7 @@ class ChunkErrorBoundary extends Component {
               <button
                 type="button"
                 className="btn primary"
-                onClick={() => window.location.reload()}
+                onClick={() => hardReload()}
               >
                 Reload now
               </button>

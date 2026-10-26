@@ -48,9 +48,24 @@ export function claimReload() {
   return true
 }
 
+/**
+ * Force a FRESH document: a plain reload can be served from Firefox's cache
+ * with the old chunk names, which 404 after a deploy and show the error card
+ * again. A cache-busting query param guarantees a new document fetch.
+ */
+export function hardReload() {
+  try {
+    const url = new URL(window.location.href)
+    url.searchParams.set('r', String(Date.now()))
+    window.location.replace(url.toString())
+  } catch {
+    window.location.reload()
+  }
+}
+
 /** Reload a beat later so a failing screen can paint its message first. */
 export function reloadSoon(delayMs = 350) {
-  setTimeout(() => window.location.reload(), delayMs)
+  setTimeout(() => hardReload(), delayMs)
 }
 
 /**

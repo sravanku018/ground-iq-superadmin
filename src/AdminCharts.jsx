@@ -61,11 +61,11 @@ function Card({ title, subtitle, children, height = 300 }) {
   )
 }
 
-function FilterBar({ surveys, users, questions, filters, setFilters, onApply, loading, onReset, questionCount, setQuestionCount, chartCount, setChartCount }) {
+function FilterBar({ surveys, users, questions, filters, setFilters, onApply, loading, onReset, selectedQids, setSelectedQids, chartCount, setChartCount }) {
   const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }))
   const chosenQ = questions.find((q) => String(q.id) === String(filters.qid))
   const withAnswers = questions.filter((q) => q.answered > 0)
-  const chipList = (withAnswers.length ? withAnswers : questions).slice(0, 12)
+  const tickList = (withAnswers.length ? withAnswers : questions).slice(0, 20)
   return (
     <div className="card" style={{ padding: 14, marginBottom: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
@@ -115,14 +115,6 @@ function FilterBar({ surveys, users, questions, filters, setFilters, onApply, lo
           </select>
         </label>
         <label className="field" style={{ margin: 0 }}>
-          <span style={{ fontSize: 11 }}>No. of questions</span>
-          <select value={questionCount} onChange={(e) => setQuestionCount(Number(e.target.value))}>
-            {[1, 2, 3, 5, 8, 10, 15, 20].map((n) => (
-              <option key={n} value={n}>{n} question{n > 1 ? 's' : ''}</option>
-            ))}
-          </select>
-        </label>
-        <label className="field" style={{ margin: 0 }}>
           <span style={{ fontSize: 11 }}>No. of charts</span>
           <select value={chartCount} onChange={(e) => setChartCount(Number(e.target.value))}>
             {[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20].map((n) => (
@@ -158,42 +150,39 @@ function FilterBar({ surveys, users, questions, filters, setFilters, onApply, lo
         </button>
         <button type="button" className="btn" onClick={onReset}>Reset</button>
       </div>
-      {chipList.length > 0 && (
-        <div style={{ marginTop: 10 }}>
-          <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Questions in this survey — tap one to filter:</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {chipList.map((q) => {
-              const active = String(filters.qid) === String(q.id)
+      {tickList.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div className="muted" style={{ fontSize: 11, marginBottom: 6 }}>
+            Questions to chart — tick the ones you want ({selectedQids.length} ticked):
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 4, maxHeight: 190, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#fff' }}>
+            {tickList.map((q) => {
+              const ticked = selectedQids.map(String).includes(String(q.id))
               return (
-                <button
+                <label
                   key={q.id}
-                  type="button"
-                  onClick={() =>
-                    setFilters((f) => ({
-                      ...f,
-                      qid: active ? '' : q.id,
-                      qval: '',
-                    }))
-                  }
-                  title={q.answered ? `${q.answered} answered` : 'No answers yet in this selection'}
-                  style={{
-                    fontSize: 11,
-                    padding: '4px 10px',
-                    borderRadius: 999,
-                    border: active ? '1px solid #3f6cbe' : '1px solid #dbe3ef',
-                    background: active ? '#eef3fb' : '#fff',
-                    color: active ? '#223f75' : '#475569',
-                    cursor: 'pointer',
-                    maxWidth: 280,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 6px', borderRadius: 6, cursor: 'pointer', background: ticked ? '#eef3fb' : 'transparent' }}
+                  title={q.answered ? `${q.answered} answered in this selection` : 'No answers yet in this selection'}
                 >
-                  {String(q.label || q.id).slice(0, 40)}
-                  {q.answered ? ` · ${q.answered}` : ''}
-                  {active ? ' ✕' : ''}
-                </button>
+                  <input
+                    type="checkbox"
+                    checked={ticked}
+                    onChange={() =>
+                      setSelectedQids((prev) => {
+                        const id = String(q.id)
+                        const has = prev.map(String).includes(id)
+                        return has ? prev.filter((x) => String(x) !== id) : [...prev, id]
+                      })
+                    }
+                    style={{ accentColor: '#4472C4' }}
+                  />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {String(q.label || q.id)}
+                  </span>
+                  {q.answered > 0 && (
+                    <span className="muted" style={{ fontSize: 10, marginLeft: 'auto' }}>{q.answered}</span>
+                  )}
+                </label>
               )
             })}
           </div>
@@ -325,9 +314,9 @@ export default function AdminCharts() {
   const [data, setData] = useState(null)
   const [surveys, setSurveys] = useState([])
   const [questions, setQuestions] = useState([])
-  // How many questions to analyse and how many charts to draw from them —
-  // set by the Client Admin; the top-answered questions fill the charts.
-  const [questionCount, setQuestionCount] = useState(5)
+  // The Client Admin ticks the questions to chart; No. of charts caps how
+  // many of the ticked questions are drawn.
+  const [selectedQids, setSelectedQids] = useState([])
   const [chartCount, setChartCount] = useState(5)
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
@@ -509,14 +498,16 @@ export default function AdminCharts() {
   ]
   // Question answer charts — the heart of "survey depth": each question's
   // answer distribution in the current selection.
-  // The Client Admin chooses how many questions to analyse and how many charts
-  // to draw: the top-answered questions fill the charts automatically. Picking
-  // one Question in the filter still narrows everything to that question.
+  // Charts come from the TICKED questions (tick list above), capped by the
+  // No. of charts selector. A Question dropdown filter narrows data + charts
+  // to that single question.
   const qPool = (Array.isArray(data?.by_question) ? data.by_question : [])
     .filter((q) => Array.isArray(q.options) && q.options.length > 0)
   const qChosen = applied.qid
     ? qPool.filter((q) => String(q.question_id) === String(applied.qid))
-    : qPool.slice(0, Math.max(1, Math.min(questionCount, chartCount)))
+    : qPool
+      .filter((q) => selectedQids.map(String).includes(String(q.question_id)))
+      .slice(0, Math.max(1, chartCount))
   const questionCharts = qChosen.map((q) => ({
       id: q.question_id,
       label: q.label || q.question_id,
@@ -616,8 +607,8 @@ export default function AdminCharts() {
         surveys={surveys}
         users={users}
         questions={availableQuestions}
-        questionCount={questionCount}
-        setQuestionCount={setQuestionCount}
+        selectedQids={selectedQids}
+        setSelectedQids={setSelectedQids}
         chartCount={chartCount}
         setChartCount={setChartCount}
         filters={filters}
@@ -660,7 +651,15 @@ export default function AdminCharts() {
         ))}
       </div>
 
-      {/* QUESTION ANSWER CHARTS — generated from the chosen question/chart counts */}
+      {/* QUESTION ANSWER CHARTS — one per ticked question (up to No. of charts) */}
+      {questionCharts.length === 0 && !applied.qid && (
+        <div className="card" style={{ padding: '10px 14px', marginBottom: 14, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span aria-hidden="true">📋</span>
+          <span className="muted" style={{ fontSize: 12 }}>
+            Tick one or more <strong>Questions to chart</strong> above — each ticked question gets its answer-distribution graph.
+          </span>
+        </div>
+      )}
       {questionCharts.length > 0 && (
         <>
           <div className="card" style={{ padding: '10px 14px', marginBottom: 14 }}>
@@ -670,7 +669,7 @@ export default function AdminCharts() {
                 ? (applied.qval
                   ? `Selected question, answers where the value is “${applied.qval}” — ${questionCharts[0].answered} records.`
                   : `Selected question — ${questionCharts[0].answered} records answered.`)
-                : `Top ${questionCharts.length} of ${questionCount} question${questionCount > 1 ? 's' : ''} analysed — highest response counts first.`}
+                : `${questionCharts.length} ticked question${questionCharts.length > 1 ? 's' : ''} charted.`}
             </p>
           </div>
           {questionCharts.map((q) => (

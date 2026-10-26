@@ -59,7 +59,21 @@ export function summarize(rows, field) {
 }
 
 export const sortOpts = (vals, order) =>
-  order ? [...vals].sort((a, b) => order.indexOf(a) - order.indexOf(b)) : vals
+  order && order.length
+    ? [...vals].sort((a, b) => {
+      const ia = order.indexOf(a)
+      const ib = order.indexOf(b)
+      if (ia === -1 && ib === -1) return numOf(a) - numOf(b)
+      if (ia === -1) return 1
+      if (ib === -1) return -1
+      return ia - ib
+    })
+    : [...vals].sort((a, b) => numOf(a) - numOf(b))
+
+const numOf = (v) => {
+  const n = parseFloat(String(v).replace(/[^0-9.+-]/g, ''))
+  return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER
+}
 
 /** Suggested chart types for a question, based on its kind and option count. */
 export function suggestCharts(rows, q, meta) {
@@ -90,7 +104,11 @@ export function buildMeta(questions) {
     const opts = Array.isArray(q.options) ? q.options : []
     let kind = 'nominal'
     if (type === 'date' || type === 'time' || type === 'datetime') kind = 'time'
-    else if (type === 'age' || opts.some((o) => /^\d+\s*[-–]\s*\d+|\+$/.test(String(o)))) kind = 'ordinal'
+    else if (
+      type === 'meter' || type === 'number' || type === 'rating' || type === 'slider' ||
+      type === 'age' || opts.some((o) => /^\d+\s*[-–]\s*\d+|\+$/.test(String(o)))
+    ) kind = 'ordinal'
+    else if (type === 'abc' || type === 'select' || type === 'radio' || type === 'checkbox' || type === 'choice') kind = 'nominal'
     meta[q.id] = { kind, order: opts.map(String) }
   }
   meta.district = { kind: 'nominal' }

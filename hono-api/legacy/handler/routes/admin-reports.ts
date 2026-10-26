@@ -393,9 +393,19 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
     // question metadata for the question-answer charts (label + option order)
     const qMetaMap = new Map<string, { label: string; type: string; options: string[] }>();
     {
+      // Respect the selected survey: without this, by_question counted every
+      // survey's questions, so the Charts sheet offered questions that had no
+      // rows in the chosen survey (empty charts) and q_ filters mis-matched.
       const frows = scopeKeys
-        ? await sql`SELECT questions FROM survey_form WHERE form_key = ANY(${scopeKeys})`.catch(() => [])
-        : await sql`SELECT questions FROM survey_form`.catch(() => []);
+        ? await sql`
+              SELECT questions FROM survey_form
+              WHERE form_key = ANY(${scopeKeys})
+                AND (${surveyQ} = '' OR form_key = ${surveyQ})
+            `.catch(() => [])
+        : await sql`
+              SELECT questions FROM survey_form
+              WHERE (${surveyQ} = '' OR form_key = ${surveyQ})
+            `.catch(() => []);
       for (const f of frows as { questions?: unknown }[]) {
         let qs = f.questions;
         if (typeof qs === "string") { try { qs = JSON.parse(qs); } catch { qs = []; } }

@@ -516,6 +516,11 @@ export default function AdminCharts() {
       rows: q.options.map((o) => ({ name: String(o.value), count: Number(o.count) || 0 })),
     }))
 
+  // Question mode: ticked questions (or a selected Question filter) decide the
+  // chart set — every chart is that question's distribution on the filtered
+  // data. The generic overview charts step aside so the selection is the view.
+  const questionMode = qChosen.length > 0
+
   const partyRows = (Array.isArray(data?.by_party) ? data.by_party : []).map((r) => ({
     name: r.party || 'Unknown',
     value: Number(r.total) || 0,
@@ -669,7 +674,10 @@ export default function AdminCharts() {
                 ? (applied.qval
                   ? `Selected question, answers where the value is “${applied.qval}” — ${questionCharts[0].answered} records.`
                   : `Selected question — ${questionCharts[0].answered} records answered.`)
-                : `${questionCharts.length} ticked question${questionCharts.length > 1 ? 's' : ''} charted.`}
+                : `${questionCharts.length} ticked question${questionCharts.length > 1 ? 's' : ''} charted`}
+              {activeFilters.length
+                ? ` · filtered by ${activeFilters.map((f) => `${f.k}: ${f.v}`).join(', ')}`
+                : ' · whole survey selected'}
             </p>
           </div>
           {questionCharts.map((q) => (
@@ -693,6 +701,7 @@ export default function AdminCharts() {
         </>
       )}
 
+      {!questionMode && (<>
       {showArea && (<>
       {/* AREA — cumulative collection depth */}
       <Card title="Area — cumulative depth" subtitle="Total records piled up over the selected period (gradient area, EvilCharts style).">
@@ -854,6 +863,7 @@ export default function AdminCharts() {
         </Card>
       ) : null}
 
+      </>)}
       {/* DEPTH ANALYSIS — auto-generated reading of the selection */}
       <div className="card" style={{ padding: 14, borderLeft: '4px solid #4472C4' }}>
         <h3 style={{ margin: '0 0 2px', fontSize: 15 }}>🔍 Depth analysis</h3>

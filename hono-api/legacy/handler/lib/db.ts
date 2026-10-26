@@ -76,16 +76,21 @@ export function sqlJson(data: unknown) {
 
 export async function insertSubmissionRow(payload: Record<string, unknown>) {
   const param = sqlJson(payload);
+  // ON CONFLICT DO NOTHING against the client_package_id unique index: two
+  // concurrent sync retries of the same package can never both insert. An
+  // empty result means "already stored" — the caller returns the existing row.
   if (typeof param === "string") {
     return await sql`
       INSERT INTO submissions (payload)
       VALUES (${param}::jsonb)
+      ON CONFLICT DO NOTHING
       RETURNING id, payload, created_at
     `;
   }
   return await sql`
     INSERT INTO submissions (payload)
     VALUES (${param})
+    ON CONFLICT DO NOTHING
     RETURNING id, payload, created_at
   `;
 }

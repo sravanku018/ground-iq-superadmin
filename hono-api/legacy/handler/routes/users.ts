@@ -33,6 +33,7 @@ import {
   upsertSurveyAssignment,
 } from "../lib/survey-assignments.ts";
 import {
+  invalidateSessionCache,
   isPortalAdmin,
   sqlBool,
   sqlCountN,

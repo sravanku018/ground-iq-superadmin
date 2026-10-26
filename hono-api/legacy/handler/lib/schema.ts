@@ -42,6 +42,21 @@ export async function ensureSchema(): Promise<void> {
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS can_excel_charts BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS converse_max_records INTEGER NOT NULL DEFAULT 0`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS converse_max_minutes INTEGER NOT NULL DEFAULT 0`,
+    // Field-app packages are idempotent by client_package_id. Remove pre-fix
+    // duplicates (keep the lowest id), then enforce it with a unique index so
+    // two concurrent retries can never both insert.
+    () => sql`
+        DELETE FROM submissions a
+        USING submissions b
+        WHERE a.id > b.id
+          AND COALESCE(a.payload->'answers'->>'client_package_id', '') <> ''
+          AND a.payload->'answers'->>'client_package_id' = b.payload->'answers'->>'client_package_id'
+      `,
+    () => sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS submissions_client_package_uidx
+        ON submissions ((payload->'answers'->>'client_package_id'))
+        WHERE COALESCE(payload->'answers'->>'client_package_id', '') <> ''
+      `,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_secret TEXT`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS target_quota INTEGER NOT NULL DEFAULT 0`,
@@ -290,7 +305,7 @@ export async function ensureCompanyExists(
 
 // Bump this when ensureSchema() steps change. The version is stored in
 // app_settings; if it matches, the ~58 CREATE/ALTER round-trips are skipped.
-const SCHEMA_VERSION = "2026-10-25.2";
+const SCHEMA_VERSION = "2026-10-26.1";
 
 export let schemaReady: Promise<void> | null = null;
 

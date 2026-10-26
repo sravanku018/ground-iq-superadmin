@@ -287,7 +287,28 @@ export async function handleSubmissionsCreate(c: Ctx): Promise<Response | null> 
       }
     }
     const rows = await insertSubmissionRow(payload);
-    const row = rows[0] as { id: number; payload: unknown; created_at: string };
+    let row = rows[0] as { id: number; payload: unknown; created_at: string } | undefined;
+    if (!row) {
+      // The unique package index caught a concurrent retry: return the winner.
+      const existing = pkgId
+        ? await sql`
+              SELECT id, payload, created_at FROM submissions
+              WHERE payload->'answers'->>'client_package_id' = ${pkgId}
+                 OR payload->>'client_package_id' = ${pkgId}
+              ORDER BY id LIMIT 1
+            `.catch(() => [])
+        : [];
+      const found = existing[0] as { id: number } | undefined;
+      if (found) {
+        return json({
+          ok: true,
+          duplicate: true,
+          id: found.id,
+          note: "Already received — returning existing record",
+        });
+      }
+      return json({ error: "Could not store the record — retry" }, 503);
+    }
     if (me.role === "surveyor") {
       logAudit(me, "submission_create", "submission", row.id, {
         form_key: payload.form_key || null,

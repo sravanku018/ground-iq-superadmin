@@ -580,7 +580,8 @@ export async function handleWebSurvey(c: Ctx): Promise<Response | null> {
       web_link_token: token,
     };
     const rows = await insertSubmissionRow(payload);
-    const row = rows[0] as { id: number; created_at: string };
+    const row = rows[0] as { id: number; created_at: string } | undefined;
+    if (!row) return json({ error: "Could not store the response — retry" }, 503);
     await sql`
         UPDATE web_survey_links SET submission_id = ${row.id} WHERE token = ${token}
       `.catch(() => []);

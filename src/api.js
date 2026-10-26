@@ -684,7 +684,7 @@ export function apkDownloadUrl() {
 }
 
 /** Raw answer rows for the question-analytics engine (honours the tab filters). */
-export function getAnswerRows(filters = {}, limit = 3000) {
+export function getAnswerRows(filters = {}, limit = 10000) {
   const q = new URLSearchParams()
   const f = typeof filters === 'string' ? { survey: filters } : filters || {}
   for (const k of ['survey', 'user', 'district', 'date_from', 'date_to']) {

@@ -243,6 +243,7 @@ export default function AdminCharts() {
   // Raw answer rows for the full question engine (fetched per survey).
   const [answerRows, setAnswerRows] = useState([])
   const [answerLoading, setAnswerLoading] = useState(false)
+  const [answerTruncated, setAnswerTruncated] = useState(false)
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
@@ -302,7 +303,7 @@ export default function AdminCharts() {
       district: applied.district,
       date_from: applied.date_from,
       date_to: applied.date_to,
-    }, 3000)
+    }, 10000)
       .then((res) => {
         if (stop) return
         const flat = (Array.isArray(res?.rows) ? res.rows : []).map((r) => ({
@@ -314,6 +315,7 @@ export default function AdminCharts() {
           status: r.status,
         }))
         setAnswerRows(flat)
+        setAnswerTruncated(res?.truncated === true)
       })
       .catch(() => {
         if (!stop) setAnswerRows([])
@@ -547,7 +549,9 @@ export default function AdminCharts() {
       if (!prev.label || prev.label === id) prev.label = String(item.label || id)
       byId.set(id, prev)
     }
-    return [...byId.values()].sort((a, b) => b.answered - a.answered)
+    // Survey DEFINITION order (Q numbering must not move when data changes);
+    // questions only found in the data are appended at the end.
+    return [...byId.values()]
   }, [questions, data])
 
   const engineMeta = useMemo(() => buildMeta(availableQuestions), [availableQuestions])
@@ -621,6 +625,7 @@ export default function AdminCharts() {
           setSelectedQids={setSelectedQids}
           meta={engineMeta}
           filterNote={sheetFilterNote}
+          truncated={answerTruncated}
         />
       )}
 

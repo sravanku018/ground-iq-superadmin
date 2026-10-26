@@ -263,7 +263,7 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
     const districtQ = String(url.searchParams.get("district") || "").trim().toLowerCase();
     const dateFromQ = String(url.searchParams.get("date_from") || "").trim();
     const dateToQ = String(url.searchParams.get("date_to") || "").trim();
-    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 2000, 1), 5000);
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 5000, 1), 20000);
     const scopeKeys = await adminFormKeyScope(sql, me);
 
     const frows = scopeKeys
@@ -306,11 +306,16 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
       const payload = parsePayload(r.payload);
       if (isDraftSubmission(payload)) continue;
       const a = (payload.answers || {}) as Record<string, unknown>;
-      const answers: Record<string, string> = {};
+      // Multi-select answers stay as arrays — the analytics engine counts each
+      // chosen option, instead of one combined "A, B" pseudo-category.
+      const answers: Record<string, string | string[]> = {};
       for (const qid of qids) {
         const v = answerOf(a, qid);
         if (v == null || v === "") continue;
-        answers[qid] = Array.isArray(v) ? v.map(String).join(", ") : String(v);
+        answers[qid] = Array.isArray(v)
+          ? v.map(String).filter((x) => x !== "")
+          : String(v);
+        if (Array.isArray(answers[qid]) && (answers[qid] as string[]).length === 0) delete answers[qid];
       }
       const date = dayKey(isoStamp(r.created_at));
       const user = surveyorNameOf(payload);
@@ -329,7 +334,13 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
         answers,
       });
     }
-    return json({ rows: out, question_ids: qids, total: out.length });
+    return json({
+      rows: out,
+      question_ids: qids,
+      total: out.length,
+      limit,
+      truncated: out.length >= limit,
+    });
   }
 
   if (path === "/api/admin/analyze" && method === "GET") {

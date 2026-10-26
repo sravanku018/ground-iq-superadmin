@@ -3,17 +3,25 @@
  * Rows are flat answer records: { [questionId]: "answer", district, user, ... }.
  */
 
-export const applyFilters = (rows, filters) =>
-  rows.filter((r) => Object.entries(filters).every(([k, s]) => !s.size || s.has(r[k])))
+/** Multi-select answers arrive as arrays; treat them as the set of chosen values. */
+export const valuesOf = (v) => (Array.isArray(v) ? v.filter((x) => x != null && x !== '') : v == null || v === '' ? [] : [v])
 
-export const options = (rows, field) =>
-  [...new Set(rows.map((r) => r[field]).filter(Boolean))]
+export const applyFilters = (rows, filters) =>
+  rows.filter((r) =>
+    Object.entries(filters).every(([k, s]) => !s.size || valuesOf(r[k]).some((v) => s.has(String(v)))),
+  )
+
+export const options = (rows, field) => [
+  ...new Set(rows.flatMap((r) => valuesOf(r[field]).map(String))),
+]
 
 export const countBy = (rows, field) => {
   const m = new Map()
   rows.forEach((r) => {
-    const v = r[field]
-    if (v) m.set(v, (m.get(v) ?? 0) + 1)
+    for (const raw of valuesOf(r[field])) {
+      const v = String(raw)
+      if (v) m.set(v, (m.get(v) ?? 0) + 1)
+    }
   })
   return m
 }
@@ -22,7 +30,12 @@ export const crossTab = (rows, rf, cf) => {
   const cols = options(rows, cf)
   const data = options(rows, rf).map((o) => ({
     name: o,
-    ...Object.fromEntries(cols.map((c) => [c, rows.filter((r) => r[rf] === o && r[cf] === c).length])),
+    ...Object.fromEntries(
+      cols.map((c) => [
+        c,
+        rows.filter((r) => valuesOf(r[rf]).map(String).includes(o) && valuesOf(r[cf]).map(String).includes(c)).length,
+      ]),
+    ),
   }))
   return { cols, data }
 }

@@ -32,6 +32,7 @@ const CROSS = [
 ]
 const META_FIELDS = { district: 'District', user: 'Surveyor', status: 'Status', month: 'Month', date: 'Date' }
 
+const disp = (v) => (Array.isArray(v) ? v.join(', ') : v ?? '')
 const cell = { border: `1px solid ${GRID}`, padding: '2px 6px', fontSize: 11, whiteSpace: 'nowrap' }
 const hcell = { ...cell, background: HD, fontWeight: 'normal', textAlign: 'center' }
 const rn = { ...hcell, width: 28, color: '#6b7280' }
@@ -58,7 +59,7 @@ function downloadCsv(rows, questions) {
   URL.revokeObjectURL(a.href)
 }
 
-export default function SurveySheet({ rows, questions, selectedQids, setSelectedQids, meta, filterNote }) {
+export default function SurveySheet({ rows, questions, selectedQids, setSelectedQids, meta, filterNote, truncated = false }) {
   const [values, setValues] = useState({}) // field → Set(values)
   const [tab, setTab] = useState('totals')
   const [chartPick, setChartPick] = useState({}) // qid → type
@@ -105,7 +106,7 @@ export default function SurveySheet({ rows, questions, selectedQids, setSelected
     .map((f) => `Q${qNum(f)}=${[...activeValues[f]].join('|')}`)
 
   const fx = selected.length
-    ? `=Q${selected.map((q) => qNum(q.id)).join(',Q')}  n=${filtered.length}  ${activeNotes.length ? activeNotes.join(' · ') : 'no filters'}${filterNote ? `  ${filterNote}` : ''}`
+    ? `=Q${selected.map((q) => qNum(q.id)).join(',Q')}  n=${filtered.length}${truncated ? ` (first ${rows.length} loaded — narrow filters for full accuracy)` : ''}  ${activeNotes.length ? activeNotes.join(' · ') : 'no filters'}${filterNote ? `  ${filterNote}` : ''}`
     : 'Select a question number (Q1–Qn) to load its filters, charts and analysis'
 
   // ── chart configs ────────────────────────────────────────────────────────
@@ -377,8 +378,8 @@ export default function SurveySheet({ rows, questions, selectedQids, setSelected
               <tr key={r.id ?? i}>
                 <th style={rn}>{i + 2}</th>
                 <td style={cell}>{r.id ?? i + 1}</td>
-                {selected.map((q) => <td key={q.id} style={cell}>{r[q.id] ?? ''}</td>)}
-                {dataCols.map((c) => <td key={c} style={cell}>{r[c] ?? ''}</td>)}
+                {selected.map((q) => <td key={q.id} style={cell}>{disp(r[q.id])}</td>)}
+                {dataCols.map((c) => <td key={c} style={cell}>{disp(r[c])}</td>)}
               </tr>
             ))}
           </tbody>
@@ -513,6 +514,11 @@ export default function SurveySheet({ rows, questions, selectedQids, setSelected
         <h4 style={{ margin: '0 0 3px', color: GREEN, fontSize: 13 }}>
           Analysis of selected data · {filtered.length} of {rows.length} responses ({rows.length ? ((filtered.length * 100) / rows.length).toFixed(0) : 0}%)
         </h4>
+        {truncated && (
+          <div style={{ color: '#b45309' }}>
+            ⚠ Only the first {rows.length.toLocaleString()} records were loaded for analysis — narrow the surveyor/district/date filters for exact figures.
+          </div>
+        )}
         <div style={{ color: '#4b5563', marginBottom: 4 }}>
           Filters: {activeNotes.length ? activeNotes.join(' · ') : 'none'}{filterNote ? ` · ${filterNote}` : ''}
         </div>

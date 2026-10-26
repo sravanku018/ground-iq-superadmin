@@ -76,7 +76,7 @@ function Heatmap({ rows, rf, cf }) {
   )
 }
 
-function QChart({ type, q, rows, meta }) {
+export function QChart({ type, q, rows, meta }) {
   const order = meta[q.field]?.order
   const counts = countBy(rows, q.field)
   const single = sortOpts([...counts.keys()], order).map((name) => ({ name, value: counts.get(name) ?? 0 }))

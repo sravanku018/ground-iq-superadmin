@@ -32,7 +32,7 @@ import {
   YAxis,
 } from 'recharts'
 import { getAdminAnalyze, getAnswerRows, getSurvey, listSurveys, listUsers } from './api'
-import QuestionAnalytics from './components/QuestionAnalytics'
+import SurveySheet from './components/SurveySheet'
 import { buildMeta } from './surveyEngine'
 import { dayLabel, monthLabel } from './components/Charts'
 
@@ -63,11 +63,8 @@ function Card({ title, subtitle, children, height = 300 }) {
   )
 }
 
-function FilterBar({ surveys, users, questions, filters, setFilters, onApply, loading, onReset, selectedQids, setSelectedQids }) {
+function FilterBar({ surveys, users, filters, setFilters, onApply, loading, onReset }) {
   const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }))
-  const chosenQ = questions.find((q) => String(q.id) === String(filters.qid))
-  const withAnswers = questions.filter((q) => q.answered > 0)
-  const tickList = (withAnswers.length ? withAnswers : questions).slice(0, 20)
   return (
     <div className="card" style={{ padding: 14, marginBottom: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
@@ -101,37 +98,6 @@ function FilterBar({ surveys, users, questions, filters, setFilters, onApply, lo
           <input type="date" value={filters.date_to} onChange={set('date_to')} />
         </label>
         <label className="field" style={{ margin: 0 }}>
-          <span style={{ fontSize: 11 }}>Question</span>
-          <select
-            value={filters.qid}
-            onChange={(e) => setFilters((f) => ({ ...f, qid: e.target.value, qval: '' }))}
-            disabled={!filters.survey}
-            title={filters.survey ? '' : 'Pick a survey first'}
-          >
-            <option value="">All questions</option>
-            {questions.map((q) => (
-              <option key={q.id} value={q.id}>
-                {String(q.label || q.id).slice(0, 46)}{q.answered ? ` (${q.answered})` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="field" style={{ margin: 0 }}>
-          <span style={{ fontSize: 11 }}>Answer</span>
-          {chosenQ && Array.isArray(chosenQ.options) && chosenQ.options.length ? (
-            <select value={filters.qval} onChange={set('qval')} disabled={!filters.qid}>
-              <option value="">Any answer</option>
-              {chosenQ.options.map((o) => {
-                const val = String(typeof o === 'string' ? o : o?.label ?? o?.value ?? '')
-                return <option key={val} value={val}>{val}</option>
-              })}
-            </select>
-          ) : (
-            <input value={filters.qval} onChange={set('qval')} placeholder="Any answer" disabled={!filters.qid} />
-          )}
-        </label>
-        <label className="field" style={{ margin: 0 }}>
           <span style={{ fontSize: 11 }}>View by</span>
           <select value={filters.grain} onChange={set('grain')}>
             <option value="day">Day</option>
@@ -145,44 +111,6 @@ function FilterBar({ surveys, users, questions, filters, setFilters, onApply, lo
         </button>
         <button type="button" className="btn" onClick={onReset}>Reset</button>
       </div>
-      {tickList.length > 0 && (
-        <div style={{ marginTop: 12 }}>
-          <div className="muted" style={{ fontSize: 11, marginBottom: 6 }}>
-            Questions to chart — tick the ones you want ({selectedQids.length} ticked):
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 4, maxHeight: 190, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#fff' }}>
-            {tickList.map((q) => {
-              const ticked = selectedQids.map(String).includes(String(q.id))
-              return (
-                <label
-                  key={q.id}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 6px', borderRadius: 6, cursor: 'pointer', background: ticked ? '#eef3fb' : 'transparent' }}
-                  title={q.answered ? `${q.answered} answered in this selection` : 'No answers yet in this selection'}
-                >
-                  <input
-                    type="checkbox"
-                    checked={ticked}
-                    onChange={() =>
-                      setSelectedQids((prev) => {
-                        const id = String(q.id)
-                        const has = prev.map(String).includes(id)
-                        return has ? prev.filter((x) => String(x) !== id) : [...prev, id]
-                      })
-                    }
-                    style={{ accentColor: '#4472C4' }}
-                  />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {String(q.label || q.id)}
-                  </span>
-                  {q.answered > 0 && (
-                    <span className="muted" style={{ fontSize: 10, marginLeft: 'auto' }}>{q.answered}</span>
-                  )}
-                </label>
-              )
-            })}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -622,14 +550,13 @@ export default function AdminCharts() {
     return [...byId.values()].sort((a, b) => b.answered - a.answered)
   }, [questions, data])
 
-  // Engine questions for the ticked ids (id + text + field), with chart meta.
-  const engineQuestions = useMemo(
-    () => availableQuestions
-      .filter((q) => selectedQids.map(String).includes(String(q.id)))
-      .map((q) => ({ id: String(q.id), text: String(q.label || q.id), field: String(q.id) })),
-    [availableQuestions, selectedQids],
-  )
   const engineMeta = useMemo(() => buildMeta(availableQuestions), [availableQuestions])
+  // Server-side filters in words, shown in the sheet's formula bar.
+  const sheetFilterNote = [
+    applied.user && `Surveyor=${applied.user}`,
+    applied.district && `District=${applied.district}`,
+    (applied.date_from || applied.date_to) && `Dates=${applied.date_from || '…'}→${applied.date_to || '…'}`,
+  ].filter(Boolean).join(' · ')
 
   const insights = useMemo(
     () => buildInsights({ totals, timeRows, userRows, districtRows, partyRows, quotaRows, applied, fc, users, byQuestion: data?.by_question }),
@@ -643,10 +570,6 @@ export default function AdminCharts() {
       <FilterBar
         surveys={surveys}
         users={users}
-        questions={availableQuestions}
-        selectedQids={selectedQids}
-        setSelectedQids={setSelectedQids}
-
         filters={filters}
         setFilters={setFilters}
         onApply={() => void load(filters)}
@@ -687,32 +610,18 @@ export default function AdminCharts() {
         ))}
       </div>
 
-      {/* QUESTION ANSWER CHARTS — one per ticked question (up to No. of charts) */}
-      {engineQuestions.length === 0 && !applied.qid && (
-        <div className="card" style={{ padding: '10px 14px', marginBottom: 14, display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span aria-hidden="true">📋</span>
-          <span className="muted" style={{ fontSize: 12 }}>
-            Tick one or more <strong>Questions to chart</strong> above — each ticked question gets its answer-distribution graph.
-          </span>
-        </div>
-      )}
-      {engineQuestions.length > 0 && (
-        <>
-          <div className="card" style={{ padding: '10px 14px', marginBottom: 14 }}>
-            <h3 style={{ margin: '0 0 2px', fontSize: 15 }}>📋 Question analytics — {engineQuestions.length} question{engineQuestions.length > 1 ? 's' : ''}</h3>
-            <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-              Suggested charts per question (tap a type, or cross by District / Surveyor / Status / Month) · {answerLoading ? 'loading answers…' : `${answerRows.length} answer records`}
-              {activeFilters.length
-                ? ` · survey filters: ${activeFilters.map((f) => `${f.k}: ${f.v}`).join(', ')}`
-                : ' · whole survey'}
-            </p>
-          </div>
-          {answerLoading ? (
-            <div className="card" style={{ padding: 16 }}>Loading answers…</div>
-          ) : (
-            <QuestionAnalytics rows={answerRows} questions={engineQuestions} meta={engineMeta} />
-          )}
-        </>
+      {/* EXCEL-STYLE SURVEY SHEET — question chips, value filters, charts, tables, analysis */}
+      {answerLoading ? (
+        <div className="card" style={{ padding: 16 }}>Loading answers…</div>
+      ) : (
+        <SurveySheet
+          rows={answerRows}
+          questions={availableQuestions}
+          selectedQids={selectedQids}
+          setSelectedQids={setSelectedQids}
+          meta={engineMeta}
+          filterNote={sheetFilterNote}
+        />
       )}
 
       {!questionMode && (<>

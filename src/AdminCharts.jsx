@@ -70,7 +70,6 @@ function FilterBar({ surveys, users, questions, filters, setFilters, onApply, lo
         <label className="field" style={{ margin: 0 }}>
           <span style={{ fontSize: 11 }}>Survey</span>
           <select value={filters.survey} onChange={set('survey')}>
-            <option value="">All surveys</option>
             {(surveys || []).map((s) => (
               <option key={s.id} value={s.form_key}>{s.title || s.form_key}</option>
             ))}
@@ -297,7 +296,16 @@ export default function AdminCharts() {
   }, [])
 
   useEffect(() => {
-    void load(filters)
+    // A survey is always selected now (no "All surveys"): preselect the first
+    // one so question filters are immediately available.
+    ;(async () => {
+      const sv = await listSurveys().catch(() => [])
+      const list = Array.isArray(sv) ? sv : sv?.items || []
+      const first = list[0]?.form_key || ''
+      const f = { ...filters, survey: filters.survey || first }
+      setFilters(f)
+      void load(f)
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -436,9 +444,11 @@ export default function AdminCharts() {
   ]
   // Question answer charts — the heart of "survey depth": each question's
   // answer distribution in the current selection.
+  // Graphs appear only after the admin picks a question filter — then the
+  // chart shows that question's answer distribution within the selection.
   const questionCharts = (Array.isArray(data?.by_question) ? data.by_question : [])
-    .filter((q) => Array.isArray(q.options) && q.options.length > 1)
-    .slice(0, 8)
+    .filter((q) => (applied.qid ? String(q.question_id) === String(applied.qid) : false))
+    .filter((q) => Array.isArray(q.options) && q.options.length > 0)
     .map((q) => ({
       id: q.question_id,
       label: q.label || q.question_id,
@@ -503,7 +513,7 @@ export default function AdminCharts() {
         setFilters={setFilters}
         onApply={() => void load(filters)}
         onReset={() => {
-          const reset = { survey: '', user: '', district: '', date_from: '', date_to: '', grain: 'day', qid: '', qval: '' }
+          const reset = { survey: surveys[0]?.form_key || '', user: '', district: '', date_from: '', date_to: '', grain: 'day', qid: '', qval: '' }
           setFilters(reset)
           void load(reset)
         }}
@@ -539,13 +549,23 @@ export default function AdminCharts() {
         ))}
       </div>
 
-      {/* QUESTION ANSWER CHARTS — survey depth per question */}
+      {/* QUESTION ANSWER CHARTS — appear once a question filter is chosen */}
+      {!applied.qid && (
+        <div className="card" style={{ padding: '10px 14px', marginBottom: 14, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span aria-hidden="true">📋</span>
+          <span className="muted" style={{ fontSize: 12 }}>
+            Select a <strong>Question</strong> (and optionally an Answer) filter above to see its answer-distribution graph.
+          </span>
+        </div>
+      )}
       {questionCharts.length > 0 && (
         <>
           <div className="card" style={{ padding: '10px 14px', marginBottom: 14 }}>
-            <h3 style={{ margin: '0 0 2px', fontSize: 15 }}>📋 Survey depth by question</h3>
+            <h3 style={{ margin: '0 0 2px', fontSize: 15 }}>📋 Question depth — {questionCharts[0].label}</h3>
             <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-              Answer distribution for {questionCharts.length} question{questionCharts.length > 1 ? 's' : ''} in this selection — the depth behind the headline numbers.
+              {applied.qval
+                ? `Answers to this question where the answer is “${applied.qval}” — ${questionCharts[0].answered} records.`
+                : `Answer distribution within the current selection — ${questionCharts[0].answered} records answered.`}
             </p>
           </div>
           {questionCharts.map((q) => (

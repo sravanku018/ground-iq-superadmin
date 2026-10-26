@@ -31,7 +31,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { getAdminAnalyze, listSurveys, listUsers } from './api'
+import { getAdminAnalyze, getSurvey, listSurveys, listUsers } from './api'
 import { dayLabel, monthLabel } from './components/Charts'
 
 const C = ['#4472C4', '#ED7D31', '#A5A5A5', '#FFC000', '#5B9BD5', '#70AD47', '#264478', '#9E480E']
@@ -61,8 +61,9 @@ function Card({ title, subtitle, children, height = 300 }) {
   )
 }
 
-function FilterBar({ surveys, users, filters, setFilters, onApply, loading, onReset }) {
+function FilterBar({ surveys, users, questions, filters, setFilters, onApply, loading, onReset }) {
   const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }))
+  const chosenQ = questions.find((q) => String(q.id) === String(filters.qid))
   return (
     <div className="card" style={{ padding: 14, marginBottom: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
@@ -97,6 +98,34 @@ function FilterBar({ surveys, users, filters, setFilters, onApply, loading, onRe
           <input type="date" value={filters.date_to} onChange={set('date_to')} />
         </label>
         <label className="field" style={{ margin: 0 }}>
+          <span style={{ fontSize: 11 }}>Question</span>
+          <select
+            value={filters.qid}
+            onChange={(e) => setFilters((f) => ({ ...f, qid: e.target.value, qval: '' }))}
+            disabled={!filters.survey}
+            title={filters.survey ? '' : 'Pick a survey first'}
+          >
+            <option value="">All questions</option>
+            {questions.map((q) => (
+              <option key={q.id} value={q.id}>{String(q.label || q.id).slice(0, 46)}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field" style={{ margin: 0 }}>
+          <span style={{ fontSize: 11 }}>Answer</span>
+          {chosenQ && Array.isArray(chosenQ.options) && chosenQ.options.length ? (
+            <select value={filters.qval} onChange={set('qval')} disabled={!filters.qid}>
+              <option value="">Any answer</option>
+              {chosenQ.options.map((o) => {
+                const val = String(typeof o === 'string' ? o : o?.label ?? o?.value ?? '')
+                return <option key={val} value={val}>{val}</option>
+              })}
+            </select>
+          ) : (
+            <input value={filters.qval} onChange={set('qval')} placeholder="Any answer" disabled={!filters.qid} />
+          )}
+        </label>
+        <label className="field" style={{ margin: 0 }}>
           <span style={{ fontSize: 11 }}>View by</span>
           <select value={filters.grain} onChange={set('grain')}>
             <option value="day">Day</option>
@@ -118,7 +147,7 @@ function FilterBar({ surveys, users, filters, setFilters, onApply, loading, onRe
  * Auto-generated reading of the current selection — the written counterpart
  * to the charts. Every line is guarded; only findings with real data appear.
  */
-function buildInsights({ totals, timeRows, userRows, districtRows, partyRows, quotaRows, applied, fc, users }) {
+function buildInsights({ totals, timeRows, userRows, districtRows, partyRows, quotaRows, applied, fc, users, byQuestion }) {
   const out = []
   if (!totals.records) {
     out.push({ tone: 'muted', icon: '🫙', text: 'No records match the current filters. Widen the date range or clear a filter to see analysis.' })
@@ -207,7 +236,19 @@ function buildInsights({ totals, timeRows, userRows, districtRows, partyRows, qu
     }
   }
 
-  // 10. party answers
+  // 10. strongest question signal in the filtered rows
+  if (Array.isArray(byQuestion) && byQuestion.length) {
+    const q0 = byQuestion[0]
+    const top = Array.isArray(q0.options) && q0.options[0]
+    if (top) {
+      out.push({
+        tone: 'info', icon: '📋',
+        text: `Deepest question signal: “${String(q0.label || q0.question_id)}” — ${top.value} leads ${top.count} of ${q0.answered} answers${pct(top.count, q0.answered) >= 50 ? ` (${pct(top.count, q0.answered)}% majority)` : ''}.`,
+      })
+    }
+  }
+
+  // 11. party answers
   if (partyRows.length > 1) {
     const p0 = partyRows[0]
     out.push({ tone: 'info', icon: '🗳️', text: `“${p0.name}” is the most common winning-party answer (${p0.value} responses, ${pct(p0.value, T.records)}%).` })
@@ -218,11 +259,12 @@ function buildInsights({ totals, timeRows, userRows, districtRows, partyRows, qu
 
 export default function AdminCharts() {
   const [filters, setFilters] = useState({
-    survey: '', user: '', district: '', date_from: '', date_to: '', grain: 'day',
+    survey: '', user: '', district: '', date_from: '', date_to: '', grain: 'day', qid: '', qval: '',
   })
   const [applied, setApplied] = useState(filters)
   const [data, setData] = useState(null)
   const [surveys, setSurveys] = useState([])
+  const [questions, setQuestions] = useState([])
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
@@ -238,6 +280,7 @@ export default function AdminCharts() {
           district: f.district || undefined,
           date_from: f.date_from || undefined,
           date_to: f.date_to || undefined,
+          ...(f.qid && f.qval ? { [`q_${f.qid}`]: f.qval } : {}),
         }),
         listSurveys().catch(() => []),
         listUsers().catch(() => []),
@@ -257,6 +300,29 @@ export default function AdminCharts() {
     void load(filters)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Questions of the chosen survey drive the question/answer filter and the
+  // per-question charts.
+  useEffect(() => {
+    let stop = false
+    const chosen = surveys.find((x) => x.form_key === filters.survey)
+    if (!chosen) {
+      setQuestions([])
+      return undefined
+    }
+    getSurvey(chosen.id)
+      .then((res) => {
+        if (stop) return
+        const qs = res?.survey?.questions
+        setQuestions(Array.isArray(qs) ? qs : [])
+      })
+      .catch(() => {
+        if (!stop) setQuestions([])
+      })
+    return () => {
+      stop = true
+    }
+  }, [filters.survey, surveys])
 
   const totals = data?.totals || {}
 
@@ -368,6 +434,19 @@ export default function AdminCharts() {
     { name: 'Voice fail', value: totals.voice_fail || 0 },
     { name: 'Photo fail', value: totals.photo_fail || 0 },
   ]
+  // Question answer charts — the heart of "survey depth": each question's
+  // answer distribution in the current selection.
+  const questionCharts = (Array.isArray(data?.by_question) ? data.by_question : [])
+    .filter((q) => Array.isArray(q.options) && q.options.length > 1)
+    .slice(0, 8)
+    .map((q) => ({
+      id: q.question_id,
+      label: q.label || q.question_id,
+      type: q.type,
+      answered: Number(q.answered) || 0,
+      rows: q.options.map((o) => ({ name: String(o.value), count: Number(o.count) || 0 })),
+    }))
+
   const partyRows = (Array.isArray(data?.by_party) ? data.by_party : []).map((r) => ({
     name: r.party || 'Unknown',
     value: Number(r.total) || 0,
@@ -384,6 +463,10 @@ export default function AdminCharts() {
     (applied.date_from || applied.date_to) && {
       k: 'Dates',
       v: `${applied.date_from || 'start'} → ${applied.date_to || 'today'}`,
+    },
+    applied.qid && applied.qval && {
+      k: 'Answer',
+      v: `${(questions.find((q) => String(q.id) === String(applied.qid))?.label || applied.qid).slice(0, 30)} = ${applied.qval}`,
     },
   ].filter(Boolean)
   const fc = activeFilters.length
@@ -404,8 +487,8 @@ export default function AdminCharts() {
       : `Deep dive — ${fc} filters applied`
 
   const insights = useMemo(
-    () => buildInsights({ totals, timeRows, userRows, districtRows, partyRows, quotaRows, applied, fc, users }),
-    [totals, timeRows, userRows, districtRows, partyRows, quotaRows, applied, fc, users],
+    () => buildInsights({ totals, timeRows, userRows, districtRows, partyRows, quotaRows, applied, fc, users, byQuestion: data?.by_question }),
+    [totals, timeRows, userRows, districtRows, partyRows, quotaRows, applied, fc, users, data],
   )
 
   const rate = (n) => (totals.records ? Math.round(((n || 0) / totals.records) * 100) : 0)
@@ -415,11 +498,12 @@ export default function AdminCharts() {
       <FilterBar
         surveys={surveys}
         users={users}
+        questions={questions}
         filters={filters}
         setFilters={setFilters}
         onApply={() => void load(filters)}
         onReset={() => {
-          const reset = { survey: '', user: '', district: '', date_from: '', date_to: '', grain: 'day' }
+          const reset = { survey: '', user: '', district: '', date_from: '', date_to: '', grain: 'day', qid: '', qval: '' }
           setFilters(reset)
           void load(reset)
         }}
@@ -454,6 +538,36 @@ export default function AdminCharts() {
           </span>
         ))}
       </div>
+
+      {/* QUESTION ANSWER CHARTS — survey depth per question */}
+      {questionCharts.length > 0 && (
+        <>
+          <div className="card" style={{ padding: '10px 14px', marginBottom: 14 }}>
+            <h3 style={{ margin: '0 0 2px', fontSize: 15 }}>📋 Survey depth by question</h3>
+            <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+              Answer distribution for {questionCharts.length} question{questionCharts.length > 1 ? 's' : ''} in this selection — the depth behind the headline numbers.
+            </p>
+          </div>
+          {questionCharts.map((q) => (
+            <Card
+              key={q.id}
+              title={q.label}
+              subtitle={`${q.answered} answered · ${q.type} question`}
+              height={240}
+            >
+              <BarChart data={q.rows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="name" {...axisProps} interval={0} angle={-20} textAnchor="end" height={54} />
+                <YAxis {...axisProps} allowDecimals={false} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Bar dataKey="count" name="Responses" fill={C[0]} radius={[5, 5, 0, 0]} maxBarSize={42}>
+                  {q.rows.map((_, i) => <Cell key={i} fill={C[i % C.length]} />)}
+                </Bar>
+              </BarChart>
+            </Card>
+          ))}
+        </>
+      )}
 
       {showArea && (<>
       {/* AREA — cumulative collection depth */}

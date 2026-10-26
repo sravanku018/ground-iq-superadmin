@@ -298,6 +298,8 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
           `;
     // question id → type, so age-type q_ filters bucket-match ranges
     const qTypeMap = new Map<string, string>();
+    // question metadata for the question-answer charts (label + option order)
+    const qMetaMap = new Map<string, { label: string; type: string; options: string[] }>();
     {
       const frows = scopeKeys
         ? await sql`SELECT questions FROM survey_form WHERE form_key = ANY(${scopeKeys})`.catch(() => [])
@@ -308,10 +310,22 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
         if (!Array.isArray(qs)) continue;
         for (const q of qs as Record<string, unknown>[]) {
           const id = String(q.id || q.label || "");
-          if (id) qTypeMap.set(id, String(q.type || "text"));
+          if (!id) continue;
+          const type = String(q.type || "text");
+          qTypeMap.set(id, type);
+          const optsRaw = Array.isArray(q.options) ? q.options : [];
+          const options = optsRaw
+            .map((o) => String(typeof o === "string" ? o : (o as Record<string, unknown>)?.label ?? (o as Record<string, unknown>)?.value ?? "").trim())
+            .filter(Boolean);
+          if (!qMetaMap.has(id)) {
+            qMetaMap.set(id, { label: String(q.label || q.text || id), type, options });
+          }
         }
       }
     }
+    // per-question answer tallies for the filtered rows
+    const qAnswers = new Map<string, Map<string, number>>();
+    const qAnswered = new Map<string, number>();
     const mediaMap = await loadMediaKindsMap(sql);
 
     type RowA = {
@@ -439,6 +453,25 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
         district: String(a.district || "Unknown"),
         party: normParty(String(a.winning_party || "")),
       });
+      // tally answers for every question in scope (only rows that passed filters)
+      for (const qid of qMetaMap.keys()) {
+        const val = answerOf(a, qid);
+        if (val == null || val === "") continue;
+        const qType = qTypeMap.get(qid);
+        const vals = Array.isArray(val) ? val.map(String) : [String(val)];
+        const tally = qAnswers.get(qid) || new Map<string, number>();
+        let touched = false;
+        for (const raw of vals) {
+          if (raw === "") continue;
+          const bucket = qType === "age" ? String(ageBucket(raw) ?? "unknown") : raw;
+          tally.set(bucket, (tally.get(bucket) || 0) + 1);
+          touched = true;
+        }
+        if (touched) {
+          qAnswers.set(qid, tally);
+          qAnswered.set(qid, (qAnswered.get(qid) || 0) + 1);
+        }
+      }
     }
 
     const byDate: Record<string, Bucket & { date: string }> = {};
@@ -551,6 +584,23 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
           Number((b as { total: number }).total) -
           Number((a as { total: number }).total),
       ),
+      by_question: [...qAnswers.entries()]
+        .map(([qid, tally]) => {
+          const meta = qMetaMap.get(qid) || { label: qid, type: "text", options: [] };
+          const opts = [...tally.entries()]
+            .map(([value, count]) => ({ value, count }))
+            .sort((x, y) => y.count - x.count)
+            .slice(0, 12);
+          return {
+            question_id: qid,
+            label: meta.label,
+            type: meta.type,
+            answered: qAnswered.get(qid) || 0,
+            options: opts,
+          };
+        })
+        .sort((x, y) => y.answered - x.answered)
+        .slice(0, 20),
       strict: {
         geo_tagging: "required",
         voice_detection: "required",

@@ -14,6 +14,8 @@ export const BOOL_FIELDS = [
   "can_web_survey",
   "can_record_voice",
   "can_translate_telugu",
+  "can_converse",
+  "can_excel_charts",
 ] as const;
 
 export const NUM_FIELDS = [
@@ -22,6 +24,8 @@ export const NUM_FIELDS = [
   "max_surveyors",
   "max_records",
   "max_categories",
+  "converse_max_records",
+  "converse_max_minutes",
 ] as const;
 
 export const USER_COLUMNS = [

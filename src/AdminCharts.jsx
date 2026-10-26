@@ -1,18 +1,65 @@
 /**
- * Excel-style Charts tab — stack filters, see the depth of the survey.
- * Data: /api/admin/analyze (totals, by_date/month/user/district/party).
- * Charts: hand-rolled SVG (Charts.jsx) — bar, line, pie, all filter-driven.
+ * Excel Charts tab — the full EvilCharts catalog (area, bar, line, composed,
+ * pie, radar, radial, sankey) rendered from survey analytics.
+ * Data: /api/admin/analyze. Charts: recharts, styled with the EvilCharts look
+ * (gradient fills, rounded bars, card tooltips, active-grid highlighting).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ComposedChart,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
+  RadialBar,
+  RadialBarChart,
+  ResponsiveContainer,
+  Sankey,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import { getAdminAnalyze, listSurveys, listUsers } from './api'
-import { BarChart, LineChart, PieChart, dayLabel, monthLabel } from './components/Charts'
+import { dayLabel, monthLabel } from './components/Charts'
 
-const STATUS_SERIES = [
-  { key: 'total', label: 'All records' },
-  { key: 'completed', label: 'Confirmed' },
-  { key: 'pending', label: 'Pending' },
-  { key: 'rejected', label: 'Rejected' },
-]
+const C = ['#4472C4', '#ED7D31', '#A5A5A5', '#FFC000', '#5B9BD5', '#70AD47', '#264478', '#9E480E']
+
+const tooltipStyle = {
+  background: '#fff',
+  border: '1px solid #e2e8f0',
+  borderRadius: 10,
+  boxShadow: '0 8px 24px rgba(15,23,42,.12)',
+  fontSize: 12,
+  padding: '8px 12px',
+}
+
+const axisProps = { tick: { fontSize: 11, fill: '#64748b' }, stroke: '#cbd5e1' }
+
+function Card({ title, subtitle, children, height = 300 }) {
+  return (
+    <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+      <h3 style={{ margin: '0 0 2px', fontSize: 15 }}>{title}</h3>
+      {subtitle ? <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>{subtitle}</p> : null}
+      <div style={{ width: '100%', height }}>
+        <ResponsiveContainer width="100%" height="100%">
+          {children}
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
 
 function FilterBar({ surveys, users, filters, setFilters, onApply, loading, onReset }) {
   const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }))
@@ -67,16 +114,6 @@ function FilterBar({ surveys, users, filters, setFilters, onApply, loading, onRe
   )
 }
 
-function Section({ title, subtitle, children }) {
-  return (
-    <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-      <h3 style={{ margin: '0 0 2px', fontSize: 15 }}>{title}</h3>
-      {subtitle ? <p className="muted" style={{ margin: '0 0 10px', fontSize: 12 }}>{subtitle}</p> : null}
-      {children}
-    </div>
-  )
-}
-
 export default function AdminCharts() {
   const [filters, setFilters] = useState({
     survey: '', user: '', district: '', date_from: '', date_to: '', grain: 'day',
@@ -120,60 +157,119 @@ export default function AdminCharts() {
   }, [])
 
   const totals = data?.totals || {}
-  const timeKey = applied.grain === 'month' ? 'by_month' : 'by_day'
+
+  // ── shape the API buckets into chart rows ────────────────────────────────
   const timeRows = useMemo(() => {
-    const rows = Array.isArray(data?.[timeKey]) ? [...data[timeKey]] : []
-    rows.reverse() // oldest → newest for time axis
-    return rows.map((r) => ({
+    const key = applied.grain === 'month' ? 'by_month' : 'by_day'
+    const rows = Array.isArray(data?.[key]) ? [...data[key]] : []
+    rows.reverse()
+    return rows.map((r, i) => ({
       label: applied.grain === 'month' ? monthLabel(r.month) : dayLabel(r.date),
       total: Number(r.total) || 0,
-      completed: Number(r.completed) || 0,
+      confirmed: Number(r.completed) || 0,
       pending: Number(r.pending) || 0,
       rejected: Number(r.rejected) || 0,
+      // cumulative depth + per-point confirmed rate for the composed chart
+      cum: rows.slice(0, i + 1).reduce((n, x) => n + (Number(x.total) || 0), 0),
+      rate: Number(r.total) ? Math.round(((Number(r.completed) || 0) / Number(r.total)) * 100) : 0,
     }))
-  }, [data, timeKey, applied.grain])
+  }, [data, applied.grain])
 
   const userRows = useMemo(
     () => (Array.isArray(data?.by_user) ? data.by_user : []).map((r) => ({
-      label: r.user || '—',
+      name: r.user || '—',
       total: Number(r.total) || 0,
-      completed: Number(r.completed) || 0,
+      confirmed: Number(r.completed) || 0,
       pending: Number(r.pending) || 0,
       rejected: Number(r.rejected) || 0,
+      media: Number(r.complete) || 0,
     })),
     [data],
   )
 
   const districtRows = useMemo(
     () => (Array.isArray(data?.by_district) ? data.by_district : []).map((r) => ({
-      label: r.district || 'Unknown',
+      name: r.district || 'Unknown',
       total: Number(r.total) || 0,
-      completed: Number(r.completed) || 0,
-      pending: Number(r.pending) || 0,
+      confirmed: Number(r.completed) || 0,
     })),
     [data],
   )
 
-  const partyRows = useMemo(
-    () => (Array.isArray(data?.by_party) ? data.by_party : []).map((r) => ({
-      label: r.party || 'Unknown',
-      value: Number(r.total) || 0,
-    })),
-    [data],
-  )
+  // Radar: per-surveyor shape of work (top 6 by volume, normalized to max)
+  const radarRows = useMemo(() => {
+    const top = userRows.slice(0, 6)
+    if (!top.length) return []
+    const max = {
+      total: Math.max(...top.map((u) => u.total), 1),
+      confirmed: Math.max(...top.map((u) => u.confirmed), 1),
+      media: Math.max(...top.map((u) => u.media), 1),
+    }
+    return top.map((u) => ({
+      surveyor: u.name,
+      Records: Math.round((u.total / max.total) * 100),
+      Confirmed: Math.round((u.confirmed / max.confirmed) * 100),
+      'Media OK': Math.round((u.media / max.media) * 100),
+    }))
+  }, [userRows])
+
+  // Radial: quota completion per surveyor (needs targets from the users list)
+  const quotaRows = useMemo(() => {
+    const byName = new Map(users.map((u) => [u.display_name || u.username, Number(u.target_quota) || 0]))
+    return userRows
+      .map((u) => {
+        const target = byName.get(u.name) || 0
+        return {
+          name: u.name,
+          pct: target > 0 ? Math.min(100, Math.round((u.total / target) * 100)) : 0,
+        }
+      })
+      .filter((u) => u.pct > 0)
+      .sort((a, b) => b.pct - a.pct)
+      .slice(0, 8)
+      .map((u, i) => ({ ...u, fill: C[i % C.length] }))
+  }, [userRows, users])
+
+  // Sankey: Survey → Surveyor → Status record flow
+  const sankeyData = useMemo(() => {
+    const surveyName = surveys.find((s) => s.form_key === applied.survey)?.title || applied.survey || 'Survey'
+    const nodes = [{ name: surveyName }]
+    const links = []
+    const statusAgg = { Confirmed: 0, Pending: 0, Rejected: 0 }
+    userRows.slice(0, 6).forEach((u, i) => {
+      nodes.push({ name: u.name })
+      links.push({ source: 0, target: i + 1, value: u.total })
+      statusAgg.Confirmed += u.confirmed
+      statusAgg.Pending += u.pending
+      statusAgg.Rejected += u.rejected
+    })
+    ;['Confirmed', 'Pending', 'Rejected'].forEach((st) => {
+      nodes.push({ name: st })
+    })
+    userRows.slice(0, 6).forEach((u, i) => {
+      if (u.confirmed) links.push({ source: i + 1, target: nodes.length - 3, value: u.confirmed })
+      if (u.pending) links.push({ source: i + 1, target: nodes.length - 2, value: u.pending })
+      if (u.rejected) links.push({ source: i + 1, target: nodes.length - 1, value: u.rejected })
+    })
+    return { nodes, links }
+  }, [userRows, surveys, applied.survey])
 
   const statusPie = [
-    { label: 'Confirmed', value: totals.completed || 0 },
-    { label: 'Pending', value: totals.pending || 0 },
-    { label: 'Rejected', value: totals.rejected || 0 },
+    { name: 'Confirmed', value: totals.completed || 0 },
+    { name: 'Pending', value: totals.pending || 0 },
+    { name: 'Rejected', value: totals.rejected || 0 },
   ]
   const mediaPie = [
-    { label: 'Complete (geo+voice+photo)', value: totals.complete || 0 },
-    { label: 'Incomplete', value: totals.incomplete || 0 },
-    { label: 'Geo fail', value: totals.geo_fail || 0 },
-    { label: 'Voice fail', value: totals.voice_fail || 0 },
-    { label: 'Photo fail', value: totals.photo_fail || 0 },
+    { name: 'Complete', value: totals.complete || 0 },
+    { name: 'Incomplete', value: totals.incomplete || 0 },
+    { name: 'Geo fail', value: totals.geo_fail || 0 },
+    { name: 'Voice fail', value: totals.voice_fail || 0 },
+    { name: 'Photo fail', value: totals.photo_fail || 0 },
   ]
+  const partyRows = (Array.isArray(data?.by_party) ? data.by_party : []).map((r) => ({
+    name: r.party || 'Unknown',
+    value: Number(r.total) || 0,
+  }))
 
   const rate = (n) => (totals.records ? Math.round(((n || 0) / totals.records) * 100) : 0)
 
@@ -193,11 +289,8 @@ export default function AdminCharts() {
         loading={loading}
       />
 
-      {err ? (
-        <div className="card" style={{ padding: 14, color: 'var(--danger)', marginBottom: 14 }}>{err}</div>
-      ) : null}
+      {err ? <div className="card" style={{ padding: 14, color: 'var(--danger)', marginBottom: 14 }}>{err}</div> : null}
 
-      {/* Depth summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
         {[
           { k: 'Records', v: totals.records || 0 },
@@ -215,47 +308,149 @@ export default function AdminCharts() {
         ))}
       </div>
 
-      <Section title="Records over time" subtitle={`Depth of collection ${applied.grain === 'month' ? 'per month' : 'per day'} — all / confirmed / pending / rejected, with current filters applied.`}>
-        {applied.grain === 'month'
-          ? <BarChart data={timeRows} series={STATUS_SERIES} stacked />
-          : <LineChart data={timeRows} series={STATUS_SERIES} />}
-        <div style={{ textAlign: 'center', marginTop: 6 }}>
-          <button
-            type="button"
-            className="btn small"
-            onClick={() => {
-              const next = { ...filters, grain: filters.grain === 'day' ? 'month' : 'day' }
-              setFilters(next)
-              void load(next)
-            }}
-          >
-            Switch to {filters.grain === 'day' ? 'monthly' : 'daily'} view
-          </button>
-        </div>
-      </Section>
+      {/* AREA — cumulative collection depth */}
+      <Card title="Area — cumulative depth" subtitle="Total records piled up over the selected period (gradient area, EvilCharts style).">
+        <AreaChart data={timeRows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+          <defs>
+            <linearGradient id="gCum2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#4472C4" stopOpacity={0.55} />
+              <stop offset="95%" stopColor="#4472C4" stopOpacity={0.05} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+          <XAxis dataKey="label" {...axisProps} />
+          <YAxis {...axisProps} />
+          <Tooltip contentStyle={tooltipStyle} />
+          <Area type="monotone" dataKey="cum" name="Cumulative records" stroke="#4472C4" strokeWidth={2.5} fill="url(#gCum2)" />
+        </AreaChart>
+      </Card>
 
-      <Section title="Surveyor performance" subtitle="Records per surveyor, stacked by status — who is covering what.">
-        <BarChart data={userRows} xKey="label" series={STATUS_SERIES} stacked maxBars={14} />
-      </Section>
+      {/* LINE — daily trend by status */}
+      <Card title="Line — records over time" subtitle="All / confirmed / pending / rejected per period.">
+        <LineChart data={timeRows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+          <XAxis dataKey="label" {...axisProps} />
+          <YAxis {...axisProps} />
+          <Tooltip contentStyle={tooltipStyle} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Line type="monotone" dataKey="total" name="All" stroke={C[0]} strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
+          <Line type="monotone" dataKey="confirmed" name="Confirmed" stroke={C[5]} strokeWidth={2.5} dot={false} />
+          <Line type="monotone" dataKey="pending" name="Pending" stroke={C[3]} strokeWidth={2.5} dot={false} />
+          <Line type="monotone" dataKey="rejected" name="Rejected" stroke={C[2]} strokeWidth={2} dot={false} />
+        </LineChart>
+      </Card>
 
-      <Section title="District coverage" subtitle="Where the survey is reaching — records per district, split by status.">
-        {districtRows.length
-          ? <BarChart data={districtRows} xKey="label" series={[{ key: 'total', label: 'Records' }, { key: 'completed', label: 'Confirmed' }]} maxBars={14} />
-          : <p className="muted" style={{ fontSize: 13 }}>No district data in this selection.</p>}
-      </Section>
+      {/* COMPOSED — volume bars + confirmation-rate line on second axis */}
+      <Card title="Composed — volume vs confirmation rate" subtitle="Bars: records per period · Line: % confirmed (right axis).">
+        <ComposedChart data={timeRows} margin={{ top: 8, right: 4, left: -12, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+          <XAxis dataKey="label" {...axisProps} />
+          <YAxis yAxisId="vol" {...axisProps} />
+          <YAxis yAxisId="pct" orientation="right" domain={[0, 100]} unit="%" {...axisProps} />
+          <Tooltip contentStyle={tooltipStyle} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Bar yAxisId="vol" dataKey="total" name="Records" fill="#4472C4" radius={[5, 5, 0, 0]} maxBarSize={34} />
+          <Line yAxisId="pct" type="monotone" dataKey="rate" name="Confirmed %" stroke="#ED7D31" strokeWidth={2.5} dot={{ r: 3 }} />
+        </ComposedChart>
+      </Card>
 
-      <Section title="Status mix" subtitle="Share of confirmed / pending / rejected in the current selection.">
-        <PieChart data={statusPie} />
-      </Section>
+      {/* BAR — surveyor performance stacked */}
+      <Card title="Bar — surveyor performance" subtitle="Records per surveyor, stacked by status (rounded, Excel palette).">
+        <BarChart data={userRows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+          <XAxis dataKey="name" {...axisProps} interval={0} angle={-24} textAnchor="end" height={62} />
+          <YAxis {...axisProps} />
+          <Tooltip contentStyle={tooltipStyle} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Bar dataKey="confirmed" name="Confirmed" stackId="s" fill={C[5]} radius={[0, 0, 0, 0]} maxBarSize={38} />
+          <Bar dataKey="pending" name="Pending" stackId="s" fill={C[3]} maxBarSize={38} />
+          <Bar dataKey="rejected" name="Rejected" stackId="s" fill={C[2]} radius={[5, 5, 0, 0]} maxBarSize={38} />
+        </BarChart>
+      </Card>
 
-      <Section title="Media quality (field depth)" subtitle="Geo-tag, voice and photo verification outcomes for these records.">
-        <PieChart data={mediaPie} />
-      </Section>
+      {/* PIE — status mix */}
+      <Card title="Pie — status mix" subtitle="Share of confirmed / pending / rejected in the current selection." height={280}>
+        <PieChart>
+          <Tooltip contentStyle={tooltipStyle} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Pie data={statusPie} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={3} strokeWidth={2} label={(e) => `${e.value}`}>
+            {statusPie.map((_, i) => <Cell key={i} fill={[C[5], C[3], C[2]][i]} />)}
+          </Pie>
+        </PieChart>
+      </Card>
+
+      {/* RADAR — surveyor work shape */}
+      <Card title="Radar — surveyor coverage shape" subtitle="Top surveyors, each axis normalized to 100%: records, confirmed, media-OK.">
+        <RadarChart data={radarRows} outerRadius="72%">
+          <PolarGrid stroke="#e2e8f0" />
+          <PolarAngleAxis dataKey="surveyor" tick={{ fontSize: 11, fill: '#475569' }} />
+          <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
+          <Tooltip contentStyle={tooltipStyle} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Radar name="Records" dataKey="Records" stroke={C[0]} fill={C[0]} fillOpacity={0.28} />
+          <Radar name="Confirmed" dataKey="Confirmed" stroke={C[5]} fill={C[5]} fillOpacity={0.22} />
+          <Radar name="Media OK" dataKey="Media OK" stroke={C[1]} fill={C[1]} fillOpacity={0.18} />
+        </RadarChart>
+      </Card>
+
+      {/* RADIAL — quota completion */}
+      <Card title="Radial — quota completion" subtitle="Surveyor progress toward assigned target (100% = quota reached)." height={280}>
+        {quotaRows.length ? (
+          <RadialBarChart data={quotaRows} innerRadius="22%" outerRadius="98%" startAngle={90} endAngle={-270}>
+            <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+            <RadialBar dataKey="pct" background={{ fill: '#eef2f7' }} cornerRadius={8} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v, _n, p) => [`${v}% of quota`, p?.payload?.name]} />
+          </RadialBarChart>
+        ) : (
+          <div className="muted" style={{ textAlign: 'center', paddingTop: 90 }}>No quotas set — set targets per surveyor to see completion rings.</div>
+        )}
+      </Card>
+
+      {/* SANKEY — survey → surveyor → status flow */}
+      <Card title="Sankey — record flow" subtitle={`How records flow: ${applied.survey || 'survey'} → surveyor → outcome (top 6 surveyors).`} height={340}>
+        {sankeyData.links.length ? (
+          <Sankey data={sankeyData} nodePadding={18} nodeWidth={12} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
+            <Tooltip contentStyle={tooltipStyle} />
+          </Sankey>
+        ) : (
+          <div className="muted" style={{ textAlign: 'center', paddingTop: 110 }}>No records in this selection.</div>
+        )}
+      </Card>
+
+      {/* BAR — district coverage */}
+      <Card title="Bar — district coverage" subtitle="Where the survey is reaching, confirmed overlay.">
+        <BarChart data={districtRows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+          <XAxis dataKey="name" {...axisProps} />
+          <YAxis {...axisProps} />
+          <Tooltip contentStyle={tooltipStyle} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Bar dataKey="total" name="Records" fill={C[0]} radius={[5, 5, 0, 0]} maxBarSize={44} />
+          <Bar dataKey="confirmed" name="Confirmed" fill={C[5]} radius={[5, 5, 0, 0]} maxBarSize={44} />
+        </BarChart>
+      </Card>
+
+      {/* PIE — media quality */}
+      <Card title="Pie — media quality" subtitle="Geo-tag / voice / photo verification outcomes for these records." height={280}>
+        <PieChart>
+          <Tooltip contentStyle={tooltipStyle} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Pie data={mediaPie} dataKey="value" nameKey="name" outerRadius={95} strokeWidth={2} label={(e) => `${e.value}`}>
+            {mediaPie.map((_, i) => <Cell key={i} fill={C[i % C.length]} />)}
+          </Pie>
+        </PieChart>
+      </Card>
 
       {partyRows.length ? (
-        <Section title="Winning party responses" subtitle="Answer distribution for the winning-party question, current filters applied.">
-          <PieChart data={partyRows} />
-        </Section>
+        <Card title="Pie — winning party responses" subtitle="Answer distribution for the winning-party question." height={280}>
+          <PieChart>
+            <Tooltip contentStyle={tooltipStyle} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Pie data={partyRows} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={3} strokeWidth={2} label={(e) => `${e.value}`}>
+              {partyRows.map((_, i) => <Cell key={i} fill={C[i % C.length]} />)}
+            </Pie>
+          </PieChart>
+        </Card>
       ) : null}
     </div>
   )

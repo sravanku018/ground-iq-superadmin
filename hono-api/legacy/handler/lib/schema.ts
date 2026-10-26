@@ -290,7 +290,7 @@ export async function ensureCompanyExists(
 
 // Bump this when ensureSchema() steps change. The version is stored in
 // app_settings; if it matches, the ~58 CREATE/ALTER round-trips are skipped.
-const SCHEMA_VERSION = "2026-10-24.1";
+const SCHEMA_VERSION = "2026-10-25.2";
 
 export let schemaReady: Promise<void> | null = null;
 

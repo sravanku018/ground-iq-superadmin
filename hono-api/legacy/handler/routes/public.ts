@@ -137,7 +137,13 @@ export async function handlePublic(c: Ctx): Promise<Response | null> {
     } | undefined;
     if (!user || !user.active) {
       return json({
-        error: "Invalid username or password. Use the login Client Admin created for you.",
+        error: !user
+          ? expectedRole === "admin"
+            ? "No account with this username. Client Admin logins are created and password-set by the Super Admin."
+            : expectedRole === "surveyor"
+              ? "No account with this username. Use the login your Client Admin created for you."
+              : "Invalid username or password."
+          : "Account is disabled. Ask the Super Admin to re-enable it.",
       }, 401);
     }
     // Only admin/super_admin (portal) or surveyor (field app). No public signup / legacy field/user.
@@ -177,8 +183,14 @@ export async function handlePublic(c: Ctx): Promise<Response | null> {
     }
     const ok = await verifyPassword(password, user.password_hash);
     if (!ok) {
+      const pwSetBy =
+        user.role === "admin"
+          ? "Your password is set by the Super Admin — ask the Super Admin to reset it."
+          : user.role === "surveyor"
+            ? "Your password is set by the Client Admin who created your login — ask them to reset it."
+            : "Super Admin passwords are managed in the Super Admin console.";
       return json({
-        error: "Invalid username or password. Use the login Client Admin created for you.",
+        error: `Wrong password. ${pwSetBy}`,
       }, 401);
     }
 

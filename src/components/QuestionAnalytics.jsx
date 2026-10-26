@@ -22,7 +22,11 @@ import {
 } from 'recharts'
 import { applyFilters, crossTab, countBy, options, sortOpts, suggestCharts, summarize } from '../surveyEngine'
 
-const COLORS = ['#2563eb', '#dc2626', '#f59e0b', '#6b7280', '#10b981', '#8b5cf6']
+const COLORS = ['#2563eb', '#dc2626', '#f59e0b', '#6b7280', '#10b981', '#8b5cf6', '#0ea5e9', '#ec4899', '#84cc16', '#f97316', '#14b8a6', '#a855f7']
+
+// Options missing from the declared order (e.g. "Other") go last instead of first.
+const rank = (order, v) => { const i = order.indexOf(v); return i < 0 ? 9999 : i }
+const sortByOrder = (vals, order) => (order && order.length ? [...vals].sort((a, b) => rank(order, a) - rank(order, b)) : vals)
 const pct = (v) => `${Math.round(v * 100)}%`
 const tooltipStyle = {
   background: '#fff',
@@ -40,11 +44,11 @@ const CROSS_FIELDS = [
   { key: 'month', label: 'Month' },
 ]
 
-function Heatmap({ rows, rf, cf }) {
+function Heatmap({ rows, rf, cf, height }) {
   const { cols, data } = crossTab(rows, rf, cf)
   const max = Math.max(1, ...data.flatMap((d) => cols.map((c) => d[c])))
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div style={{ overflow: 'auto', maxHeight: height }}>
       <table style={{ borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
           <tr>
@@ -76,14 +80,19 @@ function Heatmap({ rows, rf, cf }) {
   )
 }
 
-export function QChart({ type, q, rows, meta }) {
+export function QChart({ type, q, rows, meta, height = 240 }) {
   const order = meta[q.field]?.order
   const counts = countBy(rows, q.field)
-  const single = sortOpts([...counts.keys()], order).map((name) => ({ name, value: counts.get(name) ?? 0 }))
+  const single = sortByOrder([...counts.keys()], order).map((name) => ({ name, value: counts.get(name) ?? 0 }))
   const ct = q.x ? crossTab(rows, q.x, q.field) : null
-  const h = 240
+  const h = height
+  // Diverging splits the *full* scale (declared order) at its middle, so filters that
+  // remove some options never turn a "high" answer into a "low" one.
+  const scale = order && order.length ? order : single.map((d) => d.name)
+  const half = Math.floor(scale.length / 2)
+  const side = (name) => { const i = scale.indexOf(name); return i < 0 ? 1 : i < half ? -1 : i > half ? 1 : 0 }
 
-  if (type === 'heatmap' && q.x) return <Heatmap rows={rows} rf={q.field} cf={q.x} />
+  if (type === 'heatmap' && q.x) return <Heatmap rows={rows} rf={q.field} cf={q.x} height={h} />
 
   return (
     <ResponsiveContainer width="100%" height={h}>
@@ -117,15 +126,12 @@ export function QChart({ type, q, rows, meta }) {
           <Tooltip contentStyle={tooltipStyle} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
           {ct.cols.map((c, i) => (
-            <Bar key={c} dataKey={c} stackId={type === 'stacked' ? 'a' : undefined} fill={COLORS[i % COLORS.length]} radius={[4, 4, 0, 0]} />
+            <Bar key={c} dataKey={c} stackId={type === 'stacked' ? 'a' : undefined} fill={COLORS[i % COLORS.length]} radius={type === 'grouped' ? [4, 4, 0, 0] : undefined} />
           ))}
         </BarChart>
       ) : type === 'diverging' ? (
         <BarChart
-          data={single.map((d, i, a) => ({
-            ...d,
-            value: i < Math.floor(a.length / 2) ? -d.value : i > Math.floor(a.length / 2) ? d.value : 0,
-          }))}
+          data={single.map((d) => ({ ...d, value: side(d.name) * d.value }))}
           layout="vertical"
         >
           <XAxis type="number" tick={{ fontSize: 10 }} />
@@ -133,7 +139,7 @@ export function QChart({ type, q, rows, meta }) {
           <Tooltip contentStyle={tooltipStyle} />
           <ReferenceLine x={0} stroke="#999" />
           <Bar dataKey="value">
-            {single.map((_, i, a) => <Cell key={i} fill={i < a.length / 2 ? COLORS[1] : COLORS[4]} />)}
+            {single.map((d) => <Cell key={d.name} fill={side(d.name) < 0 ? COLORS[1] : COLORS[4]} />)}
           </Bar>
         </BarChart>
       ) : (

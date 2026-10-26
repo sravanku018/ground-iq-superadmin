@@ -3,25 +3,17 @@
  * Rows are flat answer records: { [questionId]: "answer", district, user, ... }.
  */
 
-/** Multi-select answers arrive as arrays; treat them as the set of chosen values. */
-export const valuesOf = (v) => (Array.isArray(v) ? v.filter((x) => x != null && x !== '') : v == null || v === '' ? [] : [v])
-
 export const applyFilters = (rows, filters) =>
-  rows.filter((r) =>
-    Object.entries(filters).every(([k, s]) => !s.size || valuesOf(r[k]).some((v) => s.has(String(v)))),
-  )
+  rows.filter((r) => Object.entries(filters).every(([k, s]) => !s.size || s.has(r[k])))
 
-export const options = (rows, field) => [
-  ...new Set(rows.flatMap((r) => valuesOf(r[field]).map(String))),
-]
+export const options = (rows, field) =>
+  [...new Set(rows.map((r) => r[field]).filter(Boolean))]
 
 export const countBy = (rows, field) => {
   const m = new Map()
   rows.forEach((r) => {
-    for (const raw of valuesOf(r[field])) {
-      const v = String(raw)
-      if (v) m.set(v, (m.get(v) ?? 0) + 1)
-    }
+    const v = r[field]
+    if (v) m.set(v, (m.get(v) ?? 0) + 1)
   })
   return m
 }
@@ -30,12 +22,7 @@ export const crossTab = (rows, rf, cf) => {
   const cols = options(rows, cf)
   const data = options(rows, rf).map((o) => ({
     name: o,
-    ...Object.fromEntries(
-      cols.map((c) => [
-        c,
-        rows.filter((r) => valuesOf(r[rf]).map(String).includes(o) && valuesOf(r[cf]).map(String).includes(c)).length,
-      ]),
-    ),
+    ...Object.fromEntries(cols.map((c) => [c, rows.filter((r) => r[rf] === o && r[cf] === c).length])),
   }))
   return { cols, data }
 }
@@ -58,22 +45,13 @@ export function summarize(rows, field) {
   }
 }
 
-export const sortOpts = (vals, order) =>
-  order && order.length
-    ? [...vals].sort((a, b) => {
-      const ia = order.indexOf(a)
-      const ib = order.indexOf(b)
-      if (ia === -1 && ib === -1) return numOf(a) - numOf(b)
-      if (ia === -1) return 1
-      if (ib === -1) return -1
-      return ia - ib
-    })
-    : [...vals].sort((a, b) => numOf(a) - numOf(b))
-
-const numOf = (v) => {
-  const n = parseFloat(String(v).replace(/[^0-9.+-]/g, ''))
-  return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER
+// Options missing from the declared order (e.g. "Other") go last instead of first.
+const rank = (order, v) => {
+  const i = order.indexOf(v)
+  return i < 0 ? 9999 : i
 }
+export const sortOpts = (vals, order) =>
+  order && order.length ? [...vals].sort((a, b) => rank(order, a) - rank(order, b)) : vals
 
 /** Suggested chart types for a question, based on its kind and option count. */
 export function suggestCharts(rows, q, meta) {
@@ -104,11 +82,7 @@ export function buildMeta(questions) {
     const opts = Array.isArray(q.options) ? q.options : []
     let kind = 'nominal'
     if (type === 'date' || type === 'time' || type === 'datetime') kind = 'time'
-    else if (
-      type === 'meter' || type === 'number' || type === 'rating' || type === 'slider' ||
-      type === 'age' || opts.some((o) => /^\d+\s*[-–]\s*\d+|\+$/.test(String(o)))
-    ) kind = 'ordinal'
-    else if (type === 'abc' || type === 'select' || type === 'radio' || type === 'checkbox' || type === 'choice') kind = 'nominal'
+    else if (type === 'age' || opts.some((o) => /^\d+\s*[-–]\s*\d+|\+$/.test(String(o)))) kind = 'ordinal'
     meta[q.id] = { kind, order: opts.map(String) }
   }
   meta.district = { kind: 'nominal' }

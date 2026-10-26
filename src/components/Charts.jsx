@@ -8,24 +8,30 @@ const OFFICE = ['#4472C4', '#ED7D31', '#A5A5A5', '#FFC000', '#5B9BD5', '#70AD47'
 
 const pad = (n) => (n < 10 ? `0${n}` : String(n))
 
+/** Top of the y-axis: 5 equal steps on a 1/1.5/2/2.5/3/4/5 x 10^k grid (integer steps for small counts). */
 function niceMax(max) {
-  if (max <= 5) return Math.max(1, max)
-  const pow = 10 ** Math.floor(Math.log10(max))
-  const base = Math.ceil(max / pow)
-  const step = base <= 1 ? 0.2 : base <= 2 ? 0.5 : base <= 5 ? 1 : 2
-  return Math.ceil(max / (step * pow) * step * pow * pow / pow) || 1
+  const m = Number(max) > 0 ? Number(max) : 1
+  const raw = m / 5
+  const pow = 10 ** Math.floor(Math.log10(raw))
+  const f = raw / pow
+  const steps = pow >= 10 ? [1, 1.5, 2, 2.5, 3, 4, 5, 10] : [1, 2, 3, 4, 5, 10]
+  let step = (steps.find((x) => f <= x) ?? 10) * pow
+  if (step < 1) step = 1
+  return step * 5
 }
+
+const rowTotal = (r) => (Number.isFinite(Number(r.total)) && r.total !== undefined ? Number(r.total) : Object.values(r).reduce((n, v) => n + (typeof v === 'number' ? v : 0), 0))
 
 function topRows(data, xKey, maxBars) {
   if (data.length <= maxBars) return data
-  const sorted = [...data].sort((a, b) => (Number(b.total) || 0) - (Number(a.total) || 0))
-  const head = sorted.slice(0, maxBars - 1)
-  const tail = sorted.slice(maxBars - 1)
-  const rest = { ...tail[0] }
-  for (const t of tail.slice(1)) {
-    for (const k of Object.keys(t)) {
-      if (typeof t[k] === 'number') rest[k] = (Number(rest[k]) || 0) + t[k]
-    }
+  const keep = new Set(
+    data.map((r, i) => [i, rowTotal(r)]).sort((a, b) => b[1] - a[1]).slice(0, maxBars - 1).map(([i]) => i),
+  )
+  const head = data.filter((_, i) => keep.has(i))
+  const tail = data.filter((_, i) => !keep.has(i))
+  const rest = {}
+  for (const t of tail) {
+    for (const k of Object.keys(t)) if (typeof t[k] === 'number') rest[k] = (Number(rest[k]) || 0) + t[k]
   }
   rest[xKey] = 'Other'
   return [...head, rest]
@@ -39,7 +45,7 @@ export function BarChart({ data, xKey = 'label', series = [{ key: 'total', label
   if (!rows.length) return <NoData />
   const W = 720
   const H = height
-  const m = { top: 14, right: 12, bottom: 54, left: 44 }
+  const m = { top: series.length > 1 ? 30 : 14, right: 12, bottom: 54, left: 44 }
   const pw = W - m.left - m.right
   const ph = H - m.top - m.bottom
   const maxV = stacked
@@ -90,7 +96,7 @@ export function BarChart({ data, xKey = 'label', series = [{ key: 'total', label
         )
       })}
       <line x1={m.left} x2={W - m.right} y1={m.top + ph} y2={m.top + ph} stroke="#9ca3af" />
-      <Legend series={series} />
+      {series.length > 1 && <Legend series={series} />}
     </svg>
   )
 }
@@ -101,7 +107,7 @@ export function LineChart({ data, xKey = 'label', series = [{ key: 'total', labe
   if (!rows.length) return <NoData />
   const W = 720
   const H = height
-  const m = { top: 14, right: 12, bottom: 46, left: 44 }
+  const m = { top: series.length > 1 ? 30 : 14, right: 12, bottom: 46, left: 44 }
   const pw = W - m.left - m.right
   const ph = H - m.top - m.bottom
   const maxV = Math.max(...rows.flatMap((r) => series.map((s) => Number(r[s.key]) || 0)))
@@ -145,15 +151,20 @@ export function LineChart({ data, xKey = 'label', series = [{ key: 'total', labe
         )
       })}
       <line x1={m.left} x2={W - m.right} y1={m.top + ph} y2={m.top + ph} stroke="#9ca3af" />
-      <Legend series={series} />
+      {series.length > 1 && <Legend series={series} />}
     </svg>
   )
 }
 
 /** Pie with percentage legend. */
-export function PieChart({ data, labelKey = 'label', valueKey = 'value', height = 240 }) {
-  const rows = data.filter((d) => (Number(d[valueKey]) || 0) > 0)
+export function PieChart({ data, labelKey = 'label', valueKey = 'value', height = 240, maxSlices = 9 }) {
+  let rows = data.filter((d) => (Number(d[valueKey]) || 0) > 0)
   if (!rows.length) return <NoData />
+  if (rows.length > maxSlices) {
+    const keep = new Set(rows.map((d, i) => [i, Number(d[valueKey])]).sort((a, b) => b[1] - a[1]).slice(0, maxSlices - 1).map(([i]) => i))
+    const other = rows.filter((_, i) => !keep.has(i)).reduce((n, d) => n + Number(d[valueKey]), 0)
+    rows = [...rows.filter((_, i) => keep.has(i)), { [labelKey]: 'Other', [valueKey]: other }]
+  }
   const total = rows.reduce((n, d) => n + (Number(d[valueKey]) || 0), 0)
   const W = 720
   const H = height
@@ -180,7 +191,11 @@ export function PieChart({ data, labelKey = 'label', valueKey = 'value', height 
   })
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', background: '#fff' }}>
-      {slices.map((s, i) => (
+      {slices.length === 1 ? (
+        <circle cx={cx} cy={cy} r={R} fill={slices[0].color} stroke="#fff" strokeWidth="1.5">
+          <title>{`${slices[0].label}: ${slices[0].value} (100%)`}</title>
+        </circle>
+      ) : slices.map((s, i) => (
         <path key={i} d={s.d} fill={s.color} stroke="#fff" strokeWidth="1.5">
           <title>{`${s.label}: ${s.value} (${Math.round((s.value / total) * 100)}%)`}</title>
         </path>

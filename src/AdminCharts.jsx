@@ -61,7 +61,7 @@ function Card({ title, subtitle, children, height = 300 }) {
   )
 }
 
-function FilterBar({ surveys, users, questions, filters, setFilters, onApply, loading, onReset }) {
+function FilterBar({ surveys, users, questions, filters, setFilters, onApply, loading, onReset, questionCount, setQuestionCount, chartCount, setChartCount }) {
   const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }))
   const chosenQ = questions.find((q) => String(q.id) === String(filters.qid))
   return (
@@ -107,6 +107,22 @@ function FilterBar({ surveys, users, questions, filters, setFilters, onApply, lo
             <option value="">All questions</option>
             {questions.map((q) => (
               <option key={q.id} value={q.id}>{String(q.label || q.id).slice(0, 46)}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field" style={{ margin: 0 }}>
+          <span style={{ fontSize: 11 }}>No. of questions</span>
+          <select value={questionCount} onChange={(e) => setQuestionCount(Number(e.target.value))}>
+            {[1, 2, 3, 5, 8, 10, 15, 20].map((n) => (
+              <option key={n} value={n}>{n} question{n > 1 ? 's' : ''}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field" style={{ margin: 0 }}>
+          <span style={{ fontSize: 11 }}>No. of charts</span>
+          <select value={chartCount} onChange={(e) => setChartCount(Number(e.target.value))}>
+            {[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20].map((n) => (
+              <option key={n} value={n}>{n} chart{n > 1 ? 's' : ''}</option>
             ))}
           </select>
         </label>
@@ -264,6 +280,10 @@ export default function AdminCharts() {
   const [data, setData] = useState(null)
   const [surveys, setSurveys] = useState([])
   const [questions, setQuestions] = useState([])
+  // How many questions to analyse and how many charts to draw from them —
+  // set by the Client Admin; the top-answered questions fill the charts.
+  const [questionCount, setQuestionCount] = useState(5)
+  const [chartCount, setChartCount] = useState(5)
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
@@ -444,12 +464,15 @@ export default function AdminCharts() {
   ]
   // Question answer charts — the heart of "survey depth": each question's
   // answer distribution in the current selection.
-  // Graphs appear only after the admin picks a question filter — then the
-  // chart shows that question's answer distribution within the selection.
-  const questionCharts = (Array.isArray(data?.by_question) ? data.by_question : [])
-    .filter((q) => (applied.qid ? String(q.question_id) === String(applied.qid) : false))
+  // The Client Admin chooses how many questions to analyse and how many charts
+  // to draw: the top-answered questions fill the charts automatically. Picking
+  // one Question in the filter still narrows everything to that question.
+  const qPool = (Array.isArray(data?.by_question) ? data.by_question : [])
     .filter((q) => Array.isArray(q.options) && q.options.length > 0)
-    .map((q) => ({
+  const qChosen = applied.qid
+    ? qPool.filter((q) => String(q.question_id) === String(applied.qid))
+    : qPool.slice(0, Math.max(1, Math.min(questionCount, chartCount)))
+  const questionCharts = qChosen.map((q) => ({
       id: q.question_id,
       label: q.label || q.question_id,
       type: q.type,
@@ -489,7 +512,7 @@ export default function AdminCharts() {
   const showSankey = !applied.user && sankeyData.links.length > 0 && (fc === 0 || fc >= 2)
   const showDistrictBar = !applied.district && districtRows.length > 0
   const showMediaPie = fc >= 1
-  const chartCount = [showArea, showLine, showComposed, showSurveyorBar, showRadar, showQuota, showSankey, showDistrictBar, showMediaPie, partyRows.length > 0].filter(Boolean).length
+  const recommendedCount = [showArea, showLine, showComposed, showSurveyorBar, showRadar, showQuota, showSankey, showDistrictBar, showMediaPie, partyRows.length > 0].filter(Boolean).length
   const modeNote = fc === 0
     ? 'No filters — whole-survey overview'
     : fc === 1
@@ -509,6 +532,10 @@ export default function AdminCharts() {
         surveys={surveys}
         users={users}
         questions={questions}
+        questionCount={questionCount}
+        setQuestionCount={setQuestionCount}
+        chartCount={chartCount}
+        setChartCount={setChartCount}
         filters={filters}
         setFilters={setFilters}
         onApply={() => void load(filters)}
@@ -541,7 +568,7 @@ export default function AdminCharts() {
 
       <div className="card" style={{ padding: '10px 14px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
         <strong style={{ fontSize: 13 }}>{modeNote}</strong>
-        <span className="muted" style={{ fontSize: 12 }}>· {chartCount} recommended charts</span>
+        <span className="muted" style={{ fontSize: 12 }}>· {recommendedCount} recommended charts</span>
         {fc > 0 && activeFilters.map((f) => (
           <span key={f.k} style={{ fontSize: 11, background: '#eef3fb', color: '#3f6cbe', fontWeight: 700, padding: '2px 8px', borderRadius: 999 }}>
             {f.k}: {f.v}
@@ -549,23 +576,17 @@ export default function AdminCharts() {
         ))}
       </div>
 
-      {/* QUESTION ANSWER CHARTS — appear once a question filter is chosen */}
-      {!applied.qid && (
-        <div className="card" style={{ padding: '10px 14px', marginBottom: 14, display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span aria-hidden="true">📋</span>
-          <span className="muted" style={{ fontSize: 12 }}>
-            Select a <strong>Question</strong> (and optionally an Answer) filter above to see its answer-distribution graph.
-          </span>
-        </div>
-      )}
+      {/* QUESTION ANSWER CHARTS — generated from the chosen question/chart counts */}
       {questionCharts.length > 0 && (
         <>
           <div className="card" style={{ padding: '10px 14px', marginBottom: 14 }}>
-            <h3 style={{ margin: '0 0 2px', fontSize: 15 }}>📋 Question depth — {questionCharts[0].label}</h3>
+            <h3 style={{ margin: '0 0 2px', fontSize: 15 }}>📋 Question depth — {questionCharts.length} chart{questionCharts.length > 1 ? 's' : ''}</h3>
             <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-              {applied.qval
-                ? `Answers to this question where the answer is “${applied.qval}” — ${questionCharts[0].answered} records.`
-                : `Answer distribution within the current selection — ${questionCharts[0].answered} records answered.`}
+              {applied.qid
+                ? (applied.qval
+                  ? `Selected question, answers where the value is “${applied.qval}” — ${questionCharts[0].answered} records.`
+                  : `Selected question — ${questionCharts[0].answered} records answered.`)
+                : `Top ${questionCharts.length} of ${questionCount} question${questionCount > 1 ? 's' : ''} analysed — highest response counts first.`}
             </p>
           </div>
           {questionCharts.map((q) => (

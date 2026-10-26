@@ -271,6 +271,36 @@ export default function AdminCharts() {
     value: Number(r.total) || 0,
   }))
 
+  // ── Filter-adaptive chart selection ──────────────────────────────────────
+  // 0 filters → whole-survey overview (cumulative area, sankey flow)
+  // 1 filter → focused on that dimension (composed rate, comparisons)
+  // 2+ filters → deep dive (radar, sankey, media quality join in)
+  const activeFilters = [
+    applied.survey && { k: 'Survey', v: surveys.find((x) => x.form_key === applied.survey)?.title || applied.survey },
+    applied.user && { k: 'Surveyor', v: applied.user },
+    applied.district && { k: 'District', v: applied.district },
+    (applied.date_from || applied.date_to) && {
+      k: 'Dates',
+      v: `${applied.date_from || 'start'} → ${applied.date_to || 'today'}`,
+    },
+  ].filter(Boolean)
+  const fc = activeFilters.length
+  const showArea = fc === 0
+  const showLine = true
+  const showComposed = fc >= 1
+  const showSurveyorBar = !applied.user && userRows.length > 1
+  const showRadar = !applied.user && radarRows.length > 1 && fc >= 1
+  const showQuota = quotaRows.length > 0
+  const showSankey = !applied.user && sankeyData.links.length > 0 && (fc === 0 || fc >= 2)
+  const showDistrictBar = !applied.district && districtRows.length > 0
+  const showMediaPie = fc >= 1
+  const chartCount = [showArea, showLine, showComposed, showSurveyorBar, showRadar, showQuota, showSankey, showDistrictBar, showMediaPie, partyRows.length > 0].filter(Boolean).length
+  const modeNote = fc === 0
+    ? 'No filters — whole-survey overview'
+    : fc === 1
+      ? `Focused view — 1 filter (${activeFilters[0].k}: ${activeFilters[0].v})`
+      : `Deep dive — ${fc} filters applied`
+
   const rate = (n) => (totals.records ? Math.round(((n || 0) / totals.records) * 100) : 0)
 
   return (
@@ -308,6 +338,17 @@ export default function AdminCharts() {
         ))}
       </div>
 
+      <div className="card" style={{ padding: '10px 14px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        <strong style={{ fontSize: 13 }}>{modeNote}</strong>
+        <span className="muted" style={{ fontSize: 12 }}>· {chartCount} recommended charts</span>
+        {fc > 0 && activeFilters.map((f) => (
+          <span key={f.k} style={{ fontSize: 11, background: '#eef3fb', color: '#3f6cbe', fontWeight: 700, padding: '2px 8px', borderRadius: 999 }}>
+            {f.k}: {f.v}
+          </span>
+        ))}
+      </div>
+
+      {showArea && (<>
       {/* AREA — cumulative collection depth */}
       <Card title="Area — cumulative depth" subtitle="Total records piled up over the selected period (gradient area, EvilCharts style).">
         <AreaChart data={timeRows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
@@ -324,6 +365,7 @@ export default function AdminCharts() {
           <Area type="monotone" dataKey="cum" name="Cumulative records" stroke="#4472C4" strokeWidth={2.5} fill="url(#gCum2)" />
         </AreaChart>
       </Card>
+      </>)}
 
       {/* LINE — daily trend by status */}
       <Card title="Line — records over time" subtitle="All / confirmed / pending / rejected per period.">
@@ -340,7 +382,8 @@ export default function AdminCharts() {
         </LineChart>
       </Card>
 
-      {/* COMPOSED — volume bars + confirmation-rate line on second axis */}
+      {showComposed && (<>
+            {/* COMPOSED — volume bars + confirmation-rate line on second axis */}
       <Card title="Composed — volume vs confirmation rate" subtitle="Bars: records per period · Line: % confirmed (right axis).">
         <ComposedChart data={timeRows} margin={{ top: 8, right: 4, left: -12, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -353,8 +396,10 @@ export default function AdminCharts() {
           <Line yAxisId="pct" type="monotone" dataKey="rate" name="Confirmed %" stroke="#ED7D31" strokeWidth={2.5} dot={{ r: 3 }} />
         </ComposedChart>
       </Card>
+      </>)}
 
-      {/* BAR — surveyor performance stacked */}
+      {showSurveyorBar && (<>
+            {/* BAR — surveyor performance stacked */}
       <Card title="Bar — surveyor performance" subtitle="Records per surveyor, stacked by status (rounded, Excel palette).">
         <BarChart data={userRows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -367,6 +412,7 @@ export default function AdminCharts() {
           <Bar dataKey="rejected" name="Rejected" stackId="s" fill={C[2]} radius={[5, 5, 0, 0]} maxBarSize={38} />
         </BarChart>
       </Card>
+      </>)}
 
       {/* PIE — status mix */}
       <Card title="Pie — status mix" subtitle="Share of confirmed / pending / rejected in the current selection." height={280}>
@@ -379,7 +425,8 @@ export default function AdminCharts() {
         </PieChart>
       </Card>
 
-      {/* RADAR — surveyor work shape */}
+      {showRadar && (<>
+            {/* RADAR — surveyor work shape */}
       <Card title="Radar — surveyor coverage shape" subtitle="Top surveyors, each axis normalized to 100%: records, confirmed, media-OK.">
         <RadarChart data={radarRows} outerRadius="72%">
           <PolarGrid stroke="#e2e8f0" />
@@ -392,8 +439,10 @@ export default function AdminCharts() {
           <Radar name="Media OK" dataKey="Media OK" stroke={C[1]} fill={C[1]} fillOpacity={0.18} />
         </RadarChart>
       </Card>
+      </>)}
 
-      {/* RADIAL — quota completion */}
+      {showQuota && (<>
+            {/* RADIAL — quota completion */}
       <Card title="Radial — quota completion" subtitle="Surveyor progress toward assigned target (100% = quota reached)." height={280}>
         {quotaRows.length ? (
           <RadialBarChart data={quotaRows} innerRadius="22%" outerRadius="98%" startAngle={90} endAngle={-270}>
@@ -405,8 +454,10 @@ export default function AdminCharts() {
           <div className="muted" style={{ textAlign: 'center', paddingTop: 90 }}>No quotas set — set targets per surveyor to see completion rings.</div>
         )}
       </Card>
+      </>)}
 
-      {/* SANKEY — survey → surveyor → status flow */}
+      {showSankey && (<>
+            {/* SANKEY — survey → surveyor → status flow */}
       <Card title="Sankey — record flow" subtitle={`How records flow: ${applied.survey || 'survey'} → surveyor → outcome (top 6 surveyors).`} height={340}>
         {sankeyData.links.length ? (
           <Sankey data={sankeyData} nodePadding={18} nodeWidth={12} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
@@ -416,8 +467,10 @@ export default function AdminCharts() {
           <div className="muted" style={{ textAlign: 'center', paddingTop: 110 }}>No records in this selection.</div>
         )}
       </Card>
+      </>)}
 
-      {/* BAR — district coverage */}
+      {showDistrictBar && (<>
+            {/* BAR — district coverage */}
       <Card title="Bar — district coverage" subtitle="Where the survey is reaching, confirmed overlay.">
         <BarChart data={districtRows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -429,8 +482,10 @@ export default function AdminCharts() {
           <Bar dataKey="confirmed" name="Confirmed" fill={C[5]} radius={[5, 5, 0, 0]} maxBarSize={44} />
         </BarChart>
       </Card>
+      </>)}
 
-      {/* PIE — media quality */}
+      {showMediaPie && (<>
+            {/* PIE — media quality */}
       <Card title="Pie — media quality" subtitle="Geo-tag / voice / photo verification outcomes for these records." height={280}>
         <PieChart>
           <Tooltip contentStyle={tooltipStyle} />
@@ -440,6 +495,7 @@ export default function AdminCharts() {
           </Pie>
         </PieChart>
       </Card>
+      </>)}
 
       {partyRows.length ? (
         <Card title="Pie — winning party responses" subtitle="Answer distribution for the winning-party question." height={280}>

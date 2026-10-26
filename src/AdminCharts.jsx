@@ -31,7 +31,9 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { getAdminAnalyze, getSurvey, listSurveys, listUsers } from './api'
+import { getAdminAnalyze, getAnswerRows, getSurvey, listSurveys, listUsers } from './api'
+import QuestionAnalytics from './components/QuestionAnalytics'
+import { buildMeta } from './surveyEngine'
 import { dayLabel, monthLabel } from './components/Charts'
 
 const C = ['#4472C4', '#ED7D31', '#A5A5A5', '#FFC000', '#5B9BD5', '#70AD47', '#264478', '#9E480E']
@@ -61,107 +63,7 @@ function Card({ title, subtitle, children, height = 300 }) {
   )
 }
 
-/** Renders one question's answer distribution in the chosen chart type. */
-function QuestionChart({ q, type }) {
-  const rows = q.rows
-  const gradId = `qg_${String(q.id).replace(/[^a-zA-Z0-9]/g, '')}`
-  if (type === 'pie' || type === 'donut') {
-    return (
-      <PieChart>
-        <Tooltip contentStyle={tooltipStyle} />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
-        <Pie
-          data={rows}
-          dataKey="count"
-          nameKey="name"
-          innerRadius={type === 'donut' ? 48 : 0}
-          outerRadius={92}
-          paddingAngle={type === 'donut' ? 3 : 0}
-          strokeWidth={2}
-          label={(e) => `${e.name}: ${e.value}`}
-        >
-          {rows.map((_, i) => <Cell key={i} fill={C[i % C.length]} />)}
-        </Pie>
-      </PieChart>
-    )
-  }
-  if (type === 'radar') {
-    return (
-      <RadarChart data={rows} outerRadius="74%">
-        <PolarGrid stroke="#e2e8f0" />
-        <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: '#475569' }} />
-        <PolarRadiusAxis tick={false} axisLine={false} />
-        <Tooltip contentStyle={tooltipStyle} />
-        <Radar name="Responses" dataKey="count" stroke={C[0]} fill={C[0]} fillOpacity={0.35} />
-      </RadarChart>
-    )
-  }
-  if (type === 'radial') {
-    const radial = rows.map((r, i) => ({ ...r, fill: C[i % C.length] }))
-    return (
-      <RadialBarChart data={radial} innerRadius="20%" outerRadius="98%" startAngle={90} endAngle={-270}>
-        <PolarAngleAxis type="number" tick={false} />
-        <RadialBar dataKey="count" background={{ fill: '#eef2f7' }} cornerRadius={7} />
-        <Tooltip contentStyle={tooltipStyle} formatter={(v, _n, pp) => [`${v} responses`, pp?.payload?.name]} />
-      </RadialBarChart>
-    )
-  }
-  if (type === 'line') {
-    return (
-      <LineChart data={rows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-        <XAxis dataKey="name" {...axisProps} interval={0} angle={-20} textAnchor="end" height={54} />
-        <YAxis {...axisProps} allowDecimals={false} />
-        <Tooltip contentStyle={tooltipStyle} />
-        <Line type="monotone" dataKey="count" name="Responses" stroke={C[0]} strokeWidth={2.5} dot={{ r: 4 }} />
-      </LineChart>
-    )
-  }
-  if (type === 'area') {
-    return (
-      <AreaChart data={rows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
-        <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={C[0]} stopOpacity={0.6} />
-            <stop offset="95%" stopColor={C[0]} stopOpacity={0.05} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-        <XAxis dataKey="name" {...axisProps} interval={0} angle={-20} textAnchor="end" height={54} />
-        <YAxis {...axisProps} allowDecimals={false} />
-        <Tooltip contentStyle={tooltipStyle} />
-        <Area type="monotone" dataKey="count" name="Responses" stroke={C[0]} strokeWidth={2.5} fill={`url(#${gradId})`} />
-      </AreaChart>
-    )
-  }
-  if (type === 'composed') {
-    return (
-      <ComposedChart data={rows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-        <XAxis dataKey="name" {...axisProps} interval={0} angle={-20} textAnchor="end" height={54} />
-        <YAxis {...axisProps} allowDecimals={false} />
-        <Tooltip contentStyle={tooltipStyle} />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
-        <Bar dataKey="count" name="Responses" fill={C[0]} radius={[5, 5, 0, 0]} maxBarSize={40} />
-        <Line type="monotone" dataKey="count" name="Trend" stroke={C[1]} strokeWidth={2} dot={{ r: 3 }} legendType="none" />
-      </ComposedChart>
-    )
-  }
-  // default: bar
-  return (
-    <BarChart data={rows} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
-      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-      <XAxis dataKey="name" {...axisProps} interval={0} angle={-20} textAnchor="end" height={54} />
-      <YAxis {...axisProps} allowDecimals={false} />
-      <Tooltip contentStyle={tooltipStyle} />
-      <Bar dataKey="count" name="Responses" fill={C[0]} radius={[5, 5, 0, 0]} maxBarSize={42}>
-        {rows.map((_, i) => <Cell key={i} fill={C[i % C.length]} />)}
-      </Bar>
-    </BarChart>
-  )
-}
-
-function FilterBar({ surveys, users, questions, filters, setFilters, onApply, loading, onReset, selectedQids, setSelectedQids, chartCount, setChartCount, chartType, setChartType }) {
+function FilterBar({ surveys, users, questions, filters, setFilters, onApply, loading, onReset, selectedQids, setSelectedQids }) {
   const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }))
   const chosenQ = questions.find((q) => String(q.id) === String(filters.qid))
   const withAnswers = questions.filter((q) => q.answered > 0)
@@ -214,27 +116,7 @@ function FilterBar({ surveys, users, questions, filters, setFilters, onApply, lo
             ))}
           </select>
         </label>
-        <label className="field" style={{ margin: 0 }}>
-          <span style={{ fontSize: 11 }}>No. of charts</span>
-          <select value={chartCount} onChange={(e) => setChartCount(Number(e.target.value))}>
-            {[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20].map((n) => (
-              <option key={n} value={n}>{n} chart{n > 1 ? 's' : ''}</option>
-            ))}
-          </select>
-        </label>
-        <label className="field" style={{ margin: 0 }}>
-          <span style={{ fontSize: 11 }}>Chart type</span>
-          <select value={chartType} onChange={(e) => setChartType(e.target.value)}>
-            <option value="bar">Bar</option>
-            <option value="line">Line</option>
-            <option value="area">Area</option>
-            <option value="composed">Composed (bar + line)</option>
-            <option value="pie">Pie</option>
-            <option value="donut">Donut</option>
-            <option value="radar">Radar</option>
-            <option value="radial">Radial</option>
-          </select>
-        </label>
+
         <label className="field" style={{ margin: 0 }}>
           <span style={{ fontSize: 11 }}>Answer</span>
           {chosenQ && Array.isArray(chosenQ.options) && chosenQ.options.length ? (
@@ -427,11 +309,12 @@ export default function AdminCharts() {
   const [data, setData] = useState(null)
   const [surveys, setSurveys] = useState([])
   const [questions, setQuestions] = useState([])
-  // The Client Admin ticks the questions to chart; No. of charts caps how
-  // many of the ticked questions are drawn.
+  // The Client Admin ticks the questions to analyse with the engine.
   const [selectedQids, setSelectedQids] = useState([])
-  const [chartCount, setChartCount] = useState(5)
-  const [chartType, setChartType] = useState('bar')
+
+  // Raw answer rows for the full question engine (fetched per survey).
+  const [answerRows, setAnswerRows] = useState([])
+  const [answerLoading, setAnswerLoading] = useState(false)
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
@@ -476,6 +359,44 @@ export default function AdminCharts() {
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Raw answer rows for the question engine, refetched per survey.
+  useEffect(() => {
+    let stop = false
+    if (!applied.survey) {
+      setAnswerRows([])
+      return undefined
+    }
+    setAnswerLoading(true)
+    getAnswerRows({
+      survey: applied.survey,
+      user: applied.user,
+      district: applied.district,
+      date_from: applied.date_from,
+      date_to: applied.date_to,
+    }, 3000)
+      .then((res) => {
+        if (stop) return
+        const flat = (Array.isArray(res?.rows) ? res.rows : []).map((r) => ({
+          ...(r.answers || {}),
+          date: r.date,
+          month: r.month,
+          user: r.user,
+          district: r.district,
+          status: r.status,
+        }))
+        setAnswerRows(flat)
+      })
+      .catch(() => {
+        if (!stop) setAnswerRows([])
+      })
+      .finally(() => {
+        if (!stop) setAnswerLoading(false)
+      })
+    return () => {
+      stop = true
+    }
+  }, [applied.survey, applied.user, applied.district, applied.date_from, applied.date_to])
 
   // Questions of the chosen survey drive the question/answer filter and the
   // per-question charts.
@@ -612,28 +533,13 @@ export default function AdminCharts() {
   ]
   // Question answer charts — the heart of "survey depth": each question's
   // answer distribution in the current selection.
-  // Charts come from the TICKED questions (tick list above), capped by the
-  // No. of charts selector. A Question dropdown filter narrows data + charts
-  // to that single question.
+  // Question mode is on when any question is ticked (or a Question filter is
+  // set) — the engine below then owns the chart area.
   const qPool = (Array.isArray(data?.by_question) ? data.by_question : [])
     .filter((q) => Array.isArray(q.options) && q.options.length > 0)
   const qChosen = applied.qid
     ? qPool.filter((q) => String(q.question_id) === String(applied.qid))
-    : qPool
-      .filter((q) => selectedQids.map(String).includes(String(q.question_id)))
-      .slice(0, Math.max(1, chartCount))
-  const questionCharts = qChosen.map((q) => ({
-      id: q.question_id,
-      label: q.label || q.question_id,
-      type: q.type,
-      answered: Number(q.answered) || 0,
-      rows: q.options.map((o) => ({ name: String(o.value), count: Number(o.count) || 0 })),
-    }))
-
-  // Question mode: ticked questions (or a selected Question filter) decide the
-  // chart set — every chart is that question's distribution on the filtered
-  // data. The generic overview charts step aside so the selection is the view.
-  const questionMode = qChosen.length > 0
+    : qPool.filter((q) => selectedQids.map(String).includes(String(q.question_id)))
 
   const partyRows = (Array.isArray(data?.by_party) ? data.by_party : []).map((r) => ({
     name: r.party || 'Unknown',
@@ -713,6 +619,15 @@ export default function AdminCharts() {
     return [...byId.values()].sort((a, b) => b.answered - a.answered)
   }, [questions, data])
 
+  // Engine questions for the ticked ids (id + text + field), with chart meta.
+  const engineQuestions = useMemo(
+    () => availableQuestions
+      .filter((q) => selectedQids.map(String).includes(String(q.id)))
+      .map((q) => ({ id: String(q.id), text: String(q.label || q.id), field: String(q.id) })),
+    [availableQuestions, selectedQids],
+  )
+  const engineMeta = useMemo(() => buildMeta(availableQuestions), [availableQuestions])
+
   const insights = useMemo(
     () => buildInsights({ totals, timeRows, userRows, districtRows, partyRows, quotaRows, applied, fc, users, byQuestion: data?.by_question }),
     [totals, timeRows, userRows, districtRows, partyRows, quotaRows, applied, fc, users, data],
@@ -728,10 +643,7 @@ export default function AdminCharts() {
         questions={availableQuestions}
         selectedQids={selectedQids}
         setSelectedQids={setSelectedQids}
-        chartCount={chartCount}
-        setChartCount={setChartCount}
-        chartType={chartType}
-        setChartType={setChartType}
+
         filters={filters}
         setFilters={setFilters}
         onApply={() => void load(filters)}
@@ -773,7 +685,7 @@ export default function AdminCharts() {
       </div>
 
       {/* QUESTION ANSWER CHARTS — one per ticked question (up to No. of charts) */}
-      {questionCharts.length === 0 && !applied.qid && (
+      {engineQuestions.length === 0 && !applied.qid && (
         <div className="card" style={{ padding: '10px 14px', marginBottom: 14, display: 'flex', gap: 8, alignItems: 'center' }}>
           <span aria-hidden="true">📋</span>
           <span className="muted" style={{ fontSize: 12 }}>
@@ -781,31 +693,22 @@ export default function AdminCharts() {
           </span>
         </div>
       )}
-      {questionCharts.length > 0 && (
+      {engineQuestions.length > 0 && (
         <>
           <div className="card" style={{ padding: '10px 14px', marginBottom: 14 }}>
-            <h3 style={{ margin: '0 0 2px', fontSize: 15 }}>📋 Question depth — {questionCharts.length} chart{questionCharts.length > 1 ? 's' : ''}</h3>
+            <h3 style={{ margin: '0 0 2px', fontSize: 15 }}>📋 Question analytics — {engineQuestions.length} question{engineQuestions.length > 1 ? 's' : ''}</h3>
             <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-              {applied.qid
-                ? (applied.qval
-                  ? `Selected question, answers where the value is “${applied.qval}” — ${questionCharts[0].answered} records.`
-                  : `Selected question — ${questionCharts[0].answered} records answered.`)
-                : `${questionCharts.length} ticked question${questionCharts.length > 1 ? 's' : ''} charted`}
+              Suggested charts per question (tap a type, or cross by District / Surveyor / Status / Month) · {answerLoading ? 'loading answers…' : `${answerRows.length} answer records`}
               {activeFilters.length
-                ? ` · filtered by ${activeFilters.map((f) => `${f.k}: ${f.v}`).join(', ')}`
-                : ' · whole survey selected'}
+                ? ` · survey filters: ${activeFilters.map((f) => `${f.k}: ${f.v}`).join(', ')}`
+                : ' · whole survey'}
             </p>
           </div>
-          {questionCharts.map((q) => (
-            <Card
-              key={q.id}
-              title={q.label}
-              subtitle={`${q.answered} answered · ${q.type} question`}
-              height={240}
-            >
-              <QuestionChart q={q} type={chartType} />
-            </Card>
-          ))}
+          {answerLoading ? (
+            <div className="card" style={{ padding: 16 }}>Loading answers…</div>
+          ) : (
+            <QuestionAnalytics rows={answerRows} questions={engineQuestions} meta={engineMeta} />
+          )}
         </>
       )}
 

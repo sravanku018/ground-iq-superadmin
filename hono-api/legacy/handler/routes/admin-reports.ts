@@ -251,6 +251,87 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
   }
 
   // Client Admin analyze board: by date + user
+  // ── Raw answer rows for the question-analytics engine ───────────────────
+  // The Excel Charts question mode needs per-record answers (cross-tabs,
+  // significance). Compact shape: one object per record, answers keyed by
+  // question id. Drafts skipped; scoped to the admin's surveys.
+  if (path === "/api/admin/answer-rows" && method === "GET") {
+    if (!me) return json({ error: "Login required" }, 401);
+    if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);
+    const surveyQ = String(url.searchParams.get("survey") || "").trim();
+    const userQ = String(url.searchParams.get("user") || "").trim().toLowerCase();
+    const districtQ = String(url.searchParams.get("district") || "").trim().toLowerCase();
+    const dateFromQ = String(url.searchParams.get("date_from") || "").trim();
+    const dateToQ = String(url.searchParams.get("date_to") || "").trim();
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 2000, 1), 5000);
+    const scopeKeys = await adminFormKeyScope(sql, me);
+
+    const frows = scopeKeys
+      ? await sql`
+            SELECT form_key, questions FROM survey_form
+            WHERE form_key = ANY(${scopeKeys})
+              AND (${surveyQ} = '' OR form_key = ${surveyQ})
+          `.catch(() => [])
+      : await sql`
+            SELECT form_key, questions FROM survey_form
+            WHERE (${surveyQ} = '' OR form_key = ${surveyQ})
+          `.catch(() => []);
+
+    const qids: string[] = [];
+    for (const f of frows as { questions?: unknown }[]) {
+      let qs = f.questions;
+      if (typeof qs === "string") { try { qs = JSON.parse(qs); } catch { qs = []; } }
+      if (!Array.isArray(qs)) continue;
+      for (const q of qs as Record<string, unknown>[]) {
+        const id = String(q.id || q.label || "");
+        if (id && !qids.includes(id)) qids.push(id);
+      }
+    }
+
+    const rows = scopeKeys
+      ? await sql`
+            SELECT id, payload, created_at FROM submissions
+            WHERE payload->>'form_key' = ANY(${scopeKeys})
+              AND (${surveyQ} = '' OR payload->>'form_key' = ${surveyQ})
+            ORDER BY created_at DESC LIMIT ${limit}
+          `.catch(() => [])
+      : await sql`
+            SELECT id, payload, created_at FROM submissions
+            WHERE (${surveyQ} = '' OR payload->>'form_key' = ${surveyQ})
+            ORDER BY created_at DESC LIMIT ${limit}
+          `.catch(() => []);
+
+    const out: Record<string, unknown>[] = [];
+    for (const r of rows as { id: number; payload: unknown; created_at: string }[]) {
+      const payload = parsePayload(r.payload);
+      if (isDraftSubmission(payload)) continue;
+      const a = (payload.answers || {}) as Record<string, unknown>;
+      const answers: Record<string, string> = {};
+      for (const qid of qids) {
+        const v = answerOf(a, qid);
+        if (v == null || v === "") continue;
+        answers[qid] = Array.isArray(v) ? v.map(String).join(", ") : String(v);
+      }
+      const date = dayKey(isoStamp(r.created_at));
+      const user = surveyorNameOf(payload);
+      const district = String(a.district || "Unknown");
+      if (userQ && !String(user).toLowerCase().includes(userQ)) continue;
+      if (districtQ && !district.toLowerCase().includes(districtQ)) continue;
+      if (dateFromQ && date < dateFromQ) continue;
+      if (dateToQ && date > dateToQ) continue;
+      out.push({
+        id: Number(r.id),
+        date,
+        month: date.slice(0, 7),
+        user,
+        district,
+        status: payloadStatus(payload),
+        answers,
+      });
+    }
+    return json({ rows: out, question_ids: qids, total: out.length });
+  }
+
   if (path === "/api/admin/analyze" && method === "GET") {
     if (!me) return json({ error: "Login required" }, 401);
     if (!isPortalAdmin(me.role)) return json({ error: "Admin only" }, 403);

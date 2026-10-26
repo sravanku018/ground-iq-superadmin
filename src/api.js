@@ -683,6 +683,17 @@ export function apkDownloadUrl() {
   return `${getApiBase()}/api/app.apk`
 }
 
+/** Raw answer rows for the question-analytics engine (honours the tab filters). */
+export function getAnswerRows(filters = {}, limit = 3000) {
+  const q = new URLSearchParams()
+  const f = typeof filters === 'string' ? { survey: filters } : filters || {}
+  for (const k of ['survey', 'user', 'district', 'date_from', 'date_to']) {
+    if (f[k]) q.set(k, String(f[k]))
+  }
+  q.set('limit', String(limit))
+  return request(`/api/admin/answer-rows?${q.toString()}`)
+}
+
 /** Live release advert — version + Cloudflare-mirrored APK URL. */
 export function getAppRelease() {
   return request('/api/app-version')

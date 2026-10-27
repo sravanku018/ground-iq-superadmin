@@ -52,6 +52,7 @@ import {
   deleteDraft,
   findOpenDraft,
   getPackage,
+  hasQuestionAnswers,
   listAllPackages,
   savePackageLocal,
 } from './localStore'
@@ -1370,6 +1371,11 @@ export default function FieldCollectScreen({
         location_district: locationDetails?.district || answers.district || '',
         location_mandal: locationDetails?.mandal || answers.mandal || '',
         location_state: locationDetails?.state || '',
+      }
+      // Never push an empty record: require at least one real question answer.
+      if (!hasQuestionAnswers(lockedAnswers)) {
+        onToast?.('Nothing to submit — answer at least one question', 'error')
+        return
       }
       const packageId = await savePackageLocal({
         id: reuseId,

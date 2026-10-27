@@ -422,6 +422,29 @@ export function stripDraftAnswers(answers) {
 }
 
 /** Push a draft into the sync queue → client admin sees it as pending */
+/** Keys that are metadata, never question answers. */
+const META_PREFIXES = ['_', 'geo_', 'location_', 'ts_', 'sec_']
+const META_KEYS = new Set([
+  'draft', 'data_collector', 'client_package_id', 'submitted_by',
+  'has_photo', 'has_audio', 'photo', 'audio', 'photo_url', 'audio_url',
+  'answer_pattern', 'survey_id', 'form_id', 'form_key',
+  'district', 'mandal',
+])
+
+/** True when at least one real question answer is present. */
+export function hasQuestionAnswers(answers = {}) {
+  for (const [k, v] of Object.entries(answers || {})) {
+    if (!k || META_PREFIXES.some((p) => k.startsWith(p))) continue
+    if (META_KEYS.has(k)) continue
+    if (Array.isArray(v)) {
+      if (v.length > 0) return true
+      continue
+    }
+    if (String(v ?? '').trim() !== '') return true
+  }
+  return false
+}
+
 export async function pushDraft(id) {
   const pkg = await getPackage(id)
   if (!pkg) return null
@@ -429,18 +452,7 @@ export async function pushDraft(id) {
   qa.answers = stripDraftAnswers(qa.answers)
 
   // Guard: refuse to send a draft that has no real question answers
-  const META_PREFIXES = ['_', 'geo_', 'location_', 'ts_', 'sec_']
-  const META_KEYS = new Set([
-    'draft', 'data_collector', 'client_package_id', 'submitted_by',
-    'has_photo', 'has_audio', 'photo', 'audio', 'photo_url', 'audio_url',
-    'answer_pattern', 'survey_id', 'form_id', 'form_key',
-  ])
-  const answeredCount = Object.entries(qa.answers || {}).filter(([k, v]) => {
-    if (!k || META_PREFIXES.some((p) => k.startsWith(p))) return false
-    if (META_KEYS.has(k)) return false
-    return String(v ?? '').trim() !== ''
-  }).length
-  if (answeredCount === 0) {
+  if (!hasQuestionAnswers(qa.answers)) {
     throw new Error('No questions answered — fill in the survey before sending.')
   }
 

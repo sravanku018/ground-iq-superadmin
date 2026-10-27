@@ -17,6 +17,7 @@ import {
   getPackage,
   listPendingPackages,
   queueStats,
+  hasQuestionAnswers,
   removePackage,
   stripDraftAnswers,
   updatePackage,
@@ -384,6 +385,15 @@ async function runDrain(reason, manual) {
   // by a crash or close. Put it back in the queue.
   for (const p of pending) {
     if (p.phase === 'syncing') await safeUpdate(p.id, { phase: 'pending' })
+  }
+
+  // Never upload an empty record: drop queued packages without any real
+  // question answer (metadata-only pushes were the source of blank rows).
+  for (const p of pending) {
+    if (!hasQuestionAnswers(p.qa?.answers || p.answers)) {
+      await removePackage(p.id)
+      emit({ type: 'package-dropped-empty', id: p.id })
+    }
   }
 
   if (!pending.length) {

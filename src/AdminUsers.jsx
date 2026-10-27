@@ -23,6 +23,7 @@ import {
   updateUser,
   apkDownloadUrl,
 } from './api'
+import { demoOn, mockUser } from './demoMode'
 import VerifiedBadge from './VerifiedBadge'
 import PhoneIndiaField from './PhoneIndiaField'
 import ShareAppLink from './components/ShareAppLink'
@@ -406,7 +407,9 @@ export default function AdminUsersScreen({ onToast, user: portalUser, focusUserI
         getProgressBoard().catch(() => null),
         getSeatRequests().catch(() => null),
       ])
-      setUsers(data.users || [])
+      setUsers(
+        (data.users || []).map((u, i) => (demoOn() ? { ...u, ...mockUser(u, i) } : u)),
+      )
       setBoard(prog)
       if (seats) setSeatData(seats)
     } catch (e) {

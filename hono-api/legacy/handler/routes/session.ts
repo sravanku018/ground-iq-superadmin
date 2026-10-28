@@ -13,6 +13,7 @@ import {
   countTenantRecords,
 } from "../lib/tenant.ts";
 import {
+  invalidateSessionCache,
   sqlCountN,
 } from "../lib/users.ts";
 

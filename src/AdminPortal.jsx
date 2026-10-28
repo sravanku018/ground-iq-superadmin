@@ -303,16 +303,16 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
       {/* KPI tiles — Mock 3 style with Total Allocations and Rejected */}
       <div className="portal-kpi-grid">
         <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
-          <strong>{reviewPending.toLocaleString()}</strong>
+          <strong>{pendingCount.toLocaleString()}</strong>
           <span>Pending review</span>
         </button>
         <button type="button" className="portal-kpi" onClick={() => onNav(gated('review') ? 'review' : 'analyze')}>
-          <strong>{confirmedTotal.toLocaleString()}</strong>
+          <strong>{confirmedCount.toLocaleString()}</strong>
           <span>Confirmed</span>
         </button>
         <button type="button" className="portal-kpi" onClick={() => onNav('review')}>
-          <strong style={{ color: rejectedTotal > 0 ? '#ef4444' : undefined }}>
-            {rejectedTotal.toLocaleString()}
+          <strong style={{ color: rejectedCount > 0 ? '#ef4444' : undefined }}>
+            {rejectedCount.toLocaleString()}
           </strong>
           <span>Rejected</span>
         </button>
@@ -729,7 +729,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
 
             <div style={{ marginTop: 10, padding: '8px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: 12 }}>
               <span className="muted">
-                Total Allocated: <strong>{allotCap.toLocaleString()}</strong> · Web Reserved: <strong>{webReserved.toLocaleString()}</strong> · Field Used: <strong>{fieldUsed.toLocaleString()}</strong> · Rejected: <strong style={{ color: rejectedTotal > 0 ? '#dc2626' : undefined }}>{rejectedTotal.toLocaleString()}</strong>
+                Total Allocated: <strong>{allotCap.toLocaleString()}</strong> · Web Reserved: <strong>{webReserved.toLocaleString()}</strong> · Field Used: <strong>{fieldUsedView.toLocaleString()}</strong> · Rejected: <strong style={{ color: rejectedCount > 0 ? '#dc2626' : undefined }}>{rejectedCount.toLocaleString()}</strong>
               </span>
               <span style={{ color: '#3f6cbe', fontWeight: 700 }}>
                 Remaining for Field: {fieldLeft != null ? fieldLeft.toLocaleString() : '0'} records

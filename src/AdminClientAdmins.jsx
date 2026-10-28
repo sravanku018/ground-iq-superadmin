@@ -866,7 +866,10 @@ export default function AdminClientAdminsScreen({ onToast }) {
                       <label className="field compact" style={{ margin: 0 }}>
                         <span>
                           Converse max records per surveyor ·{' '}
-                          <strong style={{ color: '#4f7dc6' }}>0 = unlimited</strong>
+                          <strong style={{ color: '#4f7dc6' }}>
+                            {u.converse_used ?? 0} used
+                          </strong>{' '}
+                          · 0 = unlimited
                         </span>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input

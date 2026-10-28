@@ -1353,11 +1353,19 @@ export default function AdminPortal({ superAdminOnly = false }) {
           setUser(data.user)
           setAuthReady(true)
         }
-      } catch {
+      } catch (e) {
         if (!cancelled) {
-          await logout()
           setUser(null)
           setAuthReady(true)
+          // A transient me() failure (offline, cold start, aborted boot) must
+          // NOT delete the server session — that logged people out for good.
+          // Only a real 401 means the session is gone; even then the server
+          // already knows, so local cleanup is enough.
+          if (e?.status === 401) {
+            clearSession()
+          } else {
+            notify('Could not reach the server — check the connection and retry', 'error')
+          }
         }
       } finally {
         clearTimeout(timeout)

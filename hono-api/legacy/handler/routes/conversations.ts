@@ -183,49 +183,15 @@ export async function handleConversations(c: Ctx): Promise<Response | null> {
   if (path === "/api/conversations/config" && method === "GET") {
     if (!me) return json({ error: "Login required" }, 401);
     await syncSonioxKeyFromDb();
-    // The Converse tab is shown only when voice is activated for this user:
-    // a Super Admin/Client Admin grant, or an assigned survey with voice on.
-    const voiceRows = await sql`
-        SELECT EXISTS (
-          SELECT 1
-          FROM survey_assignments sa
-          JOIN survey_form f ON f.id = sa.survey_id
-          WHERE sa.user_id = ${me.id}
-            AND COALESCE(f.voice_required, FALSE) = TRUE
-            AND f.ended_at IS NULL
-        ) AS on
-      `.catch(() => []);
-    // A surveyor inherits the Voice grant from the Client Admin who created
-    // the account, or from an admin in the same company (Super Admin grants
-    // Voice on that admin's profile).
-    const ownerRows = await sql`
-        SELECT EXISTS (
-          SELECT 1
-          FROM app_users u
-          JOIN app_users owner ON owner.id = u.created_by
-            OR (u.company_id IS NOT NULL AND owner.company_id = u.company_id)
-          WHERE u.id = ${me.id}
-            AND owner.role IN ('admin', 'super_admin')
-            AND COALESCE(owner.can_record_voice, FALSE) = TRUE
-        ) AS on
-      `.catch(() => []);
-    const rawVoice =
-      me.role === "super_admin" ||
-      (me as Record<string, unknown>).can_record_voice === true ||
-      (voiceRows[0] as { on?: boolean } | undefined)?.on === true ||
-      (ownerRows[0] as { on?: boolean } | undefined)?.on === true;
-    // selfGrant = an explicit grant ON THIS ACCOUNT (direct can_record_voice).
-    // The owner's old can_record_voice does NOT auto-enable Converse — the
-    // Super Admin's can_converse grant on the Client Admin is the org path.
+    // Converse is governed ONLY by the can_converse grant — the old
+    // can_record_voice toggle now means per-question voice in surveys and no
+    // longer leaks into this tab. Admins and Super Admin always have it.
     const grant = await orgConverseGrant(
       Number(me.id),
       me.role,
       (me as Record<string, unknown>).can_record_voice === true,
     );
-    // Converse needs the explicit Super Admin grant on the owning Client Admin
-    // (admins and Super Admin always have it). Per-record minutes come from the
-    // grant; 0 keeps the 10-minute default.
-    const voiceEnabled = rawVoice && grant.enabled;
+    const voiceEnabled = grant.enabled;
     const maxMinutes = grant.maxMinutes > 0 ? grant.maxMinutes : 10;
     return json({
       ...sonioxConfigInfo(),

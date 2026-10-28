@@ -105,7 +105,12 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
                    COALESCE(max_records, 0) AS max_records,
                    COALESCE(max_categories, 5) AS max_categories,
                    COALESCE(converse_max_records, 0) AS converse_max_records,
-                   COALESCE(converse_max_minutes, 0) AS converse_max_minutes
+                   COALESCE(converse_max_minutes, 0) AS converse_max_minutes,
+                   (SELECT COUNT(*)::int FROM conversations c
+                     JOIN app_users su ON su.id = c.user_id
+                     WHERE (su.created_by = app_users.id
+                       OR (su.company_id IS NOT NULL AND su.company_id = app_users.company_id))
+                   ) AS converse_used
             FROM app_users
             ORDER BY id
           `.catch(async () =>
@@ -115,7 +120,7 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
                      FALSE AS can_assign_surveyors,
                      FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey, FALSE AS can_record_voice, FALSE AS can_translate_telugu, FALSE AS can_converse, FALSE AS can_excel_charts,
-                     0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records, 5 AS max_categories, 0 AS converse_max_records, 0 AS converse_max_minutes
+                     0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records, 5 AS max_categories, 0 AS converse_max_records, 0 AS converse_max_minutes, 0 AS converse_used
               FROM app_users ORDER BY id
             `
         )
@@ -154,7 +159,7 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
                      FALSE AS can_review_data, FALSE AS can_verify_surveyors,
                      FALSE AS can_assign_surveyors,
                      FALSE AS can_crud_questionnaire, FALSE AS can_validate_proof, FALSE AS can_web_survey, FALSE AS can_record_voice, FALSE AS can_translate_telugu, FALSE AS can_converse, FALSE AS can_excel_charts,
-                     0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records, 5 AS max_categories, 0 AS converse_max_records, 0 AS converse_max_minutes
+                     0 AS max_questions_per_survey, 0 AS max_surveys, 0 AS max_surveyors, 0 AS max_records, 5 AS max_categories, 0 AS converse_max_records, 0 AS converse_max_minutes, 0 AS converse_used
               FROM app_users
               WHERE (id = ${me.id} OR created_by = ${me.id})
               ORDER BY id
@@ -272,6 +277,7 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
         can_excel_charts: sqlBool(r.can_excel_charts),
         converse_max_records: Number(r.converse_max_records) || 0,
         converse_max_minutes: Number(r.converse_max_minutes) || 0,
+        converse_used: Number(r.converse_used) || 0,
         can_translate_telugu: sqlBool(r.can_translate_telugu),
         totp_enabled: r.role === "super_admin" ? sqlBool(r.totp_enabled) : undefined,
         max_questions_per_survey: Number(r.max_questions_per_survey) || 0,

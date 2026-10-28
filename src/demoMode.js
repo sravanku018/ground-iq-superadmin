@@ -1,34 +1,8 @@
 /**
- * Demo mode — replaces real records and names with random mock data so
- * presentations never expose field data. Persisted per browser; the toggle
- * lives in the portal header. Deterministic per seed, so the same record
- * always shows the same mock name within a mode.
+ * Mock data generators for the portal's opening page — random names, records
+ * and counts so the start screen never exposes real field data. Real data
+ * remains on the Review / Charts / Export pages.
  */
-
-const KEY = 'esurvey_demo_mode'
-
-export function demoOn() {
-  try {
-    return localStorage.getItem(KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-export function setDemoMode(on) {
-  try {
-    if (on) localStorage.setItem(KEY, '1')
-    else localStorage.removeItem(KEY)
-  } catch {
-    /* storage blocked — mode just won't persist */
-  }
-}
-
-export function toggleDemoMode() {
-  const on = demoOn()
-  setDemoMode(!on)
-  return !on
-}
 
 const FIRST = ['Ravi', 'Sunita', 'Imran', 'Lakshmi', 'Kiran', 'Anjali', 'Srinivas', 'Padma', 'Venkatesh', 'Deepika', 'Naveen', 'Harika', 'Mahesh', 'Divya', 'Arjun', 'Kavya', 'Prasad', 'Sneha', 'Vikram', 'Meena', 'Rahul', 'Swathi', 'Gopal', 'Bhavani']
 const LAST = ['Kumar', 'Devi', 'Reddy', 'Sharma', 'Rao', 'Nair', 'Yadav', 'Patel', 'Singh', 'Iyer', 'Goud', 'Chowdary']

@@ -17,7 +17,7 @@ import {
   me,
 } from './api'
 import ShareAppLink from './components/ShareAppLink'
-import { demoOn, toggleDemoMode, mockStreamItems, mockBreakdown, DEMO_KPI } from './demoMode'
+import { mockStreamItems, mockBreakdown, DEMO_KPI } from './demoMode'
 import useAppRelease from './useAppRelease'
 import QuotaIndicator from './components/QuotaIndicator'
 import AdminLogin from './AdminLogin'
@@ -220,7 +220,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
     let alive = true
     listSubmissions(100, 'all', {})
       .then((d) => {
-        if (alive) setRecentItems(demoOn() ? mockStreamItems(48) : d.items || [])
+        if (alive) setRecentItems(mockStreamItems(48))
       })
       .catch(() => {
         if (alive) setRecentItems([])
@@ -235,7 +235,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
         const items = (d.items || []).filter(
           (s) => s.form_key !== 'default' && s.form_key !== 'legacy',
         )
-        setSurveyBreak(demoOn() ? mockBreakdown(items) : items)
+        setSurveyBreak(mockBreakdown(items))
       })
       .catch(() => {
         if (alive) setSurveyBreak([])
@@ -245,7 +245,7 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
       .then((d) => {
         if (!alive) return
         const surveyors = d.users || d.surveyors || (Array.isArray(d) ? d : [])
-        setSurveyorCount(demoOn() ? DEMO_KPI.surveyors : surveyors.length)
+        setSurveyorCount(DEMO_KPI.surveyors)
       })
       .catch((e) => console.warn('[portal] surveyor list failed', e))
 
@@ -266,11 +266,12 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
     }
   }, [stats?.submissions, isSuper])
 
-  const demo = demoOn()
-  const pendingCount = demo ? DEMO_KPI.pending : reviewPending
-  const confirmedCount = demo ? DEMO_KPI.confirmed : confirmedTotal
-  const rejectedCount = demo ? DEMO_KPI.rejected : rejectedTotal
-  const liveAllCount = demo ? DEMO_KPI.total : allSubmitted
+  // The opening page always shows mock data — real records stay on the
+  // Review / Charts pages.
+  const pendingCount = DEMO_KPI.pending
+  const confirmedCount = DEMO_KPI.confirmed
+  const rejectedCount = DEMO_KPI.rejected
+  const liveAllCount = DEMO_KPI.total
 
   const displayedItems = recentItems.filter((it) => {
     const isWeb = it.source === 'web-survey' || it.source === 'web'
@@ -280,9 +281,9 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
     return st === activityFilter
   })
   const liveWebCount = recentItems.filter((it) => it.source === 'web-survey' || it.source === 'web').length
-  const webSubmittedView = demo ? DEMO_KPI.web : webSubmitted
-  const fieldUsedView = demo ? DEMO_KPI.field : fieldUsed
-  const districtsView = demo ? DEMO_KPI.districts : (stats?.districts ?? '—')
+  const webSubmittedView = DEMO_KPI.web
+  const fieldUsedView = DEMO_KPI.field
+  const districtsView = DEMO_KPI.districts
 
 
   return (
@@ -876,10 +877,8 @@ function Overview({ user, stats, onNav, superAdminOnly = false, canPage = () => 
                 <div
                   key={it.id}
                   onClick={() => {
-                    if (demo) {
-                      onToast?.('Demo record — real data is hidden while Demo mode is ON', 'ok')
-                      return
-                    }
+                    onToast?.('Sample record — this page shows mock data', 'ok')
+                    return
                     onNav({
                       page: 'review',
                       submissionId: it.id,
@@ -1506,27 +1505,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#16a34a' }}></span>
           Synced just now
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            const on = toggleDemoMode()
-            onToast?.(on ? 'Demo mode ON — random names & records shown' : 'Demo mode OFF — real data restored', 'ok')
-            setTimeout(() => window.location.reload(), 700)
-          }}
-          title="Show mock data instead of real records (for demos)"
-          style={{
-            padding: '4px 12px',
-            borderRadius: 9999,
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: 'pointer',
-            background: demoOn() ? '#fff7ed' : '#f8fafc',
-            border: demoOn() ? '1px solid #fdba74' : '1px solid #e2e8f0',
-            color: demoOn() ? '#c2410c' : '#475569',
-          }}
-        >
-          Demo mode: {demoOn() ? 'ON' : 'OFF'}
-        </button>
+
         <AdminBell user={user} onGoPage={goPage} enabled={!isNarrow} />
       </div>
 

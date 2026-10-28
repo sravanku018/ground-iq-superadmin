@@ -148,7 +148,12 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
                    COALESCE(max_records, 0) AS max_records,
                    COALESCE(max_categories, 5) AS max_categories,
                    COALESCE(converse_max_records, 0) AS converse_max_records,
-                   COALESCE(converse_max_minutes, 0) AS converse_max_minutes
+                   COALESCE(converse_max_minutes, 0) AS converse_max_minutes,
+                   (SELECT COUNT(*)::int FROM conversations c
+                     JOIN app_users su ON su.id = c.user_id
+                     WHERE (su.created_by = app_users.id
+                       OR (su.company_id IS NOT NULL AND su.company_id = app_users.company_id))
+                   ) AS converse_used
             FROM app_users
             WHERE (id = ${me.id} OR created_by = ${me.id})
             ORDER BY id

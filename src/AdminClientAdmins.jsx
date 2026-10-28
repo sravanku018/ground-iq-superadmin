@@ -28,9 +28,8 @@ const POWER_DEFS = [
   { key: 'can_assign_surveyors', label: 'Assign surveyors', icon: '👥', hint: 'Map surveyors onto surveys' },
   { key: 'can_validate_proof', label: 'Proof validation', icon: '📞', hint: 'Phone + Aadhaar format checks' },
   { key: 'can_web_survey', label: 'Web survey', icon: '✎', hint: 'Create web survey links, fill online & confirm web records' },
-  { key: 'can_record_voice', label: 'Voice recording', icon: '🎙', hint: 'Turn field-app voice Off vs Required. Minute limits stay Super Admin only.' },
+  { key: 'can_record_voice', label: 'Voice + Converse', icon: '🎙', hint: 'Voice answers in surveys AND the Converse tab for their surveyors. Record/minute limits below.' },
   { key: 'can_translate_telugu', label: 'Telugu translation', icon: 'తె', hint: 'Auto-translate and edit Telugu question text' },
-  { key: 'can_converse', label: 'Converse', icon: '🎧', hint: 'Voice conversations tab for their surveyors (with record + minute limits below)' },
   { key: 'can_excel_charts', label: 'Excel Charts', icon: '📊', hint: 'Excel-style charts tab in their portal' },
 ]
 

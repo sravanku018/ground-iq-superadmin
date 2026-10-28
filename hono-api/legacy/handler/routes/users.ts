@@ -362,7 +362,7 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
       const canWebSurvey = canSuper && body.can_web_survey === true;
       const canRecordVoice = canSuper && body.can_record_voice === true;
       const canTranslateTeluguGrant = canSuper && body.can_translate_telugu === true;
-      const canConverse = canSuper && body.can_converse === true;
+      const canConverse = canSuper && (body.can_converse === true || body.can_record_voice === true);
       const canExcelCharts = canSuper && body.can_excel_charts === true;
       // A brand-new Client Admin starts with a usable allowance — 50 questions and
       // 500 field records — instead of 0 (which means unlimited). An explicit value
@@ -884,6 +884,13 @@ export async function handleUsers(c: Ctx): Promise<Response | null> {
       } else {
         nextPowers[k] = cur; // Client Admin cannot change own grants
       }
+    }
+    // Voice and Converse are ONE grant in the Super Admin UI: turning the
+    // Voice toggle on/off mirrors into can_converse so the surveyor's
+    // Converse tab follows the same switch. An explicit can_converse value
+    // still wins (old clients / API callers).
+    if (body.can_record_voice !== undefined && body.can_converse === undefined) {
+      nextPowers.can_converse = nextPowers.can_record_voice;
     }
     // Verification gate: surveyors need the granted verify power; client admin accounts
     // can only be verified by the Super Admin (client admins never verify each other)

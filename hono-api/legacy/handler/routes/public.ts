@@ -106,6 +106,42 @@ export async function handlePublic(c: Ctx): Promise<Response | null> {
         INSERT INTO contact_requests (name, email, purpose, message)
         VALUES (${name}, ${email}, ${purpose}, ${message || null})
       `.catch(() => null);
+
+    // Optional real email delivery. Works only when the VPS .env has
+    // GMAIL_USER + GMAIL_APP_PASSWORD (Google app password, not the login
+    // password). The request is stored regardless, so nothing is lost when
+    // mail is not configured. Lazy import keeps startup safe offline.
+    const gmailUser = (Deno.env.get("GMAIL_USER") || "").trim();
+    const gmailPass = (Deno.env.get("GMAIL_APP_PASSWORD") || "").trim();
+    const mailTo = (Deno.env.get("CONTACT_TO_EMAIL") || "smartsurveyx@gmail.com").trim();
+    if (gmailUser && gmailPass && mailTo) {
+      try {
+        const { default: nodemailer } = await import("npm:nodemailer@6");
+        const transporter = nodemailer.createTransport({
+          host: "smtp.gmail.com",
+          port: 465,
+          secure: true,
+          auth: { user: gmailUser, pass: gmailPass },
+        });
+        await transporter.sendMail({
+          from: `"Smart Survey X" <${gmailUser}>`,
+          to: mailTo,
+          replyTo: email,
+          subject: `Contact request — ${purpose}`.slice(0, 150),
+          text: [
+            `Name: ${name}`,
+            `Email: ${email}`,
+            `Purpose: ${purpose}`,
+            "",
+            message || "(no message)",
+            "",
+            "— sent from the smartsurveyx.com contact form",
+          ].join("\n"),
+        });
+      } catch (e) {
+        console.error("contact email failed:", (e as Error)?.message || e);
+      }
+    }
     return json({ ok: true, message: "Request received — the Super Admin will contact you." });
   }
 

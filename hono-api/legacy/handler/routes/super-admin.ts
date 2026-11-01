@@ -265,10 +265,30 @@ export async function handleSuperAdmin(c: Ctx): Promise<Response | null> {
         SELECT status, COUNT(*)::int AS n FROM jobs GROUP BY status
       `.catch(() => []);
     const recent = await sql`
-        SELECT id, kind, status, attempts, left(COALESCE(last_error,''), 160) AS last_error, created_at
+        SELECT id, kind, status, attempts, left(COALESCE(last_error,''), 160) AS last_error,
+               locked_at, created_at
         FROM jobs ORDER BY id DESC LIMIT 20
       `.catch(() => []);
     return json({ counts, recent });
+  }
+
+  // ── Backup heartbeat (scripts/backup-db.sh writes backup_runs) ─────────
+  if (path === "/api/backup/status" && method === "GET") {
+    if (!me) return json({ error: "Login required" }, 401);
+    if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+    const rows = await sql`
+        SELECT id, status, db_name, object_key, bytes, sha256, started_at, finished_at, error
+        FROM backup_runs ORDER BY id DESC LIMIT 5
+      `.catch(() => []);
+    const latest = (rows[0] || null) as { finished_at?: string } | null;
+    const finished = latest?.finished_at ? new Date(String(latest.finished_at)).getTime() : 0;
+    const ageMinutes = finished ? Math.round((Date.now() - finished) / 60_000) : null;
+    return json({
+      latest,
+      recent: rows,
+      age_minutes: ageMinutes,
+      stale: ageMinutes == null || ageMinutes > 120,
+    });
   }
 
   return null;

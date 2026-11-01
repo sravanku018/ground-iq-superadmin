@@ -1,5 +1,21 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "geolocation=(self), microphone=(self), camera=(self)" },
+        {
+          "key": "Content-Security-Policy-Report-Only",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://162.35.96.65.sslip.io https://smartsurveyx.com https://www.smartsurveyx.com; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
+        }
+      ]
+    }
+  ],
   "redirects": [
     { "source": "/", "has": [{ "type": "query", "key": "app", "value": "1" }], "destination": "/field", "permanent": false },
     { "source": "/", "has": [{ "type": "query", "key": "admin", "value": "1" }], "destination": "/admin", "permanent": false },

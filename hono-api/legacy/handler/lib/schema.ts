@@ -98,6 +98,30 @@ export async function ensureSchema(): Promise<void> {
         )
       `,
     () => sql`CREATE INDEX IF NOT EXISTS jobs_pending_idx ON jobs (status, run_after)`,
+    // Lease timestamp: a crashed worker's `running` row is reclaimed after 5 min.
+    () => sql`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS locked_at TIMESTAMPTZ`,
+    // Retention sweep deletes by age; keep that a cheap index scan.
+    () => sql`CREATE INDEX IF NOT EXISTS client_errors_created_idx ON client_errors (created_at)`,
+    // Direct R2 uploads are completed idempotently by object key.
+    () => sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS survey_media_meta_key_uidx
+        ON survey_media ((meta->>'key'))
+        WHERE COALESCE(meta->>'key', '') <> ''
+      `,
+    // Heartbeat from scripts/backup-db.sh — /api/backup/status surfaces it.
+    () => sql`
+        CREATE TABLE IF NOT EXISTS backup_runs (
+          id SERIAL PRIMARY KEY,
+          status TEXT NOT NULL DEFAULT 'ok',
+          db_name TEXT,
+          object_key TEXT,
+          bytes BIGINT,
+          sha256 TEXT,
+          started_at TIMESTAMPTZ,
+          finished_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          error TEXT
+        )
+      `,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_secret TEXT`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS target_quota INTEGER NOT NULL DEFAULT 0`,
@@ -346,7 +370,7 @@ export async function ensureCompanyExists(
 
 // Bump this when ensureSchema() steps change. The version is stored in
 // app_settings; if it matches, the ~58 CREATE/ALTER round-trips are skipped.
-const SCHEMA_VERSION = "2026-11-01.2";
+const SCHEMA_VERSION = "2026-11-01.6";
 
 export let schemaReady: Promise<void> | null = null;
 

@@ -508,6 +508,22 @@ export default function AdminAnalyzeScreen({ onToast }) {
         <strong>Pending</strong> = waiting confirm <em>or</em> still draft ·{' '}
         <strong>Media OK/fail</strong> = geo + voice + photo + Q/A.
       </p>
+      {board ? (
+        <p className="muted" style={{ fontSize: 12, margin: '-6px 0 12px' }}>
+          {board.truncated ? (
+            <strong style={{ color: '#b45309' }}>
+              Showing first {Number(board.scanned || 0).toLocaleString()} of{' '}
+              {Number(board.source_total || 0).toLocaleString()} matching rows — scan limit
+              reached. Narrow the survey or date range for exact totals.
+            </strong>
+          ) : (
+            <>
+              {Number(board.matched_total ?? totals.records ?? 0).toLocaleString()} records matched
+              · {Number(board.scanned ?? totals.records ?? 0).toLocaleString()} rows scanned.
+            </>
+          )}
+        </p>
+      ) : null}
 
       {/* Daily data */}
       {(board?.by_day || board?.by_date)?.length > 0 && (

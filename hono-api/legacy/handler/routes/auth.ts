@@ -27,6 +27,7 @@ import {
 } from "../lib/http.ts";
 import {
   checkRateLimit,
+  clientIp,
 } from "../lib/rate-limit.ts";
 import {
   sqlBool,
@@ -64,9 +65,8 @@ export async function handleAuth(c: Ctx): Promise<Response | null> {
   }
 
   if (path === "/api/auth/device-login" && method === "POST") {
-    const ip = req.headers.get("x-forwarded-for") ||
-      req.headers.get("cf-connecting-ip") || "unknown";
-    if (!checkRateLimit(ip)) {
+    const ip = clientIp(req);
+    if (!checkRateLimit(`auth:${ip}`)) {
       return json({ error: "Too many login attempts. Try again later." }, 429);
     }
     const body = await readBody(req);
@@ -262,9 +262,8 @@ export async function handleAuth(c: Ctx): Promise<Response | null> {
   }
 
   if (path === "/api/auth/webauthn/login/options" && method === "POST") {
-    const ip = req.headers.get("x-forwarded-for") ||
-      req.headers.get("cf-connecting-ip") || "unknown";
-    if (!checkRateLimit(ip)) {
+    const ip = clientIp(req);
+    if (!checkRateLimit(`auth:${ip}`)) {
       return json({ error: "Too many login attempts. Try again later." }, 429);
     }
     const body = await readBody(req);
@@ -323,9 +322,8 @@ export async function handleAuth(c: Ctx): Promise<Response | null> {
   }
 
   if (path === "/api/auth/webauthn/login/verify" && method === "POST") {
-    const ip = req.headers.get("x-forwarded-for") ||
-      req.headers.get("cf-connecting-ip") || "unknown";
-    if (!checkRateLimit(ip)) {
+    const ip = clientIp(req);
+    if (!checkRateLimit(`auth:${ip}`)) {
       return json({ error: "Too many login attempts. Try again later." }, 429);
     }
     const body = await readBody(req);

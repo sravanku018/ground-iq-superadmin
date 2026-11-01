@@ -24,6 +24,67 @@ import {
 } from './localStore'
 import { checkNetwork, isStrongEnoughToSync, isUsableForSync, watchNetwork } from './network'
 
+/**
+ * Try browser → R2 direct upload (presigned PUT). Returns false when the
+ * server has the feature off or the PUT cannot run (e.g. bucket CORS not set
+ * yet), so the caller can fall back to the base64 API upload.
+ *
+ * The object key is deterministic per package+kind: a retried package
+ * re-signs the same key and /complete is idempotent.
+ */
+async function uploadMediaDirect({ base, token, serverId, packageId, kind, dataUrl, mime }) {
+  let blob
+  try {
+    const res = await fetch(dataUrl)
+    if (!res.ok) return false
+    blob = await res.blob()
+  } catch {
+    return false
+  }
+  if (!blob || blob.size < 50) return false
+
+  let presign
+  try {
+    presign = await fetchJson(`${base}/api/submissions/${serverId}/media/presign`, {
+      method: 'POST',
+      token,
+      body: { kind, mime, bytes: blob.size, package_id: packageId },
+      idempotencyKey: `${packageId}:${kind}:presign`,
+    })
+  } catch {
+    return false // 501 when MEDIA_DIRECT_PUT is off, or network failure
+  }
+  if (!presign?.upload_url || !presign?.key) return false
+
+  let put
+  try {
+    put = await fetch(presign.upload_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': presign.mime || mime },
+      body: blob,
+    })
+  } catch {
+    return false // CORS / network — base64 fallback still works
+  }
+  if (!put.ok) return false
+
+  // Past this point the bytes are in R2. A failure here must bubble up so the
+  // package retries; falling back would upload the same bytes twice.
+  await fetchJson(`${base}/api/submissions/${serverId}/media/complete`, {
+    method: 'POST',
+    token,
+    body: {
+      kind,
+      key: presign.key,
+      mime: presign.mime || mime,
+      bytes: blob.size,
+      package_id: packageId,
+    },
+    idempotencyKey: `${packageId}:${kind}:complete`,
+  })
+  return true
+}
+
 const TICK_MS = 60_000
 const POST_TIMEOUT = 45_000
 const MAX_ATTEMPTS = 8
@@ -249,17 +310,29 @@ export async function syncOnePackage(id) {
         throw localError('Photo missing from device. Recapture this record.')
       }
       const photoData = normalizeMediaDataUrl(pkg.photoDataUrl, 'image/jpeg')
-      await fetchJson(`${base}/api/submissions/${serverId}/media`, {
-        method: 'POST',
+      const photoMime = mimeFromDataUrl(photoData, 'image/jpeg') || 'image/jpeg'
+      const direct = await uploadMediaDirect({
+        base,
         token,
-        body: {
-          kind: 'photo',
-          data: photoData,
-          mime: mimeFromDataUrl(photoData, 'image/jpeg') || 'image/jpeg',
-          meta: { client_package_id: pkg.id, source: 'local_queue' },
-        },
-        idempotencyKey: `${pkg.id}:photo`,
+        serverId,
+        packageId: pkg.id,
+        kind: 'photo',
+        dataUrl: photoData,
+        mime: photoMime,
       })
+      if (!direct) {
+        await fetchJson(`${base}/api/submissions/${serverId}/media`, {
+          method: 'POST',
+          token,
+          body: {
+            kind: 'photo',
+            data: photoData,
+            mime: photoMime,
+            meta: { client_package_id: pkg.id, source: 'local_queue' },
+          },
+          idempotencyKey: `${pkg.id}:photo`,
+        })
+      }
       pkg = await updatePackage(id, {
         phase: 'photo_done',
         flags: { ...pkg.flags, photo: true },
@@ -277,17 +350,29 @@ export async function syncOnePackage(id) {
         emit({ type: 'phase', id, phase: 'audio_skipped' })
       } else {
         const audioData = normalizeMediaDataUrl(pkg.audioDataUrl, pkg.audioMime || 'audio/webm')
-        await fetchJson(`${base}/api/submissions/${serverId}/media`, {
-          method: 'POST',
+        const audioMime = mediaTypeOnly(pkg.audioMime) || mimeFromDataUrl(audioData, 'audio/webm') || 'audio/webm'
+        const direct = await uploadMediaDirect({
+          base,
           token,
-          body: {
-            kind: 'audio',
-            data: audioData,
-            mime: mediaTypeOnly(pkg.audioMime) || mimeFromDataUrl(audioData, 'audio/webm') || 'audio/webm',
-            meta: { client_package_id: pkg.id, source: 'local_queue' },
-          },
-          idempotencyKey: `${pkg.id}:audio`,
+          serverId,
+          packageId: pkg.id,
+          kind: 'audio',
+          dataUrl: audioData,
+          mime: audioMime,
         })
+        if (!direct) {
+          await fetchJson(`${base}/api/submissions/${serverId}/media`, {
+            method: 'POST',
+            token,
+            body: {
+              kind: 'audio',
+              data: audioData,
+              mime: audioMime,
+              meta: { client_package_id: pkg.id, source: 'local_queue' },
+            },
+            idempotencyKey: `${pkg.id}:audio`,
+          })
+        }
         pkg = await updatePackage(id, { flags: { ...pkg.flags, audio: true } })
         emit({ type: 'phase', id, phase: 'audio_done' })
       }

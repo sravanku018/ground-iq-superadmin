@@ -18,6 +18,7 @@ import {
 } from "../lib/http.ts";
 import {
   checkRateLimit,
+  clientIp,
 } from "../lib/rate-limit.ts";
 import {
   hasPower,
@@ -499,7 +500,7 @@ export async function handleWebSurvey(c: Ctx): Promise<Response | null> {
   }
 
   if (path === "/api/web-survey/public" && method === "POST") {
-    const ip = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown";
+    const ip = clientIp(req);
     if (!checkRateLimit(`web:${ip}`)) {
       return json({ error: "Too many submissions. Try again in a minute." }, 429);
     }

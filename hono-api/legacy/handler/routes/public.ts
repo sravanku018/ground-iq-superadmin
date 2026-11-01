@@ -15,14 +15,17 @@ import {
   sql,
 } from "../lib/db.ts";
 import {
+  bearer,
   json,
   readBody,
+  readBodyLimited,
 } from "../lib/http.ts";
 import {
   r2Config,
 } from "../lib/r2-media.ts";
 import {
   checkRateLimit,
+  clientIp,
 } from "../lib/rate-limit.ts";
 import {
   newTotpSecret,
@@ -30,8 +33,33 @@ import {
   verifyTotp,
 } from "../lib/totp.ts";
 import {
+  getUser,
   sqlBool,
 } from "../lib/users.ts";
+
+/** Error context is an allowlist — never respondent answers, GPS or PII. */
+const ERROR_CONTEXT_KEYS = new Set([
+  "kind",
+  "title",
+  "componentStack",
+  "route",
+  "phase",
+  "source",
+  "build",
+]);
+
+/** Store origin+path only: survey fill links carry `?fill=…&k=<key>`. */
+function scrubErrorUrl(value: unknown): string | null {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  if (raw.startsWith("/")) return raw.split(/[?#]/)[0].slice(0, 300) || null;
+  try {
+    const u = new URL(raw);
+    return `${u.origin}${u.pathname}`.slice(0, 300);
+  } catch {
+    return raw.split(/[?#]/)[0].slice(0, 300) || null;
+  }
+}
 
 export async function handlePublic(c: Ctx): Promise<Response | null> {
   const { req, url, path, method } = c;
@@ -88,38 +116,91 @@ export async function handlePublic(c: Ctx): Promise<Response | null> {
   // Login — admin portal OR surveyor field app (accounts created by Client Admin only)
   // ── Client error reports → local table (Super Admin console) ──────────
   if (path === "/api/client-errors" && method === "POST") {
-    const ip = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown";
-    if (!checkRateLimit(ip)) return json({ ok: false }, 429);
-    const body = await readBody(req);
+    const ip = clientIp(req);
+    if (!checkRateLimit(`errors:${ip}`, 10)) return json({ ok: false }, 429);
+    let body: Record<string, unknown>;
+    try {
+      body = await readBodyLimited(req, 16_384);
+    } catch {
+      return json({ error: "Payload too large" }, 413);
+    }
     const message = String(body.message || "").trim().slice(0, 500);
     if (!message) return json({ error: "message required" }, 400);
     const app = ["portal", "web", "apk", "server"].includes(String(body.app))
       ? String(body.app)
       : "web";
+    // Public endpoint: only a real bearer token can attribute an error to a
+    // user. Body-supplied user_id/username are ignored (spoofable).
+    const token = bearer(req);
+    const authUser = token ? await getUser(token).catch(() => null) : null;
+    const rawContext = body.context && typeof body.context === "object"
+      ? body.context as Record<string, unknown>
+      : null;
+    const context: Record<string, string> = {};
+    for (const [k, v] of Object.entries(rawContext || {})) {
+      if (!ERROR_CONTEXT_KEYS.has(k) || v == null) continue;
+      context[k] = String(v).slice(0, 300);
+    }
     await sql`
         INSERT INTO client_errors (app, version, url, message, stack, user_id, username, ua, context)
         VALUES (
           ${app},
           ${String(body.version || "").slice(0, 40) || null},
-          ${String(body.url || "").slice(0, 300) || null},
+          ${scrubErrorUrl(body.url)},
           ${message},
           ${String(body.stack || "").slice(0, 4000) || null},
-          ${Number.isFinite(Number(body.user_id)) ? Number(body.user_id) : null},
-          ${String(body.username || "").slice(0, 120) || null},
+          ${authUser?.id ?? null},
+          ${String(authUser?.username || "").slice(0, 120) || null},
           ${String(body.ua || "").slice(0, 300) || null},
-          ${body.context ? JSON.stringify(body.context).slice(0, 4000) : null}::jsonb
+          ${Object.keys(context).length ? JSON.stringify(context) : null}::jsonb
         )
       `.catch((e: unknown) => console.error("client-errors insert:", (e as Error)?.message || e));
     return json({ ok: true });
   }
 
+  // ── CSP violation reports (report-only rollout on the portal) ─────────
+  if (path === "/api/csp-report" && method === "POST") {
+    const ip = clientIp(req);
+    if (!checkRateLimit(`csp:${ip}`, 10)) return json({ ok: false }, 429);
+    let body: unknown;
+    try {
+      body = await readBodyLimited(req, 8_192);
+    } catch {
+      return json({ ok: false }, 413);
+    }
+    const list = Array.isArray(body) ? body : [body];
+    for (const entry of list.slice(0, 10)) {
+      const rec = entry && typeof entry === "object"
+        ? (entry as Record<string, unknown>)
+        : {};
+      const report = (rec["csp-report"] && typeof rec["csp-report"] === "object")
+        ? rec["csp-report"] as Record<string, unknown>
+        : rec;
+      const directive = String(
+        report["violated-directive"] || report["effective-directive"] || "unknown",
+      ).slice(0, 160);
+      const blocked = String(report["blocked-uri"] || "").slice(0, 300);
+      const message = `CSP ${directive}${blocked ? ` → ${blocked}` : ""}`.slice(0, 500);
+      await sql`
+          INSERT INTO client_errors (app, url, message, context)
+          VALUES ('web', ${scrubErrorUrl(report["document-uri"])}, ${message}, '{"kind":"csp-report"}'::jsonb)
+        `.catch(() => null);
+    }
+    return json({ ok: true });
+  }
+
   // ── Landing-page contact form → Super Admin inbox ─────────────────────
   if (path === "/api/contact" && method === "POST") {
-    const ip = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown";
-    if (!checkRateLimit(ip)) {
+    const ip = clientIp(req);
+    if (!checkRateLimit(`contact:${ip}`)) {
       return json({ error: "Too many requests. Try again later." }, 429);
     }
-    const body = await readBody(req);
+    let body: Record<string, unknown>;
+    try {
+      body = await readBodyLimited(req, 8_192);
+    } catch {
+      return json({ error: "Message is too large. Shorten it and try again." }, 413);
+    }
     const name = String(body.name || "").trim().slice(0, 120);
     const email = String(body.email || "").trim().slice(0, 200);
     const purpose = String(body.purpose || "").trim().slice(0, 300);
@@ -173,8 +254,8 @@ export async function handlePublic(c: Ctx): Promise<Response | null> {
   }
 
   if (path === "/api/auth/login" && method === "POST") {
-    const ip = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown";
-    if (!checkRateLimit(ip)) {
+    const ip = clientIp(req);
+    if (!checkRateLimit(`auth:${ip}`)) {
       return json({ error: "Too many login attempts. Try again later." }, 429);
     }
     const body = await readBody(req);

@@ -990,10 +990,18 @@ export async function fetchMediaBlobUrl(pathOrUrl) {
   if (/^https?:\/\//i.test(pathOrUrl) && !pathOrUrl.includes('/api/media/')) {
     return pathOrUrl
   }
-  const base = getApiBase()
-  const path = pathOrUrl.startsWith('http')
-    ? pathOrUrl
-    : `${base}${pathOrUrl.startsWith('/') ? '' : '/'}${pathOrUrl}`
+  const mediaMatch = pathOrUrl.match(/\/api\/media\/(\d+)\/file/)
+  if (mediaMatch) {
+    // Bytes here are for zips/export. Always ask the API for the proxy
+    // (`download=1`): with MEDIA_DIRECT=1 the plain route 302s to R2, and a
+    // browser fetch of that cross-origin URL needs bucket CORS. The proxy
+    // keeps exports working without it.
+    path = `${base}/api/media/${mediaMatch[1]}/file?download=1`
+  } else {
+    path = pathOrUrl.startsWith('http')
+      ? pathOrUrl
+      : `${base}${pathOrUrl.startsWith('/') ? '' : '/'}${pathOrUrl}`
+  }
   const headers = { Accept: '*/*' }
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
@@ -1017,7 +1025,9 @@ export async function fetchMediaBytes(pathOrUrl) {
   let url = String(pathOrUrl)
   const mediaMatch = url.match(/\/api\/media\/(\d+)\/file/)
   if (mediaMatch) {
-    url = `${base}/api/media/${mediaMatch[1]}/file`
+    // Same reason as fetchMediaBlobUrl: byte reads use the proxy, never the
+    // MEDIA_DIRECT redirect (fetch of the R2 URL needs bucket CORS).
+    url = `${base}/api/media/${mediaMatch[1]}/file?download=1`
   } else if (!/^https?:\/\//i.test(url)) {
     url = `${base}${url.startsWith('/') ? '' : '/'}${url}`
   } else if (!url.includes(new URL(base).host)) {

@@ -16,6 +16,7 @@ import {
   deleteSonioxFile,
   pollSonioxTranscription,
 } from "../../../lib/soniox.ts";
+import { runRetentionSweep } from "./retention.ts";
 
 export type JobKind = "verify_submission" | "transcribe_poll";
 
@@ -28,6 +29,8 @@ export type Job = {
 
 const MAX_ATTEMPTS = 12;
 const TICK_MS = 8_000;
+/** A claimed job must finish (or requeue) inside this window, or it is reclaimed. */
+const LEASE_MS = 5 * 60_000;
 
 /** Backoff for retries: 20s, 40s, 80s … capped at 10 min. */
 function backoffMs(attempts: number): number {
@@ -57,7 +60,7 @@ export async function enqueueJob(
 async function claimJobs(limit = 5): Promise<Job[]> {
   try {
     const rows = await sql`
-        UPDATE jobs SET status = 'running', updated_at = NOW()
+        UPDATE jobs SET status = 'running', locked_at = NOW(), updated_at = NOW()
         WHERE id IN (
           SELECT id FROM jobs
           WHERE status = 'pending' AND run_after <= NOW()
@@ -75,7 +78,7 @@ async function claimJobs(limit = 5): Promise<Job[]> {
 
 async function completeJob(id: number): Promise<void> {
   await sql`
-      UPDATE jobs SET status = 'done', last_error = NULL, updated_at = NOW()
+      UPDATE jobs SET status = 'done', last_error = NULL, locked_at = NULL, updated_at = NOW()
       WHERE id = ${id}
     `.catch(() => null);
 }
@@ -85,7 +88,8 @@ async function failJob(id: number, attempts: number, error: string): Promise<voi
   if (next >= MAX_ATTEMPTS) {
     await sql`
         UPDATE jobs
-        SET status = 'failed', attempts = ${next}, last_error = ${error.slice(0, 500)}, updated_at = NOW()
+        SET status = 'failed', attempts = ${next}, locked_at = NULL,
+            last_error = ${error.slice(0, 500)}, updated_at = NOW()
         WHERE id = ${id}
       `.catch(() => null);
     return;
@@ -93,9 +97,56 @@ async function failJob(id: number, attempts: number, error: string): Promise<voi
   const runAfter = new Date(Date.now() + backoffMs(next)).toISOString();
   await sql`
       UPDATE jobs
-      SET status = 'pending', attempts = ${next}, last_error = ${error.slice(0, 500)},
+      SET status = 'pending', attempts = ${next}, locked_at = NULL,
+          last_error = ${error.slice(0, 500)},
           run_after = ${runAfter}, updated_at = NOW()
       WHERE id = ${id}
+    `.catch(() => null);
+}
+
+/**
+ * Reclaim jobs whose worker died mid-run. Attempts are incremented so a job
+ * that crashes the process every time eventually lands in `failed` instead of
+ * looping forever. Runs on every worker tick; cheap (indexed by status).
+ */
+async function reclaimExpiredJobs(): Promise<void> {
+  await sql`
+      UPDATE jobs
+      SET status = 'failed', attempts = attempts + 1, locked_at = NULL,
+          last_error = 'lease expired', updated_at = NOW()
+      WHERE status = 'running'
+        AND locked_at IS NOT NULL
+        AND locked_at < NOW() - INTERVAL '5 minutes'
+        AND attempts + 1 >= ${MAX_ATTEMPTS}
+    `.catch(() => null);
+  await sql`
+      UPDATE jobs
+      SET status = 'pending', attempts = attempts + 1, locked_at = NULL,
+          last_error = 'lease expired', run_after = NOW(), updated_at = NOW()
+      WHERE status = 'running'
+        AND locked_at IS NOT NULL
+        AND locked_at < NOW() - INTERVAL '5 minutes'
+    `.catch(() => null);
+}
+
+/**
+ * On boot every `running` row belongs to a worker that is no longer alive
+ * (single API instance per DB — see push_vps.py). Requeue it and count the
+ * attempt, so a poison job exhausts MAX_ATTEMPTS instead of being retried
+ * forever.
+ */
+async function resetRunningOnBoot(): Promise<void> {
+  await sql`
+      UPDATE jobs
+      SET status = 'failed', attempts = attempts + 1, locked_at = NULL,
+          last_error = 'worker restarted', updated_at = NOW()
+      WHERE status = 'running' AND attempts + 1 >= ${MAX_ATTEMPTS}
+    `.catch(() => null);
+  await sql`
+      UPDATE jobs
+      SET status = 'pending', attempts = attempts + 1, locked_at = NULL,
+          last_error = 'worker restarted', run_after = NOW(), updated_at = NOW()
+      WHERE status = 'running'
     `.catch(() => null);
 }
 
@@ -160,7 +211,13 @@ let timer: number | undefined;
 export function startJobWorker(): void {
   if (timer !== undefined) return;
   if ((Deno.env.get("JOB_WORKER_DISABLED") || "") === "1") return;
+  // Wait for the boot reset before the first claim, otherwise this worker can
+  // race the rows it is supposed to recover.
+  const boot = resetRunningOnBoot();
   const tick = async () => {
+    await boot;
+    await reclaimExpiredJobs();
+    await runRetentionSweep();
     const jobs = await claimJobs(5);
     for (const job of jobs) {
       try {
@@ -171,7 +228,8 @@ export function startJobWorker(): void {
           // Requeue without counting an attempt.
           await sql`
               UPDATE jobs
-              SET status = 'pending', run_after = ${new Date(Date.now() + 20_000).toISOString()},
+              SET status = 'pending', locked_at = NULL,
+                  run_after = ${new Date(Date.now() + 20_000).toISOString()},
                   last_error = ${(e as Error).message}, updated_at = NOW()
               WHERE id = ${job.id}
             `.catch(() => null);

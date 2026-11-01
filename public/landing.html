@@ -1192,7 +1192,10 @@
       btn.textContent = 'Sending…';
       status.textContent = '';
       try {
-        const res = await fetch('https://162.35.96.65.sslip.io/api/contact', {
+        const apiBase = /^staging\./.test(location.hostname)
+          ? ''
+          : 'https://162.35.96.65.sslip.io';
+        const res = await fetch(`${apiBase}/api/contact`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
           body: JSON.stringify({ name, email, purpose, message }),

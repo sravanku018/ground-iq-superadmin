@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly restore drill for Smart Survey X backups
+
+[Timer]
+OnCalendar=Sun 03:30
+Persistent=true
+RandomizedDelaySec=600
+Unit=smart-survey-restore-drill.service
+
+[Install]
+WantedBy=timers.target

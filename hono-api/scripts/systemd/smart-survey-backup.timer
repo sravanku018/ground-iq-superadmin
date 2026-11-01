@@ -1,0 +1,11 @@
+[Unit]
+Description=Adaptive Smart Survey X Postgres backup (hourly; 6-hourly above 3 MB)
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=120
+Unit=smart-survey-backup.service
+
+[Install]
+WantedBy=timers.target

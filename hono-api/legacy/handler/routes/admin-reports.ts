@@ -34,10 +34,13 @@ import {
   workStatusOf,
 } from "../lib/verify.ts";
 
-// Analyze recomputes every bucket over up to 5,000 submissions per request.
-// A short per-admin TTL cache keeps repeated Apply clicks and dashboard
-// refreshes from re-scanning; 30s matches the analytics cache.
+// Analyze recomputes every bucket per request. It used to read only the
+// newest 5,000 submissions, so totals silently froze once a client crossed
+// that line. Scan every matching row in keyset pages instead (high safety
+// ceiling only), and report exactly how many rows were read.
 const ANALYZE_CACHE_TTL_MS = 30_000;
+const ANALYZE_PAGE_SIZE = 2_000;
+const ANALYZE_SCAN_LIMIT = 200_000;
 const analyzeCache = new Map<string, { body: unknown; expires: number }>();
 
 export async function handleAdminReports(c: Ctx): Promise<Response | null> {
@@ -301,13 +304,17 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
 
     const rows = scopeKeys
       ? await sql`
-            SELECT id, payload, created_at FROM submissions
+            SELECT id, payload, created_at,
+                     to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at_key
+              FROM submissions
             WHERE payload->>'form_key' = ANY(${scopeKeys})
               AND (${surveyQ} = '' OR payload->>'form_key' = ${surveyQ})
             ORDER BY created_at DESC LIMIT ${limit}
           `.catch(() => [])
       : await sql`
-            SELECT id, payload, created_at FROM submissions
+            SELECT id, payload, created_at,
+                     to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at_key
+              FROM submissions
             WHERE (${surveyQ} = '' OR payload->>'form_key' = ${surveyQ})
             ORDER BY created_at DESC LIMIT ${limit}
           `.catch(() => []);
@@ -351,8 +358,12 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
       rows: out,
       question_ids: qids,
       total: out.length,
+      scanned: rows.length,
       limit,
-      truncated: out.length >= limit,
+      // The window was full: there may be older matching rows beyond it.
+      // (Computing this after the JS filters hides the cap when filters drop
+      // a few rows — the exact bug this flag exists to surface.)
+      truncated: rows.length >= limit,
     });
   }
 
@@ -399,16 +410,70 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
     if (analyzeCache.size > 40) {
       for (const [k, v] of analyzeCache) if (v.expires < Date.now()) analyzeCache.delete(k);
     }
-    const rows = scopeKeys
+    // SQL prefilters match the JS checks below (survey, IST date window), so a
+    // narrowed board does not scan rows it will discard. Everything else
+    // (question filters, completeness, user/district substring) stays in JS
+    // because it depends on the snapshot-tolerant answer mapper.
+    const sqlDateFrom = /^\d{4}-\d{2}-\d{2}$/.test(dateFrom) ? dateFrom : "";
+    const sqlDateTo = /^\d{4}-\d{2}-\d{2}$/.test(dateTo) ? dateTo : "";
+    const scanRows: { id: number; payload: unknown; created_at: string; created_at_key?: string }[] = [];
+    let cursorAt = "";
+    let cursorId = 0;
+    let truncated = false;
+    for (;;) {
+      if (scanRows.length >= ANALYZE_SCAN_LIMIT) {
+        truncated = true;
+        break;
+      }
+      const take = Math.min(ANALYZE_PAGE_SIZE, ANALYZE_SCAN_LIMIT - scanRows.length);
+      const page = scopeKeys
+        ? await sql`
+              SELECT id, payload, created_at,
+                     to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at_key
+              FROM submissions
+              WHERE payload->>'form_key' = ANY(${scopeKeys})
+                AND (${cursorAt} = '' OR (created_at, id) < (NULLIF(${cursorAt}, '')::timestamptz, ${cursorId}))
+                AND (${surveyQ} = '' OR COALESCE(payload->>'form_key', 'default') = ${surveyQ})
+                AND (${sqlDateFrom} = '' OR (created_at AT TIME ZONE 'Asia/Kolkata')::date >= NULLIF(${sqlDateFrom}, '')::date)
+                AND (${sqlDateTo} = '' OR (created_at AT TIME ZONE 'Asia/Kolkata')::date <= NULLIF(${sqlDateTo}, '')::date)
+              ORDER BY created_at DESC, id DESC LIMIT ${take}
+            `
+        : await sql`
+              SELECT id, payload, created_at,
+                     to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at_key
+              FROM submissions
+              WHERE (${cursorAt} = '' OR (created_at, id) < (NULLIF(${cursorAt}, '')::timestamptz, ${cursorId}))
+                AND (${surveyQ} = '' OR COALESCE(payload->>'form_key', 'default') = ${surveyQ})
+                AND (${sqlDateFrom} = '' OR (created_at AT TIME ZONE 'Asia/Kolkata')::date >= NULLIF(${sqlDateFrom}, '')::date)
+                AND (${sqlDateTo} = '' OR (created_at AT TIME ZONE 'Asia/Kolkata')::date <= NULLIF(${sqlDateTo}, '')::date)
+              ORDER BY created_at DESC, id DESC LIMIT ${take}
+            `;
+      const rowsPage = page as { id: number; payload: unknown; created_at: string; created_at_key?: string }[];
+      scanRows.push(...rowsPage);
+      if (rowsPage.length < take) break;
+      const last = rowsPage[rowsPage.length - 1];
+      cursorAt = String(last.created_at_key || isoStamp(last.created_at));
+      cursorId = Number(last.id);
+    }
+    const rows = scanRows;
+    // True row count behind the SQL prefilters. This is the honest "M" in the
+    // UI's "showing N of M" when the safety ceiling stops the scan; the matched
+    // total can be smaller because JS applies question/completeness filters.
+    const sourceRows = scopeKeys
       ? await sql`
-            SELECT id, payload, created_at FROM submissions
+            SELECT COUNT(*)::int AS n FROM submissions
             WHERE payload->>'form_key' = ANY(${scopeKeys})
-            ORDER BY created_at DESC LIMIT 5000
-          `
+              AND (${surveyQ} = '' OR COALESCE(payload->>'form_key', 'default') = ${surveyQ})
+              AND (${sqlDateFrom} = '' OR (created_at AT TIME ZONE 'Asia/Kolkata')::date >= NULLIF(${sqlDateFrom}, '')::date)
+              AND (${sqlDateTo} = '' OR (created_at AT TIME ZONE 'Asia/Kolkata')::date <= NULLIF(${sqlDateTo}, '')::date)
+          `.catch(() => [])
       : await sql`
-            SELECT id, payload, created_at FROM submissions
-            ORDER BY created_at DESC LIMIT 5000
-          `;
+            SELECT COUNT(*)::int AS n FROM submissions
+            WHERE (${surveyQ} = '' OR COALESCE(payload->>'form_key', 'default') = ${surveyQ})
+              AND (${sqlDateFrom} = '' OR (created_at AT TIME ZONE 'Asia/Kolkata')::date >= NULLIF(${sqlDateFrom}, '')::date)
+              AND (${sqlDateTo} = '' OR (created_at AT TIME ZONE 'Asia/Kolkata')::date <= NULLIF(${sqlDateTo}, '')::date)
+          `.catch(() => []);
+    const sourceTotal = Number((sourceRows[0] as { n?: number } | undefined)?.n) || 0;
     // question id → type, so age-type q_ filters bucket-match ranges
     const qTypeMap = new Map<string, string>();
     // question metadata for the question-answer charts (label + option order)
@@ -641,6 +706,14 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
     }
 
     const analyzeBody = {
+      // Honest coverage: matched_total is every row that passed the filters;
+      // scanned is how many DB rows were read. truncated only when the safety
+      // ceiling was reached (then the UI says "N of at least M").
+      matched_total: list.length,
+      scanned: rows.length,
+      source_total: sourceTotal,
+      scan_limit: ANALYZE_SCAN_LIMIT,
+      truncated,
       filters: {
         date_from: dateFrom || null,
         date_to: dateTo || null,

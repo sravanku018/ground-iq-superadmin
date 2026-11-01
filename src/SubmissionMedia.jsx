@@ -20,9 +20,11 @@ export default function SubmissionMedia({ item, compact }) {
         const list = d.media || []
         const resolved = []
         for (const m of list) {
-          let playUrl = m.url || ''
+          // Presigned direct URL already carries auth and needs no bucket CORS
+          // for <img>/<audio>; only fall back to the authenticated blob route.
+          let playUrl = m.direct_url || m.url || ''
           try {
-            if (playUrl && (playUrl.startsWith('/api/media/') || playUrl.includes('/api/media/'))) {
+            if (!m.direct_url && playUrl && (playUrl.startsWith('/api/media/') || playUrl.includes('/api/media/'))) {
               playUrl = await fetchMediaBlobUrl(playUrl)
               blobUrls.push(playUrl)
             }

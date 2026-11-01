@@ -8,12 +8,11 @@
  * capped, so a render loop can't flood the API.
  */
 import { Capacitor } from '@capacitor/core'
-import { getStoredUser } from './api'
+import { getApiBase, getStoredUser, getToken } from './api'
 
 const SEEN = new Map()
 const MAX_SEEN = 50
 const DEDUPE_MS = 5 * 60_000
-const API_BASE = 'https://162.35.96.65.sslip.io'
 
 function shouldSend(key) {
   const now = Date.now()
@@ -40,6 +39,7 @@ export function reportError(error, context = {}) {
     const key = `${message}|${stack.slice(0, 120)}`
     if (!shouldSend(key)) return
     const user = getStoredUser()
+    const token = getToken()
     const payload = {
       app: appName(),
       version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '',
@@ -53,9 +53,12 @@ export function reportError(error, context = {}) {
         ? JSON.parse(JSON.stringify(context, (k, v) => (typeof v === 'string' ? v.slice(0, 300) : v)))
         : null,
     }
-    fetch(`${API_BASE}/api/client-errors`, {
+    fetch(`${getApiBase()}/api/client-errors`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify(payload),
       keepalive: true,
     }).catch(() => {})

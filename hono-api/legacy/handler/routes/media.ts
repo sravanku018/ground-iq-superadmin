@@ -23,8 +23,11 @@ import {
 } from "../lib/payload.ts";
 import {
   storeMediaLinked,
+  objectInfo,
   objectKeyFromUrl,
   presignGet,
+  presignPut,
+  r2KeyPrefix,
 } from "../lib/r2-media.ts";
 import {
   hasPower,
@@ -41,7 +44,7 @@ export async function handleMedia(c: Ctx): Promise<Response | null> {
   // Separate media upload — DEFAULT Neon (no card). Optional R2/custom if env set.
   if (path.match(/^\/api\/submissions\/\d+\/media$/) && method === "POST") {
     if (!me) return json({ error: "Login required" }, 401);
-    if (me.role !== "admin" && me.role !== "surveyor") {
+    if (me.role !== "admin" && me.role !== "surveyor" && me.role !== "super_admin") {
       return json({ error: "Forbidden" }, 403);
     }
     const id = Number(path.split("/")[3]);
@@ -207,6 +210,186 @@ export async function handleMedia(c: Ctx): Promise<Response | null> {
     }, 201);
   }
 
+  // ── Presigned PUT: photo/audio goes browser → R2, not through this VPS ──
+  if (path.match(/^\/api\/submissions\/\d+\/media\/presign$/) && method === "POST") {
+    if (!me) return json({ error: "Login required" }, 401);
+    if (me.role !== "admin" && me.role !== "surveyor" && me.role !== "super_admin") {
+      return json({ error: "Forbidden" }, 403);
+    }
+    if ((Deno.env.get("MEDIA_DIRECT_PUT") || "") !== "1") {
+      return json({ error: "Direct upload disabled", fallback: true }, 501);
+    }
+    const id = Number(path.split("/")[3]);
+    const body = await readBody(req);
+    const kind = String(body.kind || "").toLowerCase();
+    if (kind !== "photo" && kind !== "audio") {
+      return json({ error: "kind must be photo or audio" }, 400);
+    }
+    const mime = String(body.mime || "").split(";")[0].trim().toLowerCase();
+    const allowed = kind === "photo"
+      ? ["image/jpeg", "image/png", "image/webp"]
+      : ["audio/webm", "audio/mp4", "audio/x-m4a", "audio/mpeg", "audio/ogg", "audio/wav"];
+    if (!allowed.includes(mime)) {
+      return json({ error: `Unsupported ${kind} mime: ${mime || "(empty)"}` }, 400);
+    }
+    const bytes = Number(body.bytes || 0);
+    if (!Number.isFinite(bytes) || bytes < 50 || bytes > 2_100_000) {
+      return json({ error: "Media must be between 50 bytes and ~1.5MB" }, 413);
+    }
+    const packageId = String(body.package_id || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+    if (!packageId) return json({ error: "package_id required" }, 400);
+
+    const scopeKeys = await adminFormKeyScope(sql, me);
+    const exists = scopeKeys
+      ? await sql`SELECT id FROM submissions WHERE id = ${id} AND payload->>'form_key' = ANY(${scopeKeys})`
+      : await sql`SELECT id FROM submissions WHERE id = ${id}`;
+    if (!exists.length) return json({ error: "Submission not found" }, 404);
+
+    const extMap: Record<string, string> = {
+      "image/jpeg": "jpg",
+      "image/png": "png",
+      "image/webp": "webp",
+      "audio/webm": "webm",
+      "audio/mp4": "m4a",
+      "audio/x-m4a": "m4a",
+      "audio/mpeg": "mp3",
+      "audio/ogg": "ogg",
+      "audio/wav": "wav",
+    };
+    const ext = extMap[mime] || (kind === "photo" ? "jpg" : "bin");
+    const day = new Date().toISOString().slice(0, 10);
+    // Deterministic key: a retried package re-signs the same object, so
+    // /complete is idempotent instead of creating a second media row.
+    const key = `${r2KeyPrefix()}election-survey/${kind}/${day}/sub-${id}/${packageId}-${kind}.${ext}`;
+    const uploadUrl = await presignPut(key, mime, 900);
+    if (!uploadUrl) return json({ error: "R2 is not configured for direct uploads" }, 501);
+    return json({
+      upload_url: uploadUrl,
+      key,
+      mime,
+      bytes,
+      expires_in: 900,
+      max_bytes: 2_100_000,
+    });
+  }
+
+  // ── Complete a direct upload: verify object, link it, auto-confirm ─────
+  if (path.match(/^\/api\/submissions\/\d+\/media\/complete$/) && method === "POST") {
+    if (!me) return json({ error: "Login required" }, 401);
+    if (me.role !== "admin" && me.role !== "surveyor" && me.role !== "super_admin") {
+      return json({ error: "Forbidden" }, 403);
+    }
+    const id = Number(path.split("/")[3]);
+    const body = await readBody(req);
+    const kind = String(body.kind || "").toLowerCase();
+    const key = String(body.key || "").trim();
+    const mime = String(body.mime || "").split(";")[0].trim().toLowerCase();
+    if (kind !== "photo" && kind !== "audio") {
+      return json({ error: "kind must be photo or audio" }, 400);
+    }
+    if (!key.startsWith(`${r2KeyPrefix()}election-survey/${kind}/`) || !key.includes(`/sub-${id}/`)) {
+      return json({ error: "Invalid media key" }, 400);
+    }
+    const allowed = kind === "photo"
+      ? ["image/jpeg", "image/png", "image/webp"]
+      : ["audio/webm", "audio/mp4", "audio/x-m4a", "audio/mpeg", "audio/ogg", "audio/wav"];
+    if (!allowed.includes(mime)) {
+      return json({ error: `Unsupported ${kind} mime` }, 400);
+    }
+    const scopeKeys = await adminFormKeyScope(sql, me);
+    const exists = scopeKeys
+      ? await sql`SELECT id, payload FROM submissions WHERE id = ${id} AND payload->>'form_key' = ANY(${scopeKeys})`
+      : await sql`SELECT id, payload FROM submissions WHERE id = ${id}`;
+    if (!exists.length) return json({ error: "Submission not found" }, 404);
+
+    const info = await objectInfo(key);
+    if (!info) return json({ error: "Uploaded object not found — retry the upload" }, 400);
+    if (info.size < 50) return json({ error: "Uploaded object is empty" }, 400);
+    const claimed = Number(body.bytes || 0);
+    if (Number.isFinite(claimed) && claimed > 0 && Math.abs(info.size - claimed) > 1024) {
+      return json({
+        error: `Uploaded size ${info.size}B does not match ${claimed}B`,
+        bytes: info.size,
+      }, 400);
+    }
+
+    const meta = {
+      storage: "cloudflare_r2",
+      key,
+      bytes: info.size,
+      mode: "direct",
+      no_card: true,
+    };
+    let mediaId = 0;
+    const existing = await sql`
+        SELECT id FROM survey_media
+        WHERE submission_id = ${id} AND meta->>'key' = ${key}
+        LIMIT 1
+      `.catch(() => []);
+    if (existing.length) {
+      mediaId = Number((existing[0] as { id: number }).id);
+    } else {
+      const inserted = await sql`
+          INSERT INTO survey_media (submission_id, kind, mime, url, storage, meta)
+          VALUES (${id}, ${kind}, ${mime}, NULL, 'cloudflare_r2', ${sqlJson(meta)}::jsonb)
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `.catch(() => []);
+      if (inserted.length) {
+        mediaId = Number((inserted[0] as { id: number }).id);
+      } else {
+        const again = await sql`
+            SELECT id FROM survey_media
+            WHERE submission_id = ${id} AND meta->>'key' = ${key}
+            LIMIT 1
+          `.catch(() => []);
+        if (!again.length) return json({ error: "Could not link media" }, 500);
+        mediaId = Number((again[0] as { id: number }).id);
+      }
+      await sql`UPDATE survey_media SET url = ${`/api/media/${mediaId}/file`} WHERE id = ${mediaId}`
+        .catch(() => null);
+    }
+
+    const apiUrl = `/api/media/${mediaId}/file`;
+    const payload = parsePayload((exists[0] as { payload: unknown }).payload);
+    if (kind === "photo") {
+      payload.has_photo = true;
+      payload.photo_url = apiUrl;
+      payload.photo_media_id = mediaId;
+    } else {
+      payload.has_audio = true;
+      payload.audio_url = apiUrl;
+      payload.audio_media_id = mediaId;
+    }
+    payload.media_storage = "cloudflare_r2";
+    payload.media_updated_at = new Date().toISOString();
+    await sql`UPDATE submissions SET payload = ${sqlJson(payload)} WHERE id = ${id}`;
+
+    const auto = await autoConfirmIfComplete(sql, id).catch(() => ({
+      auto_confirmed: false,
+      completeness: "incomplete",
+    }));
+    return json({
+      ok: true,
+      submission_id: id,
+      media: {
+        id: mediaId,
+        kind,
+        mime,
+        url: apiUrl,
+        storage: "cloudflare_r2",
+        mode: "direct",
+      },
+      linked: true,
+      url: apiUrl,
+      storage: "cloudflare_r2",
+      status: auto.auto_confirmed ? "confirmed" : "pending",
+      completeness: auto.completeness,
+      auto_confirmed: auto.auto_confirmed,
+      note: `${kind} uploaded directly to R2 — pending Client Admin review.`,
+    }, 201);
+  }
+
   // Stream & download media file (Neon storage) — audio, video, photo
   // Only Client Admins / Super Admin may access this — surveyors have no
   // permission here. A Client Admin additionally needs can_review_data,
@@ -234,7 +417,7 @@ export async function handleMedia(c: Ctx): Promise<Response | null> {
       : await sql`SELECT id FROM survey_media WHERE id = ${mediaId} LIMIT 1`.catch(() => []);
     if (!owns.length) return json({ error: "Not found" }, 404);
     const rows = await sql`
-        SELECT id, kind, mime, data, url, storage, submission_id
+        SELECT id, kind, mime, data, url, storage, meta, submission_id
         FROM survey_media WHERE id = ${mediaId} LIMIT 1
       `.catch(async () =>
       await sql`
@@ -250,7 +433,11 @@ export async function handleMedia(c: Ctx): Promise<Response | null> {
       data: string;
       url?: string;
       storage?: string;
+      meta?: unknown;
     };
+    const metaObj = parsePayload(row.meta);
+    // Direct-upload rows store the API path as url; the object key lives in meta.
+    const key = objectKeyFromUrl(String(row.url || "")) || String(metaObj.key || "");
     // Display GETs redirect to a locally-presigned R2 URL so media bytes
     // never travel through this server. Downloads (download=1) and exports
     // keep the proxy: a zip built on the admin origin cannot follow a
@@ -259,31 +446,30 @@ export async function handleMedia(c: Ctx): Promise<Response | null> {
     // Redirects need bucket CORS (browser fetch). Off until the operator sets
     // the CORS policy in the R2 dashboard and flips MEDIA_DIRECT=1.
     const directEnabled = (Deno.env.get("MEDIA_DIRECT") || "") === "1";
-    if (!wantsDownload && directEnabled) {
-      const key = objectKeyFromUrl(String(row.url || ""));
-      if (key) {
-        const signed = await presignGet(key, 1800);
-        if (signed) {
-          return new Response(null, {
-            status: 302,
-            headers: {
-              location: signed,
-              "cache-control": "no-store",
-              ...corsHeaders(req),
-            },
-          });
-        }
+    if (!wantsDownload && directEnabled && key) {
+      const signed = await presignGet(key, 1800);
+      if (signed) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: signed,
+            "cache-control": "no-store",
+            ...corsHeaders(req),
+          },
+        });
       }
     }
 
     // Proxy external/R2 URLs — never 302 for downloads. Zip/export fetch from
     // the admin origin cannot follow a storage redirect (CORS NetworkError).
+    // Direct-upload rows only have meta.key, so proxy through a short presign.
+    const directProxy = key ? await presignGet(key, 300) : null;
     const external =
       row.url && /^https?:\/\//i.test(String(row.url))
         ? String(row.url)
         : String(row.data || "").startsWith("url:")
           ? String(row.data).slice(4)
-          : "";
+          : directProxy || "";
     if (external) {
       try {
         const up = await fetch(external);
@@ -401,7 +587,10 @@ export async function handleMedia(c: Ctx): Promise<Response | null> {
     // this server entirely; the proxy paths above stay valid for exports.
     await Promise.all(
       media.map(async (m) => {
-        const key = objectKeyFromUrl(String(m.url || ""));
+        const meta = (m.meta && typeof m.meta === "object")
+          ? m.meta as Record<string, unknown>
+          : {};
+        const key = objectKeyFromUrl(String(m.url || "")) || String(meta.key || "");
         if (!key) return;
         (m as Record<string, unknown>).direct_url = await presignGet(key, 1800);
       }),

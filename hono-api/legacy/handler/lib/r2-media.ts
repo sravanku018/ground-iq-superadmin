@@ -75,14 +75,29 @@ export function r2Config(): {
 }
 
 /**
+ * Optional key namespace (e.g. `staging/`) so a second environment can share
+ * the media bucket without mixing objects. Empty in production.
+ */
+export function r2KeyPrefix(): string {
+  const prefix = (Deno.env.get("R2_KEY_PREFIX") || "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "");
+  return prefix ? `${prefix}/` : "";
+}
+
+/**
  * Object key from any stored media URL: the r2.dev public URL, the S3
- * endpoint URL, or a bare key. Used to re-sign old rows after the bucket
- * goes private.
+ * endpoint URL, a bare key, or (via meta.key) a direct-upload row whose url
+ * is the authenticated API path.
  */
 export function objectKeyFromUrl(urlOrKey: string): string {
   const raw = String(urlOrKey || "").trim();
   if (!raw) return "";
-  if (!/^https?:\/\//i.test(raw)) return raw.replace(/^\//, "");
+  if (!/^https?:\/\//i.test(raw)) {
+    // /api/media/:id/file is not an object key — callers fall back to meta.key.
+    if (raw.startsWith("/api/")) return "";
+    return raw.replace(/^\//, "");
+  }
   try {
     const u = new URL(raw);
     let path = decodeURIComponent(u.pathname).replace(/^\//, "");
@@ -93,6 +108,89 @@ export function objectKeyFromUrl(urlOrKey: string): string {
     return "";
   }
 }
+
+/** Presigned PUT URL — the browser uploads bytes straight to R2. */
+export async function presignPut(
+  objectKey: string,
+  contentType: string,
+  expiresSeconds = 900,
+  bucket?: string,
+): Promise<string | null> {
+  const { host, buck, ak, sk } = r2Config();
+  const useBucket = bucket || buck;
+  const mime = String(contentType || "").trim();
+  if (!ak || !sk || !objectKey || !mime) return null;
+  const ttl = Math.min(Math.max(Math.floor(expiresSeconds) || 900, 60), 3600);
+  const pathKey = objectKey.split("/").map(encodeURIComponent).join("/");
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const amzDate =
+    `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}T` +
+    `${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
+  const dateStamp = amzDate.slice(0, 8);
+  const scope = `${dateStamp}/auto/s3/aws4_request`;
+  const signedHeaders = "content-type;host";
+  const canonicalQuery = [
+    `X-Amz-Algorithm=AWS4-HMAC-SHA256`,
+    `X-Amz-Credential=${encodeURIComponent(`${ak}/${scope}`)}`,
+    `X-Amz-Date=${amzDate}`,
+    `X-Amz-Expires=${ttl}`,
+    `X-Amz-SignedHeaders=${encodeURIComponent(signedHeaders)}`,
+  ].join("&");
+  const canonicalHeaders = `content-type:${mime}\nhost:${host}\n`;
+  const canonicalRequest = [
+    "PUT",
+    `/${useBucket}/${pathKey}`,
+    canonicalQuery,
+    canonicalHeaders,
+    signedHeaders,
+    "UNSIGNED-PAYLOAD",
+  ].join("\n");
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    scope,
+    await sha256Hex(canonicalRequest),
+  ].join("\n");
+  const kDate = await hmacSha256(new TextEncoder().encode("AWS4" + sk), dateStamp);
+  const kRegion = await hmacSha256(kDate, "auto");
+  const kService = await hmacSha256(kRegion, "s3");
+  const kSigning = await hmacSha256(kService, "aws4_request");
+  const signature = toHex(await hmacSha256(kSigning, stringToSign));
+  return `https://${host}/${useBucket}/${pathKey}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+}
+
+/**
+ * Verify an uploaded object and read its true size without exposing the
+ * bucket. Uses a 1-byte ranged GET on a short presigned URL.
+ */
+export async function objectInfo(
+  objectKey: string,
+  bucket?: string,
+): Promise<{ size: number; mime: string } | null> {
+  const signed = await presignGet(objectKey, 60, bucket);
+  if (!signed) return null;
+  try {
+    const res = await fetch(signed, { headers: { Range: "bytes=0-0" } });
+    if (!res.ok) return null;
+    const range = res.headers.get("content-range") || "";
+    const total = range.includes("/")
+      ? Number(range.split("/")[1])
+      : Number(res.headers.get("content-length") || 0);
+    const mime = res.headers.get("content-type") || "";
+    // Do not download the object: the one-byte body is all we need.
+    try {
+      await res.body?.cancel();
+    } catch {
+      /* already closed */
+    }
+    return { size: Number.isFinite(total) ? total : 0, mime };
+  } catch {
+    return null;
+  }
+}
+
+
 
 /** Presigned GET URL computed locally (SigV4 query signing — no API call). */
 export async function presignGet(
@@ -319,7 +417,7 @@ export async function storeMediaLinked(
       ? "m4a"
       : "bin";
   const day = new Date().toISOString().slice(0, 10);
-  const objectKey = `election-survey/${kind}/${day}/${crypto.randomUUID()}.${ext}`;
+  const objectKey = `${r2KeyPrefix()}election-survey/${kind}/${day}/${crypto.randomUUID()}.${ext}`;
   const filename = `esurvey-${kind}-${Date.now()}.${ext}`;
 
   // Prefer external ONLY if pre-configured (Cloudflare etc.) — never force signup/card

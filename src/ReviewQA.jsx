@@ -254,9 +254,12 @@ export default function ReviewQAScreen({
         const list = d.media || []
         const resolved = []
         for (const m of list) {
-          let playUrl = m.url || ''
+          // Prefer the presigned URL: <img>/<audio> can load it directly
+          // without bucket CORS. Blob path stays as the fallback.
+          let playUrl = m.direct_url || m.url || ''
           try {
             if (
+              !m.direct_url &&
               playUrl &&
               (playUrl.startsWith('/api/media/') || playUrl.includes('/api/media/'))
             ) {

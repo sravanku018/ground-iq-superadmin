@@ -307,7 +307,7 @@ export default function AdminCharts() {
       .then((res) => {
         if (stop) return
         const flat = (Array.isArray(res?.rows) ? res.rows : []).map((r) => ({
-          ...(r.answers || {}),
+          ...r.answers,
           date: r.date,
           month: r.month,
           user: r.user,
@@ -613,6 +613,17 @@ export default function AdminCharts() {
           </span>
         ))}
       </div>
+
+      {data?.truncated ? (
+        <div className="card" style={{ padding: '10px 14px', marginBottom: 14, borderLeft: '4px solid #f59e0b' }}>
+          <strong style={{ fontSize: 13, color: '#b45309' }}>Partial scan</strong>{' '}
+          <span className="muted" style={{ fontSize: 12 }}>
+            showing {Number(data.scanned || 0).toLocaleString()} of{' '}
+            {Number(data.source_total || 0).toLocaleString()} matching rows — narrow the survey
+            or date range for exact totals.
+          </span>
+        </div>
+      ) : null}
 
       {/* EXCEL-STYLE SURVEY SHEET — question chips, value filters, charts, tables, analysis */}
       {answerLoading ? (

@@ -148,12 +148,14 @@ describe('nextQuestionId', () => {
     expect(used.has('q_3')).toBe(true)
   })
 
-  it('lowercases the id it returns', () => {
-    expect(nextQuestionId('Age', 'Q_5', new Set())).toBe('q_5')
+  it('preserves the id casing (ids are permanent)', () => {
+    expect(nextQuestionId('Age', 'Q_5', new Set())).toBe('Q_5')
   })
 
-  it('uses the index when there is no usable id', () => {
-    expect(nextQuestionId('Age', 'junk', new Set(), 2)).toBe('q_2')
+  it('keeps a non-q id verbatim and only generates for empty ids', () => {
+    const used = new Set()
+    expect(nextQuestionId('Age', 'junk', used, 2)).toBe('junk')
+    expect(used.has('junk')).toBe(true)
     expect(nextQuestionId('Age', '', new Set(), 7)).toBe('q_7')
   })
 

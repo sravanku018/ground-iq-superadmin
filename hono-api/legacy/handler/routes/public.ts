@@ -86,6 +86,33 @@ export async function handlePublic(c: Ctx): Promise<Response | null> {
   }
 
   // Login — admin portal OR surveyor field app (accounts created by Client Admin only)
+  // ── Client error reports → local table (Super Admin console) ──────────
+  if (path === "/api/client-errors" && method === "POST") {
+    const ip = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown";
+    if (!checkRateLimit(ip)) return json({ ok: false }, 429);
+    const body = await readBody(req);
+    const message = String(body.message || "").trim().slice(0, 500);
+    if (!message) return json({ error: "message required" }, 400);
+    const app = ["portal", "web", "apk", "server"].includes(String(body.app))
+      ? String(body.app)
+      : "web";
+    await sql`
+        INSERT INTO client_errors (app, version, url, message, stack, user_id, username, ua, context)
+        VALUES (
+          ${app},
+          ${String(body.version || "").slice(0, 40) || null},
+          ${String(body.url || "").slice(0, 300) || null},
+          ${message},
+          ${String(body.stack || "").slice(0, 4000) || null},
+          ${Number.isFinite(Number(body.user_id)) ? Number(body.user_id) : null},
+          ${String(body.username || "").slice(0, 120) || null},
+          ${String(body.ua || "").slice(0, 300) || null},
+          ${body.context ? JSON.stringify(body.context).slice(0, 4000) : null}::jsonb
+        )
+      `.catch((e: unknown) => console.error("client-errors insert:", (e as Error)?.message || e));
+    return json({ ok: true });
+  }
+
   // ── Landing-page contact form → Super Admin inbox ─────────────────────
   if (path === "/api/contact" && method === "POST") {
     const ip = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown";

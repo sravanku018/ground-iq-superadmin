@@ -17,6 +17,7 @@ import {
   me,
 } from './api'
 import ShareAppLink from './components/ShareAppLink'
+import { reportError } from './errorReporter'
 import useAppRelease from './useAppRelease'
 import QuotaIndicator from './components/QuotaIndicator'
 import AdminLogin from './AdminLogin'
@@ -47,6 +48,7 @@ const AdminCompaniesScreen = lazy(() => import('./AdminCompanies'))
 const AdminWebSurveyScreen = lazy(() => import('./AdminWebSurvey'))
 const AdminProfileScreen = lazy(() => import('./AdminProfile'))
 const AdminContactRequestsScreen = lazy(() => import('./AdminContactRequests'))
+const AdminErrorsScreen = lazy(() => import('./AdminErrors'))
 
 // Matches the sidebar: each group’s `pages` become the subtabs on that screen.
 const NAV = [
@@ -86,6 +88,13 @@ const CONTACT_NAV = {
   pages: ['contact'],
 }
 
+const ERRORS_NAV = {
+  id: 'errors',
+  label: 'Errors',
+  icon: 'lock',
+  pages: ['errors'],
+}
+
 const PAGE_LABELS = {
   overview: 'Overview',
   analyze: 'Dashboard',
@@ -106,6 +115,7 @@ const PAGE_LABELS = {
   admins: 'Client Admins',
   companies: 'Companies',
   contact: 'Contact Requests',
+  errors: 'Errors',
 }
 
 // All standard survey management, analytics, export, review, and web survey screens are visible to Client Admin.
@@ -129,6 +139,7 @@ class ChunkErrorBoundary extends Component {
     return { failed: true, error }
   }
   componentDidCatch(error) {
+    reportError(error, { kind: 'portal-boundary' })
     if (!isChunkLoadError(error) || this.state.reloading) return
     // One attempt per shared cooldown; past that the card below stands, so a
     // genuinely broken deploy cannot put the tab in a reload loop.
@@ -1157,7 +1168,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
   )
 
   const baseNav = isSuper
-    ? [...NAV, COMPANIES_NAV, CLIENT_ADMINS_NAV, CONTACT_NAV, PLATFORM_NAV]
+    ? [...NAV, COMPANIES_NAV, CLIENT_ADMINS_NAV, CONTACT_NAV, ERRORS_NAV, PLATFORM_NAV]
     : NAV
   const nav = baseNav
     .map((n) => ({ ...n, pages: n.pages.filter(canPage) }))
@@ -1576,6 +1587,7 @@ export default function AdminPortal({ superAdminOnly = false }) {
               <button className={`side-sub ${page === 'companies' ? 'active' : ''}`} onClick={() => goPage('companies')}><Icon name="building" size={18} />Companies</button>
               <button className={`side-sub ${page === 'admins' ? 'active' : ''}`} onClick={() => goPage('admins')}><Icon name="shield" size={18} />Client Admins</button>
               <button className={`side-sub ${page === 'contact' ? 'active' : ''}`} onClick={() => goPage('contact')}><Icon name="phone" size={18} />Contact Requests</button>
+              <button className={`side-sub ${page === 'errors' ? 'active' : ''}`} onClick={() => goPage('errors')}><Icon name="lock" size={18} />Errors</button>
               <button className={`side-sub ${page === 'audit' || page === 'seats' ? 'active' : ''}`} onClick={() => goPage('audit')}><Icon name="chair" size={18} />Seats &amp; Audit</button>
             </>
           )}
@@ -1731,6 +1743,9 @@ export default function AdminPortal({ superAdminOnly = false }) {
           )}
           {page === 'contact' && canPage('contact') && (
             <AdminContactRequestsScreen onToast={notify} />
+          )}
+          {page === 'errors' && canPage('errors') && (
+            <AdminErrorsScreen onToast={notify} />
           )}
           {page === 'companies' && canPage('companies') && (
             <AdminCompaniesScreen onToast={notify} onNav={goPage} />

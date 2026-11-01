@@ -30,6 +30,7 @@ import ConversationsScreen from './ConversationsScreen'
 import { startConversationSync, stopConversationSync, onConversationSync, triggerConversationSync } from './conversationSync'
 import { conversationNeedsWork, listConversationsLocal } from './conversationStore'
 import { enableSystemNotifications, systemNotify } from './systemNotify'
+import { reportError } from './errorReporter'
 import PullToRefresh from './PullToRefresh'
 import {
   collapseDuplicateDrafts,
@@ -79,6 +80,7 @@ export class ScreenErrorBoundary extends Component {
   }
   componentDidCatch(error, info) {
     console.error(`${this.props.title || 'Screen'} error:`, error, info)
+    reportError(error, { kind: 'screen-boundary', title: this.props.title, componentStack: info?.componentStack })
     // A chunk that failed to fetch is not this screen's bug: the deployed build
     // moved on. Heal it once (shared cooldown); otherwise the card below stands.
     if (isChunkLoadError(error) && claimReload()) reloadSoon()

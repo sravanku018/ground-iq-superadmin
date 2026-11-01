@@ -113,6 +113,17 @@ async function rawHandler(req: Request): Promise<Response> {
     return json({ error: `Not found: ${method} ${path}` }, 404);
   } catch (err) {
     console.error(err);
+    // Local error tracking: server exceptions land next to client ones.
+    try {
+      const message = String((err as Error)?.message || err).slice(0, 500);
+      const stack = String((err as Error)?.stack || "").slice(0, 4000);
+      void sql`
+          INSERT INTO client_errors (app, url, message, stack)
+          VALUES ('server', ${new URL(req.url).pathname}, ${message}, ${stack || null})
+        `.catch(() => null);
+    } catch {
+      /* ignore */
+    }
     return json({ error: (err as Error).message || "Server error" }, 500);
   }
 }

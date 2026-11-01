@@ -694,6 +694,19 @@ export function getAnswerRows(filters = {}, limit = 10000) {
   return request(`/api/admin/answer-rows?${q.toString()}`)
 }
 
+/** Local error tracking (Super Admin console). */
+export function getClientErrors() {
+  return request('/api/client-errors')
+}
+
+export function setClientErrorResolved(id, resolved = true) {
+  return request(`/api/client-errors/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resolved }),
+  })
+}
+
 /** Landing-page contact requests (Super Admin inbox). */
 export function getContactRequests() {
   return request('/api/contact-requests')

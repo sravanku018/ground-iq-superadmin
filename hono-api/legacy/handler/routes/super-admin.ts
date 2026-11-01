@@ -230,5 +230,32 @@ export async function handleSuperAdmin(c: Ctx): Promise<Response | null> {
     return json({ ok: true, ...(rows[0] as Record<string, unknown>) });
   }
 
+  // ── Client/server error reports ─────────────────────────────────────────
+  if (path === "/api/client-errors" && method === "GET") {
+    if (!me) return json({ error: "Login required" }, 401);
+    if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+    const rows = await sql`
+        SELECT id, app, version, url, message, stack, user_id, username, ua, context,
+               resolved, created_at
+        FROM client_errors
+        ORDER BY id DESC LIMIT 300
+      `.catch(() => []);
+    return json({ items: rows });
+  }
+  const errMatch = path.match(/^\/api\/client-errors\/(\d+)$/);
+  if (errMatch && method === "PATCH") {
+    if (!me) return json({ error: "Login required" }, 401);
+    if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+    const body = await readBody(req);
+    const resolved = body.resolved === true;
+    const rows = await sql`
+        UPDATE client_errors SET resolved = ${resolved}
+        WHERE id = ${Number(errMatch[1])}
+        RETURNING id, resolved
+      `.catch(() => []);
+    if (!rows.length) return json({ error: "Not found" }, 404);
+    return json({ ok: true, ...(rows[0] as Record<string, unknown>) });
+  }
+
   return null;
 }

@@ -68,6 +68,22 @@ export async function ensureSchema(): Promise<void> {
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
       `,
+    () => sql`
+        CREATE TABLE IF NOT EXISTS client_errors (
+          id SERIAL PRIMARY KEY,
+          app TEXT NOT NULL DEFAULT 'web',
+          version TEXT,
+          url TEXT,
+          message TEXT NOT NULL,
+          stack TEXT,
+          user_id INTEGER,
+          username TEXT,
+          ua TEXT,
+          context JSONB,
+          resolved BOOLEAN NOT NULL DEFAULT FALSE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_secret TEXT`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS target_quota INTEGER NOT NULL DEFAULT 0`,
@@ -316,7 +332,7 @@ export async function ensureCompanyExists(
 
 // Bump this when ensureSchema() steps change. The version is stored in
 // app_settings; if it matches, the ~58 CREATE/ALTER round-trips are skipped.
-const SCHEMA_VERSION = "2026-10-26.2";
+const SCHEMA_VERSION = "2026-11-01.1";
 
 export let schemaReady: Promise<void> | null = null;
 

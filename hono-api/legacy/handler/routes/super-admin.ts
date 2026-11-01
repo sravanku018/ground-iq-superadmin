@@ -257,5 +257,19 @@ export async function handleSuperAdmin(c: Ctx): Promise<Response | null> {
     return json({ ok: true, ...(rows[0] as Record<string, unknown>) });
   }
 
+  // ── Job queue summary ──────────────────────────────────────────────────
+  if (path === "/api/jobs/summary" && method === "GET") {
+    if (!me) return json({ error: "Login required" }, 401);
+    if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+    const counts = await sql`
+        SELECT status, COUNT(*)::int AS n FROM jobs GROUP BY status
+      `.catch(() => []);
+    const recent = await sql`
+        SELECT id, kind, status, attempts, left(COALESCE(last_error,''), 160) AS last_error, created_at
+        FROM jobs ORDER BY id DESC LIMIT 20
+      `.catch(() => []);
+    return json({ counts, recent });
+  }
+
   return null;
 }

@@ -26,6 +26,9 @@ import {
   syncSonioxKeyFromDb,
 } from "../lib/soniox-sync.ts";
 import {
+  enqueueJob,
+} from "../lib/jobs.ts";
+import {
   isoStamp,
 } from "../lib/time.ts";
 import {
@@ -406,6 +409,9 @@ export async function handleConversations(c: Ctx): Promise<Response | null> {
           soniox_transcription_id: job.transcriptionId,
           transcript_status: "processing",
         };
+        // Poll the Soniox job server-side, so translation finishes even if the
+        // phone closes the app. The client's own polling still works.
+        void enqueueJob("transcribe_poll", { conversation_id: Number(row.id) }, 15_000);
       } catch (e) {
         const message = (e as Error)?.message || "Soniox request failed";
         await sql`

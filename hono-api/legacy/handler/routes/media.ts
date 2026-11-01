@@ -23,6 +23,8 @@ import {
 } from "../lib/payload.ts";
 import {
   storeMediaLinked,
+  objectKeyFromUrl,
+  presignGet,
 } from "../lib/r2-media.ts";
 import {
   hasPower,
@@ -249,8 +251,33 @@ export async function handleMedia(c: Ctx): Promise<Response | null> {
       url?: string;
       storage?: string;
     };
-    // Proxy external/R2 URLs — never 302. Zip/export fetch from the
-    // admin origin cannot follow a storage redirect (CORS NetworkError).
+    // Display GETs redirect to a locally-presigned R2 URL so media bytes
+    // never travel through this server. Downloads (download=1) and exports
+    // keep the proxy: a zip built on the admin origin cannot follow a
+    // cross-origin redirect.
+    const wantsDownload = url.searchParams.get("download") === "1";
+    // Redirects need bucket CORS (browser fetch). Off until the operator sets
+    // the CORS policy in the R2 dashboard and flips MEDIA_DIRECT=1.
+    const directEnabled = (Deno.env.get("MEDIA_DIRECT") || "") === "1";
+    if (!wantsDownload && directEnabled) {
+      const key = objectKeyFromUrl(String(row.url || ""));
+      if (key) {
+        const signed = await presignGet(key, 1800);
+        if (signed) {
+          return new Response(null, {
+            status: 302,
+            headers: {
+              location: signed,
+              "cache-control": "no-store",
+              ...corsHeaders(req),
+            },
+          });
+        }
+      }
+    }
+
+    // Proxy external/R2 URLs — never 302 for downloads. Zip/export fetch from
+    // the admin origin cannot follow a storage redirect (CORS NetworkError).
     const external =
       row.url && /^https?:\/\//i.test(String(row.url))
         ? String(row.url)
@@ -370,6 +397,15 @@ export async function handleMedia(c: Ctx): Promise<Response | null> {
         created_at: r.created_at,
       };
     });
+    // Presigned direct URLs (30 min): display paths can use these and skip
+    // this server entirely; the proxy paths above stay valid for exports.
+    await Promise.all(
+      media.map(async (m) => {
+        const key = objectKeyFromUrl(String(m.url || ""));
+        if (!key) return;
+        (m as Record<string, unknown>).direct_url = await presignGet(key, 1800);
+      }),
+    );
     return json({
       submission_id: id,
       media,

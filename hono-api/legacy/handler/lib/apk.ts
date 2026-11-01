@@ -138,6 +138,21 @@ export async function refreshApkCache(): Promise<boolean> {
 export const R2_APK_OBJECT_KEY = Deno.env.get("R2_APK_KEY") || "releases/app.apk";
 
 /**
+ * APKs live in their own bucket so the survey-media bucket can stay private
+ * (presigned) without breaking phone updates. The releases bucket is public:
+ * RELEASES_PUBLIC_URL is its r2.dev/custom base; until that is configured the
+ * advert falls back to the GitHub release asset (also a CDN, stable URL).
+ */
+export const R2_RELEASES_BUCKET = Deno.env.get("R2_RELEASES_BUCKET") || "smartsurveyx-releases";
+export const RELEASES_PUBLIC_URL = (Deno.env.get("RELEASES_PUBLIC_URL") || "").replace(/\/$/, "");
+
+/** Stable, publicly fetchable URL for the APK mirror (or GitHub fallback). */
+export function apkMirrorUrl(): string {
+  if (RELEASES_PUBLIC_URL) return `${RELEASES_PUBLIC_URL}/${R2_APK_OBJECT_KEY}`;
+  return GITHUB_RELEASE_APK;
+}
+
+/**
  * Push the APK to Cloudflare R2 and stamp the sidecar. Phones then download
  * from Cloudflare's edge instead of this VPS; falls back silently when R2
  * is not configured. Returns the public mirror URL, or null.
@@ -148,16 +163,18 @@ export async function mirrorApkToR2(bytes: Uint8Array<ArrayBuffer>): Promise<str
       bytes,
       "application/vnd.android.package-archive",
       R2_APK_OBJECT_KEY,
+      R2_RELEASES_BUCKET,
     );
-    if (!r2?.url) return null;
+    if (!r2) return null;
+    const mirror = apkMirrorUrl();
     const m = await readApkSidecar();
     if (m) {
       await Deno.writeTextFile(
         APK_SIDECAR_PATH,
-        JSON.stringify({ ...m, mirrorUrl: r2.url }, null, 2) + "\n",
+        JSON.stringify({ ...m, mirrorUrl: mirror }, null, 2) + "\n",
       );
     }
-    return r2.url;
+    return mirror;
   } catch {
     return null;
   }

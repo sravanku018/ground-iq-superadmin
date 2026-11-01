@@ -74,12 +74,82 @@ export function r2Config(): {
   return { acc, host, buck, ak, sk, publicBase };
 }
 
+/**
+ * Object key from any stored media URL: the r2.dev public URL, the S3
+ * endpoint URL, or a bare key. Used to re-sign old rows after the bucket
+ * goes private.
+ */
+export function objectKeyFromUrl(urlOrKey: string): string {
+  const raw = String(urlOrKey || "").trim();
+  if (!raw) return "";
+  if (!/^https?:\/\//i.test(raw)) return raw.replace(/^\//, "");
+  try {
+    const u = new URL(raw);
+    let path = decodeURIComponent(u.pathname).replace(/^\//, "");
+    const { buck } = r2Config();
+    if (path.startsWith(`${buck}/`)) path = path.slice(buck.length + 1);
+    return path;
+  } catch {
+    return "";
+  }
+}
+
+/** Presigned GET URL computed locally (SigV4 query signing — no API call). */
+export async function presignGet(
+  objectKey: string,
+  expiresSeconds = 1800,
+  bucket?: string,
+): Promise<string | null> {
+  const { host, buck, ak, sk } = r2Config();
+  const useBucket = bucket || buck;
+  if (!ak || !sk || !objectKey) return null;
+  const ttl = Math.min(Math.max(Math.floor(expiresSeconds) || 1800, 60), 86400);
+  const pathKey = objectKey.split("/").map(encodeURIComponent).join("/");
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const amzDate =
+    `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}T` +
+    `${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
+  const dateStamp = amzDate.slice(0, 8);
+  const scope = `${dateStamp}/auto/s3/aws4_request`;
+  const canonicalQuery = [
+    `X-Amz-Algorithm=AWS4-HMAC-SHA256`,
+    `X-Amz-Credential=${encodeURIComponent(`${ak}/${scope}`)}`,
+    `X-Amz-Date=${amzDate}`,
+    `X-Amz-Expires=${ttl}`,
+    `X-Amz-SignedHeaders=host`,
+  ].join("&");
+  const canonicalRequest = [
+    "GET",
+    `/${useBucket}/${pathKey}`,
+    canonicalQuery,
+    `host:${host}\n`,
+    "host",
+    "UNSIGNED-PAYLOAD",
+  ].join("\n");
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    scope,
+    await sha256Hex(canonicalRequest),
+  ].join("\n");
+  const kDate = await hmacSha256(new TextEncoder().encode("AWS4" + sk), dateStamp);
+  const kRegion = await hmacSha256(kDate, "auto");
+  const kService = await hmacSha256(kRegion, "s3");
+  const kSigning = await hmacSha256(kService, "aws4_request");
+  const signature = toHex(await hmacSha256(kSigning, stringToSign));
+  return `https://${host}/${useBucket}/${pathKey}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+}
+
 export async function uploadToCloudflareR2(
   bytes: Uint8Array<ArrayBuffer>,
   mime: string,
   objectKey: string,
+  bucketOverride?: string,
 ): Promise<{ url: string; provider: string } | null> {
-  const { acc, host, buck, ak, sk, publicBase } = r2Config();
+  const cfg = r2Config();
+  const { acc, host, ak, sk, publicBase } = cfg;
+  const buck = bucketOverride || cfg.buck;
 
   // Keys + public base required; account/bucket have project defaults
   if (!acc || !ak || !sk || !buck || !publicBase) {

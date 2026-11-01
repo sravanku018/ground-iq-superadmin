@@ -84,6 +84,20 @@ export async function ensureSchema(): Promise<void> {
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
       `,
+    () => sql`
+        CREATE TABLE IF NOT EXISTS jobs (
+          id SERIAL PRIMARY KEY,
+          kind TEXT NOT NULL,
+          payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+          status TEXT NOT NULL DEFAULT 'pending',
+          attempts INTEGER NOT NULL DEFAULT 0,
+          last_error TEXT,
+          run_after TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `,
+    () => sql`CREATE INDEX IF NOT EXISTS jobs_pending_idx ON jobs (status, run_after)`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_secret TEXT`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE`,
     () => sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS target_quota INTEGER NOT NULL DEFAULT 0`,
@@ -332,7 +346,7 @@ export async function ensureCompanyExists(
 
 // Bump this when ensureSchema() steps change. The version is stored in
 // app_settings; if it matches, the ~58 CREATE/ALTER round-trips are skipped.
-const SCHEMA_VERSION = "2026-11-01.1";
+const SCHEMA_VERSION = "2026-11-01.2";
 
 export let schemaReady: Promise<void> | null = null;
 

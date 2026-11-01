@@ -8,6 +8,7 @@
  */
 import { Hono } from "hono";
 import { handleRequest } from "./legacy/handler.ts";
+import { startJobWorker } from "./legacy/handler/lib/jobs.ts";
 import authRouter from "./routes/auth.ts";
 import usersRouter from "./routes/users.ts";
 import chatRouter from "./routes/chat.ts";
@@ -25,5 +26,7 @@ app.all("*", (c) => handleRequest(c.req.raw));
 if (import.meta.main) {
   const port = Number(Deno.env.get("PORT") || 8000);
   const hostname = Deno.env.get("HOST") || "0.0.0.0";
+  // Background jobs (verify, transcription polling) run in-process on the VPS.
+  startJobWorker();
   Deno.serve({ port, hostname }, app.fetch);
 }

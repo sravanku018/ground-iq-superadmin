@@ -117,7 +117,48 @@ async function rawHandler(req: Request): Promise<Response> {
   }
 }
 
+/**
+ * Structured request log — one JSON line per request to stdout, which the
+ * VPS systemd journal captures (journalctl -u smart-survey-x -o json).
+ * Observability without an external account: duration, status, request id
+ * and (when authenticated) the acting user. Never logs bodies or tokens.
+ */
+function logRequest(req: Request, res: Response, startedAt: number, userId?: unknown) {
+  try {
+    const u = new URL(req.url);
+    const ms = Math.round(performance.now() - startedAt);
+    const line = {
+      t: new Date().toISOString(),
+      level: res.status >= 500 ? "error" : res.status >= 400 ? "warn" : "info",
+      method: req.method,
+      path: u.pathname,
+      status: res.status,
+      ms,
+      user: userId != null ? Number(userId) : null,
+      rid: crypto.randomUUID().slice(0, 8),
+      slow: ms > 2000 ? true : undefined,
+    };
+    console.log(JSON.stringify(line));
+  } catch {
+    /* logging must never break a request */
+  }
+}
+
 /** Used by hono-api/main.ts. Original Playground file is deno-deploy/main.ts (untouched). */
 export async function handleRequest(req: Request): Promise<Response> {
-  return withCors(req, await rawHandler(req));
+  const startedAt = performance.now();
+  // Cheap auth peek for the log line only; route modules still authenticate.
+  let userId: unknown = null;
+  try {
+    const token = bearer(req);
+    if (token) {
+      const cached = await getUser(token);
+      userId = (cached as { id?: unknown } | null)?.id ?? null;
+    }
+  } catch {
+    /* ignore */
+  }
+  const res = await withCors(req, await rawHandler(req));
+  logRequest(req, res, startedAt, userId);
+  return res;
 }

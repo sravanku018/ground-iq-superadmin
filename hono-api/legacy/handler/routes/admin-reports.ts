@@ -34,6 +34,12 @@ import {
   workStatusOf,
 } from "../lib/verify.ts";
 
+// Analyze recomputes every bucket over up to 5,000 submissions per request.
+// A short per-admin TTL cache keeps repeated Apply clicks and dashboard
+// refreshes from re-scanning; 30s matches the analytics cache.
+const ANALYZE_CACHE_TTL_MS = 30_000;
+const analyzeCache = new Map<string, { body: unknown; expires: number }>();
+
 export async function handleAdminReports(c: Ctx): Promise<Response | null> {
   const { url, path, method, me } = c;
   // ── Client Admin & Quota Breakdown (Super Admin view all / Client Admin self) ──
@@ -385,6 +391,14 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
       }
     }
     const scopeKeys = await adminFormKeyScope(sql, me);
+    const analyzeKey = `${String(me.id)}:${url.search}`;
+    const analyzeHit = analyzeCache.get(analyzeKey);
+    if (analyzeHit && analyzeHit.expires > Date.now()) {
+      return json(analyzeHit.body);
+    }
+    if (analyzeCache.size > 40) {
+      for (const [k, v] of analyzeCache) if (v.expires < Date.now()) analyzeCache.delete(k);
+    }
     const rows = scopeKeys
       ? await sql`
             SELECT id, payload, created_at FROM submissions
@@ -626,7 +640,7 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
       bump(bySurveyorMonth[smk], row);
     }
 
-    return json({
+    const analyzeBody = {
       filters: {
         date_from: dateFrom || null,
         date_to: dateTo || null,
@@ -721,7 +735,9 @@ export async function handleAdminReports(c: Ctx): Promise<Response | null> {
         photo: "required",
       },
       sample: list.slice(0, 100),
-    });
+    };
+    analyzeCache.set(analyzeKey, { body: analyzeBody, expires: Date.now() + ANALYZE_CACHE_TTL_MS });
+    return json(analyzeBody);
   }
   return null;
 }

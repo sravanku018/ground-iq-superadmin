@@ -23,6 +23,7 @@ import {
   updatePackage,
 } from './localStore'
 import { checkNetwork, isStrongEnoughToSync, isUsableForSync, watchNetwork } from './network'
+import { checkForAppUpdate, isNativeApp } from './appUpdate'
 
 /**
  * Try browser → R2 direct upload (presigned PUT). Returns false when the
@@ -439,6 +440,20 @@ async function withDrainLock(fn) {
   return fn()
 }
 
+async function mandatoryUpdateBlock() {
+  // Only native APKs are gated. The PWA can update by reload; blocking its
+  // sync would be unnecessary. No network call is made while offline:
+  // checkForAppUpdate falls back to its last cached answer.
+  if (!isNativeApp()) return null
+  try {
+    const res = await checkForAppUpdate({ ignoreDismissed: true })
+    if (res?.hasUpdate && res.latest?.mandatory) return res.latest
+  } catch {
+    /* offline / update check failed → let the normal queue retry */
+  }
+  return null
+}
+
 /** Drain queue FIFO, one package fully before next */
 export async function drainQueue(reason = 'tick', opts = {}) {
   if (running) return { skipped: true, reason: 'busy' }
@@ -447,6 +462,14 @@ export async function drainQueue(reason = 'tick', opts = {}) {
   // Manual runs (the "Sync now" button) bypass the weak-network gate and the
   // per-package backoff/attempt cap. The user explicitly asked to push now.
   const manual = !!opts.manual || reason === 'manual'
+
+  // Mandatory APK update: stop uploads but never touch capture or the local
+  // queue. Only a manual sync surfaces the prompt; background ticks stay quiet.
+  const pendingUpdate = await mandatoryUpdateBlock()
+  if (pendingUpdate) {
+    if (manual) emit({ type: 'update-required', latest: pendingUpdate })
+    return { skipped: true, reason: 'update', latest: pendingUpdate }
+  }
 
   // Claim the in-memory lock synchronously, before any await.
   running = true

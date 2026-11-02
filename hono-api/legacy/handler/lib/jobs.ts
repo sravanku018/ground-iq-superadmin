@@ -17,6 +17,7 @@ import {
   pollSonioxTranscription,
 } from "../../../lib/soniox.ts";
 import { runRetentionSweep } from "./retention.ts";
+import { flushTraffic } from "./traffic.ts";
 
 export type JobKind = "verify_submission" | "transcribe_poll";
 
@@ -217,6 +218,7 @@ export function startJobWorker(): void {
   const tick = async () => {
     await boot;
     await reclaimExpiredJobs();
+    await flushTraffic();
     await runRetentionSweep();
     const jobs = await claimJobs(5);
     for (const job of jobs) {

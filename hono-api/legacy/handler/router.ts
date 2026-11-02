@@ -9,6 +9,11 @@ import { sql } from "./lib/db.ts";
 import { ready } from "./lib/schema.ts";
 import { bearer, json } from "./lib/http.ts";
 import { getUser } from "./lib/users.ts";
+import {
+  recordTraffic,
+  requestAppVersion,
+  requestHost,
+} from "./lib/traffic.ts";
 import type { Ctx } from "./routes/ctx.ts";
 import { handlePublic } from "./routes/public.ts";
 import { handleAuth } from "./routes/auth.ts";
@@ -138,6 +143,9 @@ function logRequest(req: Request, res: Response, startedAt: number, userId?: unk
   try {
     const u = new URL(req.url);
     const ms = Math.round(performance.now() - startedAt);
+    // Which public host + app build is calling. Batched into app_traffic by the
+    // job worker; the JSON line keeps the same detail for journald.
+    recordTraffic(req);
     const line = {
       t: new Date().toISOString(),
       level: res.status >= 500 ? "error" : res.status >= 400 ? "warn" : "info",
@@ -146,6 +154,8 @@ function logRequest(req: Request, res: Response, startedAt: number, userId?: unk
       status: res.status,
       ms,
       user: userId != null ? Number(userId) : null,
+      host: requestHost(req),
+      app_version: requestAppVersion(req),
       rid: crypto.randomUUID().slice(0, 8),
       slow: ms > 2000 ? true : undefined,
     };

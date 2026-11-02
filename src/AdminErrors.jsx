@@ -4,7 +4,7 @@
  * sent to a third party.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { getClientErrors, setClientErrorResolved } from './api'
+import { getAppTraffic, getClientErrors, setClientErrorResolved } from './api'
 
 const APP_COLORS = {
   portal: '#1a73e8',
@@ -27,6 +27,7 @@ function fmt(value) {
 
 export default function AdminErrors({ onToast }) {
   const [items, setItems] = useState([])
+  const [traffic, setTraffic] = useState(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('open')
   const [openId, setOpenId] = useState(null)
@@ -35,8 +36,12 @@ export default function AdminErrors({ onToast }) {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const res = await getClientErrors()
+      const [res, tr] = await Promise.all([
+        getClientErrors(),
+        getAppTraffic().catch(() => null),
+      ])
       setItems(Array.isArray(res?.items) ? res.items : [])
+      setTraffic(tr && Array.isArray(tr.rows) ? tr : null)
     } catch (e) {
       onToast?.(e?.message || 'Could not load errors', 'error')
       setItems([])
@@ -78,6 +83,43 @@ export default function AdminErrors({ onToast }) {
         </div>
         <button type="button" className="btn small" onClick={() => void load()}>Refresh</button>
       </header>
+
+      {traffic ? (
+        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+          <h3 style={{ margin: '0 0 4px' }}>API host traffic · last {traffic.days} days</h3>
+          <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
+            Legacy sslip host: <strong>{Number(traffic.old_host_requests || 0).toLocaleString()}</strong>{' '}
+            requests
+            {traffic.old_host_last_seen ? ` · last ${fmt(traffic.old_host_last_seen)}` : ''}
+          </p>
+          {traffic.rows.length === 0 ? (
+            <p className="muted" style={{ fontSize: 12, margin: 0 }}>No traffic recorded yet.</p>
+          ) : (
+            <div className="data-table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr><th>Host</th><th>App version</th><th>Requests</th><th>Last seen</th></tr>
+                </thead>
+                <tbody>
+                  {traffic.rows.slice(0, 12).map((r, i) => {
+                    const old = String(r.host || '').endsWith('.sslip.io')
+                    return (
+                      <tr key={`${r.host}|${r.app_version}|${i}`}>
+                        <td style={{ fontWeight: old ? 700 : 400, color: old ? '#b45309' : undefined }}>
+                          {r.host}
+                        </td>
+                        <td>{r.app_version}</td>
+                        <td>{Number(r.requests || 0).toLocaleString()}</td>
+                        <td>{fmt(r.last_seen)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : null}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         {[

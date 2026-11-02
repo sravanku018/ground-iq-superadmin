@@ -1,8 +1,17 @@
 /** API client — production is the Oracle Cloud VPS host baked in below (Neon for data). */
+import { APP_VERSION, APP_VERSION_CODE } from './version'
 
 const TOKEN_KEY = 'esurvey_token'
 const USER_KEY = 'esurvey_user'
 const LEGACY_API_KEY = 'esurvey_api_base'
+
+/** App build identity for server-side host/version traffic accounting. */
+export function appIdentityHeaders() {
+  return {
+    'X-App-Version': APP_VERSION,
+    'X-App-Version-Code': String(APP_VERSION_CODE || ''),
+  }
+}
 
 /** Fixed production API — Oracle Cloud VPS */
 export const DENO_API_URL = 'https://api.smartsurveyx.com'
@@ -114,6 +123,7 @@ async function request(path, options = {}) {
   const url = `${base}${path}`
   const headers = {
     Accept: 'application/json',
+    ...appIdentityHeaders(),
     ...options.headers,
   }
 
@@ -543,7 +553,7 @@ export async function exportSubmissions(filters = {}) {
   const url = `${base}/api/admin/export${q ? `?${q}` : ''}`
   try {
     const res = await fetchWithTimeout(url, {
-      headers: { Authorization: `Bearer ${getToken()}` },
+      headers: { Authorization: `Bearer ${getToken()}`, ...appIdentityHeaders() },
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
@@ -692,6 +702,11 @@ export function getAnswerRows(filters = {}, limit = 10000) {
   }
   q.set('limit', String(limit))
   return request(`/api/admin/answer-rows?${q.toString()}`)
+}
+
+/** API traffic by host/app version (sslip retirement report). */
+export function getAppTraffic(days = 30) {
+  return request(`/api/app-traffic?days=${Number(days) || 30}`)
 }
 
 /** Local error tracking (Super Admin console). */

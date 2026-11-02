@@ -89,33 +89,44 @@ stream, and both CSP report endpoints.
 - Install + test: login, photo/audio presign, offline queue, update check.
 - Old APKs keep calling `162.35.96.65.sslip.io`; keep that host and its certificate.
 
-## Step 5 — shorter retirement of sslip (weeks, not 90 days)
+## Step 5 — traffic-based retirement (no 426 gate)
 
-`/api/app-version` cannot force **old** APKs by itself — they ignore
-`minSupportedVersionCode`. Two-part approach:
+Old APKs cannot handle `426 Upgrade Required`; a forced gate would also burn their
+queued-package retry attempts. **No 426 gate.** Instead, measure real old-host usage
+and retire only when it reaches zero.
 
-1. **2.0.122 client**: treat `APP_VERSION_CODE < minSupportedVersionCode` as
-   `mandatory` (dismiss button hidden). Prepared in `src/appUpdate.js` on the branch.
-2. **Old-host gate** after a cutoff: Caddy or the API returns `426 Upgrade Required`
-   for `162.35.96.65.sslip.io` on every path **except**:
-   - `/api/app-version`
-   - `/api/app.apk`
-   - `/api/health`
+### Traffic accounting (prepared on this branch)
 
-   Old APKs can still check and download the update; normal API calls fail until they
-   update. Old web clients are already on the new host by then.
+- `hono-api/legacy/handler/lib/traffic.ts` batches `(day, host, app_version, requests)`
+  in memory; the job worker flushes to the `app_traffic` table every tick.
+- `logRequest()` now includes `host` and `app_version`; new clients send
+  `X-App-Version` / `X-App-Version-Code` from `src/api.js`.
+- Old APKs send no version header → `app_version = "unknown"`; the **host** is the
+  retirement signal.
+- Super Admin report: `GET /api/app-traffic?days=30`, also shown on the Errors page:
+  rows per host/version plus `old_host_requests` and `old_host_last_seen`.
 
-Proposed timeline (after the freeze lifts):
+### 2.0.122 mandatory update UX (prepared on this branch)
 
-| Day | Action |
-|---|---|
-| 0 | Publish 2.0.122; both API hosts live |
-| 1–14 | Monitor old-host logs; normal update prompts |
-| 14 | Set `minSupportedVersionCode = 200122`; enable old-host 426 gate (exempt update routes) |
-| 14–28 | Stragglers update; old host only serves version/APK/health |
-| 28 | Remove sslip from web CSP; remove the Caddy block and DNS record |
+- Gate is **native-only** and blocks only uploads; capture, drafts and the local queue
+  are never blocked.
+- The mandatory prompt is shown **only when the user taps Sync**, never at launch or
+  while collecting (`AppUpdateModal` no longer opens for mandatory updates).
+- “Keep collecting offline” closes the prompt; the queue stays untouched.
+- A failed download keeps the prompt with **Retry** and a direct APK link; the user can
+  always close it and keep working.
+- Background sync attempts blocked by the gate stay silent and leave the queue pending.
 
-This gives ~4 weeks instead of 90 days while keeping an update path at every step.
+### Retirement criteria
+
+1. Publish 2.0.122; both API hosts live.
+2. Set `minSupportedVersionCode = 200122` (server-side) so 2.0.122 clients treat older
+   builds as mandatory.
+3. Monitor `old_host_requests` and `old_host_last_seen`.
+4. Remove the sslip Caddy block **only when old-host traffic is ~0 for 7 consecutive
+   days** (and no APK version below the floor is seen). Estimate: 3–4 weeks, but
+   evidence-based rather than a fixed cutoff.
+5. Then remove sslip from the web CSP and delete the old DNS record.
 
 ## Rollback
 
@@ -129,4 +140,7 @@ This gives ~4 weeks instead of 90 days while keeping an update path at every ste
 
 - DNS record still points at Vercel; the Caddy block is **not loaded**.
 - Web changes are committed only on the local `api-domain-cutover` branch and not pushed.
+- Traffic accounting (`app_traffic` + `/api/app-traffic`) and the sync-time mandatory
+  prompt are prepared on the branch; the API migration has not run and nothing is deployed.
 - APK 2.0.122 is not built or published.
+- No 426 gate will be added.

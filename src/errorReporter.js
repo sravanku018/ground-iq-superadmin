@@ -8,7 +8,7 @@
  * capped, so a render loop can't flood the API.
  */
 import { Capacitor } from '@capacitor/core'
-import { getApiBase, getStoredUser, getToken } from './api'
+import { appIdentityHeaders, getApiBase, getStoredUser, getToken } from './api'
 
 const SEEN = new Map()
 const MAX_SEEN = 50
@@ -57,6 +57,7 @@ export function reportError(error, context = {}) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...appIdentityHeaders(),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(payload),

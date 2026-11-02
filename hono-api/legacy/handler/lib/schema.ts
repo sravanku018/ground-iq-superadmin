@@ -120,6 +120,18 @@ export async function ensureSchema(): Promise<void> {
         )
       `,
     () => sql`CREATE INDEX IF NOT EXISTS pending_media_created_idx ON pending_media (created_at)`,
+    // API traffic by public host + app version — used to retire the legacy sslip host.
+    () => sql`
+        CREATE TABLE IF NOT EXISTS app_traffic (
+          day DATE NOT NULL,
+          host TEXT NOT NULL,
+          app_version TEXT NOT NULL,
+          requests BIGINT NOT NULL DEFAULT 0,
+          last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (day, host, app_version)
+        )
+      `,
+    () => sql`CREATE INDEX IF NOT EXISTS app_traffic_day_idx ON app_traffic (day)`,
     // Heartbeat from scripts/backup-db.sh — /api/backup/status surfaces it.
     () => sql`
         CREATE TABLE IF NOT EXISTS backup_runs (
@@ -382,7 +394,7 @@ export async function ensureCompanyExists(
 
 // Bump this when ensureSchema() steps change. The version is stored in
 // app_settings; if it matches, the ~58 CREATE/ALTER round-trips are skipped.
-const SCHEMA_VERSION = "2026-11-01.7";
+const SCHEMA_VERSION = "2026-11-02.1";
 
 export let schemaReady: Promise<void> | null = null;
 

@@ -5,12 +5,21 @@
 
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import { APP_VERSION, APP_VERSION_CODE } from "./version"
-import { apkDownloadUrl, getApiBase } from "./api"
+import { apkDownloadUrl, appIdentityHeaders, getApiBase } from "./api"
 
 const GITHUB_REPO = "sravanku018/ground-iq-web"
 const DISMISSED_UPDATE_KEY = "esurvey_dismissed_update_version"
 
 const ApkInstall = registerPlugin('ApkInstall')
+
+/** Native APK vs PWA/web. The mandatory update gate only applies natively. */
+export function isNativeApp() {
+  return typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform?.()
+}
+
+// The sync engine may ask on every drain; cache the version response briefly.
+let apiVersionCache = null
+let apiVersionCacheAt = 0
 
 export function semverCompare(a, b) {
   const pa = String(a || "0").replace(/^v/, "").split(".").map(Number)
@@ -38,17 +47,31 @@ export async function checkForAppUpdate(options = { ignoreDismissed: false }) {
   let apiData = null
 
   try {
-    const base = getApiBase()
-    const res = await fetch(`${base}/api/app-version?t=${Date.now()}`, {
-      cache: "no-store",
-      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
-    })
-    if (res.ok) {
-      const json = await res.json()
-      if (json?.version) apiData = json
+    const now = Date.now()
+    if (!options.force && apiVersionCache && now - apiVersionCacheAt < 60_000) {
+      apiData = apiVersionCache
+    } else {
+      const base = getApiBase()
+      const res = await fetch(`${base}/api/app-version?t=${Date.now()}`, {
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+          "Cache-Control": "no-cache",
+          ...appIdentityHeaders(),
+        },
+      })
+      if (res.ok) {
+        const json = await res.json()
+        if (json?.version) {
+          apiData = json
+          apiVersionCache = json
+          apiVersionCacheAt = now
+        }
+      }
     }
   } catch {
-    /* offline */
+    // Offline: keep the last known answer so the sync gate stays stable.
+    apiData = apiVersionCache
   }
 
   const updateData = apiData;
@@ -114,7 +137,7 @@ export function dismissUpdate(version) {
  */
 export async function launchApkUpdate(apkUrl) {
   const target = apkUrl || defaultApkUrl()
-  const native = typeof Capacitor !== "undefined" && Capacitor.isNativePlatform?.()
+  const native = isNativeApp()
   if (native) {
     try {
       const result = await ApkInstall.downloadAndInstall({ url: target })

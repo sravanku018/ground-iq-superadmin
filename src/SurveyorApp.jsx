@@ -26,6 +26,7 @@ import {
 } from './syncEngine'
 import LoginScreen from './Login'
 import FieldCollectScreen from './FieldCollect'
+import MandatoryUpdatePrompt from './MandatoryUpdatePrompt'
 import ConversationsScreen from './ConversationsScreen'
 import { startConversationSync, stopConversationSync, onConversationSync, triggerConversationSync } from './conversationSync'
 import { conversationNeedsWork, listConversationsLocal } from './conversationStore'
@@ -1607,6 +1608,7 @@ function SurveyorApp() {
     }
   })
   const [tab, setTab] = useState('home')
+  const [mandatoryUpdate, setMandatoryUpdate] = useState(null)
   const [network, setNetwork] = useState(null)
   const [pendingSync, setPendingSync] = useState(() => queueCount())
   const [conversationPending, setConversationPending] = useState(0)
@@ -1837,6 +1839,9 @@ function SurveyorApp() {
           notify(`Queue synced: ${ev.ok} package(s)`, 'ok')
           getMyProgress().then(setMyProgress).catch(() => {})
         }
+      }
+      if (ev.type === 'update-required') {
+        setMandatoryUpdate(ev.latest || null)
       }
       if (ev.type === 'package-done') {
         void getQueueSnapshot()
@@ -2370,7 +2375,13 @@ function SurveyorApp() {
               }}
               onSync={() => {
                 forceSyncNow()
-                  .then(() => notify('Syncing device queue…', 'ok'))
+                  .then((res) => {
+                    if (res?.reason === 'update') {
+                      notify('Update required before sync — records stay on this phone', 'error')
+                      return
+                    }
+                    notify('Syncing device queue…', 'ok')
+                  })
                   .catch((e) => {
                     console.warn('[sync] manual sync failed', e)
                     notify('Could not start sync — check your connection', 'error')
@@ -2510,6 +2521,14 @@ function SurveyorApp() {
           </button>
         ))}
       </nav>
+
+      {mandatoryUpdate ? (
+        <MandatoryUpdatePrompt
+          latest={mandatoryUpdate}
+          onClose={() => setMandatoryUpdate(null)}
+          onToast={notify}
+        />
+      ) : null}
     </div>
   )
 }

@@ -33,7 +33,7 @@ import {
 } from "../lib/totp.ts";
 
 export async function handleSuperAdmin(c: Ctx): Promise<Response | null> {
-  const { req, path, method, me } = c;
+  const { req, url, path, method, me } = c;
   // Super Admin: manage the Soniox key without shell/server access.
   if (path === "/api/super-admin/soniox" && (method === "GET" || method === "PUT" || method === "DELETE")) {
     if (!me) return json({ error: "Login required" }, 401);
@@ -288,6 +288,40 @@ export async function handleSuperAdmin(c: Ctx): Promise<Response | null> {
       recent: rows,
       age_minutes: ageMinutes,
       stale: ageMinutes == null || ageMinutes > 120,
+    });
+  }
+
+  // ── API traffic by host + app version (sslip retirement signal) ────────
+  if (path === "/api/app-traffic" && method === "GET") {
+    if (!me) return json({ error: "Login required" }, 401);
+    if (me.role !== "super_admin") return json({ error: "Super Admin only" }, 403);
+    const days = Math.min(Math.max(Number(url.searchParams.get("days")) || 30, 1), 90);
+    const rows = await sql`
+        SELECT host, app_version, SUM(requests)::bigint AS requests,
+               MAX(last_seen) AS last_seen
+        FROM app_traffic
+        WHERE day >= CURRENT_DATE - ${days}
+        GROUP BY host, app_version
+        ORDER BY requests DESC
+        LIMIT 200
+      `.catch(() => []);
+    const out = (rows as Record<string, unknown>[]).map((r) => ({
+      host: String(r.host || ""),
+      app_version: String(r.app_version || ""),
+      requests: Number(r.requests) || 0,
+      last_seen: r.last_seen || null,
+    }));
+    const isOld = (host: string) => host.endsWith(".sslip.io");
+    const oldRows = out.filter((r) => isOld(r.host));
+    return json({
+      days,
+      rows: out,
+      old_host_requests: oldRows.reduce((n, r) => n + r.requests, 0),
+      old_host_last_seen: oldRows.reduce<string | null>(
+        (latest, r) => (!latest || String(r.last_seen) > latest ? String(r.last_seen) : latest),
+        null,
+      ),
+      total_requests: out.reduce((n, r) => n + r.requests, 0),
     });
   }
 

@@ -11,7 +11,9 @@ export default function AppUpdateModal() {
     const t = setTimeout(async () => {
       try {
         const res = await checkForAppUpdate();
-        if (res.hasUpdate) {
+        // Mandatory APKs are prompted at sync time by MandatoryUpdatePrompt,
+        // never at launch — capture must stay available offline.
+        if (res.hasUpdate && !res.latest?.mandatory) {
           setUpdateInfo(res);
         }
       } catch {

@@ -300,11 +300,14 @@ export async function handleSuperAdmin(c: Ctx): Promise<Response | null> {
         SELECT host, app_version, SUM(requests)::bigint AS requests,
                MAX(last_seen) AS last_seen
         FROM app_traffic
-        WHERE day >= CURRENT_DATE - ${days}
+        WHERE day >= CURRENT_DATE - (${days}::int)
         GROUP BY host, app_version
         ORDER BY requests DESC
         LIMIT 200
-      `.catch(() => []);
+      `.catch((e) => {
+        console.error("app-traffic query:", (e as Error)?.message || e);
+        return [];
+      });
     const out = (rows as Record<string, unknown>[]).map((r) => ({
       host: String(r.host || ""),
       app_version: String(r.app_version || ""),

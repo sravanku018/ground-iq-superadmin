@@ -261,14 +261,29 @@ export async function handleMedia(c: Ctx): Promise<Response | null> {
     // Deterministic key: a retried package re-signs the same object, so
     // /complete is idempotent instead of creating a second media row.
     const key = `${r2KeyPrefix()}election-survey/${kind}/${day}/sub-${id}/${packageId}-${kind}.${ext}`;
-    const uploadUrl = await presignPut(key, mime, 900);
+    // 10 minutes: long enough for a field upload, short enough that a leaked
+    // URL is not a standing write credential.
+    const EXPIRES_SECONDS = 600;
+    const uploadUrl = await presignPut(key, mime, EXPIRES_SECONDS);
     if (!uploadUrl) return json({ error: "R2 is not configured for direct uploads" }, 501);
+    // Pending row lets the cleanup job delete an object that was uploaded but
+    // never confirmed (the PUT URL itself cannot enforce completion).
+    await sql`
+        INSERT INTO pending_media (key, submission_id, kind, mime, bytes)
+        VALUES (${key}, ${id}, ${kind}, ${mime}, ${bytes})
+        ON CONFLICT (key) DO UPDATE SET
+          submission_id = EXCLUDED.submission_id,
+          kind = EXCLUDED.kind,
+          mime = EXCLUDED.mime,
+          bytes = EXCLUDED.bytes,
+          created_at = NOW()
+      `.catch(() => null);
     return json({
       upload_url: uploadUrl,
       key,
       mime,
       bytes,
-      expires_in: 900,
+      expires_in: EXPIRES_SECONDS,
       max_bytes: 2_100_000,
     });
   }
@@ -305,6 +320,21 @@ export async function handleMedia(c: Ctx): Promise<Response | null> {
     const info = await objectInfo(key);
     if (!info) return json({ error: "Uploaded object not found — retry the upload" }, 400);
     if (info.size < 50) return json({ error: "Uploaded object is empty" }, 400);
+    if (info.size > 2_100_000) {
+      return json({
+        error: "Uploaded media is too large (max ~1.5MB). Compress it and retry.",
+        bytes: info.size,
+      }, 413);
+    }
+    const storedMime = String(info.mime || "").split(";")[0].trim().toLowerCase();
+    if (storedMime && storedMime !== mime) {
+      return json({
+        error: `Uploaded Content-Type ${storedMime} does not match ${mime}`,
+      }, 400);
+    }
+    if (kind === "photo" && !isImageBytes(info.head)) {
+      return json({ error: "Uploaded file is not a valid image (JPEG/PNG/GIF/WebP)" }, 400);
+    }
     const claimed = Number(body.bytes || 0);
     if (Number.isFinite(claimed) && claimed > 0 && Math.abs(info.size - claimed) > 1024) {
       return json({
@@ -369,6 +399,8 @@ export async function handleMedia(c: Ctx): Promise<Response | null> {
       auto_confirmed: false,
       completeness: "incomplete",
     }));
+    // Confirmed: the cleanup job must never delete this object.
+    await sql`DELETE FROM pending_media WHERE key = ${key}`.catch(() => null);
     return json({
       ok: true,
       submission_id: id,

@@ -167,26 +167,82 @@ export async function presignPut(
 export async function objectInfo(
   objectKey: string,
   bucket?: string,
-): Promise<{ size: number; mime: string } | null> {
+): Promise<{ size: number; mime: string; head: Uint8Array<ArrayBuffer> } | null> {
   const signed = await presignGet(objectKey, 60, bucket);
   if (!signed) return null;
   try {
-    const res = await fetch(signed, { headers: { Range: "bytes=0-0" } });
+    // One small ranged GET gives the true size and enough magic bytes to
+    // reject a non-image uploaded as a photo. Never downloads whole media.
+    const res = await fetch(signed, { headers: { Range: "bytes=0-511" } });
     if (!res.ok) return null;
     const range = res.headers.get("content-range") || "";
     const total = range.includes("/")
       ? Number(range.split("/")[1])
       : Number(res.headers.get("content-length") || 0);
     const mime = res.headers.get("content-type") || "";
-    // Do not download the object: the one-byte body is all we need.
-    try {
-      await res.body?.cancel();
-    } catch {
-      /* already closed */
-    }
-    return { size: Number.isFinite(total) ? total : 0, mime };
+    const head = new Uint8Array(await res.arrayBuffer());
+    return { size: Number.isFinite(total) ? total : 0, mime, head };
   } catch {
     return null;
+  }
+}
+
+/** Delete one R2 object (SigV4 DELETE). 404 counts as success. */
+export async function deleteR2Object(
+  objectKey: string,
+  bucket?: string,
+): Promise<boolean> {
+  const { host, buck, ak, sk } = r2Config();
+  const useBucket = bucket || buck;
+  if (!ak || !sk || !objectKey) return false;
+  const pathKey = objectKey.split("/").map(encodeURIComponent).join("/");
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const amzDate =
+    `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}T` +
+    `${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
+  const dateStamp = amzDate.slice(0, 8);
+  const scope = `${dateStamp}/auto/s3/aws4_request`;
+  const payloadHash = await sha256Hex(new Uint8Array());
+  const canonicalHeaders =
+    `host:${host}\n` +
+    `x-amz-content-sha256:${payloadHash}\n` +
+    `x-amz-date:${amzDate}\n`;
+  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+  const canonicalRequest = [
+    "DELETE",
+    `/${useBucket}/${pathKey}`,
+    "",
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join("\n");
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    scope,
+    await sha256Hex(canonicalRequest),
+  ].join("\n");
+  const kDate = await hmacSha256(new TextEncoder().encode("AWS4" + sk), dateStamp);
+  const kRegion = await hmacSha256(kDate, "auto");
+  const kService = await hmacSha256(kRegion, "s3");
+  const kSigning = await hmacSha256(kService, "aws4_request");
+  const signature = toHex(await hmacSha256(kSigning, stringToSign));
+  const authorization =
+    `AWS4-HMAC-SHA256 Credential=${ak}/${scope}, ` +
+    `SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  try {
+    const res = await fetch(`https://${host}/${useBucket}/${pathKey}`, {
+      method: "DELETE",
+      headers: {
+        "x-amz-content-sha256": payloadHash,
+        "x-amz-date": amzDate,
+        Authorization: authorization,
+      },
+    });
+    return res.ok || res.status === 404;
+  } catch {
+    return false;
   }
 }
 

@@ -108,6 +108,18 @@ export async function ensureSchema(): Promise<void> {
         ON survey_media ((meta->>'key'))
         WHERE COALESCE(meta->>'key', '') <> ''
       `,
+    // Unconfirmed presigned uploads: the sweep deletes these R2 objects after 24h.
+    () => sql`
+        CREATE TABLE IF NOT EXISTS pending_media (
+          key TEXT PRIMARY KEY,
+          submission_id INTEGER NOT NULL,
+          kind TEXT NOT NULL,
+          mime TEXT NOT NULL,
+          bytes INTEGER,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `,
+    () => sql`CREATE INDEX IF NOT EXISTS pending_media_created_idx ON pending_media (created_at)`,
     // Heartbeat from scripts/backup-db.sh — /api/backup/status surfaces it.
     () => sql`
         CREATE TABLE IF NOT EXISTS backup_runs (
@@ -370,7 +382,7 @@ export async function ensureCompanyExists(
 
 // Bump this when ensureSchema() steps change. The version is stored in
 // app_settings; if it matches, the ~58 CREATE/ALTER round-trips are skipped.
-const SCHEMA_VERSION = "2026-11-01.6";
+const SCHEMA_VERSION = "2026-11-01.7";
 
 export let schemaReady: Promise<void> | null = null;
 

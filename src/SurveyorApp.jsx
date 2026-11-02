@@ -2375,13 +2375,7 @@ function SurveyorApp() {
               }}
               onSync={() => {
                 forceSyncNow()
-                  .then((res) => {
-                    if (res?.reason === 'update') {
-                      notify('Update required before sync — records stay on this phone', 'error')
-                      return
-                    }
-                    notify('Syncing device queue…', 'ok')
-                  })
+                  .then(() => notify('Syncing device queue…', 'ok'))
                   .catch((e) => {
                     console.warn('[sync] manual sync failed', e)
                     notify('Could not start sync — check your connection', 'error')
@@ -2521,6 +2515,49 @@ function SurveyorApp() {
           </button>
         ))}
       </nav>
+
+      {pendingSync > 0 && tab !== 'home' ? (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            left: '50%',
+            bottom: 74,
+            transform: 'translateX(-50%)',
+            width: 'calc(100% - 24px)',
+            maxWidth: 460,
+            zIndex: 99997,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            padding: '8px 12px',
+            borderRadius: 10,
+            background: '#fffbeb',
+            border: '1px solid #f59e0b',
+            color: '#92400e',
+            boxShadow: '0 8px 20px -8px rgba(0,0,0,0.35)',
+            fontSize: 13,
+            fontWeight: 600,
+          }}
+        >
+          <span>{pendingSync} waiting to sync</span>
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => {
+              forceSyncNow().finally(() => {
+                void getQueueSnapshot()
+                  .then((s) => setPendingSync(s.pending))
+                  .catch(() => {})
+              })
+            }}
+          >
+            Sync now
+          </button>
+        </div>
+      ) : null}
 
       {mandatoryUpdate ? (
         <MandatoryUpdatePrompt

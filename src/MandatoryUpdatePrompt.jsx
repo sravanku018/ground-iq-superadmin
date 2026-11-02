@@ -30,7 +30,7 @@ export default function MandatoryUpdatePrompt({ latest, onClose, onToast }) {
   return (
     <div
       role="dialog"
-      aria-label="Update required to sync"
+      aria-label="Update available"
       style={{
         position: 'fixed',
         left: '50%',
@@ -49,7 +49,7 @@ export default function MandatoryUpdatePrompt({ latest, onClose, onToast }) {
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
         <strong style={{ fontSize: 14, color: '#38bdf8' }}>
-          Update required before syncing
+          Update available
         </strong>
         <button
           type="button"
@@ -61,8 +61,8 @@ export default function MandatoryUpdatePrompt({ latest, onClose, onToast }) {
         </button>
       </div>
       <p style={{ margin: '6px 0 10px', fontSize: 13, color: '#cbd5e1', lineHeight: 1.45 }}>
-        Install v{latest.version} to upload. Your answers, photo and voice stay safely
-        on this phone — you can keep collecting offline and sync after updating.
+        Install v{latest.version} for the latest fixes. Your answers, photo and voice
+        stay safely on this phone, and syncing continues either way.
       </p>
       {error ? (
         <p style={{ margin: '0 0 10px', fontSize: 12, color: '#fca5a5', lineHeight: 1.4 }}>
@@ -91,7 +91,7 @@ export default function MandatoryUpdatePrompt({ latest, onClose, onToast }) {
             border: '1px solid rgba(148,163,184,0.35)', fontSize: 13, cursor: 'pointer',
           }}
         >
-          Keep collecting offline
+          Not now
         </button>
       </div>
       <a

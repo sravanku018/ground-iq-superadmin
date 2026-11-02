@@ -440,18 +440,18 @@ async function withDrainLock(fn) {
   return fn()
 }
 
-async function mandatoryUpdateBlock() {
-  // Only native APKs are gated. The PWA can update by reload; blocking its
-  // sync would be unnecessary. No network call is made while offline:
-  // checkForAppUpdate falls back to its last cached answer.
-  if (!isNativeApp()) return null
-  try {
-    const res = await checkForAppUpdate({ ignoreDismissed: true })
-    if (res?.hasUpdate && res.latest?.mandatory) return res.latest
-  } catch {
-    /* offline / update check failed → let the normal queue retry */
-  }
-  return null
+/** Surface the mandatory update prompt without delaying or blocking sync. */
+function notifyMandatoryUpdate() {
+  if (!isNativeApp()) return
+  void checkForAppUpdate({ ignoreDismissed: true })
+    .then((res) => {
+      if (res?.hasUpdate && res.latest?.mandatory) {
+        emit({ type: 'update-required', latest: res.latest })
+      }
+    })
+    .catch(() => {
+      /* offline / update check failed */
+    })
 }
 
 /** Drain queue FIFO, one package fully before next */
@@ -463,13 +463,9 @@ export async function drainQueue(reason = 'tick', opts = {}) {
   // per-package backoff/attempt cap. The user explicitly asked to push now.
   const manual = !!opts.manual || reason === 'manual'
 
-  // Mandatory APK update: stop uploads but never touch capture or the local
-  // queue. Only a manual sync surfaces the prompt; background ticks stay quiet.
-  const pendingUpdate = await mandatoryUpdateBlock()
-  if (pendingUpdate) {
-    if (manual) emit({ type: 'update-required', latest: pendingUpdate })
-    return { skipped: true, reason: 'update', latest: pendingUpdate }
-  }
+  // Update prompts are advisory only: never block uploads. The queue must keep
+  // draining even when the APK is below the supported version.
+  if (manual) notifyMandatoryUpdate()
 
   // Claim the in-memory lock synchronously, before any await.
   running = true

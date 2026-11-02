@@ -2476,13 +2476,9 @@ export default function FieldCollectScreen({
             style={{ marginTop: 8 }}
             onClick={() => {
               void forceSyncNow()
-                .then((res) => {
+                .then(() => {
                   refreshQueue()
                   refreshProgress()
-                  if (res?.reason === 'update') {
-                    onToast?.('Update required before sync — records stay on this phone', 'error')
-                    return
-                  }
                   onToast?.('Queue sync started', 'ok')
                 })
                 .catch((e) => {

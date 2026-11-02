@@ -64,5 +64,11 @@ export async function runRetentionSweep(force = false): Promise<void> {
         AND updated_at < NOW() - INTERVAL '30 days'
     `.catch(() => null);
 
+  // Traffic rollups are only needed for the current migration window.
+  await sql`
+      DELETE FROM app_traffic
+      WHERE day < CURRENT_DATE - INTERVAL '90 days'
+    `.catch(() => null);
+
   await sweepOrphanMedia();
 }

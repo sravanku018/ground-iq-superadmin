@@ -1,10 +1,13 @@
 /**
  * Lightweight API traffic accounting — which hostname and app version are
- * calling us. Used to decide when the legacy sslip.io host can be retired.
+ * calling us. Used to see when the legacy sslip.io host has gone quiet.
  *
  * Counts are batched in memory and flushed by the job worker every tick, so a
  * request never waits on a database write. A failed flush merges the counts
  * back into the buffer for the next attempt.
+ *
+ * Host and version are normalized before they become bucket keys: arbitrary
+ * Host/X-App-Version values collapse to "other" instead of creating rows.
  */
 import { sql } from "./db.ts";
 
@@ -12,27 +15,58 @@ type Bucket = { host: string; version: string; n: number; last: number };
 
 const buckets = new Map<string, Bucket>();
 
+/** Bound the in-memory key space even if normalization changes later. */
+const MAX_BUCKETS = 100;
+
+const SMARTSURVEY_HOST = /^([a-z0-9-]+\.)*smartsurveyx\.com$/;
+const SSLP_HOST = /^([a-z0-9-]+\.)?162\.35\.96\.65\.sslip\.io$/;
+
+/** Allowlisted hostname or "other". */
+export function normalizeHost(raw: unknown): string {
+  const h = String(raw || "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .split(":")[0]
+    .slice(0, 120);
+  if (!h) return "other";
+  if (h === "localhost" || h === "127.0.0.1" || h === "::1") return h;
+  if (SMARTSURVEY_HOST.test(h) || SSLP_HOST.test(h)) return h;
+  return "other";
+}
+
+/** Semver-like version or "other" (old APKs do not send the header). */
+export function normalizeAppVersion(raw: unknown): string {
+  const v = String(raw || "").trim().toLowerCase().replace(/^v/, "");
+  return /^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v) ? v : "other";
+}
+
 /** Normalize the public host (Caddy forwards the original Host). */
 export function requestHost(req: Request): string {
   try {
     const raw = req.headers.get("x-forwarded-host") || req.headers.get("host") ||
       new URL(req.url).hostname;
-    return String(raw).split(",")[0].trim().split(":")[0].slice(0, 120) || "unknown";
+    return normalizeHost(raw);
   } catch {
-    return "unknown";
+    return "other";
   }
 }
 
-/** New clients send X-App-Version; old APKs fall back to "unknown". */
 export function requestAppVersion(req: Request): string {
-  return (req.headers.get("x-app-version") || "unknown").trim().slice(0, 40) || "unknown";
+  return normalizeAppVersion(req.headers.get("x-app-version"));
 }
 
 export function recordTraffic(req: Request): void {
   try {
-    const host = requestHost(req);
-    const version = requestAppVersion(req);
-    const key = `${host}|${version}`;
+    let host = requestHost(req);
+    let version = requestAppVersion(req);
+    let key = `${host}|${version}`;
+    if (!buckets.has(key) && buckets.size >= MAX_BUCKETS) {
+      host = "other";
+      version = "other";
+      key = "other|other";
+    }
     const now = Date.now();
     const b = buckets.get(key) || { host, version, n: 0, last: now };
     b.n += 1;

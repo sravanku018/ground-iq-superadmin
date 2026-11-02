@@ -7,7 +7,7 @@
  * Not registered inside the Capacitor APK — the APK updates as a whole,
  * and a cached shell could serve stale assets after an app update.
  */
-const CACHE = 'giq-shell-v3';
+const CACHE = 'giq-shell-v4';
 const CORE = ['/', '/app.html', '/index.html'];
 
 self.addEventListener('install', (event) => {

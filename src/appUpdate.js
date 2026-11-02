@@ -60,7 +60,13 @@ export async function checkForAppUpdate(options = { ignoreDismissed: false }) {
   const latestCode = Number(updateData.versionCode) || 0
   const codeNewer = latestCode > 0 && APP_VERSION_CODE > 0 && latestCode > APP_VERSION_CODE
   const semverNewer = semverCompare(updateData.version, APP_VERSION) > 0
-  const isNewer = codeNewer || semverNewer
+  // Server-enforced floor: an APK below this code cannot dismiss the update.
+  // Old APKs (before 2.0.122) ignore this field; the old host is gated server-side.
+  const minCode = Number(
+    updateData.minSupportedVersionCode ?? updateData.min_supported_version_code,
+  ) || 0
+  const belowMin = minCode > 0 && APP_VERSION_CODE > 0 && APP_VERSION_CODE < minCode
+  const isNewer = codeNewer || semverNewer || belowMin
 
   const latest = {
     version: updateData.version,
@@ -68,7 +74,8 @@ export async function checkForAppUpdate(options = { ignoreDismissed: false }) {
     apkUrl: updateData.apkUrl || defaultApkUrl(),
     releaseUrl: updateData.releaseUrl || `https://github.com/${GITHUB_REPO}/releases/latest`,
     changelog: updateData.changelog || "Performance improvements and bug fixes.",
-    mandatory: Boolean(updateData.mandatory),
+    mandatory: belowMin || Boolean(updateData.mandatory),
+    minSupportedVersionCode: minCode || undefined,
   }
 
   if (!isNewer) {
@@ -80,7 +87,7 @@ export async function checkForAppUpdate(options = { ignoreDismissed: false }) {
     }
   }
 
-  if (!options.ignoreDismissed) {
+  if (!options.ignoreDismissed && !latest.mandatory) {
     const dismissed = localStorage.getItem(DISMISSED_UPDATE_KEY)
     if (dismissed === updateData.version) {
       return { hasUpdate: false, dismissed: true, currentVersion: APP_VERSION, latest }

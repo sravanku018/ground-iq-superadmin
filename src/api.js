@@ -5,7 +5,7 @@ const USER_KEY = 'esurvey_user'
 const LEGACY_API_KEY = 'esurvey_api_base'
 
 /** Fixed production API — Oracle Cloud VPS */
-export const DENO_API_URL = 'https://162.35.96.65.sslip.io'
+export const DENO_API_URL = 'https://api.smartsurveyx.com'
 
 export function getApiBase() {
   // Clear any old local/PC URL the user may have saved earlier

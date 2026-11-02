@@ -1194,7 +1194,7 @@
       try {
         const apiBase = /^staging\./.test(location.hostname)
           ? ''
-          : 'https://162.35.96.65.sslip.io';
+          : 'https://api.smartsurveyx.com';
         const res = await fetch(`${apiBase}/api/contact`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },

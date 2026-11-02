@@ -1,48 +1,57 @@
 # API domain cutover — api.smartsurveyx.com
 
-Status: **prepared on branch `api-domain-cutover`; not deployed.** Election-week
-freeze applies until the operator says go.
+Status: **DNS + Caddy for `api.smartsurveyx.com` are live and verified.** Web/APK
+changes remain prepared on branch `api-domain-cutover` and are **not deployed**.
+The sslip host stays live; there is no retirement date.
 
 ## Current facts (verified)
 
 - `ss -tlnp`: Deno listens on **127.0.0.1:8000** only; Caddy owns `*:80` / `*:443`.
 - UFW: active, default deny incoming; only 22, 80, 443, 2222 are allowed. Port 8000 is not exposed.
-- DNS is Vercel (`ns1/ns2.vercel-dns.com`). `api.smartsurveyx.com` has an **explicit A**
-  record to Vercel (`216.198.79.65`, `64.29.17.65`); the wildcard uses different IPs
-  (`.1`). TLS on the `api` host currently fails, so it is not serving a live app.
+- DNS: `api.smartsurveyx.com` A **162.35.96.65** (TTL 60) on Vercel;
+  CAA allows `letsencrypt.org`.
+- Caddy: `api.smartsurveyx.com` is live with a Let's Encrypt certificate
+  (issuer `YE2`, SAN `api.smartsurveyx.com`, expires 2027-01-31).
+  The `162.35.96.65.sslip.io` block is untouched and still returns 200.
 - WebAuthn uses the **page origin**: `window.location.origin` → server
   `webauthnOrigin()` allowlist → `webauthnRpId(origin) = hostname`.
   Allowed: `https://smartsurveyx.com`, `https://www.smartsurveyx.com`, `https://localhost`
   (APK), localhost dev ports, GitHub Pages. The API hostname is not involved, so passkeys
   survive the API move; `rpId` stays `www.smartsurveyx.com` / `localhost`.
 - `/api/app-version` already returns `minSupportedVersionCode` (currently `20000`).
-  The client before 2.0.122 ignores it; 2.0.122 will treat a below-min APK as mandatory.
+  The pre-2.0.122 client ignores it; 2.0.122 shows an **advisory** update prompt and
+  never blocks syncing.
 
-## Step 1 — DNS (operator action)
+## Step 1 — DNS (done)
 
-Replace the existing `api` record in Vercel DNS with:
+`api` A record is now:
 
 ```
 Type: A
 Name: api
 Value: 162.35.96.65
-TTL: 300
-Proxy: n/a (Vercel DNS is authoritative, not a proxy)
+TTL: 60
 ```
 
-Verify:
+Verified against `ns1.vercel-dns.com`; CAA permits `letsencrypt.org`.
 
-```bash
-dig +short A api.smartsurveyx.com     # must print 162.35.96.65
-```
+## Step 2 — Caddy (done)
 
-Do this **before** loading the Caddy block: Caddy uses HTTP-01 and will fail issuance
-while the name still points at Vercel.
+`ops/caddy/api.smartsurveyx.com.caddy` is installed alongside the unchanged sslip
+block. Verified on the live host:
 
-## Step 2 — Caddy (old host untouched)
-
-Copy `ops/caddy/api.smartsurveyx.com.caddy` into `/etc/caddy/Caddyfile`, keep the
-existing `162.35.96.65.sslip.io` block, then:
+| Check | Result |
+|---|---|
+| Certificate | Let's Encrypt `YE2`, SAN `api.smartsurveyx.com`, valid to 2027-01-31 |
+| `GET /api/health` | `200` — database connected, auth on, R2 ready |
+| CORS preflight from www + apex | `204`, matching `access-control-allow-origin` |
+| Presign → PUT → complete | `200` / `201`, media row created, `pending_media=0` |
+| Signed GET + Range | `302` → `206 image/png`, range honored |
+| Proxy `?download=1` | `200 image/png` |
+| SSE `/api/notifications/stream` | `200 text/event-stream`, ACAO www, hello/item events |
+| Security headers | HSTS, nosniff, XFO, Referrer, Permissions, CSP with `report-uri` |
+| CSP report endpoint | `200`; URL stored without query string |
+| Old sslip host | still `200`; old CSP unchanged; Caddy diff only adds the new block |
 
 ```bash
 caddy validate --config /etc/caddy/Caddyfile
@@ -164,10 +173,10 @@ migration.
 
 ## Not done yet
 
-- DNS record still points at Vercel; the Caddy block is **not loaded**.
 - Web changes are committed only on the local `api-domain-cutover` branch and not pushed.
 - Traffic accounting (`app_traffic` + `/api/app-traffic`) and the sync-time update
   prompt are prepared on the branch; the API migration has not run and nothing is deployed.
 - APK 2.0.122 is not built or published.
 - **No 426 gate. sslip stays live with no retirement date.**
 - `minSupportedVersionCode` remains `20000`.
+- DNS + Caddy are live; Step 1–2 complete.

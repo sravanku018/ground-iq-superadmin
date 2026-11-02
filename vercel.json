@@ -58,7 +58,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://unpkg.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; media-src 'self' blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com; connect-src 'self' https://162.35.96.65.sslip.io https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://nominatim.openstreetmap.org; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
+          "value": "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; media-src 'self' blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com; connect-src 'self' https://162.35.96.65.sslip.io https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://nominatim.openstreetmap.org; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
         }
       ]
     },
@@ -67,7 +67,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://unpkg.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; media-src 'self' blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com; connect-src 'self' https://162.35.96.65.sslip.io https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://nominatim.openstreetmap.org; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
+          "value": "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; media-src 'self' blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com; connect-src 'self' https://162.35.96.65.sslip.io https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://nominatim.openstreetmap.org; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
         }
       ]
     },
@@ -76,7 +76,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://unpkg.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; media-src 'self' blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com; connect-src 'self' https://162.35.96.65.sslip.io https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://nominatim.openstreetmap.org; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
+          "value": "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; media-src 'self' blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com; connect-src 'self' https://162.35.96.65.sslip.io https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://nominatim.openstreetmap.org; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
         }
       ]
     },
@@ -85,7 +85,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://unpkg.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; media-src 'self' blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com; connect-src 'self' https://162.35.96.65.sslip.io https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://nominatim.openstreetmap.org; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
+          "value": "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; media-src 'self' blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com; connect-src 'self' https://162.35.96.65.sslip.io https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://nominatim.openstreetmap.org; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
         }
       ]
     },
@@ -94,7 +94,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://unpkg.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; media-src 'self' blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com; connect-src 'self' https://162.35.96.65.sslip.io https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://nominatim.openstreetmap.org; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
+          "value": "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; media-src 'self' blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com; connect-src 'self' https://162.35.96.65.sslip.io https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://nominatim.openstreetmap.org; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
         }
       ]
     },
@@ -103,7 +103,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://unpkg.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; media-src 'self' blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com; connect-src 'self' https://162.35.96.65.sslip.io https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://nominatim.openstreetmap.org; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
+          "value": "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; media-src 'self' blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com; connect-src 'self' https://162.35.96.65.sslip.io https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://nominatim.openstreetmap.org; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
         }
       ]
     },
@@ -112,7 +112,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://unpkg.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; media-src 'self' blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com; connect-src 'self' https://162.35.96.65.sslip.io https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://nominatim.openstreetmap.org; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
+          "value": "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; media-src 'self' blob: https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com; connect-src 'self' https://162.35.96.65.sslip.io https://6f54ac7c46cba07b9dac5e1548348f4f.r2.cloudflarestorage.com https://nominatim.openstreetmap.org; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
         }
       ]
     }

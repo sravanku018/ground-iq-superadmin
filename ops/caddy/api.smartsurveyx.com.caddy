@@ -6,7 +6,7 @@ api.smartsurveyx.com {
 		X-Frame-Options "DENY"
 		Referrer-Policy "no-referrer"
 		Permissions-Policy "geolocation=(self), microphone=(self), camera=(self)"
-		Content-Security-Policy `default-src 'none'; frame-ancestors 'none'; base-uri 'none'`
+		Content-Security-Policy `default-src 'none'; frame-ancestors 'none'; base-uri 'none'; report-uri https://api.smartsurveyx.com/api/csp-report`
 		-Server
 	}
 	reverse_proxy 127.0.0.1:8000

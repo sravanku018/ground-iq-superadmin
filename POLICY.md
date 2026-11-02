@@ -20,7 +20,7 @@ Use it as the internal policy; `PRIVACY_POLICY.md` is the public privacy policy 
 | Client Admin portal | Client Admins (`admin` role) | Desktop browser (`/admin`) | `src/AdminPortal.jsx` |
 | Super Admin console | Super Admins (`super_admin`, max 3 accounts) | Separate site / `?super=1` | `src/AdminCompanies.jsx`, `src/AdminClientAdmins.jsx` |
 | Public web-fill | Anonymous respondents with a link (`?fill=<formKey>&k=<token>`) | Browser | `src/PublicWebFill.jsx` |
-| Backend API | All surfaces | HTTPS API → Neon PostgreSQL + Cloudflare R2 | `hono-api/` (Hono on Deno Deploy / Oracle VPS) |
+| Backend API | All surfaces | HTTPS API → PostgreSQL 18 (Oracle VPS) + Cloudflare R2 | `hono-api/` (Hono on Oracle VPS) |
 
 Field flow is enforced in order: **GPS lock → photo capture → voice recording + Q/A → offline queue → sync**
 (`src/FieldCollect.jsx`: `step 0 geo, 1 photo, 2 voice+qa`; `questionsOpen = geoLocked && photoLocked`).
@@ -118,11 +118,14 @@ voice is required only when the survey `voice_required` flag is on.
   (`esurvey_token`), user profile (`esurvey_user`), app version keys.
 - **In transit:** HTTPS/TLS everywhere. Production API base is fixed in-app
   (`src/api.js` `DENO_API_URL`, override `VITE_API_BASE_URL`); no HTTP fallback.
-  Media downloads go through the API (`/api/media/:id/file` with `Authorization: Bearer`),
-  never direct public bucket links from the browser (CORS + auth).
-- **At rest (server):** Neon PostgreSQL (submissions, users, sessions, audit log, survey
-  forms, web links); Cloudflare R2 bucket `election-survey-media` for photo/audio objects
-  (private bucket; served via authenticated `/api/media/:id/file`, `hono-api/legacy/handler.ts`).
+  Media downloads use short-lived presigned R2 GET URLs (or `/api/media/:id/file` with
+  `Authorization: Bearer` for exports and downloads); uploads use a presigned PUT bound
+  to the submission and verified by `/complete`. The bucket stays private — no public
+  r2.dev links are used by the app.
+- **At rest (server):** PostgreSQL 18 on the Oracle VPS (submissions, users, sessions,
+  audit log, survey forms, web links); Cloudflare R2 bucket `election-survey-media` for
+  photo/audio objects (private bucket; short-lived presigned GET/PUT URLs, with the
+  `/api/media/:id/file` proxy kept for exports and downloads).
   `survey_media.url` is stored as the relative API path, expanded to absolute URLs only
   on export with the request origin.
 - **Front door:** CORS allowlist (`hono-api/legacy/handler.ts`): `ground-iq-web*` /
@@ -205,7 +208,12 @@ voice is required only when the survey `voice_required` flag is on.
 - **Device copies:** drafts/queued packages live in the surveyor IndexedDB until synced;
   uninstalling the app or clearing site data removes them. Confirm sync completion
   before asking staff to clear devices.
-- **Backups:** Neon point-in-time recovery + R2 versioning (provider-managed); restores are
+- **Backups:** self-hosted PostgreSQL 18 on the Oracle VPS, not Neon PITR. An encrypted
+  `pg_dump` runs hourly (6-hourly once the dump exceeds 3 MB outside election week;
+  hourly during election week) to the separate R2 bucket `smartsurveyx-backups`
+  (`postgres/` prefix), AES-256 + sha256 manifest, 60-day lifecycle, 45-day Object Lock
+  where available. A weekly restore drill compares manifest row counts against a scratch
+  database; Super Admin sees the latest heartbeat at `/api/backup/status`. Restores are
   Super-Admin ops actions with an audit entry, not a self-service flow.
 - **Legacy migration:** rows without `geo` are labelled `legacy (no GPS/camera)`,
   `form_key='legacy'`, `status='confirmed'`, `confirmed_by='system (legacy migration)'` —
@@ -252,9 +260,9 @@ evidence. Target response: 30 days.
 
 | Party | Purpose | Data shared |
 |---|---|---|
-| Neon (PostgreSQL) | Primary database | Encrypted-at-rest app data |
-| Cloudflare R2 | Photo/audio object storage | Media bytes (private bucket) |
-| Deno Deploy / Oracle VPS | API hosting | In-transit API payloads |
+| PostgreSQL 18 (Oracle VPS) | Primary database | Encrypted-at-rest app data |
+| Cloudflare R2 | Photo/audio object storage + encrypted DB backups | Media bytes (private bucket); encrypted `pg_dump` |
+| Oracle VPS (Deno API) | API hosting | In-transit API payloads |
 | GitHub Pages / Vercel | Portal hosting (static) | No respondent data (UI shell only) |
 | Leaflet + bundled GeoJSON | Maps rendering | No personal data sent |
 

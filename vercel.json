@@ -10,8 +10,8 @@
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
         { "key": "Permissions-Policy", "value": "geolocation=(self), microphone=(self), camera=(self)" },
         {
-          "key": "Content-Security-Policy-Report-Only",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://162.35.96.65.sslip.io https://smartsurveyx.com https://www.smartsurveyx.com; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'sha256-AACriJN6Fgt/alYunsKyjGZtar1lOnXyECeYzTd5qfw=' 'sha256-TGIp8UHta+feTkpH1yArhCaIP+4W1CsMq+G4U/TaCZo='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://162.35.96.65.sslip.io https://smartsurveyx.com https://www.smartsurveyx.com https://*.r2.cloudflarestorage.com https://pub-*.r2.dev; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://162.35.96.65.sslip.io/api/csp-report"
         }
       ]
     }
